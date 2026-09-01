@@ -7,6 +7,22 @@ X, Gmail, sms, en meer — en in één lijst toont. Waar de melding een
 meestal het geval is), kun je direct vanuit deze app reageren, zonder
 de bron-app te openen.
 
+## Wat de app doet (bijgewerkt)
+
+Bij het openen zie je nu een **startscherm met icoontjes**, geen tabbladen:
+
+- **Meldingen** — de live meldingen-hub (WhatsApp, Instagram, enz., zoals
+  hierboven beschreven).
+- **Mail & Kalender** — opent je Gmail Org web-app in een ingebouwde
+  Chrome-tab (met adresbalk zichtbaar). Dit moest via een "echte"
+  browser-tab in plaats van een ingebouwd browserscherm, omdat Google
+  het inloggen anders blokkeert vanuit veiligheidsoverwegingen.
+- **App toevoegen (+)** — kies zelf een ge&iuml;nstalleerde app (bijv.
+  Google Home, LSC Smart Connect, of wat dan ook) om als icoontje toe te
+  voegen. Lang indrukken op een toegevoegd icoontje verwijdert 'm weer
+  van het startscherm (de app zelf blijft gewoon ge&iuml;nstalleerd op
+  je telefoon).
+
 ## Belangrijk: wat dit wél en niet is
 
 - **Dit werkt via meldingen, niet via een API.** WhatsApp, Instagram
