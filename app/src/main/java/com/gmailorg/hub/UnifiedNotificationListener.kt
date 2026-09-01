@@ -24,15 +24,20 @@ class UnifiedNotificationListener : NotificationListenerService() {
     companion object {
         private val replyActions = mutableMapOf<String, Pair<PendingIntent, RemoteInput>>()
 
+        // PendingIntent.send() heeft een Context nodig; de service zet deze
+        // hieronder bij het opstarten zodat sendReply() hem kan gebruiken.
+        private var appContext: android.content.Context? = null
+
         fun sendReply(key: String, text: String): Boolean {
             val pair = replyActions[key] ?: return false
+            val context = appContext ?: return false
             val (pendingIntent, remoteInput) = pair
             val intent = Intent()
             val bundle = android.os.Bundle()
             bundle.putCharSequence(remoteInput.resultKey, text)
             RemoteInput.addResultsToIntent(arrayOf(remoteInput), intent, bundle)
             return try {
-                pendingIntent.send(intent)
+                pendingIntent.send(context, 0, intent)
                 true
             } catch (e: PendingIntent.CanceledException) {
                 false
@@ -43,6 +48,7 @@ class UnifiedNotificationListener : NotificationListenerService() {
     override fun onCreate() {
         super.onCreate()
         NotifStore.init(applicationContext)
+        appContext = applicationContext
     }
 
     override fun onListenerConnected() {
