@@ -47,7 +47,6 @@ class HomeActivity : AppCompatActivity() {
         val fixed = listOf(
             HomeTile(id = "notifications", type = TileType.NOTIFICATIONS, label = "Meldingen"),
             HomeTile(id = "mail", type = TileType.MAIL, label = "Mail & Kalender"),
-            HomeTile(id = "household", type = TileType.HOUSEHOLD, label = "Huishouden"),
             HomeTile(id = "whatsapp", type = TileType.APP, label = "WhatsApp", packageName = "com.whatsapp")
         )
         val userApps = ShortcutStore.getAll()
@@ -59,7 +58,6 @@ class HomeActivity : AppCompatActivity() {
         when (tile.type) {
             TileType.NOTIFICATIONS -> startActivity(Intent(this, NotificationsActivity::class.java))
             TileType.MAIL -> openMailInCustomTab()
-            TileType.HOUSEHOLD -> startActivity(Intent(this, HouseholdActivity::class.java))
             TileType.APP -> launchExternalApp(tile.packageName)
             TileType.ADD_BUTTON -> startActivity(Intent(this, AppPickerActivity::class.java))
         }
@@ -126,7 +124,6 @@ class HomeAdapter(
         val iconDrawable = when (tile.type) {
             TileType.NOTIFICATIONS -> ContextCompat.getDrawable(context, R.drawable.ic_tile_notifications)
             TileType.MAIL -> ContextCompat.getDrawable(context, R.drawable.ic_tile_mail)
-            TileType.HOUSEHOLD -> ContextCompat.getDrawable(context, R.drawable.ic_tile_household)
             TileType.ADD_BUTTON -> ContextCompat.getDrawable(context, R.drawable.ic_tile_add)
             TileType.APP -> try {
                 context.packageManager.getApplicationIcon(tile.packageName!!)

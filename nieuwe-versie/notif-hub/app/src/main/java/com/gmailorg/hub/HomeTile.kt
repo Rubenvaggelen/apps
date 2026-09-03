@@ -7,4 +7,4 @@ data class HomeTile(
     val packageName: String? = null // alleen voor type APP
 )
 
-enum class TileType { NOTIFICATIONS, MAIL, HOUSEHOLD, APP, ADD_BUTTON }
+enum class TileType { NOTIFICATIONS, MAIL, APP, ADD_BUTTON }

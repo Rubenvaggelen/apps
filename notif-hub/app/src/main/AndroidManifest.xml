@@ -31,11 +31,6 @@
             android:exported="false"
             android:theme="@style/Theme.GmailOrgHub" />
 
-        <activity
-            android:name=".HouseholdActivity"
-            android:exported="false"
-            android:theme="@style/Theme.GmailOrgHub" />
-
         <service
             android:name=".UnifiedNotificationListener"
             android:exported="true"
