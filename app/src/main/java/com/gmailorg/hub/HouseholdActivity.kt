@@ -110,10 +110,10 @@ class ShoppingAdapter(
 
     private fun applyDoneStyle(view: TextView, done: Boolean) {
         if (done) {
-            view.paintFlags = view.paintFlags or android.graphics.Paint.STRIKE_THRU_FLAG
+            view.paintFlags = view.paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
             view.alpha = 0.5f
         } else {
-            view.paintFlags = view.paintFlags and android.graphics.Paint.STRIKE_THRU_FLAG.inv()
+            view.paintFlags = view.paintFlags and android.graphics.Paint.STRIKE_THRU_TEXT_FLAG.inv()
             view.alpha = 1.0f
         }
     }
