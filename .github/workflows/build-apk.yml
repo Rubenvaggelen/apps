@@ -24,9 +24,9 @@ jobs:
         run: |
           mkdir -p ~/.android
           echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > ~/.android/debug.keystore
-      - name: Print signing SHA-1 (voor Google OAuth)
+         - name: Print signing SHA-1 (voor Google OAuth)
         run: |
-          keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android | grep "SHA1:"
+          keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android || true
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon
       - name: Upload APK as artifact
