@@ -1,5 +1,8 @@
 package com.gmailorg.hub
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -8,8 +11,12 @@ import android.view.inputmethod.EditorInfo
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ImageButton
+import android.widget.Switch
 import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 
@@ -18,6 +25,30 @@ class HouseholdActivity : AppCompatActivity() {
     private lateinit var adapter: ShoppingAdapter
     private lateinit var emptyState: TextView
     private lateinit var input: EditText
+    private lateinit var supermarketSwitch: Switch
+
+    private val requestForegroundLocation = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            requestBackgroundLocationIfNeeded()
+        } else {
+            supermarketSwitch.isChecked = false
+            Toast.makeText(this, "Locatietoegang is nodig voor supermarkt-meldingen.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private val requestBackgroundLocation = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { _ ->
+        // Ook zonder achtergrondlocatie werkt het gewoon terwijl de app open/actief is —
+        // we gaan altijd door met het instellen van de meldingen.
+        armSupermarketAlerts()
+    }
+
+    private val requestNotificationPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* resultaat negeren, meldingen werken al voor Android 13+ als dit geweigerd wordt niet, dat is prima */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -26,6 +57,8 @@ class HouseholdActivity : AppCompatActivity() {
 
         emptyState = findViewById(R.id.emptyState)
         input = findViewById(R.id.newItemInput)
+        supermarketSwitch = findViewById(R.id.supermarketAlertSwitch)
+        supermarketSwitch.isChecked = SupermarketGeofenceManager.isEnabled(this)
 
         val list = findViewById<RecyclerView>(R.id.itemList)
         list.layoutManager = LinearLayoutManager(this)
@@ -53,7 +86,50 @@ class HouseholdActivity : AppCompatActivity() {
             }
         }
 
+        supermarketSwitch.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+                ensureForegroundLocationThenArm()
+            } else {
+                SupermarketGeofenceManager.disable(this)
+            }
+        }
+
         refresh()
+    }
+
+    private fun ensureForegroundLocationThenArm() {
+        val granted = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            requestBackgroundLocationIfNeeded()
+        } else {
+            requestForegroundLocation.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+
+    private fun requestBackgroundLocationIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val granted = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.ACCESS_BACKGROUND_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                requestBackgroundLocation.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                return
+            }
+        }
+        armSupermarketAlerts()
+    }
+
+    private fun armSupermarketAlerts() {
+        Toast.makeText(this, "Supermarkten in de buurt zoeken...", Toast.LENGTH_SHORT).show()
+        SupermarketGeofenceManager.enableForCurrentLocation(this) { success, message ->
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+            if (!success) supermarketSwitch.isChecked = false
+        }
     }
 
     private fun addCurrentInput() {
