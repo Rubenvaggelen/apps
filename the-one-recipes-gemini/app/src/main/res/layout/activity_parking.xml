@@ -26,11 +26,20 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Recepten"
+            android:text="Parkeren"
             android:textColor="@color/text_main"
             android:textSize="20sp"
             android:textStyle="bold" />
     </LinearLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="16dp"
+        android:paddingBottom="10dp"
+        android:text="Voeg adressen toe waar je een melding wilt om te betalen voor parkeren, zodra je binnen 50m aankomt. Beheer (verwijderen) doe je via Instellingen."
+        android:textColor="@color/text_dim"
+        android:textSize="13sp" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -41,53 +50,37 @@
         android:gravity="center_vertical">
 
         <EditText
-            android:id="@+id/recipeInput"
+            android:id="@+id/newAddressInput"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:hint="Bijv. lasagne"
+            android:hint="Bijv. Vianenstraat 31, Amsterdam"
             android:textColorHint="@color/text_dim"
             android:textColor="@color/text_main"
             android:background="@color/surface"
             android:padding="12dp"
             android:minHeight="48dp"
             android:inputType="text"
-            android:imeOptions="actionSearch"
+            android:imeOptions="actionDone"
             android:maxLines="1" />
 
         <Button
-            android:id="@+id/recipeSearchButton"
+            android:id="@+id/addAddressButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
-            android:text="Zoeken"
+            android:text="Toevoegen"
             android:backgroundTint="@color/amber"
             android:textColor="@color/on_amber" />
-
-        <ImageButton
-            android:id="@+id/voiceInputButton"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_marginStart="8dp"
-            android:background="@color/surface"
-            android:src="@drawable/ic_mic"
-            android:contentDescription="Spreek een gerecht in" />
     </LinearLayout>
 
-    <ScrollView
+    <TextView
+        android:id="@+id/confirmationText"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
-
-        <TextView
-            android:id="@+id/answerText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingHorizontal="16dp"
-            android:paddingBottom="24dp"
-            android:textColor="@color/text_main"
-            android:textSize="15sp"
-            android:lineSpacingExtra="4dp" />
-
-    </ScrollView>
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="16dp"
+        android:textColor="@color/text_dim"
+        android:textSize="13sp"
+        android:visibility="gone" />
 
 </LinearLayout>

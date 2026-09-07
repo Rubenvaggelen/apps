@@ -26,7 +26,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Recepten"
+            android:text="Vraag het"
             android:textColor="@color/text_main"
             android:textSize="20sp"
             android:textStyle="bold" />
@@ -41,26 +41,26 @@
         android:gravity="center_vertical">
 
         <EditText
-            android:id="@+id/recipeInput"
+            android:id="@+id/questionInput"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:hint="Bijv. lasagne"
+            android:hint="Stel een vraag..."
             android:textColorHint="@color/text_dim"
             android:textColor="@color/text_main"
             android:background="@color/surface"
             android:padding="12dp"
             android:minHeight="48dp"
-            android:inputType="text"
-            android:imeOptions="actionSearch"
-            android:maxLines="1" />
+            android:inputType="textMultiLine|textCapSentences"
+            android:imeOptions="actionSend"
+            android:maxLines="4" />
 
         <Button
-            android:id="@+id/recipeSearchButton"
+            android:id="@+id/askButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
-            android:text="Zoeken"
+            android:text="Vragen"
             android:backgroundTint="@color/amber"
             android:textColor="@color/on_amber" />
 
@@ -71,7 +71,7 @@
             android:layout_marginStart="8dp"
             android:background="@color/surface"
             android:src="@drawable/ic_mic"
-            android:contentDescription="Spreek een gerecht in" />
+            android:contentDescription="Spreek je vraag in" />
     </LinearLayout>
 
     <ScrollView
