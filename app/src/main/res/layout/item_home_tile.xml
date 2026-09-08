@@ -10,9 +10,10 @@
 
     <ImageView
         android:id="@+id/tileIcon"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:layout_marginBottom="10dp"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_marginBottom="8dp"
+        android:scaleType="centerInside"
         android:contentDescription="@null" />
 
     <TextView

@@ -186,21 +186,21 @@ class HomeAdapter(
 
         val iconDrawable = when (tile.type) {
             TileType.NOTIFICATIONS -> ContextCompat.getDrawable(context, R.drawable.ic_tile_notifications)
-            TileType.MAIL -> ContextCompat.getDrawable(context, R.drawable.ic_tile_mail)
-            TileType.HOUSEHOLD -> ContextCompat.getDrawable(context, R.drawable.ic_tile_household)
-            TileType.MOVIES -> ContextCompat.getDrawable(context, R.drawable.ic_tile_movies)
-            TileType.PARKING -> ContextCompat.getDrawable(context, R.drawable.ic_tile_parking)
-            TileType.SETTINGS -> ContextCompat.getDrawable(context, R.drawable.ic_tile_settings)
-            TileType.ASK -> ContextCompat.getDrawable(context, R.drawable.ic_tile_ask)
-            TileType.RECIPES -> ContextCompat.getDrawable(context, R.drawable.ic_tile_recipes)
-            TileType.NEWS -> ContextCompat.getDrawable(context, R.drawable.ic_tile_news)
-            TileType.RADIO -> ContextCompat.getDrawable(context, R.drawable.ic_tile_radio)
-            TileType.CURRENCY -> ContextCompat.getDrawable(context, R.drawable.ic_tile_currency)
-            TileType.ADD_BUTTON -> ContextCompat.getDrawable(context, R.drawable.ic_tile_add)
+            TileType.MAIL -> ContextCompat.getDrawable(context, R.drawable.ic_home_mail_fancy)
+            TileType.HOUSEHOLD -> ContextCompat.getDrawable(context, R.drawable.ic_home_household_fancy)
+            TileType.MOVIES -> ContextCompat.getDrawable(context, R.drawable.ic_home_movies_fancy)
+            TileType.PARKING -> ContextCompat.getDrawable(context, R.drawable.ic_home_parking_fancy)
+            TileType.SETTINGS -> ContextCompat.getDrawable(context, R.drawable.ic_home_settings_fancy)
+            TileType.ASK -> ContextCompat.getDrawable(context, R.drawable.ic_home_ask_fancy)
+            TileType.RECIPES -> ContextCompat.getDrawable(context, R.drawable.ic_home_recipes_fancy)
+            TileType.NEWS -> ContextCompat.getDrawable(context, R.drawable.ic_home_news_fancy)
+            TileType.RADIO -> ContextCompat.getDrawable(context, R.drawable.ic_home_radio_fancy)
+            TileType.CURRENCY -> ContextCompat.getDrawable(context, R.drawable.ic_home_currency_fancy)
+            TileType.ADD_BUTTON -> ContextCompat.getDrawable(context, R.drawable.ic_home_add_fancy)
             TileType.APP -> try {
                 context.packageManager.getApplicationIcon(tile.packageName!!)
             } catch (e: Exception) {
-                ContextCompat.getDrawable(context, R.drawable.ic_tile_add)
+                ContextCompat.getDrawable(context, R.drawable.ic_home_add_fancy)
             }
         }
         holder.icon.setImageDrawable(iconDrawable)
