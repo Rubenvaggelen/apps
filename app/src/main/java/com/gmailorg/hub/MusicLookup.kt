@@ -16,7 +16,7 @@ import java.net.URLEncoder
 object MusicLookup {
 
     private const val TAG = "MusicLookup"
-    private const val MAX_RESULTS = 5
+    private const val MAX_RESULTS = 10
 
     data class MusicResult(
         val videoId: String,
