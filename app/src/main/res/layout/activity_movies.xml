@@ -140,15 +140,6 @@
                 android:layout_marginBottom="16dp" />
 
             <LinearLayout
-                android:id="@+id/musicPlayerContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:paddingHorizontal="16dp"
-                android:paddingBottom="12dp"
-                android:visibility="gone" />
-
-            <LinearLayout
                 android:id="@+id/musicResultContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
