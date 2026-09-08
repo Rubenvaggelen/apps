@@ -1,8 +1,5 @@
 package com.gmailorg.hub
 
-import android.webkit.WebViewClient
-import android.webkit.CookieManager
-import android.os.Build
 import android.widget.Button
 import android.webkit.WebView
 import android.webkit.WebChromeClient
@@ -174,7 +171,7 @@ class MoviesActivity : AppCompatActivity() {
         }
 
         val nowPlaying = TextView(this).apply {
-            text = "MUZIEKSPELER"
+            text = "NU AAN HET SPELEN"
             setTextColor(ContextCompat.getColor(context, R.color.amber))
             textSize = 11f
             letterSpacing = 0.08f
@@ -202,98 +199,37 @@ class MoviesActivity : AppCompatActivity() {
             card.addView(channelView)
         }
 
-        val statusView = TextView(this).apply {
-            text = "Player laden…"
-            setTextColor(ContextCompat.getColor(context, R.color.text_dim))
-            textSize = 11f
-            setPadding(0, 0, 0, dp(6))
-        }
-        card.addView(statusView)
-
         val player = WebView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(220)
-            ).apply {
-                topMargin = dp(4)
+            layoutParams = LinearLayout.LayoutParams(dp(200), dp(200)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                topMargin = dp(8)
             }
-            setBackgroundColor(Color.BLACK)
+            setBackgroundColor(Color.TRANSPARENT)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.mediaPlaybackRequiresUserGesture = false
-            settings.javaScriptCanOpenWindowsAutomatically = true
             webChromeClient = WebChromeClient()
-            webViewClient = object : WebViewClient() {
-                override fun onPageFinished(view: WebView?, url: String?) {
-                    super.onPageFinished(view, url)
-                    statusView.text = "Klaar — tik op Afspelen"
-                    view?.evaluateJavascript(
-                        "if (typeof nativePlay === 'function') { nativePlay(); }",
-                        null
-                    )
-                }
-            }
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
-
-            CookieManager.getInstance().setAcceptCookie(true)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-            }
         }
         activeMusicWebView = player
 
-        val safeVideoId = result.videoId.replace(Regex("[^A-Za-z0-9_-]"), "")
         val html = """
             <!doctype html>
             <html>
             <head>
               <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
               <style>
-                html,body,#player { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; }
+                html,body{margin:0;padding:0;background:#171A24;width:100%;height:100%;overflow:hidden;}
+                iframe{border:0;width:100%;height:100%;}
               </style>
             </head>
             <body>
-              <div id="player"></div>
-              <script src="https://www.youtube.com/iframe_api"></script>
-              <script>
-                var player = null;
-                var pendingPlay = true;
-
-                function onYouTubeIframeAPIReady() {
-                  player = new YT.Player('player', {
-                    width: '100%',
-                    height: '100%',
-                    videoId: '$safeVideoId',
-                    playerVars: {
-                      playsinline: 1,
-                      controls: 1,
-                      rel: 0,
-                      autoplay: 0,
-                      enablejsapi: 1,
-                      origin: 'https://www.youtube.com'
-                    },
-                    events: {
-                      onReady: function(event) {
-                        if (pendingPlay) event.target.playVideo();
-                      }
-                    }
-                  });
-                }
-
-                function nativePlay() {
-                  pendingPlay = true;
-                  if (player && typeof player.playVideo === 'function') {
-                    player.playVideo();
-                  }
-                }
-
-                function nativePause() {
-                  pendingPlay = false;
-                  if (player && typeof player.pauseVideo === 'function') {
-                    player.pauseVideo();
-                  }
-                }
-              </script>
+              <iframe
+                src="https://www.youtube.com/embed/${result.videoId}?autoplay=1&playsinline=1&controls=1&rel=0"
+                title="YouTube player"
+                allow="autoplay; encrypted-media; picture-in-picture"
+                allowfullscreen>
+              </iframe>
             </body>
             </html>
         """.trimIndent()
@@ -309,47 +245,9 @@ class MoviesActivity : AppCompatActivity() {
 
         val buttonRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_HORIZONTAL
+            gravity = Gravity.END
             setPadding(0, dp(10), 0, 0)
         }
-
-        val playButton = Button(this).apply {
-            text = "▶ Afspelen"
-            textSize = 12f
-            isAllCaps = false
-            setTextColor(ContextCompat.getColor(context, R.color.on_amber))
-            backgroundTintList = ContextCompat.getColorStateList(context, R.color.amber)
-            setOnClickListener {
-                statusView.text = "Afspelen…"
-                activeMusicWebView?.evaluateJavascript(
-                    "if (typeof nativePlay === 'function') { nativePlay(); }",
-                    null
-                )
-            }
-        }
-        buttonRow.addView(playButton)
-
-        val pauseButton = Button(this).apply {
-            text = "⏸ Pauze"
-            textSize = 12f
-            isAllCaps = false
-            setOnClickListener {
-                statusView.text = "Gepauzeerd"
-                activeMusicWebView?.evaluateJavascript(
-                    "if (typeof nativePause === 'function') { nativePause(); }",
-                    null
-                )
-            }
-        }
-        buttonRow.addView(pauseButton)
-
-        val stopButton = Button(this).apply {
-            text = "■ Stop"
-            textSize = 12f
-            isAllCaps = false
-            setOnClickListener { stopMusicPlayer(hide = true) }
-        }
-        buttonRow.addView(stopButton)
 
         val youtubeButton = Button(this).apply {
             text = "YouTube"
@@ -358,6 +256,16 @@ class MoviesActivity : AppCompatActivity() {
             setOnClickListener { openVideo(result.videoId) }
         }
         buttonRow.addView(youtubeButton)
+
+        val stopButton = Button(this).apply {
+            text = "Stop"
+            textSize = 12f
+            isAllCaps = false
+            setTextColor(ContextCompat.getColor(context, R.color.on_amber))
+            backgroundTintList = ContextCompat.getColorStateList(context, R.color.amber)
+            setOnClickListener { stopMusicPlayer(hide = true) }
+        }
+        buttonRow.addView(stopButton)
 
         card.addView(buttonRow)
         musicPlayerContainer.addView(card)
