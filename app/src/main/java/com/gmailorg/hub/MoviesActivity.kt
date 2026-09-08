@@ -29,11 +29,11 @@ class MoviesActivity : AppCompatActivity() {
         upcomingContainer = findViewById(R.id.upcomingContainer)
 
         findViewById<View>(R.id.backButton).setOnClickListener { finish() }
-        searchButton.setOnClickListener { searchMovie() }
+        searchButton.setOnClickListener { searchAll() }
         findViewById<View>(R.id.upcomingLoadButton).setOnClickListener { loadUpcoming() }
         titleInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
-                searchMovie()
+                searchAll()
                 true
             } else {
                 false
@@ -41,14 +41,44 @@ class MoviesActivity : AppCompatActivity() {
         }
 
         musicResultContainer = findViewById(R.id.musicResultContainer)
-        val musicInput = findViewById<EditText>(R.id.musicTitleInput)
-        findViewById<View>(R.id.musicSearchButton).setOnClickListener { searchMusic(musicInput.text.toString()) }
-        musicInput.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
-                searchMusic(musicInput.text.toString())
-                true
-            } else {
-                false
+    }
+
+    private fun searchAll() {
+        val query = titleInput.text.toString().trim()
+        if (query.isBlank()) return
+
+        // Eén zoekopdracht voor films/series én muziek.
+        resultContainer.removeAllViews()
+        musicResultContainer.removeAllViews()
+        resultContainer.visibility = View.VISIBLE
+        musicResultContainer.visibility = View.VISIBLE
+
+        addResultLine("Films & series", bold = true)
+        addResultLine("Zoeken naar “$query”…", dim = true)
+        addMusicLine("Muziek", dim = false)
+        addMusicLine("Zoeken naar “$query”…", dim = true)
+
+        MovieLookup.search(query) { outcome ->
+            resultContainer.removeAllViews()
+            addResultLine("Films & series", bold = true)
+            when (outcome) {
+                is MovieLookup.LookupOutcome.Success -> showMovieResult(outcome.result)
+                is MovieLookup.LookupOutcome.NotFound ->
+                    addResultLine("Geen film of serie gevonden voor “${outcome.query}”.", dim = true)
+                is MovieLookup.LookupOutcome.Error ->
+                    addResultLine(outcome.message, dim = true)
+            }
+        }
+
+        MusicLookup.search(query) { outcome ->
+            musicResultContainer.removeAllViews()
+            addMusicLine("Muziek")
+            when (outcome) {
+                is MusicLookup.LookupOutcome.Success -> showMusicResults(outcome.results)
+                is MusicLookup.LookupOutcome.NotFound ->
+                    addMusicLine("Geen muziek gevonden voor “${outcome.query}”.", dim = true)
+                is MusicLookup.LookupOutcome.Error ->
+                    addMusicLine(outcome.message, dim = true)
             }
         }
     }
