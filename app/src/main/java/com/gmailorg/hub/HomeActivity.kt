@@ -84,6 +84,7 @@ class HomeActivity : AppCompatActivity() {
 
     private fun refreshTiles() {
         val fixed = listOf(
+            HomeTile(id = "notifications", type = TileType.NOTIFICATIONS, label = "Meldingen"),
             HomeTile(id = "mail", type = TileType.MAIL, label = "Mail & Kalender"),
             HomeTile(id = "household", type = TileType.HOUSEHOLD, label = "Huishouden"),
             HomeTile(id = "movies", type = TileType.MOVIES, label = "Films, Series & Muziek"),
@@ -109,6 +110,7 @@ class HomeActivity : AppCompatActivity() {
 
     private fun handleTileClick(tile: HomeTile) {
         when (tile.type) {
+            TileType.NOTIFICATIONS -> startActivity(Intent(this, NotificationsActivity::class.java))
             TileType.MAIL -> openMailInCustomTab()
             TileType.HOUSEHOLD -> startActivity(Intent(this, HouseholdActivity::class.java))
             TileType.MOVIES -> startActivity(Intent(this, MoviesActivity::class.java))
@@ -183,6 +185,7 @@ class HomeAdapter(
         val context = holder.itemView.context
 
         val iconDrawable = when (tile.type) {
+            TileType.NOTIFICATIONS -> ContextCompat.getDrawable(context, R.drawable.ic_tile_notifications)
             TileType.MAIL -> ContextCompat.getDrawable(context, R.drawable.ic_tile_mail)
             TileType.HOUSEHOLD -> ContextCompat.getDrawable(context, R.drawable.ic_tile_household)
             TileType.MOVIES -> ContextCompat.getDrawable(context, R.drawable.ic_tile_movies)
