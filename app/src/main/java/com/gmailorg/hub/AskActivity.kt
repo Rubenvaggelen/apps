@@ -1,5 +1,8 @@
 package com.gmailorg.hub
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.speech.RecognizerIntent
@@ -35,6 +38,23 @@ class AskActivity : AppCompatActivity() {
 
         questionInput = findViewById(R.id.questionInput)
         answerText = findViewById(R.id.answerText)
+
+        // Laat de tekst ook los selecteerbaar zijn (geeft ook het standaard Android selectie-menu)
+        answerText.setTextIsSelectable(true)
+
+        // Lang indrukken op het antwoord = hele tekst kopiëren naar klembord
+        answerText.setOnLongClickListener {
+            val text = answerText.text.toString()
+            if (text.isNotBlank() && text != "Even denken...") {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip = ClipData.newPlainText("Antwoord", text)
+                clipboard.setPrimaryClip(clip)
+                Toast.makeText(this, "Gekopieerd naar klembord", Toast.LENGTH_SHORT).show()
+                true
+            } else {
+                false
+            }
+        }
 
         findViewById<View>(R.id.backButton).setOnClickListener { finish() }
         findViewById<View>(R.id.askButton).setOnClickListener { askQuestion() }
