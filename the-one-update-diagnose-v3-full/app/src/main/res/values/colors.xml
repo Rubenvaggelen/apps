@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#12141C</color>
+    <color name="surface">#1B1F2C</color>
+    <color name="surface_raised">#232838</color>
+    <color name="line">#2B3145</color>
+    <color name="text_main">#ECEAE3</color>
+    <color name="text_dim">#8C93A8</color>
+    <color name="amber">#E0A458</color>
+    <color name="on_amber">#201505</color>
+    <color name="sage">#6FA287</color>
+</resources>
