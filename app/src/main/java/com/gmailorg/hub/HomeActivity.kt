@@ -1,6 +1,12 @@
 package com.gmailorg.hub
 
 import android.content.Intent
+import android.graphics.drawable.LayerDrawable
+import android.graphics.drawable.InsetDrawable
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.Drawable
+import android.graphics.Color
+import android.content.Context
 import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -189,15 +195,49 @@ class HomeAdapter(
 
     override fun getItemCount(): Int = tiles.size
 
+    /**
+     * Geeft zelf toegevoegde apps dezelfde The One-uitstraling zonder hun
+     * herkenbare eigen logo kwijt te raken: donkergroen, goud en een nette inset.
+     */
+    private fun makeFancyExternalAppIcon(context: Context, appIcon: Drawable): Drawable {
+        fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).toInt()
+
+        val outer = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(
+                Color.parseColor("#F7D98B"),
+                Color.parseColor("#D89A3A"),
+                Color.parseColor("#8E5B14")
+            )
+        ).apply {
+            shape = GradientDrawable.OVAL
+        }
+
+        val inner = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(
+                Color.parseColor("#2D5A43"),
+                Color.parseColor("#10251C")
+            )
+        ).apply {
+            shape = GradientDrawable.OVAL
+            setStroke(dp(1), Color.parseColor("#F4D08A"))
+        }
+
+        val innerInset = InsetDrawable(inner, dp(3))
+        val logoInset = InsetDrawable(appIcon.mutate(), dp(11))
+        return LayerDrawable(arrayOf(outer, innerInset, logoInset))
+    }
+
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val tile = tiles[position]
         holder.label.text = tile.label
         val context = holder.itemView.context
 
         val iconDrawable = when (tile.type) {
-            TileType.NOTIFICATIONS -> ContextCompat.getDrawable(context, R.drawable.ic_tile_notifications)
+            TileType.NOTIFICATIONS -> ContextCompat.getDrawable(context, R.drawable.ic_home_notifications_fancy)
             TileType.MAIL -> ContextCompat.getDrawable(context, R.drawable.ic_home_mail_fancy)
-            TileType.ROUTE -> ContextCompat.getDrawable(context, R.drawable.ic_tile_route)
+            TileType.ROUTE -> ContextCompat.getDrawable(context, R.drawable.ic_home_route_fancy)
             TileType.HOUSEHOLD -> ContextCompat.getDrawable(context, R.drawable.ic_home_household_fancy)
             TileType.MOVIES -> ContextCompat.getDrawable(context, R.drawable.ic_home_movies_fancy)
             TileType.PARKING -> ContextCompat.getDrawable(context, R.drawable.ic_home_parking_fancy)
@@ -209,7 +249,7 @@ class HomeAdapter(
             TileType.CURRENCY -> ContextCompat.getDrawable(context, R.drawable.ic_home_currency_fancy)
             TileType.ADD_BUTTON -> ContextCompat.getDrawable(context, R.drawable.ic_home_add_fancy)
             TileType.APP -> try {
-                context.packageManager.getApplicationIcon(tile.packageName!!)
+                makeFancyExternalAppIcon(context, context.packageManager.getApplicationIcon(tile.packageName!!))
             } catch (e: Exception) {
                 ContextCompat.getDrawable(context, R.drawable.ic_home_add_fancy)
             }

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- luxe gouden buitenring -->
     <item>
         <shape android:shape="oval">
             <gradient
@@ -9,6 +10,7 @@
                 android:endColor="#8E5B14" />
         </shape>
     </item>
+    <!-- donkergroene kern -->
     <item android:left="3dp" android:top="3dp" android:right="3dp" android:bottom="3dp">
         <shape android:shape="oval">
             <gradient
@@ -18,15 +20,18 @@
             <stroke android:width="1dp" android:color="#F4D08A" />
         </shape>
     </item>
-    <item android:width="31dp" android:height="31dp" android:gravity="center">
+    <!-- route / navigatiepijl -->
+    <item android:width="32dp" android:height="32dp" android:gravity="center">
         <vector
-            android:width="31dp"
-            android:height="31dp"
+            android:width="32dp"
+            android:height="32dp"
             android:viewportWidth="24"
             android:viewportHeight="24">
             <path
                 android:fillColor="#FFF1C7"
-                android:pathData="M19,13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+                android:strokeColor="#E0A458"
+                android:strokeWidth="0.55"
+                android:pathData="M21.71,11.29l-9,-9a1,1 0,0 0,-1.42 0l-9,9a1,1 0,0 0,0 1.42l9,9a1,1 0,0 0,1.42 0l9,-9a1,1 0,0 0,0 -1.42zM14,14.5V12h-4v3H8v-4a1,1 0,0 1,1 -1h5V7.5l3.5,3.5z" />
         </vector>
     </item>
 </layer-list>
