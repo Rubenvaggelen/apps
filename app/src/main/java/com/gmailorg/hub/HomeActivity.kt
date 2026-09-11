@@ -195,9 +195,9 @@ class HomeAdapter(
         val context = holder.itemView.context
 
         val iconDrawable = when (tile.type) {
-            TileType.NOTIFICATIONS -> ContextCompat.getDrawable(context, R.drawable.ic_tile_notifications)
+            TileType.NOTIFICATIONS -> ContextCompat.getDrawable(context, R.drawable.ic_home_notifications_fancy)
             TileType.MAIL -> ContextCompat.getDrawable(context, R.drawable.ic_home_mail_fancy)
-            TileType.ROUTE -> ContextCompat.getDrawable(context, R.drawable.ic_tile_route)
+            TileType.ROUTE -> ContextCompat.getDrawable(context, R.drawable.ic_home_route_fancy)
             TileType.HOUSEHOLD -> ContextCompat.getDrawable(context, R.drawable.ic_home_household_fancy)
             TileType.MOVIES -> ContextCompat.getDrawable(context, R.drawable.ic_home_movies_fancy)
             TileType.PARKING -> ContextCompat.getDrawable(context, R.drawable.ic_home_parking_fancy)
