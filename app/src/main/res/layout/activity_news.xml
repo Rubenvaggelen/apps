@@ -73,15 +73,6 @@
             android:backgroundTint="@color/surface"
             android:textColor="@color/text_main" />
 
-        <Button
-            android:id="@+id/newsDwtButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="10dp"
-            android:text="De Ware Tijd"
-            android:backgroundTint="@color/surface"
-            android:textColor="@color/text_main" />
-
     </LinearLayout>
 
 </LinearLayout>

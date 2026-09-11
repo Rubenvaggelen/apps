@@ -26,9 +26,6 @@ class NewsActivity : AppCompatActivity() {
         findViewById<View>(R.id.newsNosButton).setOnClickListener {
             openUrl("https://nos.nl/")
         }
-        findViewById<View>(R.id.newsDwtButton).setOnClickListener {
-            openUrl("https://dwtonline.com/")
-        }
     }
 
     private fun openUrl(url: String) {

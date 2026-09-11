@@ -48,6 +48,8 @@ class MainActivity : AppCompatActivity() {
             }.start()
         }
 
+        UpdateChecker.checkForUpdate(this)
+
         ensurePermissionThenStart()
     }
 
