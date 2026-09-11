@@ -47,7 +47,7 @@ class NotifAdapter(
         holder.titleLabel.text = item.title
         holder.textLabel.text = item.text
 
-        if (item.hasReplyAction) {
+        if (item.hasReplyAction && NotificationReplySettings.isEnabled(holder.itemView.context)) {
             holder.replyRow.visibility = if (openReplyKey == item.key) View.VISIBLE else View.GONE
             holder.itemView.setOnClickListener {
                 openReplyKey = if (openReplyKey == item.key) null else item.key

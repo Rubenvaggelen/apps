@@ -85,6 +85,15 @@ class SettingsActivity : AppCompatActivity() {
         list.adapter = adapter
 
         setupCarRadioSection()
+        setupNotificationReplySection()
+    }
+
+    private fun setupNotificationReplySection() {
+        val switch = findViewById<Switch>(R.id.notificationReplySwitch)
+        switch.isChecked = NotificationReplySettings.isEnabled(this)
+        switch.setOnCheckedChangeListener { _, checked ->
+            NotificationReplySettings.setEnabled(this, checked)
+        }
     }
 
     private fun setupCarRadioSection() {
