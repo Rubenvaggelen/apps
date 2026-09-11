@@ -86,27 +86,45 @@ class CarRadioConnectionService : Service() {
         }
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("The One – Autoradio")
-            .setContentText("Verbonden met je autoradio")
+            .setContentText("Verbinden met je autoradio...")
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setOngoing(true)
             .build()
         startForeground(NOTIFICATION_ID, notification)
     }
 
+    /** Werkt de meldingstekst bij met de echte verbindingsstatus, zodat je die kunt checken via je telefoon. */
+    private fun updateStatus(text: String) {
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("The One – Autoradio")
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
+            .setOngoing(true)
+            .build()
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIFICATION_ID, notification)
+    }
+
     private fun connectionLoop() {
         while (running) {
             val address = CarRadioForwarder.selectedDeviceAddress(this)
             if (address == null || !CarRadioForwarder.isEnabled(this)) {
+                updateStatus("Niet actief (geen autoradio gekozen of uitgeschakeld)")
                 Thread.sleep(3000)
                 continue
             }
             var socket: BluetoothSocket? = null
             try {
                 val adapter = BluetoothAdapter.getDefaultAdapter() ?: return
+                updateStatus("Verbinden met ${CarRadioForwarder.selectedDeviceName(this) ?: address}...")
+                // Voorkomt een bekend Bluetooth-probleem: als er nog een scan
+                // (discovery) loopt, kan connect() daardoor mislukken of vasthangen.
+                try { adapter.cancelDiscovery() } catch (e: SecurityException) { /* geen toestemming, negeren */ }
+
                 val device = adapter.getRemoteDevice(address)
                 socket = device.createRfcommSocketToServiceRecord(APP_UUID)
                 socket.connect()
                 outputStream = socket.outputStream
+                updateStatus("Verbonden met ${CarRadioForwarder.selectedDeviceName(this) ?: address}")
 
                 val reader = BufferedReader(InputStreamReader(socket.inputStream))
                 var line: String?
@@ -116,8 +134,13 @@ class CarRadioConnectionService : Service() {
                         handleReplyRequest()
                     }
                 }
+                updateStatus("Verbinding verbroken — opnieuw proberen...")
+            } catch (e: SecurityException) {
+                Log.w(TAG, "Geen Bluetooth-toestemming", e)
+                updateStatus("⚠️ Geen Bluetooth-toestemming — zet dit in Instellingen nogmaals aan.")
             } catch (e: Exception) {
                 Log.w(TAG, "Autoradio-verbinding niet beschikbaar, opnieuw proberen", e)
+                updateStatus("⚠️ Kan geen verbinding maken (${e.javaClass.simpleName}) — opnieuw proberen...")
             } finally {
                 outputStream = null
                 try { socket?.close() } catch (e: Exception) { /* negeren */ }

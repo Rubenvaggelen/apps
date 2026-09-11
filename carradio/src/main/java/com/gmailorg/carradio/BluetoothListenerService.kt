@@ -99,8 +99,11 @@ class BluetoothListenerService : Service() {
                     activeOutputStream = null
                     socket.close()
                     MessageBus.postStatus("Verbinding verbroken — wachten op nieuwe verbinding...")
+                } catch (e: SecurityException) {
+                    MessageBus.postStatus("⚠️ Geen Bluetooth-toestemming — geef 'The One – Autoradio' toestemming in de systeeminstellingen van de auto.")
+                    Thread.sleep(3000)
                 } catch (e: Exception) {
-                    MessageBus.postStatus("Wachten op verbinding met je telefoon...")
+                    MessageBus.postStatus("⚠️ Verbindingsfout (${e.javaClass.simpleName}: ${e.message}) — opnieuw proberen...")
                     Thread.sleep(2000)
                 } finally {
                     try { serverSocket?.close() } catch (e: Exception) { /* negeren */ }
