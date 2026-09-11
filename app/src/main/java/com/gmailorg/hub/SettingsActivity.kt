@@ -51,6 +51,7 @@ class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
         ParkingAddressStore.init(applicationContext)
+        HiddenTilesStore.init(applicationContext)
 
         lockSection = findViewById(R.id.lockSection)
         unlockedSection = findViewById(R.id.unlockedSection)
@@ -179,6 +180,7 @@ class SettingsActivity : AppCompatActivity() {
             lockSection.visibility = View.GONE
             unlockedSection.visibility = View.VISIBLE
             refreshParkingList()
+            refreshHiddenTiles()
         } else {
             pinErrorText.visibility = View.VISIBLE
             pinInput.text.clear()
@@ -189,6 +191,63 @@ class SettingsActivity : AppCompatActivity() {
         val items = ParkingAddressStore.getAll()
         adapter.updateItems(items)
         parkingEmptyState.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+    }
+
+    // Labels van de vaste tegels — moet in sync blijven met de lijst in HomeActivity.refreshTiles().
+    private val fixedTileLabels = mapOf(
+        "notifications" to "Meldingen",
+        "mail" to "Mail & Kalender",
+        "route" to "Route",
+        "household" to "Huishouden",
+        "movies" to "Films, Series & Muziek",
+        "parking" to "Parkeren",
+        "settings" to "Instellingen",
+        "ask" to "Vraag het",
+        "recipes" to "Recepten",
+        "news" to "Nieuws",
+        "radio" to "Radio",
+        "currency" to "EUR/SRD-koers",
+        "whatsapp" to "WhatsApp",
+        "googlehome" to "Google Home"
+    )
+
+    private fun refreshHiddenTiles() {
+        val container = findViewById<LinearLayout>(R.id.hiddenTilesContainer)
+        val emptyState = findViewById<TextView>(R.id.hiddenTilesEmptyState)
+        container.removeAllViews()
+
+        val hiddenIds = HiddenTilesStore.getAllHidden().toList()
+        emptyState.visibility = if (hiddenIds.isEmpty()) View.VISIBLE else View.GONE
+
+        hiddenIds.forEach { id ->
+            val label = fixedTileLabels[id] ?: id
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(0, 0, 0, 10)
+            }
+            val labelView = TextView(this).apply {
+                text = label
+                setTextColor(ContextCompat.getColor(context, R.color.text_main))
+                textSize = 14f
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            val restoreButton = android.widget.Button(this, null, 0, android.R.style.Widget_Material_Button_Borderless).apply {
+                text = "Terugzetten"
+                setTextColor(ContextCompat.getColor(context, R.color.amber))
+                setOnClickListener {
+                    HiddenTilesStore.unhide(id)
+                    refreshHiddenTiles()
+                    Toast.makeText(this@SettingsActivity, "$label teruggezet", Toast.LENGTH_SHORT).show()
+                }
+            }
+            row.addView(labelView)
+            row.addView(restoreButton)
+            container.addView(row)
+        }
     }
 
     private fun openRingtonePicker() {

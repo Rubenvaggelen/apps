@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.ContextCompat
@@ -27,6 +28,7 @@ class HomeActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_home)
         ShortcutStore.init(applicationContext)
+        HiddenTilesStore.init(applicationContext)
         cleanUpMissingShortcuts()
 
         val grid = findViewById<RecyclerView>(R.id.homeGrid)
@@ -102,9 +104,10 @@ class HomeActivity : AppCompatActivity() {
             // Vaste snelkoppelingen naar apps (WhatsApp, Google Home) alleen
             // tonen als die app ook daadwerkelijk geïnstalleerd staat —
             // anders zie je een leeg "+"-icoontje voor een niet-bestaande app.
-            tile.packageName == null || isPackageInstalled(tile.packageName)
+            (tile.packageName == null || isPackageInstalled(tile.packageName)) &&
+                !HiddenTilesStore.isHidden(tile.id)
         }
-        val userApps = ShortcutStore.getAll()
+        val userApps = ShortcutStore.getAll().filter { !HiddenTilesStore.isHidden(it.id) }
         val addButton = HomeTile(id = "add", type = TileType.ADD_BUTTON, label = "App toevoegen")
         adapter.updateTiles(fixed + userApps + addButton)
     }
@@ -129,14 +132,27 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private fun handleTileLongClick(tile: HomeTile): Boolean {
-        if (tile.type != TileType.APP || tile.packageName == null) return false
-        // Alleen zelf toegevoegde snelkoppelingen zijn te verwijderen — de
-        // vaste WhatsApp-tegel blijft altijd staan.
-        val isUserAdded = ShortcutStore.getAll().any { it.packageName == tile.packageName }
-        if (!isUserAdded) return false
-        ShortcutStore.remove(tile.packageName)
-        refreshTiles()
-        Toast.makeText(this, "${tile.label} verwijderd", Toast.LENGTH_SHORT).show()
+        if (tile.type == TileType.ADD_BUTTON) return false
+
+        AlertDialog.Builder(this)
+            .setTitle("Tegel verbergen?")
+            .setMessage("\"${tile.label}\" wordt van het startscherm verwijderd. Je kunt 'm later terugzetten via Instellingen.")
+            .setPositiveButton("Verbergen") { _, _ ->
+                if (tile.type == TileType.APP && tile.packageName != null &&
+                    ShortcutStore.getAll().any { it.packageName == tile.packageName }
+                ) {
+                    // Zelf toegevoegde app-snelkoppeling: gewoon volledig verwijderen,
+                    // opnieuw toevoegen kan altijd via "App toevoegen".
+                    ShortcutStore.remove(tile.packageName)
+                } else {
+                    // Vaste tegel: verbergen maar onthouden, terug te zetten via Instellingen.
+                    HiddenTilesStore.hide(tile.id)
+                }
+                refreshTiles()
+                Toast.makeText(this, "${tile.label} verborgen", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Annuleren", null)
+            .show()
         return true
     }
 
