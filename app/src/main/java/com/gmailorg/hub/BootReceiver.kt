@@ -13,6 +13,9 @@ class BootReceiver : BroadcastReceiver() {
                 SupermarketRefreshWorker.schedule(appContext)
             }
             ParkingGeofenceManager.syncAll(appContext)
+            if (CarRadioForwarder.isEnabled(appContext)) {
+                CarRadioConnectionService.start(appContext)
+            }
         }
     }
 }

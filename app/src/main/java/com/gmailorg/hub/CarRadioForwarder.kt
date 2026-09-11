@@ -1,22 +1,14 @@
 package com.gmailorg.hub
 
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothSocket
 import android.content.Context
-import android.util.Log
-import java.io.OutputStream
-import java.util.UUID
 
 /**
  * Stuurt WhatsApp-meldingen door naar de gekoppelde autoradio via Bluetooth
  * (RFCOMM) — maar alleen als de gebruiker dit zelf heeft aangezet
  * (Instellingen > "WhatsApp naar autoradio"), nooit automatisch.
+ * De eigenlijke verbinding wordt onderhouden door CarRadioConnectionService.
  */
 object CarRadioForwarder {
-
-    // Moet exact overeenkomen met BluetoothListenerService.APP_UUID in de carradio-module.
-    private val APP_UUID: UUID = UUID.fromString("8ab8c3d0-6b3e-4a7a-9e77-2f6a2f6d9b10")
-    private const val TAG = "CarRadioForwarder"
 
     private const val PREFS = "car_radio_prefs"
     private const val KEY_ENABLED = "enabled"
@@ -50,25 +42,11 @@ object CarRadioForwarder {
     fun forwardIfEnabled(context: Context, packageName: String, title: String, text: String) {
         if (packageName != "com.whatsapp") return
         if (!isEnabled(context)) return
-        val address = selectedDeviceAddress(context) ?: return
+        if (selectedDeviceAddress(context) == null) return
 
-        Thread {
-            var socket: BluetoothSocket? = null
-            try {
-                val adapter = BluetoothAdapter.getDefaultAdapter() ?: return@Thread
-                val device = adapter.getRemoteDevice(address)
-                socket = device.createRfcommSocketToServiceRecord(APP_UUID)
-                socket.connect()
-                val out: OutputStream = socket.outputStream
-                out.write("$title: $text\n".toByteArray())
-                out.flush()
-            } catch (e: Exception) {
-                // Geen verbinding (bv. niet in de auto op dit moment) — gewoon negeren,
-                // dit is bewust "best effort", geen melding die de gebruiker moet zien.
-                Log.w(TAG, "Kon melding niet doorsturen naar autoradio", e)
-            } finally {
-                try { socket?.close() } catch (e: Exception) { /* negeren */ }
-            }
-        }.start()
+        // Best effort: als de verbindingsservice om wat voor reden niet draait
+        // (bv. na een reboot), zorg dat hij alsnog opstart.
+        CarRadioConnectionService.start(context)
+        CarRadioConnectionService.sendMessage("$title: $text")
     }
 }

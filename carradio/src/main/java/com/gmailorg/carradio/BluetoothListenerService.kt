@@ -11,6 +11,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.io.OutputStream
 import java.util.UUID
 
 /**
@@ -27,6 +28,22 @@ class BluetoothListenerService : Service() {
         val APP_UUID: UUID = UUID.fromString("8ab8c3d0-6b3e-4a7a-9e77-2f6a2f6d9b10")
         private const val CHANNEL_ID = "car_radio_service"
         private const val NOTIFICATION_ID = 1
+        private const val CMD_REPLY_REQUEST = "REPLY_REQUEST"
+
+        @Volatile
+        private var activeOutputStream: OutputStream? = null
+
+        /** Vraagt de telefoon om het laatste WhatsApp-bericht via spraak te beantwoorden. */
+        fun requestVoiceReply(): Boolean {
+            val out = activeOutputStream ?: return false
+            return try {
+                out.write("$CMD_REPLY_REQUEST\n".toByteArray())
+                out.flush()
+                true
+            } catch (e: Exception) {
+                false
+            }
+        }
     }
 
     private var serverSocket: BluetoothServerSocket? = null
@@ -67,12 +84,19 @@ class BluetoothListenerService : Service() {
                     val socket = serverSocket?.accept() ?: continue
 
                     MessageBus.postStatus("Verbonden — WhatsApp-meldingen worden getoond")
+                    activeOutputStream = socket.outputStream
                     val reader = BufferedReader(InputStreamReader(socket.inputStream))
                     var line: String?
                     while (true) {
                         line = reader.readLine() ?: break
-                        if (line.isNotBlank()) MessageBus.postMessage(line)
+                        if (line.isBlank()) continue
+                        if (line.startsWith("STATUS:")) {
+                            MessageBus.postMessage("✅ " + line.removePrefix("STATUS:"))
+                        } else {
+                            MessageBus.postMessage(line)
+                        }
                     }
+                    activeOutputStream = null
                     socket.close()
                     MessageBus.postStatus("Verbinding verbroken — wachten op nieuwe verbinding...")
                 } catch (e: Exception) {
@@ -87,6 +111,7 @@ class BluetoothListenerService : Service() {
 
     override fun onDestroy() {
         running = false
+        activeOutputStream = null
         try { serverSocket?.close() } catch (e: Exception) { /* negeren */ }
         super.onDestroy()
     }

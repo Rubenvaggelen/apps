@@ -108,9 +108,25 @@ class SettingsActivity : AppCompatActivity() {
                 carRadioSwitch.isChecked = false
                 return@setOnCheckedChangeListener
             }
-            CarRadioForwarder.setEnabled(this, checked)
+            if (checked) {
+                val micGranted = ContextCompat.checkSelfPermission(
+                    this, Manifest.permission.RECORD_AUDIO
+                ) == PackageManager.PERMISSION_GRANTED
+                if (!micGranted) {
+                    requestMicPermission.launch(Manifest.permission.RECORD_AUDIO)
+                }
+                CarRadioForwarder.setEnabled(this, true)
+                CarRadioConnectionService.start(this)
+            } else {
+                CarRadioForwarder.setEnabled(this, false)
+                CarRadioConnectionService.stop(this)
+            }
         }
     }
+
+    private val requestMicPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* voor spraak-antwoorden vanuit de auto; werkt zonder ook, alleen zonder spraakinvoer */ }
 
     private val requestBluetoothPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -37,6 +38,15 @@ class MainActivity : AppCompatActivity() {
 
         MessageBus.addListener(messageListener)
         MessageBus.addStatusListener(statusListener)
+
+        findViewById<View>(R.id.replyButton).setOnClickListener {
+            Thread {
+                val sent = BluetoothListenerService.requestVoiceReply()
+                if (!sent) {
+                    MessageBus.postMessage("⚠️ Geen verbinding met je telefoon — kan geen antwoord vragen.")
+                }
+            }.start()
+        }
 
         ensurePermissionThenStart()
     }

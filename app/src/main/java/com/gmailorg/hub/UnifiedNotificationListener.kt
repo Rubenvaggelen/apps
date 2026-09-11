@@ -24,6 +24,11 @@ class UnifiedNotificationListener : NotificationListenerService() {
     companion object {
         private val replyActions = mutableMapOf<String, Pair<PendingIntent, RemoteInput>>()
 
+        // Sleutel van de meest recente WhatsApp-melding met een antwoord-actie;
+        // gebruikt door de spraak-antwoordfunctie in de auto (CarRadioConnectionService).
+        @Volatile
+        var lastWhatsAppReplyKey: String? = null
+
         // PendingIntent.send() heeft een Context nodig; de service zet deze
         // hieronder bij het opstarten zodat sendReply() hem kan gebruiken.
         private var appContext: android.content.Context? = null
@@ -92,6 +97,9 @@ class UnifiedNotificationListener : NotificationListenerService() {
         val hasReply = replyPendingIntent != null && replyRemoteInput != null
         if (hasReply) {
             replyActions[sbn.key] = Pair(replyPendingIntent!!, replyRemoteInput!!)
+            if (sbn.packageName == "com.whatsapp") {
+                lastWhatsAppReplyKey = sbn.key
+            }
         }
 
         NotifStore.addOrUpdate(

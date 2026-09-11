@@ -22,6 +22,13 @@
         android:text="Wachten op verbinding met je telefoon..."
         android:textColor="@color/text_dim"
         android:textSize="16sp"
+        android:paddingBottom="16dp" />
+
+    <Button
+        android:id="@+id/replyButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🎤 Antwoord inspreken"
         android:paddingBottom="20dp" />
 
     <ScrollView
