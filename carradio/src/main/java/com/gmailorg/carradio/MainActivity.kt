@@ -105,14 +105,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startLocalVoiceReply() {
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            fallbackToPhoneSpeech("Lokale spraakherkenning is niet beschikbaar op de autoradio")
-            return
-        }
-
+        // Sommige Android-autoradio-ROMs melden ten onrechte dat er geen
+        // SpeechRecognizer beschikbaar is, terwijl Google/Gboard en de microfoon
+        // wel aanwezig zijn. Daarom blokkeren we niet meer op
+        // SpeechRecognizer.isRecognitionAvailable(). We proberen de recognizer
+        // direct te starten en vallen alleen terug op de telefoon als dat echt faalt.
         speechRecognizer?.destroy()
         lastPartialSpeech = null
-        val recognizer = SpeechRecognizer.createSpeechRecognizer(this)
+
+        val recognizer = try {
+            SpeechRecognizer.createSpeechRecognizer(this)
+        } catch (e: Exception) {
+            fallbackToPhoneSpeech("Lokale spraakherkenning kon niet worden geopend")
+            return
+        }
         speechRecognizer = recognizer
 
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
