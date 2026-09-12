@@ -64,7 +64,11 @@ object CarRadioForwarder {
     fun forwardIfEnabled(context: Context, packageName: String, title: String, text: String) {
         if (packageName != "com.whatsapp") return
         if (!isEnabled(context)) return
-        if (selectedDeviceAddress(context) == null) return
+
+        // De radio is zelf de client en wordt door de app-handshake geverifieerd.
+        // Een lokaal opgeslagen device-adres op de telefoon is daarom niet nodig
+        // om meldingen door te sturen; na een update/herinstallatie kon die oude
+        // voorkeur leeg zijn en dan werden geldige meldingen ten onrechte geblokkeerd.
 
         // Best effort: als de verbindingsservice om wat voor reden niet
         // draait, zorg dat hij alsnog opstart; sendMessage() stuurt sowieso

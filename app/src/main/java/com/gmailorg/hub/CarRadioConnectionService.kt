@@ -5,21 +5,28 @@ import android.app.NotificationManager
 import android.app.Service
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothServerSocket
+import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
+import android.util.Base64
 import androidx.core.app.NotificationCompat
 import java.io.BufferedReader
+import java.io.IOException
+import java.io.InputStream
 import java.io.InputStreamReader
 import java.io.OutputStream
 import java.util.UUID
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 
 /**
  * Luistert op een Bluetooth-verbinding (RFCOMM) waarmee de autoradio
@@ -43,6 +50,10 @@ class CarRadioConnectionService : Service() {
         private const val CHANNEL_ID = "car_radio_connection"
         private const val NOTIFICATION_ID = 2
         private const val CMD_REPLY_REQUEST = "REPLY_REQUEST"
+        private const val CMD_REPLY_TEXT_PREFIX = "REPLY_TEXT:"
+        private const val HANDSHAKE_RADIO = "THE_ONE_RADIO_HELLO_V1"
+        private const val HANDSHAKE_PHONE = "THE_ONE_PHONE_OK_V1"
+        private const val HANDSHAKE_TIMEOUT_MS = 3000L
 
         @Volatile
         private var outputStream: OutputStream? = null
@@ -74,7 +85,7 @@ class CarRadioConnectionService : Service() {
     }
 
     private var running = false
-    private var serverSocket: BluetoothServerSocket? = null
+    private val serverSockets = mutableListOf<BluetoothServerSocket>()
     private val mainHandler = Handler(Looper.getMainLooper())
     private var speechRecognizer: SpeechRecognizer? = null
 
@@ -114,41 +125,41 @@ class CarRadioConnectionService : Service() {
 
     private fun listenLoop() {
         while (running) {
+            var socket: BluetoothSocket? = null
             try {
                 val adapter = BluetoothAdapter.getDefaultAdapter() ?: return
                 updateStatus("Wacht op verbinding met je autoradio...")
-                if (serverSocket == null) {
-                    // Eerst proberen zonder SDP (vast kanaal); lukt dat niet
-                    // dan terugvallen op de normale SDP-methode.
-                    serverSocket = createFixedChannelServerSocket(adapter)
-                        ?: adapter.listenUsingRfcommWithServiceRecord("TheOneCarRadio", APP_UUID)
-                }
-                val socket = serverSocket?.accept() ?: continue
+
+                // Luister tegelijk via de normale app-UUID én (indien mogelijk)
+                // via het oude vaste RFCOMM-kanaal. De handshake hieronder
+                // voorkomt dat de autoradio per ongeluk een ander Bluetooth-
+                // profiel op hetzelfde kanaal als "The One" beschouwt.
+                socket = waitForVerifiedAppSocket(adapter) ?: continue
                 outputStream = socket.outputStream
                 updateStatus("Verbonden met autoradio")
-                // Als de RFCOMM-verbinding lukt, weten we zeker dat de auto
-                // in bereik is — ook als het aparte ACL-signaal (dat normaal
-                // "nearby" bijhoudt) om wat voor reden geen nieuwe gebeurtenis
-                // heeft afgevuurd (bv. omdat de Bluetooth-verbinding al vóór
-                // een app-update/herstart actief was).
                 CarRadioForwarder.setNearby(this, true)
+                // Zichtbare bevestiging op de radio dat niet alleen Bluetooth,
+                // maar echt de The One-app aan beide kanten verbonden is.
+                sendMessage("STATUS:The One-koppeling bevestigd")
 
                 val reader = BufferedReader(InputStreamReader(socket.inputStream))
                 var line: String?
                 while (running) {
                     line = reader.readLine() ?: break
-                    if (line.trim() == CMD_REPLY_REQUEST) {
-                        handleReplyRequest()
+                    val command = line.trim()
+                    when {
+                        command == CMD_REPLY_REQUEST -> handleReplyRequest()
+                        command.startsWith(CMD_REPLY_TEXT_PREFIX) -> {
+                            val encoded = command.removePrefix(CMD_REPLY_TEXT_PREFIX)
+                            val text = try {
+                                String(Base64.decode(encoded, Base64.DEFAULT), Charsets.UTF_8)
+                            } catch (e: Exception) {
+                                ""
+                            }
+                            handleRecognizedReply(text)
+                        }
                     }
                 }
-                outputStream = null
-                try { socket.close() } catch (e: Exception) { /* negeren */ }
-                // Altijd een verse serverSocket opbouwen voor de volgende
-                // verbinding — hergebruik van dezelfde BluetoothServerSocket
-                // na een sessie bleek af en toe onbetrouwbaar (wisselend
-                // wel/niet verbinden, zonder duidelijk patroon).
-                try { serverSocket?.close() } catch (e: Exception) { /* negeren */ }
-                serverSocket = null
                 updateStatus("Verbinding verbroken — wachten op nieuwe verbinding...")
             } catch (e: SecurityException) {
                 Log.w(TAG, "Geen Bluetooth-toestemming", e)
@@ -157,9 +168,151 @@ class CarRadioConnectionService : Service() {
             } catch (e: Exception) {
                 Log.w(TAG, "Autoradio-verbinding niet beschikbaar, opnieuw proberen", e)
                 updateStatus("⚠️ Kan geen verbinding maken (${e.javaClass.simpleName}) — opnieuw proberen...")
-                try { serverSocket?.close() } catch (ignored: Exception) { /* negeren */ }
-                serverSocket = null
-                Thread.sleep(5000)
+                Thread.sleep(3000)
+            } finally {
+                outputStream = null
+                try { socket?.close() } catch (_: Exception) { }
+                closeServerSockets()
+            }
+        }
+    }
+
+    /**
+     * Wacht op een echte The One-verbinding. Alleen socket.connect() is niet
+     * voldoende: een vast RFCOMM-kanaal kan op sommige head-units/telefoons
+     * ook door een ander Bluetooth-profiel gebruikt worden. Daarom accepteren
+     * we de verbinding pas na een app-specifieke handshake.
+     */
+    private fun waitForVerifiedAppSocket(adapter: BluetoothAdapter): BluetoothSocket? {
+        closeServerSockets()
+        val accepted = LinkedBlockingQueue<BluetoothSocket>()
+
+        // Normale UUID/SDP-listener is de voorkeursroute.
+        try {
+            val uuidServer = adapter.listenUsingRfcommWithServiceRecord("TheOneCarRadio", APP_UUID)
+            addServerSocket(uuidServer)
+            startAcceptThread(uuidServer, accepted, "uuid")
+        } catch (e: Exception) {
+            Log.w(TAG, "UUID-listener kon niet starten", e)
+        }
+
+        // Compatibiliteitsroute voor oudere/afwijkende autoradio-stacks.
+        try {
+            val fixedServer = createFixedChannelServerSocket(adapter)
+            if (fixedServer != null) {
+                addServerSocket(fixedServer)
+                startAcceptThread(fixedServer, accepted, "fixed")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Vaste RFCOMM-listener kon niet starten", e)
+        }
+
+        synchronized(serverSockets) {
+            if (serverSockets.isEmpty()) {
+                throw IOException("Geen Bluetooth-server kon worden gestart")
+            }
+        }
+
+        while (running) {
+            val candidate = accepted.poll(1, TimeUnit.SECONDS) ?: continue
+            try {
+                val input = candidate.inputStream
+                val out = candidate.outputStream
+                val hello = readLineWithTimeout(input, HANDSHAKE_TIMEOUT_MS)
+                if (hello != HANDSHAKE_RADIO) {
+                    Log.w(TAG, "Socket geweigerd: ongeldige The One-handshake: $hello")
+                    candidate.close()
+                    continue
+                }
+
+                out.write("$HANDSHAKE_PHONE\n".toByteArray(Charsets.UTF_8))
+                out.flush()
+                closeServerSockets()
+                return candidate
+            } catch (e: Exception) {
+                Log.w(TAG, "Handshake op inkomende socket mislukt", e)
+                try { candidate.close() } catch (_: Exception) { }
+            }
+        }
+        return null
+    }
+
+    private fun addServerSocket(server: BluetoothServerSocket) {
+        synchronized(serverSockets) { serverSockets.add(server) }
+    }
+
+    private fun startAcceptThread(
+        server: BluetoothServerSocket,
+        accepted: LinkedBlockingQueue<BluetoothSocket>,
+        route: String
+    ) {
+        Thread {
+            try {
+                val socket = server.accept()
+                if (running) {
+                    accepted.offer(socket)
+                } else {
+                    try { socket.close() } catch (_: Exception) { }
+                }
+            } catch (e: Exception) {
+                if (running) Log.d(TAG, "Accept via $route gestopt: ${e.message}")
+            }
+        }.start()
+    }
+
+    private fun closeServerSockets() {
+        val sockets = synchronized(serverSockets) {
+            val copy = serverSockets.toList()
+            serverSockets.clear()
+            copy
+        }
+        sockets.forEach { server ->
+            try { server.close() } catch (_: Exception) { }
+        }
+    }
+
+    private fun readLineWithTimeout(input: InputStream, timeoutMs: Long): String? {
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        val builder = StringBuilder()
+        while (running && SystemClock.elapsedRealtime() < deadline) {
+            if (input.available() > 0) {
+                val value = input.read()
+                if (value == -1) return null
+                when (value.toChar()) {
+                    '\n' -> return builder.toString().trim()
+                    '\r' -> Unit
+                    else -> {
+                        if (builder.length >= 512) return null
+                        builder.append(value.toChar())
+                    }
+                }
+            } else {
+                Thread.sleep(20)
+            }
+        }
+        return null
+    }
+
+    /**
+     * Ontvangt tekst die al op de autoradio zelf is herkend en gebruikt alleen
+     * de telefoon voor de WhatsApp RemoteInput-actie. Geen microfoon nodig.
+     */
+    private fun handleRecognizedReply(text: String) {
+        mainHandler.post {
+            if (text.isBlank()) {
+                sendMessage("STATUS:Kon je antwoord niet verstaan, probeer opnieuw.")
+                return@post
+            }
+            val key = UnifiedNotificationListener.lastWhatsAppReplyKey
+            if (key == null) {
+                sendMessage("STATUS:Geen recent WhatsApp-bericht om op te antwoorden.")
+                return@post
+            }
+            val ok = UnifiedNotificationListener.sendReply(key, text)
+            if (ok) {
+                sendMessage("STATUS:Antwoord verzonden: $text")
+            } else {
+                sendMessage("STATUS:Versturen mislukt, open WhatsApp zelf.")
             }
         }
     }
@@ -181,9 +334,12 @@ class CarRadioConnectionService : Service() {
             val recognizer = SpeechRecognizer.createSpeechRecognizer(this)
             speechRecognizer = recognizer
 
+            var lastPartialSpeech: String? = null
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, "nl-NL")
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
             }
 
             recognizer.setRecognitionListener(object : RecognitionListener {
@@ -191,6 +347,9 @@ class CarRadioConnectionService : Service() {
                     val text = results
                         .getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         ?.firstOrNull()
+                        ?.trim()
+                        .takeUnless { it.isNullOrBlank() }
+                        ?: lastPartialSpeech
                     if (text.isNullOrBlank()) {
                         sendMessage("STATUS:Kon je antwoord niet verstaan, probeer opnieuw.")
                     } else {
@@ -232,18 +391,32 @@ class CarRadioConnectionService : Service() {
                 override fun onRmsChanged(rmsdB: Float) {}
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() {}
-                override fun onPartialResults(partialResults: android.os.Bundle?) {}
+                override fun onPartialResults(partialResults: android.os.Bundle?) {
+                    val partial = partialResults
+                        ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.firstOrNull()
+                        ?.trim()
+                    if (!partial.isNullOrBlank()) lastPartialSpeech = partial
+                }
                 override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
             })
 
-            recognizer.startListening(intent)
+            try {
+                recognizer.startListening(intent)
+            } catch (e: SecurityException) {
+                sendMessage("STATUS:Microfoon is door Android geblokkeerd op de achtergrond. Gebruik spraak via de autoradio.")
+                recognizer.destroy()
+            } catch (e: Exception) {
+                sendMessage("STATUS:Spraakherkenning kon niet starten (${e.javaClass.simpleName}).")
+                recognizer.destroy()
+            }
         }
     }
 
     override fun onDestroy() {
         running = false
         outputStream = null
-        try { serverSocket?.close() } catch (e: Exception) { /* negeren */ }
+        closeServerSockets()
         speechRecognizer?.destroy()
         super.onDestroy()
     }

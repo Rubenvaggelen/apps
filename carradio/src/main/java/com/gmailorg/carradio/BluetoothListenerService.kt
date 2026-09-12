@@ -9,8 +9,12 @@ import android.bluetooth.BluetoothSocket
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
+import android.util.Base64
 import androidx.core.app.NotificationCompat
 import java.io.BufferedReader
+import java.io.IOException
+import java.io.InputStream
 import java.io.InputStreamReader
 import java.io.OutputStream
 import java.util.UUID
@@ -35,15 +39,39 @@ class BluetoothListenerService : Service() {
         private const val CHANNEL_ID = "car_radio_service"
         private const val NOTIFICATION_ID = 1
         private const val CMD_REPLY_REQUEST = "REPLY_REQUEST"
+        private const val CMD_REPLY_TEXT_PREFIX = "REPLY_TEXT:"
+        private const val HANDSHAKE_RADIO = "THE_ONE_RADIO_HELLO_V1"
+        private const val HANDSHAKE_PHONE = "THE_ONE_PHONE_OK_V1"
+        private const val HANDSHAKE_TIMEOUT_MS = 3000L
 
         @Volatile
         private var activeOutputStream: OutputStream? = null
 
-        /** Vraagt de telefoon om het laatste WhatsApp-bericht via spraak te beantwoorden. */
+        /**
+         * Oude fallback: laat de telefoon zelf luisteren. Wordt alleen gebruikt
+         * als de autoradio geen lokale SpeechRecognizer beschikbaar heeft.
+         */
         fun requestVoiceReply(): Boolean {
             val out = activeOutputStream ?: return false
             return try {
                 out.write("$CMD_REPLY_REQUEST\n".toByteArray())
+                out.flush()
+                true
+            } catch (e: Exception) {
+                false
+            }
+        }
+
+        /**
+         * Stuurt door de autoradio herkende tekst naar de telefoon. Base64 voorkomt
+         * dat leestekens of eventuele nieuwe regels het eenvoudige regelprotocol breken.
+         */
+        fun sendVoiceReply(text: String): Boolean {
+            if (text.isBlank()) return false
+            val out = activeOutputStream ?: return false
+            return try {
+                val encoded = Base64.encodeToString(text.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+                out.write("$CMD_REPLY_TEXT_PREFIX$encoded\n".toByteArray(Charsets.UTF_8))
                 out.flush()
                 true
             } catch (e: Exception) {
@@ -95,11 +123,8 @@ class BluetoothListenerService : Service() {
                     try { adapter.cancelDiscovery() } catch (e: SecurityException) { /* geen toestemming, negeren */ }
 
                     val device = adapter.getRemoteDevice(address)
-                    // Eerst proberen zonder SDP (vast kanaal); lukt dat niet
-                    // dan terugvallen op de normale SDP-methode.
-                    socket = createFixedChannelSocket(device)
-                        ?: device.createRfcommSocketToServiceRecord(APP_UUID)
-                    socket.connect()
+                    MessageBus.postStatus("The One-verbinding controleren...")
+                    socket = connectVerifiedSocket(device)
                     activeOutputStream = socket.outputStream
                     MessageBus.postStatus("Verbonden — WhatsApp-meldingen worden getoond")
 
@@ -129,6 +154,68 @@ class BluetoothListenerService : Service() {
                 Thread.sleep(2000)
             }
         }.start()
+    }
+
+    /**
+     * Verbindt eerst via de normale app-UUID. Alleen als dat niet lukt wordt
+     * het oude vaste RFCOMM-kanaal geprobeerd. Een verbinding telt pas als
+     * geldig nadat de telefoon onze The One-handshake heeft bevestigd.
+     * Daardoor kan een ander Bluetooth-profiel op kanaal 8 nooit meer een
+     * valse "Verbonden"-status veroorzaken.
+     */
+    private fun connectVerifiedSocket(device: BluetoothDevice): BluetoothSocket {
+        var lastError: Exception? = null
+
+        val attempts = listOf<(BluetoothDevice) -> BluetoothSocket?>(
+            { d -> d.createRfcommSocketToServiceRecord(APP_UUID) },
+            { d -> createFixedChannelSocket(d) }
+        )
+
+        for (createSocket in attempts) {
+            var candidate: BluetoothSocket? = null
+            try {
+                candidate = createSocket(device) ?: continue
+                candidate.connect()
+
+                val out = candidate.outputStream
+                val input = candidate.inputStream
+                out.write("$HANDSHAKE_RADIO\n".toByteArray(Charsets.UTF_8))
+                out.flush()
+
+                val ack = readLineWithTimeout(input, HANDSHAKE_TIMEOUT_MS)
+                if (ack != HANDSHAKE_PHONE) {
+                    throw IOException("Geen geldige The One-handshake")
+                }
+                return candidate
+            } catch (e: Exception) {
+                lastError = e
+                try { candidate?.close() } catch (_: Exception) { }
+            }
+        }
+
+        throw lastError ?: IOException("Geen The One Bluetooth-verbinding beschikbaar")
+    }
+
+    private fun readLineWithTimeout(input: InputStream, timeoutMs: Long): String? {
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        val builder = StringBuilder()
+        while (running && SystemClock.elapsedRealtime() < deadline) {
+            if (input.available() > 0) {
+                val value = input.read()
+                if (value == -1) return null
+                when (value.toChar()) {
+                    '\n' -> return builder.toString().trim()
+                    '\r' -> Unit
+                    else -> {
+                        if (builder.length >= 512) return null
+                        builder.append(value.toChar())
+                    }
+                }
+            } else {
+                Thread.sleep(20)
+            }
+        }
+        return null
     }
 
     override fun onDestroy() {
