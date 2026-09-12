@@ -39,7 +39,6 @@ class CarRadioConnectionService : Service() {
 
     companion object {
         private val APP_UUID: UUID = UUID.fromString("8ab8c3d0-6b3e-4a7a-9e77-2f6a2f6d9b10")
-        private const val FIXED_RFCOMM_CHANNEL = 8
         private const val TAG = "CarRadioConnection"
         private const val CHANNEL_ID = "car_radio_connection"
         private const val NOTIFICATION_ID = 2
@@ -188,8 +187,12 @@ class CarRadioConnectionService : Service() {
                 val adapter = BluetoothAdapter.getDefaultAdapter() ?: return
                 updateStatus("Wacht op verbinding met je autoradio...")
                 if (serverSocket == null) {
-                    serverSocket = createFixedChannelServerSocket(adapter)
-                        ?: adapter.listenUsingRfcommWithServiceRecord("TheOneCarRadio", APP_UUID)
+                    // V2: gebruik de publieke UUID/SDP-route. Het vaste RFCOMM-kanaal 8
+                    // bleek na een headunit/telefoon reboot soms naar een andere service
+                    // te wijzen, waardoor de socket open was maar The One niet sprak.
+                    serverSocket = adapter.listenUsingInsecureRfcommWithServiceRecord(
+                        "TheOneCarRadioV2", APP_UUID
+                    )
                 }
 
                 socket = serverSocket?.accept() ?: continue
@@ -400,17 +403,6 @@ class CarRadioConnectionService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-
-    private fun createFixedChannelServerSocket(adapter: BluetoothAdapter): BluetoothServerSocket? {
-        return try {
-            val method = adapter.javaClass.getMethod(
-                "listenUsingInsecureRfcommOn", Int::class.javaPrimitiveType
-            )
-            method.invoke(adapter, FIXED_RFCOMM_CHANNEL) as? BluetoothServerSocket
-        } catch (_: Exception) {
-            null
-        }
-    }
 
     private fun sleepQuietly(ms: Long) {
         try { Thread.sleep(ms) } catch (_: InterruptedException) {}

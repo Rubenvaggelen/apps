@@ -27,7 +27,6 @@ class BluetoothListenerService : Service() {
 
     companion object {
         val APP_UUID: UUID = UUID.fromString("8ab8c3d0-6b3e-4a7a-9e77-2f6a2f6d9b10")
-        private const val FIXED_RFCOMM_CHANNEL = 8
         private const val CHANNEL_ID = "car_radio_service"
         private const val NOTIFICATION_ID = 1
         private const val CMD_REPLY_REQUEST = "REPLY_REQUEST"
@@ -42,6 +41,8 @@ class BluetoothListenerService : Service() {
         @Volatile private var lastRxAt = 0L
         @Volatile private var lastPongAt = 0L
         @Volatile private var selectedPhone = "-"
+        @Volatile private var transport = "-"
+        @Volatile private var lastProtocolLine = "-"
 
         fun requestVoiceReply(): Boolean = writeLine(CMD_REPLY_REQUEST)
 
@@ -80,7 +81,7 @@ class BluetoothListenerService : Service() {
 
         fun diagnostics(): String {
             val age = if (lastRxAt == 0L) "nooit" else "${((System.currentTimeMillis() - lastRxAt) / 1000)}s geleden"
-            return "Radio V2 • telefoon=$selectedPhone • socket=${if (socketConnected) "OK" else "UIT"} • protocol=${if (protocolVerified) "OK" else "WACHT"} • laatste data=$age"
+            return "Radio V2 • telefoon=$selectedPhone • transport=$transport • socket=${if (socketConnected) "OK" else "UIT"} • protocol=${if (protocolVerified) "OK" else "WACHT"} • laatste data=$age • rx=$lastProtocolLine"
         }
 
         fun forcePing(): Boolean = writeLine("SYS:PING:${System.currentTimeMillis()}")
@@ -166,7 +167,11 @@ class BluetoothListenerService : Service() {
             try { adapter.cancelDiscovery() } catch (_: SecurityException) {}
             val device = adapter.getRemoteDevice(address)
 
-            socket = createFixedChannelSocket(device) ?: device.createRfcommSocketToServiceRecord(APP_UUID)
+            // V2 voor deze headunit: verbind op de UUID die de telefoon echt adverteert.
+            // Geen hard-coded RFCOMM-kanaal meer: dat kon na een reboot naar een andere
+            // Bluetooth-service wijzen en gaf dan socket=OK maar protocol=WACHT.
+            transport = "UUID"
+            socket = device.createInsecureRfcommSocketToServiceRecord(APP_UUID)
             socket.connect()
 
             val writer = BufferedWriter(OutputStreamWriter(socket.outputStream, Charsets.UTF_8))
@@ -187,7 +192,13 @@ class BluetoothListenerService : Service() {
                     val token = System.currentTimeMillis()
                     if (!writeLine("SYS:PING:$token")) break
                     sleepQuietly(4000)
-                    if (protocolVerified && System.currentTimeMillis() - lastPongAt > 13_000L) {
+                    val now = System.currentTimeMillis()
+                    if (!protocolVerified && now - lastRxAt > 8_000L) {
+                        MessageBus.postStatus("The One-protocol antwoordt niet • opnieuw verbinden...")
+                        try { thisSocket.close() } catch (_: Exception) {}
+                        break
+                    }
+                    if (protocolVerified && now - lastPongAt > 13_000L) {
                         MessageBus.postStatus("Telefoon reageert niet meer • opnieuw verbinden...")
                         try { thisSocket.close() } catch (_: Exception) {}
                         break
@@ -200,6 +211,7 @@ class BluetoothListenerService : Service() {
                 val line = reader.readLine() ?: break
                 if (line.isBlank()) continue
                 lastRxAt = System.currentTimeMillis()
+                lastProtocolLine = line.take(42)
                 when {
                     line.startsWith("SYS:HELLO:") -> {
                         protocolVerified = true
@@ -248,13 +260,6 @@ class BluetoothListenerService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-
-    private fun createFixedChannelSocket(device: BluetoothDevice): BluetoothSocket? {
-        return try {
-            val method = device.javaClass.getMethod("createInsecureRfcommSocket", Int::class.javaPrimitiveType)
-            method.invoke(device, FIXED_RFCOMM_CHANNEL) as? BluetoothSocket
-        } catch (_: Exception) { null }
-    }
 
     private fun sleepQuietly(ms: Long) {
         try { Thread.sleep(ms) } catch (_: InterruptedException) {}
