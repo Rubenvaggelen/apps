@@ -12,7 +12,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.os.SystemClock
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -25,6 +24,7 @@ import java.io.InputStream
 import java.io.InputStreamReader
 import java.io.OutputStream
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
@@ -53,7 +53,7 @@ class CarRadioConnectionService : Service() {
         private const val CMD_REPLY_TEXT_PREFIX = "REPLY_TEXT:"
         private const val HANDSHAKE_RADIO = "THE_ONE_RADIO_HELLO_V1"
         private const val HANDSHAKE_PHONE = "THE_ONE_PHONE_OK_V1"
-        private const val HANDSHAKE_TIMEOUT_MS = 3000L
+        private const val HANDSHAKE_TIMEOUT_MS = 8000L
 
         @Volatile
         private var outputStream: OutputStream? = null
@@ -272,25 +272,49 @@ class CarRadioConnectionService : Service() {
     }
 
     private fun readLineWithTimeout(input: InputStream, timeoutMs: Long): String? {
-        val deadline = SystemClock.elapsedRealtime() + timeoutMs
-        val builder = StringBuilder()
-        while (running && SystemClock.elapsedRealtime() < deadline) {
-            if (input.available() > 0) {
-                val value = input.read()
-                if (value == -1) return null
-                when (value.toChar()) {
-                    '\n' -> return builder.toString().trim()
-                    '\r' -> Unit
-                    else -> {
-                        if (builder.length >= 512) return null
-                        builder.append(value.toChar())
+        // Bluetooth InputStream.available() is not reliable on every Android
+        // Bluetooth stack/head-unit. Read blocking on a tiny worker instead and
+        // bound the wait with a latch. Closing the socket after a timeout also
+        // releases the worker if it is still blocked in read().
+        val latch = CountDownLatch(1)
+        var result: String? = null
+        var failure: Throwable? = null
+
+        val readerThread = Thread {
+            try {
+                val builder = StringBuilder()
+                while (running) {
+                    val value = input.read()
+                    if (value == -1) break
+                    when (value.toChar()) {
+                        '\n' -> {
+                            result = builder.toString().trim()
+                            break
+                        }
+                        '\r' -> Unit
+                        else -> {
+                            if (builder.length >= 512) break
+                            builder.append(value.toChar())
+                        }
                     }
                 }
-            } else {
-                Thread.sleep(20)
+            } catch (t: Throwable) {
+                failure = t
+            } finally {
+                latch.countDown()
             }
+        }.apply {
+            name = "TheOneHandshakeRead-Phone"
+            isDaemon = true
+            start()
         }
-        return null
+
+        if (!latch.await(timeoutMs, TimeUnit.MILLISECONDS)) return null
+        failure?.let { t ->
+            if (t is Exception) throw t
+            throw IOException("Handshake-read mislukt", t)
+        }
+        return result
     }
 
     /**
