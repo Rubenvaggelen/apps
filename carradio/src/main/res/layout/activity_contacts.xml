@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg"
+    android:padding="18dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="WhatsApp-contacten"
+        android:textColor="@color/amber"
+        android:textSize="25sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Alleen geselecteerde contacten en groepen mogen op de autoradio verschijnen. Namen moeten overeenkomen met de naam in de WhatsApp-melding."
+        android:textColor="@color/text_dim"
+        android:textSize="14sp"
+        android:paddingTop="5dp"
+        android:paddingBottom="10dp" />
+
+    <Switch
+        android:id="@+id/filterSwitch"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Alleen geselecteerde contacten toestaan"
+        android:textColor="@color/text_main"
+        android:textSize="17sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="10dp">
+        <EditText
+            android:id="@+id/manualContactInput"
+            android:layout_width="0dp"
+            android:layout_height="50dp"
+            android:layout_weight="1"
+            android:hint="Naam contact of groep"
+            android:textColor="@color/text_main"
+            android:textColorHint="@color/text_dim"
+            android:background="@drawable/bg_outline"
+            android:paddingHorizontal="12dp"
+            android:singleLine="true" />
+        <Button
+            android:id="@+id/addContactButton"
+            android:layout_width="wrap_content"
+            android:layout_height="50dp"
+            android:layout_marginStart="8dp"
+            android:text="Toevoegen" />
+        <Button
+            android:id="@+id/refreshContactsButton"
+            android:layout_width="wrap_content"
+            android:layout_height="50dp"
+            android:layout_marginStart="8dp"
+            android:text="↻" />
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="10dp">
+        <LinearLayout
+            android:id="@+id/contactContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </ScrollView>
+</LinearLayout>

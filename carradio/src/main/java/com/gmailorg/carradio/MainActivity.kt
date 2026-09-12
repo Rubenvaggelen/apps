@@ -1,15 +1,18 @@
 package com.gmailorg.carradio
 
 import android.Manifest
-import android.app.AlertDialog
-import android.bluetooth.BluetoothAdapter
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.provider.MediaStore
+import android.view.LayoutInflater
 import android.view.View
-import android.widget.Button
-import android.widget.LinearLayout
+import android.widget.GridLayout
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -19,26 +22,28 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** UI voor deze specifieke headunit. Spraak wordt rechtstreeks opgenomen, niet via SpeechRecognizer. */
+/**
+ * Startscherm/launcher voor de K2401. De telefoon-app verandert hierdoor niet.
+ * Auto-onvriendelijke tegels (Recepten, Films/Series, Vraag het en EUR/SRD) bestaan hier niet.
+ */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var statusText: TextView
-    private lateinit var messageContainer: LinearLayout
-    private lateinit var replyButton: Button
-    private val voiceRecorder = RadioVoiceRecorder()
+    private lateinit var tileGrid: GridLayout
+    private lateinit var clockText: TextView
+    private val handler = Handler(Looper.getMainLooper())
 
-    private val messageListener: (String) -> Unit = { text -> addMessage(text) }
     private val statusListener: (String) -> Unit = { text -> statusText.text = text }
 
     private val requestBluetoothPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { granted -> if (granted) startService() }
+    ) { granted -> if (granted) startConnectionService() }
 
-    private val requestMicPermission = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) startVoiceRecording()
-        else MessageBus.postMessage("⚠️ Microfoontoestemming is nodig om in de auto te antwoorden.")
+    private val clockTick = object : Runnable {
+        override fun run() {
+            clockText.text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+            handler.postDelayed(this, 30_000L)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,29 +51,69 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         statusText = findViewById(R.id.statusText)
-        messageContainer = findViewById(R.id.messageContainer)
-        replyButton = findViewById(R.id.replyButton)
+        tileGrid = findViewById(R.id.tileGrid)
+        clockText = findViewById(R.id.clockText)
 
-        MessageBus.addListener(messageListener)
         MessageBus.addStatusListener(statusListener)
+        buildTiles()
+        ensurePermissionThenStart()
+        handler.post(clockTick)
+        UpdateChecker.checkForUpdate(this)
+    }
 
-        findViewById<View>(R.id.choosePhoneButton).setOnClickListener { showPhonePickerDialog() }
-        replyButton.setOnClickListener {
-            if (voiceRecorder.isRecording()) {
-                voiceRecorder.stop()
-                MessageBus.postStatus("Opname stoppen • audio voorbereiden...")
-            } else {
-                startVoiceReply()
+    private fun buildTiles() {
+        tileGrid.removeAllViews()
+        addTile("The One Car", R.drawable.the_one_logo, featured = true) {
+            startActivity(Intent(this, WhatsAppConversationsActivity::class.java))
+        }
+        addTile("Meldingen", R.drawable.ic_home_notifications_fancy) {
+            startActivity(Intent(this, MessageLogActivity::class.java))
+        }
+        addTile("Mail & Kalender", R.drawable.ic_home_mail_fancy) {
+            openUrl("https://mail.google.com/")
+        }
+        addTile("Route", R.drawable.ic_home_route_fancy) {
+            openGeo("geo:0,0?q=")
+        }
+        addTile("Huishouden", R.drawable.ic_home_household_fancy) {
+            if (!launchPackage("com.google.android.apps.chromecast.app")) {
+                Toast.makeText(this, "Google Home staat niet op deze radio", Toast.LENGTH_SHORT).show()
             }
         }
-        findViewById<View>(R.id.diagnosticsButton).setOnClickListener {
-            val ping = BluetoothListenerService.forcePing()
-            MessageBus.postMessage("🛠 ${BluetoothListenerService.diagnostics()}")
-            if (!ping) MessageBus.postMessage("⚠️ Diagnose: geen actieve The One-dataverbinding.")
+        addTile("Muziek", R.drawable.ic_home_music_fancy) { openMusic() }
+        // USB staat bewust in dezelfde kolom direct onder Muziek op het 3-koloms K2401-dashboard.
+        addTile("Parkeren", R.drawable.ic_home_parking_fancy) {
+            openGeo("geo:0,0?q=parking")
+        }
+        addTile("Nieuws", R.drawable.ic_home_news_fancy) {
+            openUrl("https://news.google.com/")
+        }
+        addTile("USB", R.drawable.ic_usb_music) {
+            startActivity(Intent(this, UsbMusicActivity::class.java))
+        }
+        addTile("Radio", R.drawable.ic_home_radio_fancy) { openSystemRadio() }
+        addTile("Instellingen", R.drawable.ic_home_settings_fancy) {
+            startActivity(Intent(this, CarSettingsActivity::class.java))
+        }
+    }
+
+    private fun addTile(label: String, iconRes: Int, featured: Boolean = false, action: () -> Unit) {
+        val view = LayoutInflater.from(this).inflate(R.layout.view_car_tile, tileGrid, false)
+        view.findViewById<TextView>(R.id.tileLabel).text = label
+        view.findViewById<ImageView>(R.id.tileIcon).setImageResource(iconRes)
+        if (featured) view.findViewById<View>(R.id.tileRoot).setBackgroundResource(R.drawable.bg_car_tile_featured)
+        view.setOnClickListener {
+            cancelStartupGuard()
+            action()
         }
 
-        UpdateChecker.checkForUpdate(this)
-        ensurePermissionThenStart()
+        val params = GridLayout.LayoutParams().apply {
+            width = 0
+            height = GridLayout.LayoutParams.WRAP_CONTENT
+            columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+            setMargins(7.dp, 7.dp, 7.dp, 7.dp)
+        }
+        tileGrid.addView(view, params)
     }
 
     private fun ensurePermissionThenStart() {
@@ -80,97 +125,98 @@ class MainActivity : AppCompatActivity() {
                 return
             }
         }
-        startService()
+        startConnectionService()
     }
 
-    private fun startService() {
+    private fun startConnectionService() {
         val intent = Intent(this, BluetoothListenerService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ContextCompat.startForegroundService(this, intent) else applicationContext.startService(intent)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ContextCompat.startForegroundService(this, intent)
+            else startService(intent)
+        } catch (_: Exception) {
+            statusText.text = "Kon Bluetooth-service niet starten"
+        }
     }
 
-    private fun startVoiceReply() {
-        val micGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
-            PackageManager.PERMISSION_GRANTED
-        if (!micGranted) {
-            requestMicPermission.launch(Manifest.permission.RECORD_AUDIO)
-            return
+    private fun openUrl(url: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        } catch (_: Exception) {
+            Toast.makeText(this, "Geen browser gevonden", Toast.LENGTH_SHORT).show()
         }
-        startVoiceRecording()
     }
 
-    private fun startVoiceRecording() {
-        if (!BluetoothListenerService.forcePing()) {
-            MessageBus.postMessage("⚠️ Geen live verbinding met je telefoon. Wacht tot de status groen is.")
-            return
+    private fun openGeo(uri: String) {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+        try {
+            startActivity(intent)
+        } catch (_: Exception) {
+            openUrl("https://maps.google.com/")
         }
-        MessageBus.postMessage("🎙️ Spreek nu je antwoord in. De opname stopt vanzelf na stilte.")
-        MessageBus.postStatus("🎙️ Luisteren via de microfoon van deze autoradio...")
-        replyButton.text = "⏹ Stop opname"
+    }
 
-        voiceRecorder.start(onComplete = { result ->
-            runOnUiThread { replyButton.text = "🎤 Antwoord inspreken" }
-            when (result) {
-                is RadioVoiceRecorder.Result.Success -> {
-                    MessageBus.postStatus("Audio naar telefoon sturen...")
-                    val sent = BluetoothListenerService.sendVoiceAudio(result.wavBytes)
-                    if (sent) {
-                        MessageBus.postMessage("📤 Audio verzonden (${result.durationMs / 1000.0}s) • telefoon maakt er tekst van...")
-                    } else {
-                        MessageBus.postMessage("⚠️ Audio opgenomen, maar verbinding viel weg. Probeer opnieuw.")
-                    }
-                }
-                is RadioVoiceRecorder.Result.Error -> {
-                    MessageBus.postMessage("⚠️ Microfoonopname mislukt: ${result.message}")
-                    MessageBus.postStatus(BluetoothListenerService.diagnostics())
-                }
+    private fun openMusic() {
+        val candidates = listOf(
+            "com.spotify.music",
+            "com.google.android.apps.youtube.music",
+            "com.google.android.music"
+        )
+        for (pkg in candidates) if (launchPackage(pkg)) return
+        try {
+            startActivity(Intent(MediaStore.INTENT_ACTION_MUSIC_PLAYER))
+        } catch (_: Exception) {
+            Toast.makeText(this, "Geen muziek-app gevonden", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun openSystemRadio() {
+        val pm = packageManager
+        val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val candidates = pm.queryIntentActivities(launcherIntent, 0)
+            .filter { it.activityInfo.packageName != packageName }
+            .sortedBy { it.loadLabel(pm).toString() }
+        val match = candidates.firstOrNull {
+            val label = it.loadLabel(pm).toString().lowercase(Locale.ROOT)
+            label == "radio" || label.contains("fm radio") || label.startsWith("radio ")
+        }
+        if (match != null) {
+            val launch = pm.getLaunchIntentForPackage(match.activityInfo.packageName)
+            if (launch != null) startActivity(launch)
+            else Toast.makeText(this, "Radio-app gevonden maar kon niet openen", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "Ik kon de ingebouwde radio-app nog niet automatisch vinden", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun launchPackage(pkg: String): Boolean {
+        val intent = packageManager.getLaunchIntentForPackage(pkg) ?: return false
+        return try { startActivity(intent); true } catch (_: Exception) { false }
+    }
+
+    private fun cancelStartupGuard() {
+        try {
+            val intent = Intent(this, BluetoothListenerService::class.java).apply {
+                action = BluetoothListenerService.ACTION_CANCEL_STARTUP
             }
-        })
+            startService(intent)
+        } catch (_: Exception) {}
     }
 
-    private fun showPhonePickerDialog() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) ==
-                PackageManager.PERMISSION_GRANTED
-            if (!granted) {
-                Toast.makeText(this, "Geef eerst Bluetooth-toestemming.", Toast.LENGTH_SHORT).show()
-                return
-            }
-        }
-        val adapter = BluetoothAdapter.getDefaultAdapter()
-        val devices = adapter?.bondedDevices?.toList().orEmpty()
-        if (devices.isEmpty()) {
-            Toast.makeText(this, "Geen gekoppelde apparaten gevonden. Koppel eerst je telefoon via Bluetooth.", Toast.LENGTH_LONG).show()
-            return
-        }
-        val labels = devices.map { it.name ?: it.address }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("Kies je telefoon")
-            .setItems(labels) { _, which ->
-                val device = devices[which]
-                PairedPhoneStore.setSelected(this, device.address, device.name ?: device.address)
-                Toast.makeText(this, "Gekozen: ${device.name ?: device.address}", Toast.LENGTH_SHORT).show()
-                stopService(Intent(this, BluetoothListenerService::class.java))
-                startService()
-            }
-            .setNegativeButton("Annuleren", null)
-            .show()
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        cancelStartupGuard()
     }
 
-    private fun addMessage(text: String) {
-        val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-        val row = TextView(this).apply {
-            this.text = "$time  •  $text"
-            setTextColor(ContextCompat.getColor(context, R.color.text_main))
-            textSize = 18f
-            setPadding(0, 0, 0, 16)
-        }
-        messageContainer.addView(row, 0)
+    private val Int.dp: Int get() = (this * resources.displayMetrics.density).toInt()
+
+    override fun onResume() {
+        super.onResume()
+        statusText.text = MessageBus.currentStatus()
     }
 
     override fun onDestroy() {
-        voiceRecorder.stop()
-        MessageBus.removeListener(messageListener)
         MessageBus.removeStatusListener(statusListener)
+        handler.removeCallbacks(clockTick)
         super.onDestroy()
     }
 }

@@ -7,9 +7,11 @@ import android.content.Intent
 import android.os.Build
 
 /**
- * Houdt alleen de fysieke Bluetooth-nabijheidsstatus bij. De eigen The One
- * RFCOMM-server blijft draaien zolang "WhatsApp naar autoradio" aan staat,
- * zodat de autoradio na contact/boot altijd zelfstandig kan terugverbinden.
+ * Houdt bij of de gekozen autoradio daadwerkelijk in Bluetooth-bereik is
+ * (ACL-verbinding aan/uit), zodat "WhatsApp naar autoradio" alleen actief
+ * probeert te verbinden zolang je echt in of bij de auto bent — en meteen
+ * stopt (inclusief de "verbinden..."-melding) zodra je wegloopt of wegrijdt,
+ * in plaats van eindeloos elke paar seconden te blijven proberen.
  */
 class CarRadioProximityReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -24,19 +26,16 @@ class CarRadioProximityReceiver : BroadcastReceiver() {
                 intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
             }
         val address = device?.address ?: return
-        val selected = CarRadioForwarder.selectedDeviceAddress(appContext)
-        if (selected != null && address != selected) return
+        if (address != CarRadioForwarder.selectedDeviceAddress(appContext)) return
 
         when (intent.action) {
             BluetoothDevice.ACTION_ACL_CONNECTED -> {
                 CarRadioForwarder.setNearby(appContext, true)
-                // Idempotent: als de service al draait gebeurt er niets extra's.
-                try { CarRadioConnectionService.start(appContext) } catch (_: Exception) {}
+                CarRadioConnectionService.start(appContext)
             }
             BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
                 CarRadioForwarder.setNearby(appContext, false)
-                // BELANGRIJK: niet meer stoppen. De server blijft luisteren,
-                // zodat de radio bij de volgende autorit direct kan terugverbinden.
+                CarRadioConnectionService.stop(appContext)
             }
         }
     }

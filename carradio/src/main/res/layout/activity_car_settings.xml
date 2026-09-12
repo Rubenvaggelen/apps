@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg"
+    android:padding="18dp">
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="The One Car • Instellingen"
+        android:textColor="@color/amber"
+        android:textSize="25sp"
+        android:textStyle="bold" />
+    <TextView
+        android:id="@+id/settingsStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/text_dim"
+        android:textSize="15sp"
+        android:paddingVertical="10dp" />
+    <Button
+        android:id="@+id/choosePhoneButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="📱 Kies telefoon" />
+    <Button
+        android:id="@+id/homeAppButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="🏠 Forceer The One bij opstarten" />
+    <Button
+        android:id="@+id/contactsButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="💬 Toegestane WhatsApp-contacten" />
+    <Button
+        android:id="@+id/diagnosticsButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="🛠 Verbinding testen" />
+    <TextView
+        android:id="@+id/diagnosticsText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/text_main"
+        android:textSize="14sp"
+        android:paddingTop="14dp" />
+</LinearLayout>

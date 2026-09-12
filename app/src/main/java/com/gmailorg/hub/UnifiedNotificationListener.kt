@@ -6,32 +6,25 @@ import android.app.RemoteInput
 import android.content.Intent
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Vangt meldingen op van ALLE apps op het toestel (WhatsApp, Instagram,
- * Messenger, Facebook, Telegram, X, Gmail, sms, enz.) — dit vereist dat de
- * gebruiker de app handmatig aanzet bij Instellingen > Apps > Speciale
- * toegang > Meldingtoegang, Android staat dit niet automatisch toe.
- *
- * Deze service leest alleen wat er al als systeemmelding verschijnt; er is
- * geen toegang tot volledige chatgeschiedenis of social-media-feeds, omdat
- * die apps geen publieke API's bieden voor persoonlijk gebruik.
+ * Vangt meldingen op van alle apps voor The One op de telefoon.
+ * Voor de autoradio wordt alleen WhatsApp doorgestuurd, met een optionele allow-list.
  */
 class UnifiedNotificationListener : NotificationListenerService() {
 
-    // Bewaar de originele PendingIntent + RemoteInput per meldingssleutel,
-    // zodat de UI later een antwoord kan versturen zonder de bron-app te openen.
     companion object {
-        private val replyActions = mutableMapOf<String, Pair<PendingIntent, RemoteInput>>()
+        private val replyActions = ConcurrentHashMap<String, Pair<PendingIntent, RemoteInput>>()
+        private val whatsAppReplyKeyByConversation = ConcurrentHashMap<String, String>()
 
-        // Sleutel van de meest recente WhatsApp-melding met een antwoord-actie;
-        // gebruikt door de spraak-antwoordfunctie in de auto (CarRadioConnectionService).
         @Volatile
         var lastWhatsAppReplyKey: String? = null
 
-        // PendingIntent.send() heeft een Context nodig; de service zet deze
-        // hieronder bij het opstarten zodat sendReply() hem kan gebruiken.
         private var appContext: android.content.Context? = null
+
+        private fun conversationKey(title: String): String = title.trim().lowercase(Locale.ROOT)
 
         fun sendReply(key: String, text: String): Boolean {
             val pair = replyActions[key] ?: return false
@@ -44,10 +37,20 @@ class UnifiedNotificationListener : NotificationListenerService() {
             return try {
                 pendingIntent.send(context, 0, intent)
                 true
-            } catch (e: PendingIntent.CanceledException) {
+            } catch (_: PendingIntent.CanceledException) {
+                replyActions.remove(key)
+                whatsAppReplyKeyByConversation.entries.removeAll { it.value == key }
                 false
             }
         }
+
+        fun sendReplyToConversation(title: String, text: String): Boolean {
+            val key = whatsAppReplyKeyByConversation[conversationKey(title)] ?: return false
+            return sendReply(key, text)
+        }
+
+        fun hasReplyTarget(title: String): Boolean =
+            whatsAppReplyKeyByConversation.containsKey(conversationKey(title))
     }
 
     override fun onCreate() {
@@ -59,11 +62,7 @@ class UnifiedNotificationListener : NotificationListenerService() {
 
     override fun onListenerConnected() {
         super.onListenerConnected()
-        // NotificationListener wordt door Android zelf opnieuw gebonden. Gebruik
-        // dat moment ook om de autoradio-server te herstellen als Android de app
-        // tussendoor heeft opgeruimd.
         ensureCarRadioServerRunning()
-        // Bij (her)verbinden: haal actieve meldingen op zodat de lijst direct gevuld is.
         activeNotifications?.forEach { handleNotification(it) }
     }
 
@@ -72,7 +71,6 @@ class UnifiedNotificationListener : NotificationListenerService() {
         try {
             CarRadioConnectionService.start(applicationContext)
         } catch (_: Exception) {
-            // Een echte WhatsApp-melding probeert via forwardIfEnabled opnieuw.
         }
     }
 
@@ -82,11 +80,16 @@ class UnifiedNotificationListener : NotificationListenerService() {
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
         NotifStore.removeByKey(sbn.key)
-        replyActions.remove(sbn.key)
+        // Voor WhatsApp bewaren we de laatste RemoteInput zolang die PendingIntent nog geldig is.
+        // Daardoor kan The One Car binnen een gesprek vaak nog een vervolgreply sturen, ook
+        // als Android de zichtbare melding al heeft weggehaald. Bij een CanceledException
+        // wordt de cache hierboven automatisch opgeruimd.
+        if (sbn.packageName != "com.whatsapp") {
+            replyActions.remove(sbn.key)
+        }
     }
 
     private fun handleNotification(sbn: StatusBarNotification) {
-        // Sla groep-samenvattingen en lege meldingen over.
         val extras = sbn.notification.extras
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: return
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
@@ -96,7 +99,7 @@ class UnifiedNotificationListener : NotificationListenerService() {
             packageManager.getApplicationLabel(
                 packageManager.getApplicationInfo(sbn.packageName, 0)
             ).toString()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             sbn.packageName
         }
 
@@ -113,6 +116,7 @@ class UnifiedNotificationListener : NotificationListenerService() {
             replyActions[sbn.key] = Pair(replyPendingIntent!!, replyRemoteInput!!)
             if (sbn.packageName == "com.whatsapp") {
                 lastWhatsAppReplyKey = sbn.key
+                whatsAppReplyKeyByConversation[conversationKey(title)] = sbn.key
             }
         }
 
@@ -128,8 +132,15 @@ class UnifiedNotificationListener : NotificationListenerService() {
             )
         )
 
-        // Alleen als de gebruiker dit zelf heeft aangezet (nooit automatisch):
-        // stuur WhatsApp-meldingen door naar de gekoppelde autoradio.
-        CarRadioForwarder.forwardIfEnabled(applicationContext, sbn.packageName, title, text)
+        if (sbn.packageName == "com.whatsapp") {
+            WhatsAppCarFilterStore.registerSeen(applicationContext, title)
+        }
+        CarRadioForwarder.forwardIfEnabled(
+            applicationContext,
+            sbn.packageName,
+            title,
+            text,
+            sbn.postTime
+        )
     }
 }

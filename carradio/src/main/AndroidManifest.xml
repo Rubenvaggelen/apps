@@ -11,6 +11,16 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <package android:name="com.spotify.music" />
+        <package android:name="com.google.android.apps.youtube.music" />
+        <package android:name="com.google.android.apps.chromecast.app" />
+    </queries>
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -22,25 +32,31 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
+            android:screenOrientation="landscape"
             android:excludeFromRecents="false"
             android:stateNotNeeded="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Hiermee kan de gebruiker "The One" kiezen als vast startscherm
-                 (Home-app) van de hoofdunit, via de Android-instellingen. -->
-            <intent-filter>
+            <intent-filter android:priority="1000">
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 
+        <activity android:name=".WhatsAppConversationsActivity" android:screenOrientation="landscape" />
+        <activity android:name=".ChatActivity" android:screenOrientation="landscape" />
+        <activity android:name=".AllowedContactsActivity" android:screenOrientation="landscape" />
+        <activity android:name=".CarSettingsActivity" android:screenOrientation="landscape" />
+        <activity android:name=".MessageLogActivity" android:screenOrientation="landscape" />
+        <activity android:name=".UsbMusicActivity" android:screenOrientation="landscape" />
+
         <receiver
             android:name=".CarRadioBootReceiver"
             android:exported="true">
-            <intent-filter>
+            <intent-filter android:priority="1000">
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>

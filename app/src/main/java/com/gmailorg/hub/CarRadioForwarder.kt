@@ -27,10 +27,17 @@ object CarRadioForwarder {
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun forwardIfEnabled(context: Context, packageName: String, title: String, text: String) {
+    fun forwardIfEnabled(context: Context, packageName: String, title: String, text: String, postTime: Long = System.currentTimeMillis()) {
         if (packageName != "com.whatsapp" || !isEnabled(context)) return
-        // Start eerst de server; sendMessage buffert automatisch als de radio nog aan het booten is.
+        WhatsAppCarFilterStore.registerSeen(context, title)
         CarRadioConnectionService.start(context)
-        CarRadioConnectionService.sendMessage("$title: $text")
+        val allowed = WhatsAppCarFilterStore.isAllowed(context, title)
+        CarRadioConnectionService.sendContactState(
+            title,
+            WhatsAppCarFilterStore.allowedContacts(context).any { it.equals(title, ignoreCase = true) },
+            WhatsAppCarFilterStore.isFilterEnabled(context)
+        )
+        if (!allowed) return
+        CarRadioConnectionService.sendWhatsAppMessage(title, text, postTime)
     }
 }

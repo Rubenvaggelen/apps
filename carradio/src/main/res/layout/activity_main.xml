@@ -1,61 +1,73 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="@color/bg"
-    android:padding="20dp">
+    android:background="@color/bg">
 
-    <TextView
+    <ImageView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="The One – Autoradio V2"
-        android:textColor="@color/text_main"
-        android:textSize="22sp"
-        android:textStyle="bold"
-        android:paddingBottom="12dp" />
+        android:layout_height="match_parent"
+        android:src="@drawable/the_one_logo"
+        android:scaleType="centerCrop"
+        android:alpha="0.12"
+        android:contentDescription="@null" />
 
-    <TextView
-        android:id="@+id/statusText"
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Wachten op verbinding met je telefoon..."
-        android:textColor="@color/text_dim"
-        android:textSize="16sp"
-        android:paddingBottom="16dp" />
-
-    <Button
-        android:id="@+id/choosePhoneButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="📱 Kies telefoon"
-        android:paddingBottom="12dp" />
-
-    <Button
-        android:id="@+id/replyButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="🎤 Antwoord inspreken" />
-
-    <Button
-        android:id="@+id/diagnosticsButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="🛠 Verbinding testen"
-        android:layout_marginTop="8dp"
-        android:layout_marginBottom="16dp" />
-
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="18dp">
 
         <LinearLayout
-            android:id="@+id/messageContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingBottom="12dp">
 
-    </ScrollView>
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="The One"
+                android:textColor="@color/amber"
+                android:textSize="30sp"
+                android:textStyle="bold"
+                android:fontFamily="serif"
+                android:letterSpacing="0.04" />
 
-</LinearLayout>
+            <TextView
+                android:id="@+id/clockText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="--:--"
+                android:textColor="@color/text_main"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/statusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Wachten op telefoon..."
+            android:textColor="@color/text_dim"
+            android:textSize="14sp"
+            android:paddingBottom="12dp" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:fillViewport="true">
+
+            <GridLayout
+                android:id="@+id/tileGrid"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:columnCount="3"
+                android:alignmentMode="alignMargins"
+                android:useDefaultMargins="false" />
+        </ScrollView>
+    </LinearLayout>
+</FrameLayout>
