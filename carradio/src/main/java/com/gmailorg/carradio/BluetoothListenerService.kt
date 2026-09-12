@@ -4,7 +4,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothServerSocket
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothSocket
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
@@ -15,20 +16,21 @@ import java.io.OutputStream
 import java.util.UUID
 
 /**
- * Luistert continu naar binnenkomende Bluetooth-verbindingen (RFCOMM) op een
- * vaste UUID — dezelfde UUID die "The One" op de telefoon gebruikt om
- * WhatsApp-meldingen te versturen. Elke regel tekst die binnenkomt wordt
- * doorgegeven aan MessageBus, zodat MainActivity 'm kan tonen.
+ * Verbindt actief met de telefoon (RFCOMM) — de autoradio is de "client",
+ * de telefoon is de "server" (luistert). Dit is bewust omgedraaid t.o.v. de
+ * eerdere opzet: de Bluetooth-stack van deze hoofdunit bleek geen inkomende
+ * verbindingen te kunnen aannemen (IOException "Error: -1", ook niet met een
+ * vast kanaalnummer in plaats van SDP). Hoofdunits zoals deze kunnen wél
+ * doorgaans zelf verbindingen initiëren — dat gebeurt immers al voor
+ * bellen/audio — dus die rol is nu hier belegd.
  */
 class BluetoothListenerService : Service() {
 
     companion object {
-        // Vaste, eigen UUID voor deze koppeling — moet exact overeenkomen met
-        // de UUID die de telefoon-app gebruikt.
+        // Moet exact overeenkomen met CarRadioConnectionService.APP_UUID op de telefoon.
         val APP_UUID: UUID = UUID.fromString("8ab8c3d0-6b3e-4a7a-9e77-2f6a2f6d9b10")
-        // Vast RFCOMM-kanaalnummer, gebruikt om SDP-registratie te omzeilen.
-        // Moet exact overeenkomen met FIXED_RFCOMM_CHANNEL in
-        // CarRadioConnectionService.kt op de telefoon.
+        // Vast RFCOMM-kanaalnummer (omzeilt SDP) — moet exact overeenkomen
+        // met FIXED_RFCOMM_CHANNEL in CarRadioConnectionService.kt op de telefoon.
         private const val FIXED_RFCOMM_CHANNEL = 8
         private const val CHANNEL_ID = "car_radio_service"
         private const val NOTIFICATION_ID = 1
@@ -50,13 +52,12 @@ class BluetoothListenerService : Service() {
         }
     }
 
-    private var serverSocket: BluetoothServerSocket? = null
     private var running = false
 
     override fun onCreate() {
         super.onCreate()
         startAsForeground()
-        startListening()
+        startConnecting()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -70,39 +71,38 @@ class BluetoothListenerService : Service() {
         }
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("The One – Autoradio")
-            .setContentText("Wacht op WhatsApp-meldingen vanaf je telefoon")
+            .setContentText("Verbinden met je telefoon...")
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setOngoing(true)
             .build()
         startForeground(NOTIFICATION_ID, notification)
     }
 
-    private fun startListening() {
+    private fun startConnecting() {
         running = true
         Thread {
             while (running) {
+                val address = PairedPhoneStore.selectedAddress(this)
+                if (address == null) {
+                    MessageBus.postStatus("⚠️ Nog geen telefoon gekozen — tik op \"Kies telefoon\".")
+                    Thread.sleep(3000)
+                    continue
+                }
+                var socket: BluetoothSocket? = null
                 try {
                     val adapter = BluetoothAdapter.getDefaultAdapter() ?: return@Thread
-                    MessageBus.postStatus("Wachten op verbinding met je telefoon...")
-                    // Eén keer registreren en hergebruiken voor elke volgende
-                    // verbinding. Steeds opnieuw listenUsingRfcommWithServiceRecord()
-                    // aanroepen (bij elke retry) registreert elke keer een nieuwe
-                    // SDP-service met dezelfde UUID — op sommige (vooral
-                    // goedkopere) Android-hoofdunits raakt de Bluetooth-stack
-                    // daardoor in de war, wat zich uit als IOException "Error: -1".
-                    if (serverSocket == null) {
-                        // Eerst proberen zonder SDP (vast kanaal) — dit omzeilt
-                        // de SDP-registratie die op deze hoofdunit blijkbaar
-                        // "Error: -1" veroorzaakt. Lukt dat niet (bv. op een
-                        // ander toestel waar deze verborgen methode niet
-                        // bestaat), dan terugvallen op de normale SDP-methode.
-                        serverSocket = createFixedChannelServerSocket(adapter)
-                            ?: adapter.listenUsingRfcommWithServiceRecord("TheOneCarRadio", APP_UUID)
-                    }
-                    val socket = serverSocket?.accept() ?: continue
+                    MessageBus.postStatus("Verbinden met ${PairedPhoneStore.selectedName(this) ?: address}...")
+                    try { adapter.cancelDiscovery() } catch (e: SecurityException) { /* geen toestemming, negeren */ }
 
-                    MessageBus.postStatus("Verbonden — WhatsApp-meldingen worden getoond")
+                    val device = adapter.getRemoteDevice(address)
+                    // Eerst proberen zonder SDP (vast kanaal); lukt dat niet
+                    // dan terugvallen op de normale SDP-methode.
+                    socket = createFixedChannelSocket(device)
+                        ?: device.createRfcommSocketToServiceRecord(APP_UUID)
+                    socket.connect()
                     activeOutputStream = socket.outputStream
+                    MessageBus.postStatus("Verbonden — WhatsApp-meldingen worden getoond")
+
                     val reader = BufferedReader(InputStreamReader(socket.inputStream))
                     var line: String?
                     while (true) {
@@ -115,24 +115,18 @@ class BluetoothListenerService : Service() {
                         }
                     }
                     activeOutputStream = null
-                    socket.close()
-                    MessageBus.postStatus("Verbinding verbroken — wachten op nieuwe verbinding...")
-                    // serverSocket blijft bestaan en wordt hergebruikt voor de
-                    // volgende accept() — geen nieuwe registratie nodig.
+                    MessageBus.postStatus("Verbinding verbroken — opnieuw proberen...")
                 } catch (e: SecurityException) {
                     MessageBus.postStatus("⚠️ Geen Bluetooth-toestemming — geef 'The One – Autoradio' toestemming in de systeeminstellingen van de auto.")
                     Thread.sleep(3000)
                 } catch (e: Exception) {
                     MessageBus.postStatus("⚠️ Verbindingsfout (${e.javaClass.simpleName}: ${e.message}) — opnieuw proberen...")
-                    // Bij een echte fout (in tegenstelling tot een normaal
-                    // verbroken verbinding) sluiten we de serverSocket alsnog en
-                    // wachten we langer, zodat de Bluetooth-stack van de
-                    // hoofdunit de tijd krijgt om de oude registratie echt los
-                    // te laten voordat we het opnieuw proberen.
-                    try { serverSocket?.close() } catch (ignored: Exception) { /* negeren */ }
-                    serverSocket = null
-                    Thread.sleep(5000)
+                    Thread.sleep(4000)
+                } finally {
+                    activeOutputStream = null
+                    try { socket?.close() } catch (e: Exception) { /* negeren */ }
                 }
+                Thread.sleep(2000)
             }
         }.start()
     }
@@ -140,25 +134,24 @@ class BluetoothListenerService : Service() {
     override fun onDestroy() {
         running = false
         activeOutputStream = null
-        try { serverSocket?.close() } catch (e: Exception) { /* negeren */ }
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     /**
-     * Maakt een BluetoothServerSocket op een vast kanaalnummer, zonder SDP-
-     * registratie — via reflectie, omdat deze methode niet in de publieke
-     * Android-SDK zit maar wel bestaat in de onderliggende implementatie.
-     * Geeft null terug als dit om wat voor reden niet lukt, zodat er dan
-     * teruggevallen kan worden op de normale (SDP-based) methode.
+     * Maakt een BluetoothSocket op een vast kanaalnummer, zonder SDP-opzoek
+     * — via reflectie, omdat deze methode niet in de publieke Android-SDK
+     * zit maar wel bestaat in de onderliggende implementatie. Geeft null
+     * terug als dit niet lukt, zodat teruggevallen kan worden op de normale
+     * (SDP-based) methode.
      */
-    private fun createFixedChannelServerSocket(adapter: BluetoothAdapter): BluetoothServerSocket? {
+    private fun createFixedChannelSocket(device: BluetoothDevice): BluetoothSocket? {
         return try {
-            val method = adapter.javaClass.getMethod(
-                "listenUsingInsecureRfcommOn", Int::class.javaPrimitiveType
+            val method = device.javaClass.getMethod(
+                "createInsecureRfcommSocket", Int::class.javaPrimitiveType
             )
-            method.invoke(adapter, FIXED_RFCOMM_CHANNEL) as? BluetoothServerSocket
+            method.invoke(device, FIXED_RFCOMM_CHANNEL) as? BluetoothSocket
         } catch (e: Exception) {
             null
         }

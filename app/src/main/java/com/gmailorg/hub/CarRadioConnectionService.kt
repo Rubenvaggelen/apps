@@ -4,8 +4,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothSocket
+import android.bluetooth.BluetoothServerSocket
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -23,19 +22,22 @@ import java.io.OutputStream
 import java.util.UUID
 
 /**
- * Houdt een blijvende Bluetooth-verbinding (RFCOMM) open met de gekoppelde
- * autoradio zolang "WhatsApp naar autoradio" aanstaat. Via dezelfde
- * verbinding worden zowel WhatsApp-meldingen naar de auto gestuurd, als
- * commando's van de auto terug ontvangen (bijv. "spreek een antwoord in").
+ * Luistert op een Bluetooth-verbinding (RFCOMM) waarmee de autoradio
+ * verbindt — de telefoon is de "server", de autoradio is de "client". Dit
+ * is bewust omgedraaid t.o.v. de eerdere opzet: de Bluetooth-stack van de
+ * hoofdunit bleek geen inkomende verbindingen te kunnen aannemen
+ * (IOException "Error: -1", ook niet met een vast kanaalnummer in plaats
+ * van SDP). Telefoons hebben doorgaans een robuustere Bluetooth-stack voor
+ * het hosten van verbindingen, dus die rol is nu hier belegd — de auto
+ * neemt het initiatief, zoals ook al gebeurt voor bellen/audio.
  */
 class CarRadioConnectionService : Service() {
 
     companion object {
         // Moet exact overeenkomen met BluetoothListenerService.APP_UUID in de carradio-module.
         private val APP_UUID: UUID = UUID.fromString("8ab8c3d0-6b3e-4a7a-9e77-2f6a2f6d9b10")
-        // Vast RFCOMM-kanaalnummer, gebruikt om SDP-opzoeken te omzeilen —
-        // moet exact overeenkomen met FIXED_RFCOMM_CHANNEL in
-        // BluetoothListenerService.kt op de autoradio.
+        // Vast RFCOMM-kanaalnummer (omzeilt SDP) — moet exact overeenkomen
+        // met FIXED_RFCOMM_CHANNEL in BluetoothListenerService.kt op de autoradio.
         private const val FIXED_RFCOMM_CHANNEL = 8
         private const val TAG = "CarRadioConnection"
         private const val CHANNEL_ID = "car_radio_connection"
@@ -72,6 +74,7 @@ class CarRadioConnectionService : Service() {
     }
 
     private var running = false
+    private var serverSocket: BluetoothServerSocket? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var speechRecognizer: SpeechRecognizer? = null
 
@@ -79,7 +82,7 @@ class CarRadioConnectionService : Service() {
         super.onCreate()
         startAsForeground()
         running = true
-        Thread { connectionLoop() }.start()
+        Thread { listenLoop() }.start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
@@ -91,7 +94,7 @@ class CarRadioConnectionService : Service() {
         }
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("The One – Autoradio")
-            .setContentText("Verbinden met je autoradio...")
+            .setContentText("Wacht op verbinding met je autoradio...")
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setOngoing(true)
             .build()
@@ -109,30 +112,20 @@ class CarRadioConnectionService : Service() {
         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIFICATION_ID, notification)
     }
 
-    private fun connectionLoop() {
+    private fun listenLoop() {
         while (running) {
-            val address = CarRadioForwarder.selectedDeviceAddress(this)
-            if (address == null || !CarRadioForwarder.isEnabled(this)) {
-                updateStatus("Niet actief (geen autoradio gekozen of uitgeschakeld)")
-                Thread.sleep(3000)
-                continue
-            }
-            var socket: BluetoothSocket? = null
             try {
                 val adapter = BluetoothAdapter.getDefaultAdapter() ?: return
-                updateStatus("Verbinden met ${CarRadioForwarder.selectedDeviceName(this) ?: address}...")
-                // Voorkomt een bekend Bluetooth-probleem: als er nog een scan
-                // (discovery) loopt, kan connect() daardoor mislukken of vasthangen.
-                try { adapter.cancelDiscovery() } catch (e: SecurityException) { /* geen toestemming, negeren */ }
-
-                val device = adapter.getRemoteDevice(address)
-                // Eerst proberen zonder SDP (vast kanaal) — omzeilt de
-                // SDP-opzoeking die op deze hoofdunit "Error: -1" veroorzaakt.
-                socket = createFixedChannelSocket(device)
-                    ?: device.createRfcommSocketToServiceRecord(APP_UUID)
-                socket.connect()
+                updateStatus("Wacht op verbinding met je autoradio...")
+                if (serverSocket == null) {
+                    // Eerst proberen zonder SDP (vast kanaal); lukt dat niet
+                    // dan terugvallen op de normale SDP-methode.
+                    serverSocket = createFixedChannelServerSocket(adapter)
+                        ?: adapter.listenUsingRfcommWithServiceRecord("TheOneCarRadio", APP_UUID)
+                }
+                val socket = serverSocket?.accept() ?: continue
                 outputStream = socket.outputStream
-                updateStatus("Verbonden met ${CarRadioForwarder.selectedDeviceName(this) ?: address}")
+                updateStatus("Verbonden met autoradio")
 
                 val reader = BufferedReader(InputStreamReader(socket.inputStream))
                 var line: String?
@@ -142,18 +135,22 @@ class CarRadioConnectionService : Service() {
                         handleReplyRequest()
                     }
                 }
-                updateStatus("Verbinding verbroken — opnieuw proberen...")
+                outputStream = null
+                try { socket.close() } catch (e: Exception) { /* negeren */ }
+                updateStatus("Verbinding verbroken — wachten op nieuwe verbinding...")
+                // serverSocket blijft bestaan en wordt hergebruikt voor de
+                // volgende accept() — geen nieuwe registratie nodig.
             } catch (e: SecurityException) {
                 Log.w(TAG, "Geen Bluetooth-toestemming", e)
                 updateStatus("⚠️ Geen Bluetooth-toestemming — zet dit in Instellingen nogmaals aan.")
+                Thread.sleep(3000)
             } catch (e: Exception) {
                 Log.w(TAG, "Autoradio-verbinding niet beschikbaar, opnieuw proberen", e)
                 updateStatus("⚠️ Kan geen verbinding maken (${e.javaClass.simpleName}) — opnieuw proberen...")
-            } finally {
-                outputStream = null
-                try { socket?.close() } catch (e: Exception) { /* negeren */ }
+                try { serverSocket?.close() } catch (ignored: Exception) { /* negeren */ }
+                serverSocket = null
+                Thread.sleep(5000)
             }
-            Thread.sleep(4000)
         }
     }
 
@@ -221,6 +218,7 @@ class CarRadioConnectionService : Service() {
     override fun onDestroy() {
         running = false
         outputStream = null
+        try { serverSocket?.close() } catch (e: Exception) { /* negeren */ }
         speechRecognizer?.destroy()
         super.onDestroy()
     }
@@ -228,17 +226,18 @@ class CarRadioConnectionService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     /**
-     * Maakt een BluetoothSocket op een vast kanaalnummer, zonder SDP-opzoek
-     * — via reflectie, zie de gelijknamige uitleg in BluetoothListenerService
-     * op de autoradio. Geeft null terug als dit niet lukt, zodat er
-     * teruggevallen kan worden op de normale (SDP-based) methode.
+     * Maakt een BluetoothServerSocket op een vast kanaalnummer, zonder SDP-
+     * registratie — via reflectie, omdat deze methode niet in de publieke
+     * Android-SDK zit maar wel bestaat in de onderliggende implementatie.
+     * Geeft null terug als dit niet lukt, zodat teruggevallen kan worden op
+     * de normale (SDP-based) methode.
      */
-    private fun createFixedChannelSocket(device: BluetoothDevice): BluetoothSocket? {
+    private fun createFixedChannelServerSocket(adapter: BluetoothAdapter): BluetoothServerSocket? {
         return try {
-            val method = device.javaClass.getMethod(
-                "createInsecureRfcommSocket", Int::class.javaPrimitiveType
+            val method = adapter.javaClass.getMethod(
+                "listenUsingInsecureRfcommOn", Int::class.javaPrimitiveType
             )
-            method.invoke(device, FIXED_RFCOMM_CHANNEL) as? BluetoothSocket
+            method.invoke(adapter, FIXED_RFCOMM_CHANNEL) as? BluetoothServerSocket
         } catch (e: Exception) {
             null
         }

@@ -25,6 +25,13 @@
         android:paddingBottom="16dp" />
 
     <Button
+        android:id="@+id/choosePhoneButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="📱 Kies telefoon"
+        android:paddingBottom="12dp" />
+
+    <Button
         android:id="@+id/replyButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
