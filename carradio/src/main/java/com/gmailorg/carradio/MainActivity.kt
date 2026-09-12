@@ -91,7 +91,9 @@ class MainActivity : AppCompatActivity() {
         addTile("USB", R.drawable.ic_usb_music) {
             startActivity(Intent(this, UsbMusicActivity::class.java))
         }
-        addTile("Radio", R.drawable.ic_home_radio_fancy) { openSystemRadio() }
+        addTile("Radio", R.drawable.ic_home_radio_fancy) {
+            startActivity(Intent(this, RadioStationsActivity::class.java))
+        }
         addTile("Instellingen", R.drawable.ic_home_settings_fancy) {
             startActivity(Intent(this, CarSettingsActivity::class.java))
         }

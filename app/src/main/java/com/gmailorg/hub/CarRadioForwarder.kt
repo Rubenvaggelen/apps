@@ -13,7 +13,12 @@ object CarRadioForwarder {
     fun isEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_ENABLED, false)
     fun setEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_ENABLED, enabled).apply()
-        if (enabled) CarRadioConnectionService.start(context)
+        if (!enabled) {
+            CarRadioConnectionService.stop(context)
+        } else if (isNearby(context)) {
+            // Alleen een foreground-service tonen wanneer de gekozen autoradio echt in bereik is.
+            CarRadioConnectionService.start(context)
+        }
     }
 
     fun setSelectedDevice(context: Context, address: String, name: String) {
@@ -30,7 +35,15 @@ object CarRadioForwarder {
     fun forwardIfEnabled(context: Context, packageName: String, title: String, text: String, postTime: Long = System.currentTimeMillis()) {
         if (packageName != "com.whatsapp" || !isEnabled(context)) return
         WhatsAppCarFilterStore.registerSeen(context, title)
-        CarRadioConnectionService.start(context)
+
+        // Buiten de auto niets starten of bufferen. Anders blijft Android een
+        // foreground-melding "Wacht op autoradio" tonen terwijl de radio niet in de buurt is.
+        val radioAvailable = isNearby(context) || CarRadioConnectionService.isRadioConnected()
+        if (!radioAvailable) return
+
+        if (!CarRadioConnectionService.isRadioConnected()) {
+            CarRadioConnectionService.start(context)
+        }
         val allowed = WhatsAppCarFilterStore.isAllowed(context, title)
         CarRadioConnectionService.sendContactState(
             title,

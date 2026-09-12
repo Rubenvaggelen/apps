@@ -55,6 +55,15 @@ object ConversationStore {
         readAll(context).filter { it.contact.equals(contact, ignoreCase = true) }
 
     @Synchronized
+    fun recentIncoming(context: Context, limit: Int = 80): List<ChatMessage> =
+        readAll(context)
+            .asSequence()
+            .filter { !it.mine }
+            .sortedByDescending { it.time }
+            .take(limit.coerceAtLeast(1))
+            .toList()
+
+    @Synchronized
     fun summaries(context: Context): List<Summary> {
         val grouped = readAll(context).groupBy { it.contact }
         return grouped.mapNotNull { (contact, messages) ->

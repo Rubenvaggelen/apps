@@ -68,6 +68,7 @@ class UnifiedNotificationListener : NotificationListenerService() {
 
     private fun ensureCarRadioServerRunning() {
         if (!CarRadioForwarder.isEnabled(applicationContext)) return
+        if (!CarRadioForwarder.isNearby(applicationContext) && !CarRadioConnectionService.isRadioConnected()) return
         try {
             CarRadioConnectionService.start(applicationContext)
         } catch (_: Exception) {

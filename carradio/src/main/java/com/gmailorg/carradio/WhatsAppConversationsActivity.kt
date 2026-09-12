@@ -42,7 +42,7 @@ class WhatsAppConversationsActivity : AppCompatActivity() {
 
         summaries.forEach { summary ->
             val row = LayoutInflater.from(this).inflate(R.layout.view_conversation_row, container, false)
-            row.findViewById<TextView>(R.id.contactName).text = summary.contact
+            row.findViewById<TextView>(R.id.contactName).text = ContactAliases.displayName(summary.contact)
             row.findViewById<TextView>(R.id.latestText).text = summary.latestText
             row.findViewById<TextView>(R.id.timeText).text = formatTime(summary.latestTime)
             row.findViewById<TextView>(R.id.unreadText).text = if (summary.unread > 0) "● ${summary.unread}" else ""

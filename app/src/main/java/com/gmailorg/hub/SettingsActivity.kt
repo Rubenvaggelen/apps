@@ -126,7 +126,6 @@ class SettingsActivity : AppCompatActivity() {
                     requestMicPermission.launch(Manifest.permission.RECORD_AUDIO)
                 }
                 CarRadioForwarder.setEnabled(this, true)
-                CarRadioConnectionService.start(this)
             } else {
                 CarRadioForwarder.setEnabled(this, false)
                 CarRadioConnectionService.stop(this)

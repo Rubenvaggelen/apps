@@ -17,7 +17,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Alleen geselecteerde contacten en groepen mogen op de autoradio verschijnen. Namen moeten overeenkomen met de naam in de WhatsApp-melding."
+        android:text="Alleen geselecteerde contacten en groepen mogen op de autoradio verschijnen. Standaard: Dochter, Ma, CA en Test. Je kunt contacten uitzetten of helemaal verwijderen."
         android:textColor="@color/text_dim"
         android:textSize="14sp"
         android:paddingTop="5dp"

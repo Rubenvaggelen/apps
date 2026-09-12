@@ -41,7 +41,7 @@ class ChatActivity : AppCompatActivity() {
         if (contact.isBlank()) { finish(); return }
         setContentView(R.layout.activity_chat)
 
-        findViewById<TextView>(R.id.chatTitle).text = contact
+        findViewById<TextView>(R.id.chatTitle).text = ContactAliases.displayName(contact)
         messageList = findViewById(R.id.messageList)
         scroll = findViewById(R.id.chatScroll)
         status = findViewById(R.id.chatStatus)
@@ -79,7 +79,7 @@ class ChatActivity : AppCompatActivity() {
             Toast.makeText(this, "Wacht tot je telefoon verbonden is", Toast.LENGTH_SHORT).show()
             return
         }
-        status.text = "🎙️ Spreek je antwoord in..."
+        status.text = "🎙️ Spreek je antwoord in • auto-verzenden na 10 sec stilte • max 60 sec"
         voiceButton.text = "⏹"
         voiceRecorder.start(onComplete = { result ->
             runOnUiThread { voiceButton.text = "🎤" }

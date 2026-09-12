@@ -6,28 +6,41 @@ import android.app.Service
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
-import android.content.Intent
 import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
 import android.content.IntentFilter
+import android.net.wifi.WifiManager
 import android.os.Build
-import android.os.IBinder
 import android.os.Handler
+import android.os.IBinder
 import android.os.Looper
 import android.util.Base64
 import androidx.core.app.NotificationCompat
 import java.io.BufferedReader
 import java.io.BufferedWriter
-import java.io.InputStreamReader
+import java.io.Closeable
 import java.io.IOException
+import java.io.InputStreamReader
 import java.io.OutputStreamWriter
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Socket
 import java.util.UUID
 import kotlin.concurrent.thread
 
 /**
- * Bluetooth-client voor de K2401 headunit.
- * Gebruikt primair het vaste RFCOMM-kanaal 8 dat op deze radio betrouwbaar bleek;
- * UUID/SDP blijft alleen fallback. Verzorgt WhatsApp, contactfilter en spraak/audio.
+ * Verbindingsservice voor de K2401 headunit.
+ *
+ * Volgorde is bewust:
+ * 1) Wi-Fi/LAN wanneer radio en telefoon op hetzelfde netwerk/hotspot zitten.
+ * 2) Bluetooth via The One UUID/SDP.
+ * 3) Vast RFCOMM-kanaal 8 alleen als laatste fallback.
+ *
+ * Daardoor kan de fabrieks-Bluetoothapp van de K2401 kanaal 8 gebruiken zonder
+ * de WhatsApp-verbinding van The One kapot te maken.
  */
 class BluetoothListenerService : Service() {
 
@@ -35,24 +48,27 @@ class BluetoothListenerService : Service() {
         val APP_UUID: UUID = UUID.fromString("8ab8c3d0-6b3e-4a7a-9e77-2f6a2f6d9b10")
         private const val CHANNEL_ID = "car_radio_service"
         private const val NOTIFICATION_ID = 1
-        private const val VOICE_CHUNK_BYTES = 1800
         private const val FIXED_RFCOMM_CHANNEL = 8
+        private const val WIFI_DISCOVERY_PORT = 38472
+        private const val WIFI_DISCOVER = "THE_ONE_DISCOVER_V1"
+        private const val WIFI_REPLY_PREFIX = "THE_ONE_HERE:"
+        private const val WIFI_AUTH = "the-one-k2401-8ab8c3d0-v1"
 
         const val ACTION_FORCE_STARTUP = "com.gmailorg.carradio.action.FORCE_STARTUP"
         const val ACTION_CANCEL_STARTUP = "com.gmailorg.carradio.action.CANCEL_STARTUP"
 
         private val writeLock = Any()
         @Volatile private var activeWriter: BufferedWriter? = null
-        @Volatile private var activeSocket: BluetoothSocket? = null
+        @Volatile private var activeConnection: Closeable? = null
         @Volatile private var socketConnected = false
         @Volatile private var protocolVerified = false
         @Volatile private var lastRxAt = 0L
         @Volatile private var lastPongAt = 0L
         @Volatile private var selectedPhone = "-"
-        @Volatile private var transport = "K2401-CH8"
+        @Volatile private var transport = "-"
         @Volatile private var lastProtocolLine = "-"
 
-        fun isLive(): Boolean = socketConnected
+        fun isLive(): Boolean = socketConnected && activeWriter != null
 
         fun diagnostics(): String {
             val age = if (lastRxAt == 0L) "nooit" else "${((System.currentTimeMillis() - lastRxAt) / 1000)}s geleden"
@@ -67,6 +83,9 @@ class BluetoothListenerService : Service() {
         fun setContactAllowed(name: String, allowed: Boolean): Boolean =
             writeLine("CONTACT_ALLOW:${if (allowed) 1 else 0}:${enc(name)}")
 
+        fun removeContact(name: String): Boolean =
+            writeLine("CONTACT_REMOVE:${enc(name)}")
+
         fun sendTextReply(conversation: String, text: String): Boolean {
             if (conversation.isBlank() || text.isBlank()) return false
             return writeLine("REPLY_TEXT_TO:${enc(conversation)}:${enc(text)}")
@@ -76,8 +95,9 @@ class BluetoothListenerService : Service() {
             writeLine("REPLY_REQUEST_TO:${enc(conversation)}")
 
         fun sendVoiceAudio(conversation: String, wavBytes: ByteArray): Boolean {
-            if (conversation.isBlank() || wavBytes.isEmpty() || wavBytes.size > 1_500_000) return false
+            if (conversation.isBlank() || wavBytes.isEmpty() || wavBytes.size > 2_200_000) return false
             val id = System.currentTimeMillis().toString(36)
+            val chunkBytes = if (transport == "WIFI-LAN") 24_000 else 8_000
             synchronized(writeLock) {
                 val writer = activeWriter ?: return false
                 return try {
@@ -85,7 +105,7 @@ class BluetoothListenerService : Service() {
                     writer.newLine()
                     var offset = 0
                     while (offset < wavBytes.size) {
-                        val len = minOf(VOICE_CHUNK_BYTES, wavBytes.size - offset)
+                        val len = minOf(chunkBytes, wavBytes.size - offset)
                         val chunk = Base64.encodeToString(wavBytes, offset, len, Base64.NO_WRAP)
                         writer.write("VOICE_CHUNK:$id:$chunk")
                         writer.newLine()
@@ -125,8 +145,8 @@ class BluetoothListenerService : Service() {
                 activeWriter = null
                 socketConnected = false
                 protocolVerified = false
-                try { activeSocket?.close() } catch (_: Exception) {}
-                activeSocket = null
+                try { activeConnection?.close() } catch (_: Exception) {}
+                activeConnection = null
             }
         }
     }
@@ -146,6 +166,10 @@ class BluetoothListenerService : Service() {
                     lastWakeEnforceAt = now
                     enforceStartup(intArrayOf(900, 2800, 6500))
                 }
+            }
+            if (action == BluetoothAdapter.ACTION_STATE_CHANGED && transport != "WIFI-LAN") {
+                // Forceer een nieuwe poging wanneer de gebruiker Bluetooth aan/uit zet.
+                closeActiveConnection()
             }
         }
     }
@@ -171,6 +195,7 @@ class BluetoothListenerService : Service() {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_USER_PRESENT)
             addAction(Intent.ACTION_POWER_CONNECTED)
+            addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
         }
         try {
             if (Build.VERSION.SDK_INT >= 33) registerReceiver(wakeReceiver, filter, RECEIVER_NOT_EXPORTED)
@@ -178,13 +203,6 @@ class BluetoothListenerService : Service() {
         } catch (_: Exception) {}
     }
 
-    /**
-     * K2401-specifieke launcher guard. De fabriekslauncher wordt op deze radio
-     * vaak pas na BOOT_COMPLETED gestart. Meerdere expliciete starts zorgen dat
-     * The One uiteindelijk bovenop eindigt. Een echte gebruikersactie in
-     * MainActivity annuleert de resterende starts zodat Maps/Radio/etc. normaal
-     * gebruikt kunnen worden.
-     */
     private fun enforceStartup(delaysMs: IntArray) {
         val generation = ++startupGeneration
         for (delay in delaysMs) {
@@ -192,9 +210,7 @@ class BluetoothListenerService : Service() {
                 if (!running || generation != startupGeneration) return@postDelayed
                 try {
                     val launch = Intent(this, MainActivity::class.java).apply {
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                         putExtra("forced_startup", true)
                     }
                     startActivity(launch)
@@ -210,7 +226,7 @@ class BluetoothListenerService : Service() {
         }
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("The One Car")
-            .setContentText("Automatisch verbinden met je telefoon...")
+            .setContentText("Verbinden via Wi-Fi of Bluetooth...")
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setOngoing(true)
             .build()
@@ -223,58 +239,50 @@ class BluetoothListenerService : Service() {
         connectorThread = thread(name = "TheOne-CarReconnect") {
             while (running) {
                 val address = PairedPhoneStore.selectedAddress(this)
-                if (address == null) {
-                    MessageBus.postStatus("⚠️ Kies bij Instellingen één keer je telefoon")
-                    sleepQuietly(2500)
-                    continue
-                }
-                selectedPhone = PairedPhoneStore.selectedName(this) ?: address
+                selectedPhone = PairedPhoneStore.selectedName(this) ?: address ?: "telefoon"
                 connectSession(address)
-                if (running) sleepQuietly(1200)
+                if (running) sleepQuietly(900)
             }
         }
     }
 
-    private fun connectSession(address: String) {
-        var socket: BluetoothSocket? = null
+    private data class Connection(
+        val closeable: Closeable,
+        val reader: BufferedReader,
+        val writer: BufferedWriter,
+        val name: String
+    )
+
+    private fun connectSession(address: String?) {
+        var connection: Connection? = null
         var heartbeatRunning = false
         try {
-            val adapter = BluetoothAdapter.getDefaultAdapter() ?: return
             MessageBus.postStatus("Verbinden met $selectedPhone...")
-            try { adapter.cancelDiscovery() } catch (_: SecurityException) {}
-            val device = adapter.getRemoteDevice(address)
 
-            // K2401-specifiek: de vaste RFCOMM-route op kanaal 8 is op deze
-            // headunit aantoonbaar betrouwbaarder dan SDP/UUID. UUID blijft alleen fallback.
-            var fixedFailure: Exception? = null
-            val fixedSocket = createFixedChannelSocket(device)
-            if (fixedSocket != null) {
-                try {
-                    transport = "K2401-CH8"
-                    fixedSocket.connect()
-                    socket = fixedSocket
-                } catch (e: Exception) {
-                    fixedFailure = e
-                    try { fixedSocket.close() } catch (_: Exception) {}
-                }
-            }
-            if (socket == null) {
-                transport = "UUID-FALLBACK"
-                val fallbackSocket = device.createInsecureRfcommSocketToServiceRecord(APP_UUID)
-                try {
-                    fallbackSocket.connect()
-                    socket = fallbackSocket
-                } catch (e: Exception) {
-                    try { fallbackSocket.close() } catch (_: Exception) {}
-                    throw fixedFailure ?: e
-                }
+            // Wi-Fi eerst: dit blijft werken als de K2401-fabrieks-Bluetoothapp kanaal 8 inpikt.
+            connection = tryWifiConnection()
+
+            if (connection == null && !address.isNullOrBlank()) {
+                connection = tryUuidBluetooth(address)
             }
 
-            val connectedSocket = socket ?: throw IOException("Geen bruikbare RFCOMM-socket")
-            val writer = BufferedWriter(OutputStreamWriter(connectedSocket.outputStream, Charsets.UTF_8))
+            if (connection == null && !address.isNullOrBlank()) {
+                connection = tryFixedChannelBluetooth(address)
+            }
+
+            if (connection == null) {
+                if (address.isNullOrBlank()) {
+                    MessageBus.postStatus("⚠️ Geen Wi-Fi-link gevonden; kies bij Instellingen je telefoon voor Bluetooth fallback")
+                } else {
+                    MessageBus.postStatus("Geen link • Wi-Fi/UUID/CH8 opnieuw proberen...")
+                }
+                return
+            }
+
+            transport = connection.name
             synchronized(writeLock) {
-                activeSocket = connectedSocket
-                activeWriter = writer
+                activeConnection = connection.closeable
+                activeWriter = connection.writer
                 socketConnected = true
                 protocolVerified = false
                 lastRxAt = 0L
@@ -283,41 +291,145 @@ class BluetoothListenerService : Service() {
             }
             MessageBus.postStatus("✅ Verbonden met $selectedPhone • $transport")
 
-            // Heartbeat is alleen diagnostiek. Op de K2401 sluiten we een werkende
-            // RFCOMM-link NIET meer af alleen omdat PONG/HELLO uitblijft.
             heartbeatRunning = true
-            val thisSocket = connectedSocket
+            val thisConnection = connection.closeable
             thread(name = "TheOne-CarHeartbeat") {
-                while (running && heartbeatRunning && activeSocket === thisSocket) {
+                while (running && heartbeatRunning && activeConnection === thisConnection) {
                     writeLine("SYS:PING:${System.currentTimeMillis()}")
                     sleepQuietly(5000)
                 }
             }
 
-            val reader = BufferedReader(InputStreamReader(connectedSocket.inputStream, Charsets.UTF_8))
-            while (running) {
-                val line = reader.readLine() ?: break
+            while (running && activeConnection === connection.closeable) {
+                val line = connection.reader.readLine() ?: break
                 if (line.isBlank()) continue
                 lastRxAt = System.currentTimeMillis()
                 lastProtocolLine = line.take(52)
                 handleLine(line)
             }
         } catch (_: SecurityException) {
-            MessageBus.postStatus("⚠️ Geen Bluetooth-toestemming voor The One Car")
-            sleepQuietly(2500)
+            MessageBus.postStatus("⚠️ Geen Bluetooth-toestemming voor fallback")
+            sleepQuietly(1500)
         } catch (_: Exception) {
             MessageBus.postStatus("Verbinding weg • automatisch opnieuw proberen...")
         } finally {
             heartbeatRunning = false
             synchronized(writeLock) {
-                if (activeSocket === socket) {
+                if (connection != null && activeConnection === connection.closeable) {
                     activeWriter = null
-                    activeSocket = null
+                    activeConnection = null
                     socketConnected = false
                     protocolVerified = false
                 }
             }
+            try { connection?.closeable?.close() } catch (_: Exception) {}
+        }
+    }
+
+    private fun tryWifiConnection(): Connection? {
+        val target = discoverPhoneOnWifi() ?: return null
+        return try {
+            val socket = Socket()
+            socket.connect(InetSocketAddress(target.first, target.second), 1400)
+            socket.tcpNoDelay = true
+            socket.keepAlive = true
+            val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8))
+            val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
+            writer.write("AUTH:$WIFI_AUTH")
+            writer.newLine()
+            writer.flush()
+            Connection(socket, reader, writer, "WIFI-LAN")
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** Zoek de telefoon via een kleine UDP-discovery op hotspot/LAN. */
+    private fun discoverPhoneOnWifi(): Pair<InetAddress, Int>? {
+        var socket: DatagramSocket? = null
+        return try {
+            socket = DatagramSocket().apply {
+                broadcast = true
+                soTimeout = 900
+            }
+            val bytes = WIFI_DISCOVER.toByteArray(Charsets.UTF_8)
+            val destinations = linkedSetOf<InetAddress>()
+            try { destinations.add(InetAddress.getByName("255.255.255.255")) } catch (_: Exception) {}
+            gatewayAddress()?.let { destinations.add(it) }
+
+            destinations.forEach { address ->
+                try {
+                    socket.send(DatagramPacket(bytes, bytes.size, address, WIFI_DISCOVERY_PORT))
+                } catch (_: Exception) {}
+            }
+
+            val buffer = ByteArray(128)
+            val packet = DatagramPacket(buffer, buffer.size)
+            socket.receive(packet)
+            val reply = String(packet.data, 0, packet.length, Charsets.UTF_8).trim()
+            if (!reply.startsWith(WIFI_REPLY_PREFIX)) return null
+            val port = reply.removePrefix(WIFI_REPLY_PREFIX).toIntOrNull() ?: return null
+            packet.address to port
+        } catch (_: Exception) {
+            null
+        } finally {
             try { socket?.close() } catch (_: Exception) {}
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun gatewayAddress(): InetAddress? {
+        return try {
+            val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return null
+            val gateway = wifi.dhcpInfo?.gateway ?: 0
+            if (gateway == 0) return null
+            val bytes = byteArrayOf(
+                (gateway and 0xff).toByte(),
+                (gateway shr 8 and 0xff).toByte(),
+                (gateway shr 16 and 0xff).toByte(),
+                (gateway shr 24 and 0xff).toByte()
+            )
+            InetAddress.getByAddress(bytes)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun tryUuidBluetooth(address: String): Connection? {
+        return try {
+            val adapter = BluetoothAdapter.getDefaultAdapter() ?: return null
+            if (!adapter.isEnabled) return null
+            try { adapter.cancelDiscovery() } catch (_: Exception) {}
+            val device = adapter.getRemoteDevice(address)
+            val socket = device.createInsecureRfcommSocketToServiceRecord(APP_UUID)
+            socket.connect()
+            Connection(
+                socket,
+                BufferedReader(InputStreamReader(socket.inputStream, Charsets.UTF_8)),
+                BufferedWriter(OutputStreamWriter(socket.outputStream, Charsets.UTF_8)),
+                "BT-UUID"
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun tryFixedChannelBluetooth(address: String): Connection? {
+        return try {
+            val adapter = BluetoothAdapter.getDefaultAdapter() ?: return null
+            if (!adapter.isEnabled) return null
+            try { adapter.cancelDiscovery() } catch (_: Exception) {}
+            val device = adapter.getRemoteDevice(address)
+            val socket = createFixedChannelSocket(device) ?: return null
+            socket.connect()
+            Connection(
+                socket,
+                BufferedReader(InputStreamReader(socket.inputStream, Charsets.UTF_8)),
+                BufferedWriter(OutputStreamWriter(socket.outputStream, Charsets.UTF_8)),
+                "BT-CH8-FALLBACK"
+            )
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -326,13 +438,13 @@ class BluetoothListenerService : Service() {
             line.startsWith("SYS:HELLO:") -> {
                 protocolVerified = true
                 lastPongAt = System.currentTimeMillis()
-                MessageBus.postStatus("✅ Verbonden met $selectedPhone")
+                MessageBus.postStatus("✅ Verbonden met $selectedPhone • $transport")
                 requestContacts()
             }
             line.startsWith("SYS:PONG:") -> {
                 protocolVerified = true
                 lastPongAt = System.currentTimeMillis()
-                MessageBus.postStatus("✅ Verbonden met $selectedPhone")
+                MessageBus.postStatus("✅ Verbonden met $selectedPhone • $transport")
             }
             line.startsWith("WA_MSG:") -> {
                 val parts = line.split(":", limit = 4)
@@ -343,7 +455,7 @@ class BluetoothListenerService : Service() {
                     if (contact.isNotBlank() && text.isNotBlank()) {
                         ConversationStore.addIncoming(this, contact, text, time)
                         RadioContactStore.registerKnown(this, contact)
-                        MessageBus.postMessage("$contact: $text")
+                        MessageBus.postMessage("${ContactAliases.displayName(contact)}: $text")
                         MessageBus.postDataChanged()
                     }
                 }
@@ -371,8 +483,7 @@ class BluetoothListenerService : Service() {
                 }
             }
             line.startsWith("CONTACTS_BEGIN:") -> {
-                val enabled = line.removePrefix("CONTACTS_BEGIN:") == "1"
-                RadioContactStore.beginSync(this, enabled)
+                RadioContactStore.beginSync(this, line.removePrefix("CONTACTS_BEGIN:") == "1")
             }
             line.startsWith("CONTACT:") -> {
                 val parts = line.split(":", limit = 3)
@@ -400,9 +511,7 @@ class BluetoothListenerService : Service() {
 
     private fun createFixedChannelSocket(device: BluetoothDevice): BluetoothSocket? {
         return try {
-            val method = device.javaClass.getMethod(
-                "createInsecureRfcommSocket", Int::class.javaPrimitiveType
-            )
+            val method = device.javaClass.getMethod("createInsecureRfcommSocket", Int::class.javaPrimitiveType)
             method.invoke(device, FIXED_RFCOMM_CHANNEL) as? BluetoothSocket
         } catch (_: Exception) {
             null

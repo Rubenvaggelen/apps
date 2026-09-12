@@ -65,7 +65,7 @@ object GeminiVoiceTranscriber {
             put("contents", JSONArray().put(JSONObject().apply { put("parts", parts) }))
             put("generationConfig", JSONObject().apply {
                 put("temperature", 0)
-                put("maxOutputTokens", 160)
+                put("maxOutputTokens", 384)
             })
         }
 
@@ -76,8 +76,8 @@ object GeminiVoiceTranscriber {
         connection.requestMethod = "POST"
         connection.setRequestProperty("Content-Type", "application/json")
         connection.doOutput = true
-        connection.connectTimeout = 20_000
-        connection.readTimeout = 35_000
+        connection.connectTimeout = 8_000
+        connection.readTimeout = 18_000
         connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
 
         val code = connection.responseCode

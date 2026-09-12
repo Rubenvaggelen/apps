@@ -1,6 +1,7 @@
 package com.gmailorg.carradio
 
 import android.os.Bundle
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -47,7 +48,7 @@ class AllowedContactsActivity : AppCompatActivity() {
     }
 
     private fun addManualContact() {
-        val name = manualInput.text.toString().trim()
+        val name = ContactAliases.resolveRealName(manualInput.text.toString())
         if (name.isBlank()) return
         if (!BluetoothListenerService.isLive()) {
             Toast.makeText(this, "Verbind eerst je telefoon", Toast.LENGTH_SHORT).show()
@@ -65,6 +66,19 @@ class AllowedContactsActivity : AppCompatActivity() {
         renderContacts()
     }
 
+    private fun removeContact(name: String) {
+        if (!BluetoothListenerService.isLive()) {
+            Toast.makeText(this, "Verbind eerst je telefoon om een contact te verwijderen", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!BluetoothListenerService.removeContact(name)) {
+            Toast.makeText(this, "Contact kon niet worden verwijderd", Toast.LENGTH_SHORT).show()
+            return
+        }
+        RadioContactStore.removeLocal(this, name)
+        renderContacts()
+    }
+
     private fun renderContacts() {
         if (isFinishing || isDestroyed) return
         rendering = true
@@ -74,12 +88,12 @@ class AllowedContactsActivity : AppCompatActivity() {
 
         val allowed = RadioContactStore.allowed(this)
         val contacts = (RadioContactStore.known(this) + allowed)
-            .distinctBy { it.lowercase() }
-            .sortedBy { it.lowercase(Locale.ROOT) }
+            .distinctBy { it.lowercase(Locale.ROOT) }
+            .sortedBy { ContactAliases.displayName(it).lowercase(Locale.ROOT) }
 
         if (contacts.isEmpty()) {
             val cb = CheckBox(this).apply {
-                text = "Nog geen WhatsApp-contacten gezien. Voeg hierboven een naam toe of druk op vernieuwen."
+                text = "Nog geen WhatsApp-contacten. Voeg hierboven een naam toe of druk op vernieuwen."
                 isEnabled = false
                 setTextColor(ContextCompat.getColor(this@AllowedContactsActivity, R.color.text_dim))
             }
@@ -88,13 +102,19 @@ class AllowedContactsActivity : AppCompatActivity() {
         }
 
         contacts.forEach { name ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, 6, 0, 6)
+            }
+
             val box = CheckBox(this).apply {
-                text = name
+                text = ContactAliases.displayName(name)
                 textSize = 17f
                 setTextColor(ContextCompat.getColor(this@AllowedContactsActivity, R.color.text_main))
                 isChecked = allowed.any { it.equals(name, ignoreCase = true) }
                 setPadding(8, 8, 8, 8)
                 setOnCheckedChangeListener { _, checked ->
+                    if (rendering) return@setOnCheckedChangeListener
                     if (!BluetoothListenerService.setContactAllowed(name, checked)) {
                         Toast.makeText(this@AllowedContactsActivity, "Telefoon nog niet verbonden", Toast.LENGTH_SHORT).show()
                         container.post { renderContacts() }
@@ -103,7 +123,14 @@ class AllowedContactsActivity : AppCompatActivity() {
                     RadioContactStore.setAllowedLocal(this@AllowedContactsActivity, name, checked)
                 }
             }
-            container.addView(box)
+            row.addView(box, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+            val remove = Button(this).apply {
+                text = "Verwijder"
+                setOnClickListener { removeContact(name) }
+            }
+            row.addView(remove, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            container.addView(row)
         }
     }
 

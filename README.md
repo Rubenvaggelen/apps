@@ -113,3 +113,16 @@ Heb je toch een keer toegang tot een computer, dan kan het ook lokaal:
 - Sommige fabrikanten (Xiaomi, Huawei, Samsung in agressieve
   batterijbesparingsmodus) doden achtergrondservices actief — zet
   batterijoptimalisatie voor deze app uit als meldingen wegblijven.
+
+## WhatsApp voice latency update (2026-09-12)
+- K2401 voice replies can record up to 60 seconds.
+- Automatic send happens after 10 seconds of detected silence; pressing stop still sends sooner.
+- 8 kHz mono PCM is preferred to reduce transfer size on Bluetooth.
+- Phone first tries Android 13+ SpeechRecognizer audio injection for low-latency transcription.
+- Gemini remains the fallback transcription path.
+
+## K2401 contact & meldingen cleanup
+- Meldingen-scherm toont alleen inkomende WhatsApp-berichten; technische status/transcriptie/verzendlogs zijn verborgen.
+- Standaard aliassen: Dochter, Ma, CA, Test; replies blijven gekoppeld aan de echte WhatsApp-namen.
+- Contacten kunnen volledig worden verwijderd op de radio en telefoon en worden daarna niet automatisch opnieuw toegevoegd bij nieuwe meldingen.
+- Standaardcontacten worden éénmalig gemigreerd naar bestaande installaties.
