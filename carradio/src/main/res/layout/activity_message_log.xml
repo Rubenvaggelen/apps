@@ -5,13 +5,30 @@
     android:orientation="vertical"
     android:background="@color/bg"
     android:padding="18dp">
-    <TextView
+
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Meldingen"
-        android:textColor="@color/amber"
-        android:textSize="25sp"
-        android:textStyle="bold" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Meldingen"
+            android:textColor="@color/amber"
+            android:textSize="25sp"
+            android:textStyle="bold" />
+        <Button
+            android:id="@+id/clearNotificationsButton"
+            android:layout_width="wrap_content"
+            android:layout_height="52dp"
+            android:background="@drawable/bg_outline"
+            android:text="WISSEN"
+            android:textColor="@color/text_main"
+            android:textStyle="bold" />
+    </LinearLayout>
+
     <TextView
         android:id="@+id/logStatus"
         android:layout_width="match_parent"
@@ -19,6 +36,7 @@
         android:textColor="@color/text_dim"
         android:textSize="14sp"
         android:paddingVertical="8dp" />
+
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"

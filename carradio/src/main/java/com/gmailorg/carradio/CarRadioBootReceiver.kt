@@ -19,6 +19,10 @@ class CarRadioBootReceiver : BroadcastReceiver() {
             intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
 
         val appContext = context.applicationContext
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
+            // Elke nieuwe autorit/volledige headunit-start begint zonder oude chatweergave.
+            CarSessionCleaner.clearChats(appContext)
+        }
         val serviceIntent = Intent(appContext, BluetoothListenerService::class.java).apply {
             action = BluetoothListenerService.ACTION_FORCE_STARTUP
         }

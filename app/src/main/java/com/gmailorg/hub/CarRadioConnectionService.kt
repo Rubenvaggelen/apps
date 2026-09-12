@@ -551,7 +551,7 @@ class CarRadioConnectionService : Service() {
                         val parts = command.split(":", limit = 5)
                         if (parts.size >= 4) {
                             voiceId = parts[1]
-                            val expected = parts[3].toIntOrNull()?.coerceAtMost(2_200_000) ?: 0
+                            val expected = parts[3].toIntOrNull()?.coerceAtMost(7_000_000) ?: 0
                             voiceTarget = if (parts.size == 5) dec(parts[4]).takeIf { it.isNotBlank() } else null
                             voiceBytes = ByteArrayOutputStream(expected.coerceAtLeast(32_000))
                             sendProtocolLine("STATUS:Audio ontvangen — verwerken...", false)
@@ -562,7 +562,7 @@ class CarRadioConnectionService : Service() {
                         if (parts.size == 3 && parts[1] == voiceId) {
                             val decoded = try { Base64.decode(parts[2], Base64.DEFAULT) } catch (_: Exception) { null }
                             val current = voiceBytes
-                            if (decoded != null && current != null && current.size() + decoded.size <= 2_200_000) current.write(decoded)
+                            if (decoded != null && current != null && current.size() + decoded.size <= 7_000_000) current.write(decoded)
                         }
                     }
                     command.startsWith("VOICE_END:") -> {
@@ -679,47 +679,68 @@ class CarRadioConnectionService : Service() {
             return
         }
 
-        // Volledige transcriptie en snelheid tegelijk: start Gemini en de lokale
-        // Android-herkenner parallel. Gemini krijgt voorrang omdat die de hele
-        // opname verwerkt (ook na natuurlijke pauzes). De snelle lokale tekst
-        // is alleen fallback als Gemini niet binnen enkele seconden klaar is.
         sendProtocolLine("STATUS:Spraak wordt omgezet naar tekst...", false)
         val delivered = AtomicBoolean(false)
-        var fastText: String? = null
+        val stateLock = Any()
+        val durationMs = GeminiVoiceTranscriber.durationMs(wavBytes)
+        var localDone = false
+        var geminiDone = false
+        var localText: String? = null
+        var geminiError: String? = null
 
         fun deliver(text: String) {
-            val cleaned = text.trim()
+            val cleaned = text.trim().replace(Regex("\\s+"), " ")
             if (cleaned.isBlank()) return
             if (delivered.compareAndSet(false, true)) {
                 mainHandler.post { finishReply(target, cleaned) }
             }
         }
 
-        GeminiVoiceTranscriber.transcribe(wavBytes) { result ->
-            when (result) {
-                is GeminiVoiceTranscriber.Result.Success -> deliver(result.text)
-                is GeminiVoiceTranscriber.Result.Error -> {
-                    val fallback = fastText
-                    if (!fallback.isNullOrBlank()) deliver(fallback)
-                    else if (delivered.compareAndSet(false, true)) {
-                        mainHandler.post {
-                            sendProtocolLine("STATUS:Spraak omzetten mislukt (${result.message}). Ik probeer de telefoonmicrofoon.", false)
-                            handleReplyRequest(target)
-                        }
-                    }
+        fun finishFallbackIfReady() {
+            val fallback: String?
+            val error: String?
+            synchronized(stateLock) {
+                if (delivered.get() || !localDone || !geminiDone) return
+                fallback = localText
+                error = geminiError
+            }
+            if (!fallback.isNullOrBlank()) {
+                deliver(fallback)
+            } else if (delivered.compareAndSet(false, true)) {
+                mainHandler.post {
+                    sendProtocolLine("STATUS:Spraak omzetten mislukt${if (!error.isNullOrBlank()) " ($error)" else ""}. Ik probeer de telefoonmicrofoon.", false)
+                    handleReplyRequest(target)
                 }
             }
         }
 
-        InjectedAudioSpeechTranscriber.transcribe(this, wavBytes) { fastResult ->
-            if (fastResult is InjectedAudioSpeechTranscriber.Result.Success) {
-                fastText = fastResult.text.trim()
+        // Start beide routes tegelijk. De lokale Android-route mag meteen winnen
+        // als hij een complete segmented transcriptie oplevert. Voor langere audio
+        // vertrouwen we anders op Gemini, dat de opname parallel in stukken verwerkt.
+        InjectedAudioSpeechTranscriber.transcribe(this, wavBytes) { result ->
+            when (result) {
+                is InjectedAudioSpeechTranscriber.Result.Success -> {
+                    val text = result.text.trim()
+                    if (result.complete || durationMs <= 8_000L) {
+                        deliver(text)
+                    } else {
+                        synchronized(stateLock) { localText = text }
+                    }
+                }
+                is InjectedAudioSpeechTranscriber.Result.Error -> Unit
             }
+            synchronized(stateLock) { localDone = true }
+            finishFallbackIfReady()
         }
 
-        // De lokale herkenner is alleen fallback wanneer Gemini zelf faalt.
-        // Zo voorkomen we dat een vroege eerste zin uit Android al wordt verstuurd
-        // terwijl er later in dezelfde opname nog meer is gezegd.
+        GeminiVoiceTranscriber.transcribe(wavBytes) { result ->
+            when (result) {
+                is GeminiVoiceTranscriber.Result.Success -> deliver(result.text)
+                is GeminiVoiceTranscriber.Result.Error -> synchronized(stateLock) { geminiError = result.message }
+            }
+            synchronized(stateLock) { geminiDone = true }
+            finishFallbackIfReady()
+        }
     }
 
     private fun finishReply(target: String?, text: String) {

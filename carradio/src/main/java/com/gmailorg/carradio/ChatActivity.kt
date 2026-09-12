@@ -82,7 +82,7 @@ class ChatActivity : AppCompatActivity() {
             Toast.makeText(this, "Wacht tot je telefoon verbonden is", Toast.LENGTH_SHORT).show()
             return
         }
-        status.text = "🎙️ Spreek je antwoord in • auto-verzenden na 5 sec stilte • max 60 sec"
+        status.text = "🎙️ Spreek je antwoord in • auto-verzenden na 5 sec stilte • max 90 sec"
         voiceButton.text = "⏹"
         voiceRecorder.start(onComplete = { result ->
             runOnUiThread { voiceButton.text = "🎤" }

@@ -18,16 +18,19 @@ import kotlin.concurrent.thread
 
 /**
  * Snelle transcriptieroute op de telefoon (Android 13+).
- * De ontvangen PCM-audio van de K2401 wordt rechtstreeks in Androids
- * SpeechRecognizer gevoerd. Gemini blijft fallback als audio-injectie niet werkt.
+ * Probeert segmented recognition zodat een pauze midden in een lange zin niet
+ * alleen het eerste deel oplevert. Gemini blijft de volledige fallback.
  */
 object InjectedAudioSpeechTranscriber {
     sealed class Result {
-        data class Success(val text: String) : Result()
+        data class Success(val text: String, val complete: Boolean) : Result()
         data class Error(val message: String) : Result()
     }
 
-    private data class WavInfo(val sampleRate: Int, val pcm: ByteArray)
+    private data class WavInfo(val sampleRate: Int, val pcm: ByteArray) {
+        val durationMs: Long
+            get() = if (sampleRate <= 0) 0L else (pcm.size.toLong() * 1000L) / (sampleRate * 2L)
+    }
 
     fun transcribe(context: Context, wavBytes: ByteArray, callback: (Result) -> Unit) {
         if (Build.VERSION.SDK_INT < 33) {
@@ -53,6 +56,21 @@ object InjectedAudioSpeechTranscriber {
             var writeFd: ParcelFileDescriptor? = null
             var timeoutRunnable: Runnable? = null
             val finished = AtomicBoolean(false)
+            val segments = mutableListOf<String>()
+            var latestPartial = ""
+
+            fun addSegment(bundle: Bundle?) {
+                val text = bundle
+                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull()
+                    ?.trim()
+                    .orEmpty()
+                if (text.isNotBlank() && (segments.isEmpty() || !segments.last().equals(text, true))) {
+                    segments += text
+                }
+            }
+
+            fun combinedText(): String = segments.joinToString(" ").replace(Regex("\\s+"), " ").trim()
 
             fun finish(result: Result) {
                 if (!finished.compareAndSet(false, true)) return
@@ -76,33 +94,55 @@ object InjectedAudioSpeechTranscriber {
                     override fun onRmsChanged(rmsdB: Float) = Unit
                     override fun onBufferReceived(buffer: ByteArray?) = Unit
                     override fun onEndOfSpeech() = Unit
-                    override fun onPartialResults(partialResults: Bundle?) = Unit
                     override fun onEvent(eventType: Int, params: Bundle?) = Unit
 
-                    override fun onError(error: Int) {
-                        finish(Result.Error("spraakfout $error"))
-                    }
-
-                    override fun onResults(results: Bundle?) {
-                        val text = results
+                    override fun onPartialResults(partialResults: Bundle?) {
+                        latestPartial = partialResults
                             ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                             ?.firstOrNull()
                             ?.trim()
                             .orEmpty()
+                    }
+
+                    override fun onSegmentResults(segmentResults: Bundle) {
+                        addSegment(segmentResults)
+                    }
+
+                    override fun onEndOfSegmentedSession() {
+                        val text = combinedText().ifBlank { latestPartial }
                         if (text.isBlank()) finish(Result.Error("geen tekst herkend"))
-                        else finish(Result.Success(text))
+                        else finish(Result.Success(text, complete = true))
+                    }
+
+                    override fun onError(error: Int) {
+                        val text = combinedText().ifBlank { latestPartial }
+                        if (text.isNotBlank()) finish(Result.Success(text, complete = false))
+                        else finish(Result.Error("spraakfout $error"))
+                    }
+
+                    override fun onResults(results: Bundle?) {
+                        addSegment(results)
+                        val text = combinedText().ifBlank { latestPartial }
+                        if (text.isBlank()) finish(Result.Error("geen tekst herkend"))
+                        else finish(Result.Success(text, complete = info.durationMs <= 8_000L))
                     }
                 })
 
                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE, "nl-NL")
-                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                     putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
                     putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE, readFd)
                     putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, 1)
                     putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING, AudioFormat.ENCODING_PCM_16BIT)
                     putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_SAMPLING_RATE, info.sampleRate)
+                    // Segmented session: laat de recognizer na een pauze verder luisteren
+                    // naar de rest van de vooraf opgenomen audio.
+                    putExtra("android.speech.extra.SEGMENTED_SESSION", RecognizerIntent.EXTRA_AUDIO_SOURCE)
+                    putExtra("android.speech.extra.SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS", 5_000L)
+                    putExtra("android.speech.extra.SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS", 5_000L)
+                    putExtra("android.speech.extra.SPEECH_INPUT_MINIMUM_LENGTH_MILLIS", info.durationMs.coerceAtMost(90_000L))
                 }
 
                 recognizer?.startListening(intent)
@@ -119,8 +159,13 @@ object InjectedAudioSpeechTranscriber {
                     }
                 }
 
-                timeoutRunnable = Runnable { finish(Result.Error("snelle spraakherkenning timeout")) }
-                main.postDelayed(timeoutRunnable!!, 7_000L)
+                val timeoutMs = (info.durationMs + 7_000L).coerceIn(8_000L, 25_000L)
+                timeoutRunnable = Runnable {
+                    val text = combinedText().ifBlank { latestPartial }
+                    if (text.isNotBlank()) finish(Result.Success(text, complete = false))
+                    else finish(Result.Error("snelle spraakherkenning timeout"))
+                }
+                main.postDelayed(timeoutRunnable!!, timeoutMs)
             } catch (e: Exception) {
                 finish(Result.Error(e.message ?: e.javaClass.simpleName))
             }

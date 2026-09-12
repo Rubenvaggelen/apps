@@ -49,6 +49,17 @@ class CarSettingsActivity : AppCompatActivity() {
             BluetoothListenerService.forcePing()
             diagnostics.text = BluetoothListenerService.diagnostics()
         }
+        findViewById<Button>(R.id.clearAllButton).setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Alles wissen?")
+                .setMessage("Dit wist lokale WhatsApp-chatgeschiedenis, meldingen, tijdelijke spraakbestanden en diagnosegeschiedenis op de autoradio. Contacten, tegels, radiozenders en andere instellingen blijven staan.")
+                .setPositiveButton("Alles wissen") { _, _ ->
+                    CarSessionCleaner.clearAllEphemeral(this)
+                    Toast.makeText(this, "Lokale ritgegevens gewist", Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("Annuleren", null)
+                .show()
+        }
         MessageBus.addStatusListener(statusListener)
         diagnostics.text = BluetoothListenerService.diagnostics()
     }

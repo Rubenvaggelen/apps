@@ -12,8 +12,9 @@ import kotlin.math.sqrt
 
 /**
  * Neemt rechtstreeks PCM op van de K2401-microfoon.
- * De stilte-detectie kalibreert zichzelf op het achtergrondgeluid in de auto,
- * zodat langere antwoorden en natuurlijke pauzes niet voortijdig worden afgekapt.
+ * De opname stopt pas na 5 seconden echte stilte of na 90 seconden totaal.
+ * De volledige gesproken opname blijft behouden; alleen een deel van de
+ * trailing stilte wordt verwijderd om overdracht/transcriptie sneller te maken.
  */
 class RadioVoiceRecorder {
     sealed class Result {
@@ -45,9 +46,9 @@ class RadioVoiceRecorder {
                 val started = System.currentTimeMillis()
                 var heardSpeech = false
                 var silentSince = 0L
-                var lastSpeechBytePos = 0
+                var stoppedForSilence = false
 
-                // Eerste ~350 ms wordt gebruikt om motorgeluid/ruis te meten.
+                // Kalibreer de eerste halve seconde op motor-/cabinegeluid.
                 var noiseSamples = 0
                 var noiseTotal = 0.0
                 var noiseFloor = 220.0
@@ -59,8 +60,8 @@ class RadioVoiceRecorder {
 
                     var sumSq = 0.0
                     for (i in 0 until read) {
-                        val s = buffer[i].toDouble()
-                        sumSq += s * s
+                        val sample = buffer[i].toDouble()
+                        sumSq += sample * sample
                         pcm.write(buffer[i].toInt() and 0xff)
                         pcm.write((buffer[i].toInt() shr 8) and 0xff)
                     }
@@ -69,36 +70,36 @@ class RadioVoiceRecorder {
 
                     val now = System.currentTimeMillis()
                     val elapsed = now - started
-                    if (elapsed < 350L) {
+                    if (elapsed < 500L) {
                         noiseTotal += rms
                         noiseSamples++
                         if (noiseSamples > 0) noiseFloor = noiseTotal / noiseSamples
                     }
 
-                    val speechThreshold = max(650.0, noiseFloor * 2.15)
-                    val silenceThreshold = max(360.0, noiseFloor * 1.35)
+                    // Start iets strenger, maar zodra spraak gehoord is houden we
+                    // zachte woorden/syllabes veel langer als actieve spraak vast.
+                    val startThreshold = max(420.0, max(noiseFloor * 1.55, noiseFloor + 220.0))
+                    val continueThreshold = max(260.0, max(noiseFloor * 1.22, noiseFloor + 90.0))
 
-                    if (rms >= speechThreshold) {
-                        heardSpeech = true
-                        silentSince = 0L
-                        lastSpeechBytePos = pcm.size()
-                    } else if (heardSpeech) {
-                        if (rms <= silenceThreshold) {
-                            if (silentSince == 0L) silentSince = now
-                        } else {
-                            // Zachte syllabe: nog niet stoppen.
+                    if (!heardSpeech) {
+                        if (elapsed >= 400L && rms >= startThreshold) {
+                            heardSpeech = true
                             silentSince = 0L
-                            lastSpeechBytePos = pcm.size()
+                        }
+                    } else {
+                        if (rms >= continueThreshold) {
+                            silentSince = 0L
+                        } else if (silentSince == 0L) {
+                            silentSince = now
                         }
                     }
 
-                    // Geef ruimte voor langere zinnen en natuurlijke pauzes.
-                    // Pas na 5 seconden echte stilte wordt het antwoord automatisch verstuurd.
-                    if (heardSpeech && silentSince > 0L && now - silentSince >= 5_000L && elapsed >= 900L) break
-                    // Niet eindeloos wachten als iemand helemaal niet begint te praten.
-                    if (!heardSpeech && elapsed >= 15_000L) break
-                    // Lange WhatsApp-antwoorden mogen maximaal één minuut duren.
-                    if (elapsed >= 60_000L) break
+                    if (heardSpeech && silentSince > 0L && now - silentSince >= 5_000L && elapsed >= 1_000L) {
+                        stoppedForSilence = true
+                        break
+                    }
+                    if (!heardSpeech && elapsed >= 18_000L) break
+                    if (elapsed >= 90_000L) break
                 }
 
                 val duration = System.currentTimeMillis() - started
@@ -106,10 +107,14 @@ class RadioVoiceRecorder {
                 if (!heardSpeech || raw.size < sampleRate / 3) {
                     onComplete(Result.Error("geen duidelijke spraak opgenomen"))
                 } else {
-                    // Gooi overtollige trailing silence weg; maximaal ~250 ms bewaren.
-                    val tailBytes = (sampleRate * 2 * 0.25).toInt()
-                    val usefulSize = (lastSpeechBytePos + tailBytes).coerceIn(sampleRate / 4, raw.size)
-                    onComplete(Result.Success(makeWav(raw.copyOf(usefulSize), sampleRate), duration))
+                    // Als de automatische 5-sec stilte-stop de opname beëindigde,
+                    // laat ~750 ms stilte staan. We knippen dus nooit midden in
+                    // een zin op basis van een oude 'laatste spraak'-positie.
+                    val useful = if (stoppedForSilence) {
+                        val removeBytes = (sampleRate * 2 * 4.25).toInt()
+                        (raw.size - removeBytes).coerceAtLeast((sampleRate * 2 * 0.8).toInt())
+                    } else raw.size
+                    onComplete(Result.Success(makeWav(raw.copyOf(useful), sampleRate), duration))
                 }
             } catch (e: SecurityException) {
                 onComplete(Result.Error("geen microfoontoestemming"))
@@ -129,10 +134,8 @@ class RadioVoiceRecorder {
     }
 
     private fun createRecorder(): Pair<AudioRecord, Int>? {
-        // Probeer 8 kHz eerst: ruim voldoende voor WhatsApp-spraak en halveert de overdrachtstijd.
         val sampleRates = intArrayOf(8_000, 16_000, 44_100)
         val sources = intArrayOf(MediaRecorder.AudioSource.VOICE_RECOGNITION, MediaRecorder.AudioSource.MIC)
-
         for (sampleRate in sampleRates) {
             val min = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
             if (min <= 0) continue

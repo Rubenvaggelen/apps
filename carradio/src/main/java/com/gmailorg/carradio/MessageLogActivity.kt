@@ -2,18 +2,17 @@ package com.gmailorg.carradio
 
 import android.os.Bundle
 import android.view.View
+import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/**
- * Meldingen in The One Car zijn bewust alleen inkomende WhatsApp-berichten.
- * Technische status, transcriptie en verzendlogs horen niet in dit scherm.
- */
+/** Alleen echte inkomende WhatsApp-meldingen; technische logs blijven verborgen. */
 class MessageLogActivity : AppCompatActivity() {
     private lateinit var container: LinearLayout
     private lateinit var status: TextView
@@ -25,6 +24,17 @@ class MessageLogActivity : AppCompatActivity() {
         container = findViewById(R.id.logContainer)
         status = findViewById(R.id.logStatus)
         status.visibility = View.GONE
+        findViewById<Button>(R.id.clearNotificationsButton).setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Meldingen wissen?")
+                .setMessage("Dit wist alleen de meldingen in The One Car. Je WhatsApp-chatgeschiedenis blijft staan.")
+                .setPositiveButton("Wissen") { _, _ ->
+                    CarSessionCleaner.clearNotifications(this)
+                    rebuild()
+                }
+                .setNegativeButton("Annuleren", null)
+                .show()
+        }
         MessageBus.addDataListener(dataListener)
         rebuild()
     }
@@ -32,11 +42,11 @@ class MessageLogActivity : AppCompatActivity() {
     private fun rebuild() {
         if (isFinishing || isDestroyed) return
         container.removeAllViews()
-        val messages = ConversationStore.recentIncoming(this, 80)
+        val messages = CarNotificationStore.recent(this, 80)
 
         if (messages.isEmpty()) {
             container.addView(TextView(this).apply {
-                text = "Nog geen WhatsApp-berichten ontvangen."
+                text = "Geen WhatsApp-meldingen."
                 setTextColor(ContextCompat.getColor(context, R.color.text_dim))
                 textSize = 16f
                 setPadding(0, 12, 0, 12)

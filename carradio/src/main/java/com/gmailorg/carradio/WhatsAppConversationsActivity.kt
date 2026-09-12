@@ -5,7 +5,9 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.LinearLayout
+import android.widget.Button
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -26,6 +28,17 @@ class WhatsAppConversationsActivity : AppCompatActivity() {
         emptyText = findViewById(R.id.emptyText)
         connectionText = findViewById(R.id.connectionText)
 
+        findViewById<Button>(R.id.clearChatsButton).setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Chats wissen?")
+                .setMessage("Dit wist alleen de lokale WhatsApp-chatweergave op de autoradio. WhatsApp op je telefoon blijft ongewijzigd.")
+                .setPositiveButton("Wissen") { _, _ ->
+                    CarSessionCleaner.clearChats(this)
+                    refresh()
+                }
+                .setNegativeButton("Annuleren", null)
+                .show()
+        }
         findViewById<View>(R.id.manageContactsButton).setOnClickListener {
             startActivity(Intent(this, AllowedContactsActivity::class.java))
         }

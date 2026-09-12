@@ -42,6 +42,8 @@ object MessageBus {
 
     fun history(): List<String> = synchronized(history) { history.toList() }
 
+    fun clearHistory() { synchronized(history) { history.clear() } }
+
     fun postStatus(text: String) {
         currentStatus = text
         mainHandler.post { statusListeners.toList().forEach { it(text) } }

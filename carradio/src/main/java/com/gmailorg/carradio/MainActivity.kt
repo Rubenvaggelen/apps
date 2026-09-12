@@ -19,6 +19,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.ContextCompat
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -38,7 +39,7 @@ class MainActivity : AppCompatActivity() {
         listOf(
             FixedTile("theonecar", "The One Car", R.drawable.the_one_logo, true) { it.startActivity(Intent(it, WhatsAppConversationsActivity::class.java)) },
             FixedTile("notifications", "Meldingen", R.drawable.ic_home_notifications_fancy) { it.startActivity(Intent(it, MessageLogActivity::class.java)) },
-            FixedTile("mail", "Mail & Kalender", R.drawable.ic_home_mail_fancy) { it.openUrl("https://mail.google.com/") },
+            FixedTile("mail", "Mail & Kalender", R.drawable.ic_home_mail_fancy) { it.openMailCalendar() },
             FixedTile("route", "Route", R.drawable.ic_home_route_fancy) { it.startActivity(Intent(it, RouteCarActivity::class.java)) },
             FixedTile("household", "Huishouden", R.drawable.ic_home_household_fancy) { it.startActivity(Intent(it, HouseholdCarActivity::class.java)) },
             FixedTile("music", "Muziek", R.drawable.ic_home_music_fancy) { it.openMusic() },
@@ -134,6 +135,14 @@ class MainActivity : AppCompatActivity() {
         catch (_: Exception) { statusText.text = "Kon verbindingsservice niet starten" }
     }
     private fun openUrl(url: String) { try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (_: Exception) { Toast.makeText(this, "Geen browser gevonden", Toast.LENGTH_SHORT).show() } }
+    private fun openMailCalendar() {
+        val url = Uri.parse("https://rubenvaggelen.github.io/Gmailorg/")
+        try {
+            CustomTabsIntent.Builder().build().launchUrl(this, url)
+        } catch (_: Exception) {
+            openUrl(url.toString())
+        }
+    }
     private fun openMusic() {
         for (pkg in listOf("com.spotify.music", "com.google.android.apps.youtube.music", "com.google.android.music")) if (launchPackage(pkg)) return
         try { startActivity(Intent(MediaStore.INTENT_ACTION_MUSIC_PLAYER)) } catch (_: Exception) { Toast.makeText(this, "Geen muziek-app gevonden", Toast.LENGTH_SHORT).show() }

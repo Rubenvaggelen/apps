@@ -34,7 +34,6 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
-import java.util.UUID
 import kotlin.concurrent.thread
 
 /**
@@ -51,7 +50,6 @@ import kotlin.concurrent.thread
 class BluetoothListenerService : Service() {
 
     companion object {
-        val APP_UUID: UUID = UUID.fromString("8ab8c3d0-6b3e-4a7a-9e77-2f6a2f6d9b10")
         private const val CHANNEL_ID = "car_radio_service"
         private const val NOTIFICATION_ID = 1
         private const val FIXED_RFCOMM_CHANNEL = 8
@@ -116,9 +114,9 @@ class BluetoothListenerService : Service() {
         fun requestVoiceNote(conversation: String): Boolean = writeLine("VOICE_NOTE_REQUEST:${enc(conversation)}")
 
         fun sendVoiceAudio(conversation: String, wavBytes: ByteArray): Boolean {
-            if (conversation.isBlank() || wavBytes.isEmpty() || wavBytes.size > 2_200_000) return false
+            if (conversation.isBlank() || wavBytes.isEmpty() || wavBytes.size > 7_000_000) return false
             val id = System.currentTimeMillis().toString(36)
-            val chunkBytes = if (transport == "WIFI-LAN") 24_000 else 8_000
+            val chunkBytes = if (transport == "WIFI-LAN") 48_000 else 12_000
             synchronized(writeLock) {
                 val writer = activeWriter ?: return false
                 return try {
@@ -182,6 +180,7 @@ class BluetoothListenerService : Service() {
     private var incomingMediaMime: String? = null
     private var incomingMediaBuffer: ByteArrayOutputStream? = null
     private var receivedMediaPlayer: MediaPlayer? = null
+    private var historyClearedForServiceLifetime = false
 
     private val wakeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -428,25 +427,6 @@ class BluetoothListenerService : Service() {
         }
     }
 
-    private fun tryUuidBluetooth(address: String): Connection? {
-        return try {
-            val adapter = BluetoothAdapter.getDefaultAdapter() ?: return null
-            if (!adapter.isEnabled) return null
-            try { adapter.cancelDiscovery() } catch (_: Exception) {}
-            val device = adapter.getRemoteDevice(address)
-            val socket = device.createInsecureRfcommSocketToServiceRecord(APP_UUID)
-            socket.connect()
-            Connection(
-                socket,
-                BufferedReader(InputStreamReader(socket.inputStream, Charsets.UTF_8)),
-                BufferedWriter(OutputStreamWriter(socket.outputStream, Charsets.UTF_8)),
-                "BT-UUID"
-            )
-        } catch (_: Exception) {
-            null
-        }
-    }
-
     private fun tryFixedChannelBluetooth(address: String): Connection? {
         return try {
             val adapter = BluetoothAdapter.getDefaultAdapter() ?: return null
@@ -466,17 +446,25 @@ class BluetoothListenerService : Service() {
         }
     }
 
+    private fun clearHistoryForNewSessionIfNeeded() {
+        if (historyClearedForServiceLifetime) return
+        historyClearedForServiceLifetime = true
+        CarSessionCleaner.clearChats(this)
+    }
+
     private fun handleLine(line: String) {
         when {
             line.startsWith("SYS:HELLO:") -> {
                 protocolVerified = true
                 lastPongAt = System.currentTimeMillis()
+clearHistoryForNewSessionIfNeeded()
                 MessageBus.postStatus("✅ Verbonden met $selectedPhone • $transport")
                 requestContacts(); requestHousehold(); requestParking()
             }
             line.startsWith("SYS:PONG:") -> {
                 protocolVerified = true
                 lastPongAt = System.currentTimeMillis()
+                clearHistoryForNewSessionIfNeeded()
                 MessageBus.postStatus("✅ Verbonden met $selectedPhone • $transport")
             }
             line.startsWith("WA_MSG:") -> {
@@ -487,6 +475,7 @@ class BluetoothListenerService : Service() {
                     val time = parts[3].toLongOrNull() ?: System.currentTimeMillis()
                     if (contact.isNotBlank() && text.isNotBlank()) {
                         ConversationStore.addIncoming(this, contact, text, time)
+                        CarNotificationStore.add(this, contact, text, time)
                         RadioContactStore.registerKnown(this, contact)
                         MessageBus.postMessage("${ContactAliases.displayName(contact)}: $text")
                         MessageBus.postDataChanged()

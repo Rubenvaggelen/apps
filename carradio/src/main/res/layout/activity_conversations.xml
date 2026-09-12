@@ -20,6 +20,12 @@
             android:textSize="26sp"
             android:textStyle="bold" />
         <Button
+            android:id="@+id/clearChatsButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:text="Chats wissen" />
+        <Button
             android:id="@+id/manageContactsButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
