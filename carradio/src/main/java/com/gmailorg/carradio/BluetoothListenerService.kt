@@ -12,13 +12,9 @@ import android.os.IBinder
 import android.util.Base64
 import androidx.core.app.NotificationCompat
 import java.io.BufferedReader
-import java.io.IOException
-import java.io.InputStream
 import java.io.InputStreamReader
 import java.io.OutputStream
 import java.util.UUID
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 
 /**
  * Verbindt actief met de telefoon (RFCOMM) — de autoradio is de "client",
@@ -41,9 +37,6 @@ class BluetoothListenerService : Service() {
         private const val NOTIFICATION_ID = 1
         private const val CMD_REPLY_REQUEST = "REPLY_REQUEST"
         private const val CMD_REPLY_TEXT_PREFIX = "REPLY_TEXT:"
-        private const val HANDSHAKE_RADIO = "THE_ONE_RADIO_HELLO_V1"
-        private const val HANDSHAKE_PHONE = "THE_ONE_PHONE_OK_V1"
-        private const val HANDSHAKE_TIMEOUT_MS = 8000L
 
         @Volatile
         private var activeOutputStream: OutputStream? = null
@@ -124,8 +117,11 @@ class BluetoothListenerService : Service() {
                     try { adapter.cancelDiscovery() } catch (e: SecurityException) { /* geen toestemming, negeren */ }
 
                     val device = adapter.getRemoteDevice(address)
-                    MessageBus.postStatus("The One-verbinding controleren...")
-                    socket = connectVerifiedSocket(device)
+                    // Eerst proberen zonder SDP (vast kanaal); lukt dat niet
+                    // dan terugvallen op de normale SDP-methode.
+                    socket = createFixedChannelSocket(device)
+                        ?: device.createRfcommSocketToServiceRecord(APP_UUID)
+                    socket.connect()
                     activeOutputStream = socket.outputStream
                     MessageBus.postStatus("Verbonden — WhatsApp-meldingen worden getoond")
 
@@ -155,91 +151,6 @@ class BluetoothListenerService : Service() {
                 Thread.sleep(2000)
             }
         }.start()
-    }
-
-    /**
-     * Verbindt eerst via de normale app-UUID. Alleen als dat niet lukt wordt
-     * het oude vaste RFCOMM-kanaal geprobeerd. Een verbinding telt pas als
-     * geldig nadat de telefoon onze The One-handshake heeft bevestigd.
-     * Daardoor kan een ander Bluetooth-profiel op kanaal 8 nooit meer een
-     * valse "Verbonden"-status veroorzaken.
-     */
-    private fun connectVerifiedSocket(device: BluetoothDevice): BluetoothSocket {
-        var lastError: Exception? = null
-
-        val attempts = listOf<(BluetoothDevice) -> BluetoothSocket?>(
-            { d -> d.createRfcommSocketToServiceRecord(APP_UUID) },
-            { d -> createFixedChannelSocket(d) }
-        )
-
-        for (createSocket in attempts) {
-            var candidate: BluetoothSocket? = null
-            try {
-                candidate = createSocket(device) ?: continue
-                candidate.connect()
-
-                val out = candidate.outputStream
-                val input = candidate.inputStream
-                out.write("$HANDSHAKE_RADIO\n".toByteArray(Charsets.UTF_8))
-                out.flush()
-
-                val ack = readLineWithTimeout(input, HANDSHAKE_TIMEOUT_MS)
-                if (ack != HANDSHAKE_PHONE) {
-                    throw IOException("Geen geldige The One-handshake")
-                }
-                return candidate
-            } catch (e: Exception) {
-                lastError = e
-                try { candidate?.close() } catch (_: Exception) { }
-            }
-        }
-
-        throw lastError ?: IOException("Geen The One Bluetooth-verbinding beschikbaar")
-    }
-
-    private fun readLineWithTimeout(input: InputStream, timeoutMs: Long): String? {
-        // Do not poll InputStream.available(): several Android head-units report
-        // 0 even when RFCOMM bytes are ready. A blocking read on a worker is
-        // reliable; the latch keeps the handshake itself bounded in time.
-        val latch = CountDownLatch(1)
-        var result: String? = null
-        var failure: Throwable? = null
-
-        val readerThread = Thread {
-            try {
-                val builder = StringBuilder()
-                while (running) {
-                    val value = input.read()
-                    if (value == -1) break
-                    when (value.toChar()) {
-                        '\n' -> {
-                            result = builder.toString().trim()
-                            break
-                        }
-                        '\r' -> Unit
-                        else -> {
-                            if (builder.length >= 512) break
-                            builder.append(value.toChar())
-                        }
-                    }
-                }
-            } catch (t: Throwable) {
-                failure = t
-            } finally {
-                latch.countDown()
-            }
-        }.apply {
-            name = "TheOneHandshakeRead-Radio"
-            isDaemon = true
-            start()
-        }
-
-        if (!latch.await(timeoutMs, TimeUnit.MILLISECONDS)) return null
-        failure?.let { t ->
-            if (t is Exception) throw t
-            throw IOException("Handshake-read mislukt", t)
-        }
-        return result
     }
 
     override fun onDestroy() {

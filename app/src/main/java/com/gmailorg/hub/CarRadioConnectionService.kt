@@ -5,7 +5,6 @@ import android.app.NotificationManager
 import android.app.Service
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothServerSocket
-import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -19,14 +18,9 @@ import android.util.Log
 import android.util.Base64
 import androidx.core.app.NotificationCompat
 import java.io.BufferedReader
-import java.io.IOException
-import java.io.InputStream
 import java.io.InputStreamReader
 import java.io.OutputStream
 import java.util.UUID
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.LinkedBlockingQueue
-import java.util.concurrent.TimeUnit
 
 /**
  * Luistert op een Bluetooth-verbinding (RFCOMM) waarmee de autoradio
@@ -51,9 +45,6 @@ class CarRadioConnectionService : Service() {
         private const val NOTIFICATION_ID = 2
         private const val CMD_REPLY_REQUEST = "REPLY_REQUEST"
         private const val CMD_REPLY_TEXT_PREFIX = "REPLY_TEXT:"
-        private const val HANDSHAKE_RADIO = "THE_ONE_RADIO_HELLO_V1"
-        private const val HANDSHAKE_PHONE = "THE_ONE_PHONE_OK_V1"
-        private const val HANDSHAKE_TIMEOUT_MS = 8000L
 
         @Volatile
         private var outputStream: OutputStream? = null
@@ -85,7 +76,7 @@ class CarRadioConnectionService : Service() {
     }
 
     private var running = false
-    private val serverSockets = mutableListOf<BluetoothServerSocket>()
+    private var serverSocket: BluetoothServerSocket? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var speechRecognizer: SpeechRecognizer? = null
 
@@ -125,22 +116,24 @@ class CarRadioConnectionService : Service() {
 
     private fun listenLoop() {
         while (running) {
-            var socket: BluetoothSocket? = null
             try {
                 val adapter = BluetoothAdapter.getDefaultAdapter() ?: return
                 updateStatus("Wacht op verbinding met je autoradio...")
-
-                // Luister tegelijk via de normale app-UUID én (indien mogelijk)
-                // via het oude vaste RFCOMM-kanaal. De handshake hieronder
-                // voorkomt dat de autoradio per ongeluk een ander Bluetooth-
-                // profiel op hetzelfde kanaal als "The One" beschouwt.
-                socket = waitForVerifiedAppSocket(adapter) ?: continue
+                if (serverSocket == null) {
+                    // Eerst proberen zonder SDP (vast kanaal); lukt dat niet
+                    // dan terugvallen op de normale SDP-methode.
+                    serverSocket = createFixedChannelServerSocket(adapter)
+                        ?: adapter.listenUsingRfcommWithServiceRecord("TheOneCarRadio", APP_UUID)
+                }
+                val socket = serverSocket?.accept() ?: continue
                 outputStream = socket.outputStream
                 updateStatus("Verbonden met autoradio")
+                // Als de RFCOMM-verbinding lukt, weten we zeker dat de auto
+                // in bereik is — ook als het aparte ACL-signaal (dat normaal
+                // "nearby" bijhoudt) om wat voor reden geen nieuwe gebeurtenis
+                // heeft afgevuurd (bv. omdat de Bluetooth-verbinding al vóór
+                // een app-update/herstart actief was).
                 CarRadioForwarder.setNearby(this, true)
-                // Zichtbare bevestiging op de radio dat niet alleen Bluetooth,
-                // maar echt de The One-app aan beide kanten verbonden is.
-                sendMessage("STATUS:The One-koppeling bevestigd")
 
                 val reader = BufferedReader(InputStreamReader(socket.inputStream))
                 var line: String?
@@ -160,6 +153,14 @@ class CarRadioConnectionService : Service() {
                         }
                     }
                 }
+                outputStream = null
+                try { socket.close() } catch (e: Exception) { /* negeren */ }
+                // Altijd een verse serverSocket opbouwen voor de volgende
+                // verbinding — hergebruik van dezelfde BluetoothServerSocket
+                // na een sessie bleek af en toe onbetrouwbaar (wisselend
+                // wel/niet verbinden, zonder duidelijk patroon).
+                try { serverSocket?.close() } catch (e: Exception) { /* negeren */ }
+                serverSocket = null
                 updateStatus("Verbinding verbroken — wachten op nieuwe verbinding...")
             } catch (e: SecurityException) {
                 Log.w(TAG, "Geen Bluetooth-toestemming", e)
@@ -168,153 +169,11 @@ class CarRadioConnectionService : Service() {
             } catch (e: Exception) {
                 Log.w(TAG, "Autoradio-verbinding niet beschikbaar, opnieuw proberen", e)
                 updateStatus("⚠️ Kan geen verbinding maken (${e.javaClass.simpleName}) — opnieuw proberen...")
-                Thread.sleep(3000)
-            } finally {
-                outputStream = null
-                try { socket?.close() } catch (_: Exception) { }
-                closeServerSockets()
+                try { serverSocket?.close() } catch (ignored: Exception) { /* negeren */ }
+                serverSocket = null
+                Thread.sleep(5000)
             }
         }
-    }
-
-    /**
-     * Wacht op een echte The One-verbinding. Alleen socket.connect() is niet
-     * voldoende: een vast RFCOMM-kanaal kan op sommige head-units/telefoons
-     * ook door een ander Bluetooth-profiel gebruikt worden. Daarom accepteren
-     * we de verbinding pas na een app-specifieke handshake.
-     */
-    private fun waitForVerifiedAppSocket(adapter: BluetoothAdapter): BluetoothSocket? {
-        closeServerSockets()
-        val accepted = LinkedBlockingQueue<BluetoothSocket>()
-
-        // Normale UUID/SDP-listener is de voorkeursroute.
-        try {
-            val uuidServer = adapter.listenUsingRfcommWithServiceRecord("TheOneCarRadio", APP_UUID)
-            addServerSocket(uuidServer)
-            startAcceptThread(uuidServer, accepted, "uuid")
-        } catch (e: Exception) {
-            Log.w(TAG, "UUID-listener kon niet starten", e)
-        }
-
-        // Compatibiliteitsroute voor oudere/afwijkende autoradio-stacks.
-        try {
-            val fixedServer = createFixedChannelServerSocket(adapter)
-            if (fixedServer != null) {
-                addServerSocket(fixedServer)
-                startAcceptThread(fixedServer, accepted, "fixed")
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Vaste RFCOMM-listener kon niet starten", e)
-        }
-
-        synchronized(serverSockets) {
-            if (serverSockets.isEmpty()) {
-                throw IOException("Geen Bluetooth-server kon worden gestart")
-            }
-        }
-
-        while (running) {
-            val candidate = accepted.poll(1, TimeUnit.SECONDS) ?: continue
-            try {
-                val input = candidate.inputStream
-                val out = candidate.outputStream
-                val hello = readLineWithTimeout(input, HANDSHAKE_TIMEOUT_MS)
-                if (hello != HANDSHAKE_RADIO) {
-                    Log.w(TAG, "Socket geweigerd: ongeldige The One-handshake: $hello")
-                    candidate.close()
-                    continue
-                }
-
-                out.write("$HANDSHAKE_PHONE\n".toByteArray(Charsets.UTF_8))
-                out.flush()
-                closeServerSockets()
-                return candidate
-            } catch (e: Exception) {
-                Log.w(TAG, "Handshake op inkomende socket mislukt", e)
-                try { candidate.close() } catch (_: Exception) { }
-            }
-        }
-        return null
-    }
-
-    private fun addServerSocket(server: BluetoothServerSocket) {
-        synchronized(serverSockets) { serverSockets.add(server) }
-    }
-
-    private fun startAcceptThread(
-        server: BluetoothServerSocket,
-        accepted: LinkedBlockingQueue<BluetoothSocket>,
-        route: String
-    ) {
-        Thread {
-            try {
-                val socket = server.accept()
-                if (running) {
-                    accepted.offer(socket)
-                } else {
-                    try { socket.close() } catch (_: Exception) { }
-                }
-            } catch (e: Exception) {
-                if (running) Log.d(TAG, "Accept via $route gestopt: ${e.message}")
-            }
-        }.start()
-    }
-
-    private fun closeServerSockets() {
-        val sockets = synchronized(serverSockets) {
-            val copy = serverSockets.toList()
-            serverSockets.clear()
-            copy
-        }
-        sockets.forEach { server ->
-            try { server.close() } catch (_: Exception) { }
-        }
-    }
-
-    private fun readLineWithTimeout(input: InputStream, timeoutMs: Long): String? {
-        // Bluetooth InputStream.available() is not reliable on every Android
-        // Bluetooth stack/head-unit. Read blocking on a tiny worker instead and
-        // bound the wait with a latch. Closing the socket after a timeout also
-        // releases the worker if it is still blocked in read().
-        val latch = CountDownLatch(1)
-        var result: String? = null
-        var failure: Throwable? = null
-
-        val readerThread = Thread {
-            try {
-                val builder = StringBuilder()
-                while (running) {
-                    val value = input.read()
-                    if (value == -1) break
-                    when (value.toChar()) {
-                        '\n' -> {
-                            result = builder.toString().trim()
-                            break
-                        }
-                        '\r' -> Unit
-                        else -> {
-                            if (builder.length >= 512) break
-                            builder.append(value.toChar())
-                        }
-                    }
-                }
-            } catch (t: Throwable) {
-                failure = t
-            } finally {
-                latch.countDown()
-            }
-        }.apply {
-            name = "TheOneHandshakeRead-Phone"
-            isDaemon = true
-            start()
-        }
-
-        if (!latch.await(timeoutMs, TimeUnit.MILLISECONDS)) return null
-        failure?.let { t ->
-            if (t is Exception) throw t
-            throw IOException("Handshake-read mislukt", t)
-        }
-        return result
     }
 
     /**
@@ -440,7 +299,7 @@ class CarRadioConnectionService : Service() {
     override fun onDestroy() {
         running = false
         outputStream = null
-        closeServerSockets()
+        try { serverSocket?.close() } catch (e: Exception) { /* negeren */ }
         speechRecognizer?.destroy()
         super.onDestroy()
     }
