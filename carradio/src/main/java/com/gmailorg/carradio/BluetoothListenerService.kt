@@ -12,69 +12,107 @@ import android.os.IBinder
 import android.util.Base64
 import androidx.core.app.NotificationCompat
 import java.io.BufferedReader
+import java.io.BufferedWriter
 import java.io.InputStreamReader
-import java.io.OutputStream
+import java.io.OutputStreamWriter
 import java.util.UUID
+import kotlin.concurrent.thread
 
 /**
- * Verbindt actief met de telefoon (RFCOMM) — de autoradio is de "client",
- * de telefoon is de "server" (luistert). Dit is bewust omgedraaid t.o.v. de
- * eerdere opzet: de Bluetooth-stack van deze hoofdunit bleek geen inkomende
- * verbindingen te kunnen aannemen (IOException "Error: -1", ook niet met een
- * vast kanaalnummer in plaats van SDP). Hoofdunits zoals deze kunnen wél
- * doorgaans zelf verbindingen initiëren — dat gebeurt immers al voor
- * bellen/audio — dus die rol is nu hier belegd.
+ * Radio-specifieke Bluetooth-client voor deze headunit.
+ * Reconnect zelf voortdurend, gebruikt keep-alive en markeert de verbinding pas
+ * als de telefoon daadwerkelijk op protocoldata reageert.
  */
 class BluetoothListenerService : Service() {
 
     companion object {
-        // Moet exact overeenkomen met CarRadioConnectionService.APP_UUID op de telefoon.
         val APP_UUID: UUID = UUID.fromString("8ab8c3d0-6b3e-4a7a-9e77-2f6a2f6d9b10")
-        // Vast RFCOMM-kanaalnummer (omzeilt SDP) — moet exact overeenkomen
-        // met FIXED_RFCOMM_CHANNEL in CarRadioConnectionService.kt op de telefoon.
         private const val FIXED_RFCOMM_CHANNEL = 8
         private const val CHANNEL_ID = "car_radio_service"
         private const val NOTIFICATION_ID = 1
         private const val CMD_REPLY_REQUEST = "REPLY_REQUEST"
         private const val CMD_REPLY_TEXT_PREFIX = "REPLY_TEXT:"
+        private const val VOICE_CHUNK_BYTES = 1800
 
-        @Volatile
-        private var activeOutputStream: OutputStream? = null
+        private val writeLock = Any()
+        @Volatile private var activeWriter: BufferedWriter? = null
+        @Volatile private var activeSocket: BluetoothSocket? = null
+        @Volatile private var socketConnected = false
+        @Volatile private var protocolVerified = false
+        @Volatile private var lastRxAt = 0L
+        @Volatile private var lastPongAt = 0L
+        @Volatile private var selectedPhone = "-"
 
-        /**
-         * Oude fallback: laat de telefoon zelf luisteren. Wordt alleen gebruikt
-         * als de autoradio geen lokale SpeechRecognizer beschikbaar heeft.
-         */
-        fun requestVoiceReply(): Boolean {
-            val out = activeOutputStream ?: return false
-            return try {
-                out.write("$CMD_REPLY_REQUEST\n".toByteArray())
-                out.flush()
-                true
-            } catch (e: Exception) {
-                false
+        fun requestVoiceReply(): Boolean = writeLine(CMD_REPLY_REQUEST)
+
+        fun sendVoiceReply(text: String): Boolean {
+            if (text.isBlank()) return false
+            val encoded = Base64.encodeToString(text.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+            return writeLine("$CMD_REPLY_TEXT_PREFIX$encoded")
+        }
+
+        fun sendVoiceAudio(wavBytes: ByteArray): Boolean {
+            if (wavBytes.isEmpty() || wavBytes.size > 1_500_000) return false
+            val id = System.currentTimeMillis().toString(36)
+            synchronized(writeLock) {
+                val writer = activeWriter ?: return false
+                return try {
+                    writer.write("VOICE_BEGIN:$id:audio/wav:${wavBytes.size}")
+                    writer.newLine()
+                    var offset = 0
+                    while (offset < wavBytes.size) {
+                        val len = minOf(VOICE_CHUNK_BYTES, wavBytes.size - offset)
+                        val chunk = Base64.encodeToString(wavBytes, offset, len, Base64.NO_WRAP)
+                        writer.write("VOICE_CHUNK:$id:$chunk")
+                        writer.newLine()
+                        offset += len
+                    }
+                    writer.write("VOICE_END:$id")
+                    writer.newLine()
+                    writer.flush()
+                    true
+                } catch (_: Exception) {
+                    closeActiveConnection()
+                    false
+                }
             }
         }
 
-        /**
-         * Stuurt door de autoradio herkende tekst naar de telefoon. Base64 voorkomt
-         * dat leestekens of eventuele nieuwe regels het eenvoudige regelprotocol breken.
-         */
-        fun sendVoiceReply(text: String): Boolean {
-            if (text.isBlank()) return false
-            val out = activeOutputStream ?: return false
-            return try {
-                val encoded = Base64.encodeToString(text.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
-                out.write("$CMD_REPLY_TEXT_PREFIX$encoded\n".toByteArray(Charsets.UTF_8))
-                out.flush()
-                true
-            } catch (e: Exception) {
-                false
+        fun diagnostics(): String {
+            val age = if (lastRxAt == 0L) "nooit" else "${((System.currentTimeMillis() - lastRxAt) / 1000)}s geleden"
+            return "Radio V2 • telefoon=$selectedPhone • socket=${if (socketConnected) "OK" else "UIT"} • protocol=${if (protocolVerified) "OK" else "WACHT"} • laatste data=$age"
+        }
+
+        fun forcePing(): Boolean = writeLine("SYS:PING:${System.currentTimeMillis()}")
+
+        private fun writeLine(line: String): Boolean {
+            synchronized(writeLock) {
+                val writer = activeWriter ?: return false
+                return try {
+                    writer.write(line)
+                    writer.newLine()
+                    writer.flush()
+                    true
+                } catch (_: Exception) {
+                    closeActiveConnection()
+                    false
+                }
+            }
+        }
+
+        private fun closeActiveConnection() {
+            synchronized(writeLock) {
+                activeWriter = null
+                socketConnected = false
+                protocolVerified = false
+                try { activeSocket?.close() } catch (_: Exception) {}
+                activeSocket = null
             }
         }
     }
 
-    private var running = false
+    @Volatile private var running = false
+    private var connectorThread: Thread? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -83,6 +121,7 @@ class BluetoothListenerService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!running) startConnecting()
         return START_STICKY
     }
 
@@ -92,8 +131,8 @@ class BluetoothListenerService : Service() {
             (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
         }
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("The One – Autoradio")
-            .setContentText("Verbinden met je telefoon...")
+            .setContentTitle("The One – Autoradio V2")
+            .setContentText("Automatisch verbinden met je telefoon...")
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setOngoing(true)
             .build()
@@ -101,81 +140,123 @@ class BluetoothListenerService : Service() {
     }
 
     private fun startConnecting() {
+        if (running) return
         running = true
-        Thread {
+        connectorThread = thread(name = "TheOne-RadioReconnect") {
             while (running) {
                 val address = PairedPhoneStore.selectedAddress(this)
                 if (address == null) {
-                    MessageBus.postStatus("⚠️ Nog geen telefoon gekozen — tik op \"Kies telefoon\".")
-                    Thread.sleep(3000)
+                    MessageBus.postStatus("⚠️ Kies één keer je telefoon. Daarna verbindt deze radio automatisch.")
+                    sleepQuietly(2500)
                     continue
                 }
-                var socket: BluetoothSocket? = null
-                try {
-                    val adapter = BluetoothAdapter.getDefaultAdapter() ?: return@Thread
-                    MessageBus.postStatus("Verbinden met ${PairedPhoneStore.selectedName(this) ?: address}...")
-                    try { adapter.cancelDiscovery() } catch (e: SecurityException) { /* geen toestemming, negeren */ }
-
-                    val device = adapter.getRemoteDevice(address)
-                    // Eerst proberen zonder SDP (vast kanaal); lukt dat niet
-                    // dan terugvallen op de normale SDP-methode.
-                    socket = createFixedChannelSocket(device)
-                        ?: device.createRfcommSocketToServiceRecord(APP_UUID)
-                    socket.connect()
-                    activeOutputStream = socket.outputStream
-                    MessageBus.postStatus("Verbonden — WhatsApp-meldingen worden getoond")
-
-                    val reader = BufferedReader(InputStreamReader(socket.inputStream))
-                    var line: String?
-                    while (true) {
-                        line = reader.readLine() ?: break
-                        if (line.isBlank()) continue
-                        if (line.startsWith("STATUS:")) {
-                            MessageBus.postMessage("✅ " + line.removePrefix("STATUS:"))
-                        } else {
-                            MessageBus.postMessage(line)
-                        }
-                    }
-                    activeOutputStream = null
-                    MessageBus.postStatus("Verbinding verbroken — opnieuw proberen...")
-                } catch (e: SecurityException) {
-                    MessageBus.postStatus("⚠️ Geen Bluetooth-toestemming — geef 'The One – Autoradio' toestemming in de systeeminstellingen van de auto.")
-                    Thread.sleep(3000)
-                } catch (e: Exception) {
-                    MessageBus.postStatus("⚠️ Verbindingsfout (${e.javaClass.simpleName}: ${e.message}) — opnieuw proberen...")
-                    Thread.sleep(4000)
-                } finally {
-                    activeOutputStream = null
-                    try { socket?.close() } catch (e: Exception) { /* negeren */ }
-                }
-                Thread.sleep(2000)
+                selectedPhone = PairedPhoneStore.selectedName(this) ?: address
+                connectSession(address)
+                if (running) sleepQuietly(1200)
             }
-        }.start()
+        }
+    }
+
+    private fun connectSession(address: String) {
+        var socket: BluetoothSocket? = null
+        var heartbeatRunning = false
+        try {
+            val adapter = BluetoothAdapter.getDefaultAdapter() ?: return
+            MessageBus.postStatus("Radio V2 • verbinden met $selectedPhone...")
+            try { adapter.cancelDiscovery() } catch (_: SecurityException) {}
+            val device = adapter.getRemoteDevice(address)
+
+            socket = createFixedChannelSocket(device) ?: device.createRfcommSocketToServiceRecord(APP_UUID)
+            socket.connect()
+
+            val writer = BufferedWriter(OutputStreamWriter(socket.outputStream, Charsets.UTF_8))
+            synchronized(writeLock) {
+                activeSocket = socket
+                activeWriter = writer
+                socketConnected = true
+                protocolVerified = false
+                lastRxAt = System.currentTimeMillis()
+                lastPongAt = System.currentTimeMillis()
+            }
+            MessageBus.postStatus("Bluetooth-kanaal open • telefoon controleren...")
+
+            heartbeatRunning = true
+            val thisSocket = socket
+            thread(name = "TheOne-RadioHeartbeat") {
+                while (running && heartbeatRunning && activeSocket === thisSocket) {
+                    val token = System.currentTimeMillis()
+                    if (!writeLine("SYS:PING:$token")) break
+                    sleepQuietly(4000)
+                    if (protocolVerified && System.currentTimeMillis() - lastPongAt > 13_000L) {
+                        MessageBus.postStatus("Telefoon reageert niet meer • opnieuw verbinden...")
+                        try { thisSocket.close() } catch (_: Exception) {}
+                        break
+                    }
+                }
+            }
+
+            val reader = BufferedReader(InputStreamReader(socket.inputStream, Charsets.UTF_8))
+            while (running) {
+                val line = reader.readLine() ?: break
+                if (line.isBlank()) continue
+                lastRxAt = System.currentTimeMillis()
+                when {
+                    line.startsWith("SYS:HELLO:") -> {
+                        protocolVerified = true
+                        lastPongAt = System.currentTimeMillis()
+                        MessageBus.postStatus("✅ Verbonden • live dataverbinding met telefoon")
+                    }
+                    line.startsWith("SYS:PONG:") -> {
+                        protocolVerified = true
+                        lastPongAt = System.currentTimeMillis()
+                        MessageBus.postStatus("✅ Verbonden • live dataverbinding met telefoon")
+                    }
+                    line.startsWith("MSG:") -> {
+                        val text = try {
+                            String(Base64.decode(line.removePrefix("MSG:"), Base64.DEFAULT), Charsets.UTF_8)
+                        } catch (_: Exception) { "" }
+                        if (text.isNotBlank()) MessageBus.postMessage(text)
+                    }
+                    line.startsWith("STATUS:") -> MessageBus.postMessage("✅ " + line.removePrefix("STATUS:"))
+                    else -> MessageBus.postMessage(line) // compatibiliteit met oudere telefoonversies
+                }
+            }
+        } catch (e: SecurityException) {
+            MessageBus.postStatus("⚠️ Geen Bluetooth-toestemming voor The One – Autoradio.")
+            sleepQuietly(2500)
+        } catch (e: Exception) {
+            MessageBus.postStatus("Radio V2 • verbinding weg • automatisch opnieuw proberen...")
+        } finally {
+            heartbeatRunning = false
+            synchronized(writeLock) {
+                if (activeSocket === socket) {
+                    activeWriter = null
+                    activeSocket = null
+                    socketConnected = false
+                    protocolVerified = false
+                }
+            }
+            try { socket?.close() } catch (_: Exception) {}
+        }
     }
 
     override fun onDestroy() {
         running = false
-        activeOutputStream = null
+        closeActiveConnection()
+        connectorThread?.interrupt()
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    /**
-     * Maakt een BluetoothSocket op een vast kanaalnummer, zonder SDP-opzoek
-     * — via reflectie, omdat deze methode niet in de publieke Android-SDK
-     * zit maar wel bestaat in de onderliggende implementatie. Geeft null
-     * terug als dit niet lukt, zodat teruggevallen kan worden op de normale
-     * (SDP-based) methode.
-     */
     private fun createFixedChannelSocket(device: BluetoothDevice): BluetoothSocket? {
         return try {
-            val method = device.javaClass.getMethod(
-                "createInsecureRfcommSocket", Int::class.javaPrimitiveType
-            )
+            val method = device.javaClass.getMethod("createInsecureRfcommSocket", Int::class.javaPrimitiveType)
             method.invoke(device, FIXED_RFCOMM_CHANNEL) as? BluetoothSocket
-        } catch (e: Exception) {
-            null
-        }
+        } catch (_: Exception) { null }
+    }
+
+    private fun sleepQuietly(ms: Long) {
+        try { Thread.sleep(ms) } catch (_: InterruptedException) {}
     }
 }

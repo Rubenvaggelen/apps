@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.app.Service
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothServerSocket
+import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -14,63 +15,130 @@ import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
-import android.util.Log
 import android.util.Base64
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import java.io.BufferedReader
+import java.io.BufferedWriter
+import java.io.ByteArrayOutputStream
 import java.io.InputStreamReader
-import java.io.OutputStream
+import java.io.OutputStreamWriter
+import java.util.ArrayDeque
 import java.util.UUID
 
 /**
- * Luistert op een Bluetooth-verbinding (RFCOMM) waarmee de autoradio
- * verbindt — de telefoon is de "server", de autoradio is de "client". Dit
- * is bewust omgedraaid t.o.v. de eerdere opzet: de Bluetooth-stack van de
- * hoofdunit bleek geen inkomende verbindingen te kunnen aannemen
- * (IOException "Error: -1", ook niet met een vast kanaalnummer in plaats
- * van SDP). Telefoons hebben doorgaans een robuustere Bluetooth-stack voor
- * het hosten van verbindingen, dus die rol is nu hier belegd — de auto
- * neemt het initiatief, zoals ook al gebeurt voor bellen/audio.
+ * Telefoonkant van de radio-specifieke The One verbinding.
+ *
+ * Belangrijk voor deze headunit:
+ * - telefoon blijft RFCOMM-server;
+ * - radio reconnect actief en stuurt keep-alive PINGs;
+ * - WhatsApp-berichten worden gebufferd als de radio tijdens ACC/boot nog niet klaar is;
+ * - de radio kan ruwe WAV-audio sturen; de telefoon transcribeert en verstuurt WhatsApp.
  */
 class CarRadioConnectionService : Service() {
 
     companion object {
-        // Moet exact overeenkomen met BluetoothListenerService.APP_UUID in de carradio-module.
         private val APP_UUID: UUID = UUID.fromString("8ab8c3d0-6b3e-4a7a-9e77-2f6a2f6d9b10")
-        // Vast RFCOMM-kanaalnummer (omzeilt SDP) — moet exact overeenkomen
-        // met FIXED_RFCOMM_CHANNEL in BluetoothListenerService.kt op de autoradio.
         private const val FIXED_RFCOMM_CHANNEL = 8
         private const val TAG = "CarRadioConnection"
         private const val CHANNEL_ID = "car_radio_connection"
         private const val NOTIFICATION_ID = 2
         private const val CMD_REPLY_REQUEST = "REPLY_REQUEST"
         private const val CMD_REPLY_TEXT_PREFIX = "REPLY_TEXT:"
+        private const val MAX_PENDING = 30
 
-        @Volatile
-        private var outputStream: OutputStream? = null
+        private val writeLock = Any()
+        private val pendingNotifications = ArrayDeque<String>()
+
+        @Volatile private var activeWriter: BufferedWriter? = null
+        @Volatile private var activeSocket: BluetoothSocket? = null
 
         fun start(context: Context) {
             val intent = Intent(context, CarRadioConnectionService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
+            else context.startService(intent)
         }
 
         fun stop(context: Context) {
             context.stopService(Intent(context, CarRadioConnectionService::class.java))
         }
 
-        /** Stuurt tekst (bv. een WhatsApp-melding) door naar de autoradio, indien verbonden. */
+        /**
+         * Legacy API die elders al wordt gebruikt. Gewone tekst wordt als een radio-bericht
+         * verpakt; STATUS/SYS-regels blijven protocolregels.
+         */
         fun sendMessage(text: String): Boolean {
-            val out = outputStream ?: return false
-            return try {
-                out.write("$text\n".toByteArray())
-                out.flush()
-                true
-            } catch (e: Exception) {
-                false
+            val line = when {
+                text.startsWith("STATUS:") || text.startsWith("SYS:") -> text
+                else -> "MSG:" + Base64.encodeToString(text.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+            }
+            val queue = line.startsWith("MSG:")
+            return sendProtocolLine(line, queue)
+        }
+
+        fun isRadioConnected(): Boolean = activeWriter != null
+
+        private fun sendProtocolLine(line: String, queueIfOffline: Boolean): Boolean {
+            synchronized(writeLock) {
+                val writer = activeWriter
+                if (writer == null) {
+                    if (queueIfOffline) enqueueLocked(line)
+                    return false
+                }
+                return try {
+                    writer.write(line)
+                    writer.newLine()
+                    writer.flush()
+                    true
+                } catch (_: Exception) {
+                    activeWriter = null
+                    try { activeSocket?.close() } catch (_: Exception) {}
+                    activeSocket = null
+                    if (queueIfOffline) enqueueLocked(line)
+                    false
+                }
+            }
+        }
+
+        private fun enqueueLocked(line: String) {
+            while (pendingNotifications.size >= MAX_PENDING) pendingNotifications.removeFirst()
+            pendingNotifications.addLast(line)
+        }
+
+        private fun attachConnection(socket: BluetoothSocket, writer: BufferedWriter) {
+            synchronized(writeLock) {
+                try { activeSocket?.close() } catch (_: Exception) {}
+                activeSocket = socket
+                activeWriter = writer
+            }
+        }
+
+        private fun detachConnection(socket: BluetoothSocket) {
+            synchronized(writeLock) {
+                if (activeSocket === socket) {
+                    activeWriter = null
+                    activeSocket = null
+                }
+            }
+        }
+
+        private fun flushPending() {
+            synchronized(writeLock) {
+                val writer = activeWriter ?: return
+                while (pendingNotifications.isNotEmpty()) {
+                    val line = pendingNotifications.first()
+                    try {
+                        writer.write(line)
+                        writer.newLine()
+                        writer.flush()
+                        pendingNotifications.removeFirst()
+                    } catch (_: Exception) {
+                        activeWriter = null
+                        try { activeSocket?.close() } catch (_: Exception) {}
+                        activeSocket = null
+                        return
+                    }
+                }
             }
         }
     }
@@ -84,102 +152,158 @@ class CarRadioConnectionService : Service() {
         super.onCreate()
         startAsForeground()
         running = true
-        Thread { listenLoop() }.start()
+        Thread({ listenLoop() }, "TheOne-RfcommServer").start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 
     private fun startAsForeground() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "Autoradio-verbinding", NotificationManager.IMPORTANCE_LOW)
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Autoradio-verbinding",
+                NotificationManager.IMPORTANCE_LOW
+            )
             (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
         }
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("The One – Autoradio")
-            .setContentText("Wacht op verbinding met je autoradio...")
-            .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
-            .setOngoing(true)
-            .build()
-        startForeground(NOTIFICATION_ID, notification)
+        startForeground(NOTIFICATION_ID, buildStatusNotification("Wacht op verbinding met je autoradio..."))
     }
 
-    /** Werkt de meldingstekst bij met de echte verbindingsstatus, zodat je die kunt checken via je telefoon. */
+    private fun buildStatusNotification(text: String) = NotificationCompat.Builder(this, CHANNEL_ID)
+        .setContentTitle("The One – Autoradio")
+        .setContentText(text)
+        .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
+        .setOngoing(true)
+        .build()
+
     private fun updateStatus(text: String) {
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("The One – Autoradio")
-            .setContentText(text)
-            .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
-            .setOngoing(true)
-            .build()
-        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIFICATION_ID, notification)
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager)
+            .notify(NOTIFICATION_ID, buildStatusNotification(text))
     }
 
     private fun listenLoop() {
         while (running) {
+            var socket: BluetoothSocket? = null
             try {
                 val adapter = BluetoothAdapter.getDefaultAdapter() ?: return
                 updateStatus("Wacht op verbinding met je autoradio...")
                 if (serverSocket == null) {
-                    // Eerst proberen zonder SDP (vast kanaal); lukt dat niet
-                    // dan terugvallen op de normale SDP-methode.
                     serverSocket = createFixedChannelServerSocket(adapter)
                         ?: adapter.listenUsingRfcommWithServiceRecord("TheOneCarRadio", APP_UUID)
                 }
-                val socket = serverSocket?.accept() ?: continue
-                outputStream = socket.outputStream
-                updateStatus("Verbonden met autoradio")
-                // Als de RFCOMM-verbinding lukt, weten we zeker dat de auto
-                // in bereik is — ook als het aparte ACL-signaal (dat normaal
-                // "nearby" bijhoudt) om wat voor reden geen nieuwe gebeurtenis
-                // heeft afgevuurd (bv. omdat de Bluetooth-verbinding al vóór
-                // een app-update/herstart actief was).
-                CarRadioForwarder.setNearby(this, true)
 
-                val reader = BufferedReader(InputStreamReader(socket.inputStream))
-                var line: String?
+                socket = serverSocket?.accept() ?: continue
+                val writer = BufferedWriter(OutputStreamWriter(socket.outputStream, Charsets.UTF_8))
+                attachConnection(socket, writer)
+                CarRadioForwarder.setNearby(this, true)
+                updateStatus("Verbonden met autoradio • live")
+
+                sendProtocolLine("SYS:HELLO:THE_ONE_RADIO_V2", false)
+                flushPending()
+
+                val reader = BufferedReader(InputStreamReader(socket.inputStream, Charsets.UTF_8))
+                var voiceId: String? = null
+                var voiceBytes: ByteArrayOutputStream? = null
+                var expectedVoiceBytes = 0
+
                 while (running) {
-                    line = reader.readLine() ?: break
-                    val command = line.trim()
+                    val raw = reader.readLine() ?: break
+                    val command = raw.trim()
+                    if (command.isEmpty()) continue
+
                     when {
+                        command.startsWith("SYS:PING:") -> {
+                            val token = command.removePrefix("SYS:PING:")
+                            sendProtocolLine("SYS:PONG:$token", false)
+                        }
                         command == CMD_REPLY_REQUEST -> handleReplyRequest()
                         command.startsWith(CMD_REPLY_TEXT_PREFIX) -> {
                             val encoded = command.removePrefix(CMD_REPLY_TEXT_PREFIX)
                             val text = try {
                                 String(Base64.decode(encoded, Base64.DEFAULT), Charsets.UTF_8)
-                            } catch (e: Exception) {
-                                ""
-                            }
+                            } catch (_: Exception) { "" }
                             handleRecognizedReply(text)
+                        }
+                        command.startsWith("VOICE_BEGIN:") -> {
+                            val parts = command.split(":", limit = 4)
+                            if (parts.size >= 4) {
+                                voiceId = parts[1]
+                                expectedVoiceBytes = parts[3].toIntOrNull()?.coerceAtMost(1_500_000) ?: 0
+                                voiceBytes = ByteArrayOutputStream(expectedVoiceBytes.coerceAtLeast(32_000))
+                                sendProtocolLine("STATUS:Audio ontvangen — even verwerken...", false)
+                            }
+                        }
+                        command.startsWith("VOICE_CHUNK:") -> {
+                            val parts = command.split(":", limit = 3)
+                            if (parts.size == 3 && parts[1] == voiceId) {
+                                val decoded = try { Base64.decode(parts[2], Base64.DEFAULT) } catch (_: Exception) { null }
+                                if (decoded != null) {
+                                    val current = voiceBytes
+                                    if (current != null && current.size() + decoded.size <= 1_500_000) {
+                                        current.write(decoded)
+                                    }
+                                }
+                            }
+                        }
+                        command.startsWith("VOICE_END:") -> {
+                            val id = command.removePrefix("VOICE_END:")
+                            if (id == voiceId) {
+                                val bytes = voiceBytes?.toByteArray() ?: ByteArray(0)
+                                voiceId = null
+                                voiceBytes = null
+                                expectedVoiceBytes = 0
+                                handleVoiceAudio(bytes)
+                            }
                         }
                     }
                 }
-                outputStream = null
-                try { socket.close() } catch (e: Exception) { /* negeren */ }
-                // Altijd een verse serverSocket opbouwen voor de volgende
-                // verbinding — hergebruik van dezelfde BluetoothServerSocket
-                // na een sessie bleek af en toe onbetrouwbaar (wisselend
-                // wel/niet verbinden, zonder duidelijk patroon).
-                try { serverSocket?.close() } catch (e: Exception) { /* negeren */ }
-                serverSocket = null
-                updateStatus("Verbinding verbroken — wachten op nieuwe verbinding...")
             } catch (e: SecurityException) {
                 Log.w(TAG, "Geen Bluetooth-toestemming", e)
-                updateStatus("⚠️ Geen Bluetooth-toestemming — zet dit in Instellingen nogmaals aan.")
-                Thread.sleep(3000)
+                updateStatus("⚠️ Geen Bluetooth-toestemming")
+                sleepQuietly(3000)
             } catch (e: Exception) {
-                Log.w(TAG, "Autoradio-verbinding niet beschikbaar, opnieuw proberen", e)
-                updateStatus("⚠️ Kan geen verbinding maken (${e.javaClass.simpleName}) — opnieuw proberen...")
-                try { serverSocket?.close() } catch (ignored: Exception) { /* negeren */ }
+                Log.w(TAG, "Autoradio-verbinding weg", e)
+                updateStatus("Verbinding verbroken — wachten op autoradio...")
+                sleepQuietly(1500)
+            } finally {
+                if (socket != null) detachConnection(socket)
+                try { socket?.close() } catch (_: Exception) {}
+                // Een verse server socket is op deze radio/telefooncombinatie betrouwbaarder.
+                try { serverSocket?.close() } catch (_: Exception) {}
                 serverSocket = null
-                Thread.sleep(5000)
+                if (running) updateStatus("Wacht op verbinding met je autoradio...")
             }
         }
     }
 
-    /**
-     * Ontvangt tekst die al op de autoradio zelf is herkend en gebruikt alleen
-     * de telefoon voor de WhatsApp RemoteInput-actie. Geen microfoon nodig.
-     */
+    private fun handleVoiceAudio(wavBytes: ByteArray) {
+        if (wavBytes.size < 1000) {
+            sendMessage("STATUS:Geen bruikbare audio ontvangen. Probeer opnieuw.")
+            return
+        }
+        val key = UnifiedNotificationListener.lastWhatsAppReplyKey
+        if (key == null) {
+            sendMessage("STATUS:Geen recent WhatsApp-bericht om op te antwoorden.")
+            return
+        }
+
+        sendMessage("STATUS:Spraak wordt op je telefoon omgezet naar tekst...")
+        GeminiVoiceTranscriber.transcribe(wavBytes) { result ->
+            when (result) {
+                is GeminiVoiceTranscriber.Result.Success -> {
+                    val text = result.text.trim()
+                    val ok = UnifiedNotificationListener.sendReply(key, text)
+                    if (ok) sendMessage("STATUS:Antwoord verzonden: $text")
+                    else sendMessage("STATUS:Spraak verstaan, maar WhatsApp versturen mislukte.")
+                }
+                is GeminiVoiceTranscriber.Result.Error -> {
+                    sendMessage("STATUS:Spraak omzetten mislukt (${result.message}). Ik probeer de telefoonmicrofoon.")
+                    handleReplyRequest()
+                }
+            }
+        }
+    }
+
     private fun handleRecognizedReply(text: String) {
         mainHandler.post {
             if (text.isBlank()) {
@@ -192,15 +316,12 @@ class CarRadioConnectionService : Service() {
                 return@post
             }
             val ok = UnifiedNotificationListener.sendReply(key, text)
-            if (ok) {
-                sendMessage("STATUS:Antwoord verzonden: $text")
-            } else {
-                sendMessage("STATUS:Versturen mislukt, open WhatsApp zelf.")
-            }
+            if (ok) sendMessage("STATUS:Antwoord verzonden: $text")
+            else sendMessage("STATUS:Versturen mislukt, open WhatsApp zelf.")
         }
     }
 
-    /** Start spraakherkenning en stuurt het resultaat als WhatsApp-antwoord, zonder de telefoon te ontgrendelen. */
+    /** Fallback voor het geval audio-transcriptie niet beschikbaar is. */
     private fun handleReplyRequest() {
         mainHandler.post {
             val key = UnifiedNotificationListener.lastWhatsAppReplyKey
@@ -216,7 +337,6 @@ class CarRadioConnectionService : Service() {
             speechRecognizer?.destroy()
             val recognizer = SpeechRecognizer.createSpeechRecognizer(this)
             speechRecognizer = recognizer
-
             var lastPartialSpeech: String? = null
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -227,58 +347,32 @@ class CarRadioConnectionService : Service() {
 
             recognizer.setRecognitionListener(object : RecognitionListener {
                 override fun onResults(results: android.os.Bundle) {
-                    val text = results
-                        .getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        ?.firstOrNull()
-                        ?.trim()
-                        .takeUnless { it.isNullOrBlank() }
-                        ?: lastPartialSpeech
-                    if (text.isNullOrBlank()) {
-                        sendMessage("STATUS:Kon je antwoord niet verstaan, probeer opnieuw.")
-                    } else {
+                    val text = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.firstOrNull()?.trim().takeUnless { it.isNullOrBlank() } ?: lastPartialSpeech
+                    if (text.isNullOrBlank()) sendMessage("STATUS:Kon je antwoord niet verstaan, probeer opnieuw.")
+                    else {
                         val ok = UnifiedNotificationListener.sendReply(key, text)
-                        if (ok) {
-                            sendMessage("STATUS:Antwoord verzonden: $text")
-                        } else {
-                            sendMessage("STATUS:Versturen mislukt, open WhatsApp zelf.")
-                        }
+                        if (ok) sendMessage("STATUS:Antwoord verzonden: $text")
+                        else sendMessage("STATUS:Versturen mislukt, open WhatsApp zelf.")
                     }
                     recognizer.destroy()
                 }
 
                 override fun onError(error: Int) {
-                    val reason = when (error) {
-                        SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
-                            "geen internetverbinding"
-                        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
-                            "geen microfoon-toestemming"
-                        SpeechRecognizer.ERROR_NO_MATCH ->
-                            "niets herkend, probeer duidelijker te spreken"
-                        SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
-                            "te lang gewacht met spreken"
-                        SpeechRecognizer.ERROR_AUDIO ->
-                            "microfoon-probleem"
-                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY ->
-                            "spraakherkenning was al bezig"
-                        else -> "foutcode $error"
-                    }
-                    sendMessage("STATUS:Kon je antwoord niet verstaan ($reason), probeer opnieuw.")
+                    sendMessage("STATUS:Telefoonspraakherkenning mislukte (foutcode $error).")
                     recognizer.destroy()
                 }
 
                 override fun onReadyForSpeech(params: android.os.Bundle?) {
-                    sendMessage("STATUS:Spreek nu je antwoord in...")
+                    sendMessage("STATUS:Spreek nu richting je telefoon...")
                 }
-
                 override fun onBeginningOfSpeech() {}
                 override fun onRmsChanged(rmsdB: Float) {}
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() {}
                 override fun onPartialResults(partialResults: android.os.Bundle?) {
-                    val partial = partialResults
-                        ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        ?.firstOrNull()
-                        ?.trim()
+                    val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.firstOrNull()?.trim()
                     if (!partial.isNullOrBlank()) lastPartialSpeech = partial
                 }
                 override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
@@ -286,11 +380,8 @@ class CarRadioConnectionService : Service() {
 
             try {
                 recognizer.startListening(intent)
-            } catch (e: SecurityException) {
-                sendMessage("STATUS:Microfoon is door Android geblokkeerd op de achtergrond. Gebruik spraak via de autoradio.")
-                recognizer.destroy()
             } catch (e: Exception) {
-                sendMessage("STATUS:Spraakherkenning kon niet starten (${e.javaClass.simpleName}).")
+                sendMessage("STATUS:Telefoonspraakherkenning kon niet starten.")
                 recognizer.destroy()
             }
         }
@@ -298,29 +389,30 @@ class CarRadioConnectionService : Service() {
 
     override fun onDestroy() {
         running = false
-        outputStream = null
-        try { serverSocket?.close() } catch (e: Exception) { /* negeren */ }
+        synchronized(writeLock) {
+            activeWriter = null
+            try { activeSocket?.close() } catch (_: Exception) {}
+            activeSocket = null
+        }
+        try { serverSocket?.close() } catch (_: Exception) {}
         speechRecognizer?.destroy()
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    /**
-     * Maakt een BluetoothServerSocket op een vast kanaalnummer, zonder SDP-
-     * registratie — via reflectie, omdat deze methode niet in de publieke
-     * Android-SDK zit maar wel bestaat in de onderliggende implementatie.
-     * Geeft null terug als dit niet lukt, zodat teruggevallen kan worden op
-     * de normale (SDP-based) methode.
-     */
     private fun createFixedChannelServerSocket(adapter: BluetoothAdapter): BluetoothServerSocket? {
         return try {
             val method = adapter.javaClass.getMethod(
                 "listenUsingInsecureRfcommOn", Int::class.javaPrimitiveType
             )
             method.invoke(adapter, FIXED_RFCOMM_CHANNEL) as? BluetoothServerSocket
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
+    }
+
+    private fun sleepQuietly(ms: Long) {
+        try { Thread.sleep(ms) } catch (_: InterruptedException) {}
     }
 }
