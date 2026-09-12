@@ -1,6 +1,9 @@
 package com.gmailorg.hub
 
+import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.LayerDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -225,7 +228,7 @@ class HomeAdapter(
             TileType.CURRENCY -> ContextCompat.getDrawable(context, R.drawable.ic_home_currency_fancy)
             TileType.ADD_BUTTON -> ContextCompat.getDrawable(context, R.drawable.ic_home_add_fancy)
             TileType.APP -> try {
-                context.packageManager.getApplicationIcon(tile.packageName!!)
+                buildBadgedAppIcon(context, context.packageManager.getApplicationIcon(tile.packageName!!))
             } catch (e: Exception) {
                 ContextCompat.getDrawable(context, R.drawable.ic_home_add_fancy)
             }
@@ -234,5 +237,22 @@ class HomeAdapter(
 
         holder.itemView.setOnClickListener { onTileClick(tile) }
         holder.itemView.setOnLongClickListener { onTileLongClick(tile) }
+    }
+
+    /**
+     * Geeft een zelf toegevoegde app (WhatsApp, Google Home, of een app die
+     * de gebruiker zelf toevoegt via "App toevoegen") dezelfde luxe gouden
+     * ring/donkergroene-cirkel-badge als de vaste tegels, met het eigen
+     * app-icoon (verkleind en gecentreerd) erin — in plaats van het kale
+     * launcher-icoon dat qua stijl niet bij de rest paste.
+     */
+    private fun buildBadgedAppIcon(context: Context, appIcon: Drawable): Drawable {
+        val badge = ContextCompat.getDrawable(context, R.drawable.bg_home_tile_badge)!!.mutate()
+        val layered = LayerDrawable(arrayOf(badge, appIcon))
+        // Zelfde verhouding als de glyphs in de vaste badges (~31dp icoon
+        // gecentreerd in een 56dp tegel, dus ~12-13dp inspringen rondom).
+        val inset = (13 * context.resources.displayMetrics.density).toInt()
+        layered.setLayerInset(1, inset, inset, inset, inset)
+        return layered
     }
 }
