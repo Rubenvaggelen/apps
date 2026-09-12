@@ -14,6 +14,7 @@ object CarRadioForwarder {
     private const val KEY_ENABLED = "enabled"
     private const val KEY_DEVICE_ADDRESS = "device_address"
     private const val KEY_DEVICE_NAME = "device_name"
+    private const val KEY_NEARBY = "nearby"
 
     fun isEnabled(context: Context): Boolean =
         prefs(context).getBoolean(KEY_ENABLED, false)
@@ -35,17 +36,31 @@ object CarRadioForwarder {
     fun selectedDeviceName(context: Context): String? =
         prefs(context).getString(KEY_DEVICE_NAME, null)
 
+    /**
+     * Of de gekozen autoradio momenteel (Bluetooth-ACL) verbonden is, dus of
+     * de telefoon zich waarschijnlijk in of bij de auto bevindt. Wordt
+     * bijgewerkt door CarRadioProximityReceiver zodra Android een
+     * verbinding/loskoppeling van dat apparaat meldt.
+     */
+    fun isNearby(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NEARBY, false)
+
+    fun setNearby(context: Context, nearby: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NEARBY, nearby).apply()
+    }
+
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    /** Stuurt een WhatsApp-melding door, indien aangezet en er een autoradio gekoppeld is. */
+    /** Stuurt een WhatsApp-melding door, indien aangezet, een autoradio gekoppeld is, én de auto in bereik is. */
     fun forwardIfEnabled(context: Context, packageName: String, title: String, text: String) {
         if (packageName != "com.whatsapp") return
         if (!isEnabled(context)) return
         if (selectedDeviceAddress(context) == null) return
+        if (!isNearby(context)) return // niet in/bij de auto — niet proberen te verbinden
 
         // Best effort: als de verbindingsservice om wat voor reden niet draait
-        // (bv. na een reboot), zorg dat hij alsnog opstart.
+        // terwijl we wél weten dat de auto in bereik is, zorg dat hij alsnog opstart.
         CarRadioConnectionService.start(context)
         CarRadioConnectionService.sendMessage("$title: $text")
     }

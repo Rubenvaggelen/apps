@@ -13,9 +13,11 @@ class BootReceiver : BroadcastReceiver() {
                 SupermarketRefreshWorker.schedule(appContext)
             }
             ParkingGeofenceManager.syncAll(appContext)
-            if (CarRadioForwarder.isEnabled(appContext)) {
-                CarRadioConnectionService.start(appContext)
-            }
+            // Niet meer blindelings starten bij opstarten: we weten na een
+            // herstart niet zeker of de auto al in bereik is. De
+            // CarRadioProximityReceiver start de verbinding vanzelf zodra
+            // Android een ACL-verbinding met de gekozen autoradio meldt.
+            CarRadioForwarder.setNearby(appContext, false)
         }
     }
 }
