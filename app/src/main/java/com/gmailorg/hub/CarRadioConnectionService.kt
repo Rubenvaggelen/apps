@@ -205,7 +205,22 @@ class CarRadioConnectionService : Service() {
                 }
 
                 override fun onError(error: Int) {
-                    sendMessage("STATUS:Kon je antwoord niet verstaan, probeer opnieuw.")
+                    val reason = when (error) {
+                        SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
+                            "geen internetverbinding"
+                        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
+                            "geen microfoon-toestemming"
+                        SpeechRecognizer.ERROR_NO_MATCH ->
+                            "niets herkend, probeer duidelijker te spreken"
+                        SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
+                            "te lang gewacht met spreken"
+                        SpeechRecognizer.ERROR_AUDIO ->
+                            "microfoon-probleem"
+                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY ->
+                            "spraakherkenning was al bezig"
+                        else -> "foutcode $error"
+                    }
+                    sendMessage("STATUS:Kon je antwoord niet verstaan ($reason), probeer opnieuw.")
                     recognizer.destroy()
                 }
 
