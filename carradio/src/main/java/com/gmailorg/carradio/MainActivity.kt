@@ -4,12 +4,12 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.LayerDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.provider.MediaStore
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.GridLayout
@@ -42,12 +42,9 @@ class MainActivity : AppCompatActivity() {
             FixedTile("mail", "Mail & Kalender", R.drawable.ic_home_mail_fancy) { it.openMailCalendar() },
             FixedTile("route", "Route", R.drawable.ic_home_route_fancy) { it.startActivity(Intent(it, RouteCarActivity::class.java)) },
             FixedTile("household", "Huishouden", R.drawable.ic_home_household_fancy) { it.startActivity(Intent(it, HouseholdCarActivity::class.java)) },
-            FixedTile("music", "Muziek", R.drawable.ic_home_music_fancy) { it.openMusic() },
+            FixedTile("music", "Muziek", R.drawable.ic_home_music_fancy) { it.showMusicChooser() },
             FixedTile("parking", "Parkeren", R.drawable.ic_home_parking_fancy) { it.startActivity(Intent(it, ParkingCarActivity::class.java)) },
             FixedTile("news", "Nieuws", R.drawable.ic_home_news_fancy) { it.startActivity(Intent(it, NewsCarActivity::class.java)) },
-            // Positie 9 in het 3-koloms raster: direct onder Muziek.
-            FixedTile("usb", "USB", R.drawable.ic_usb_music) { it.startActivity(Intent(it, UsbMusicActivity::class.java)) },
-            FixedTile("radio", "Radio", R.drawable.ic_home_radio_fancy) { it.startActivity(Intent(it, RadioStationsActivity::class.java)) },
             FixedTile("settings", "Instellingen", R.drawable.ic_home_settings_fancy) { it.startActivity(Intent(it, CarSettingsActivity::class.java)) }
         )
     }
@@ -80,7 +77,7 @@ class MainActivity : AppCompatActivity() {
             try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString().lowercase(Locale.ROOT) } catch (_: Exception) { pkg }
         }.forEach { pkg ->
             val label = try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() } catch (_: Exception) { pkg }
-            val icon = try { pm.getApplicationIcon(pkg) } catch (_: Exception) { ContextCompat.getDrawable(this, R.drawable.ic_home_add_fancy) }
+            val icon = try { buildBadgedAppIcon(pm.getApplicationIcon(pkg)) } catch (_: Exception) { ContextCompat.getDrawable(this, R.drawable.ic_home_add_fancy) }
             addTile(label, icon, false,
                 onClick = { cancelStartupGuard(); if (!launchPackage(pkg)) Toast.makeText(this, "App is niet meer geïnstalleerd", Toast.LENGTH_SHORT).show() },
                 onLongClick = { confirmRemoveApp(pkg, label); true })
@@ -143,9 +140,70 @@ class MainActivity : AppCompatActivity() {
             openUrl(url.toString())
         }
     }
-    private fun openMusic() {
-        for (pkg in listOf("com.spotify.music", "com.google.android.apps.youtube.music", "com.google.android.music")) if (launchPackage(pkg)) return
-        try { startActivity(Intent(MediaStore.INTENT_ACTION_MUSIC_PLAYER)) } catch (_: Exception) { Toast.makeText(this, "Geen muziek-app gevonden", Toast.LENGTH_SHORT).show() }
+    private fun showMusicChooser() {
+        AlertDialog.Builder(this)
+            .setTitle("Muziek")
+            .setItems(arrayOf("📻 Radio", "🔌 USB")) { _, which ->
+                when (which) {
+                    0 -> openCarRadio()
+                    1 -> startActivity(Intent(this, UsbMusicActivity::class.java))
+                }
+            }
+            .setNegativeButton("Annuleren", null)
+            .show()
+    }
+
+    /** Open de fabrieksradio van de head-unit, niet de streamingradio van The One. */
+    private fun openCarRadio() {
+        val knownRadioPackages = listOf(
+            "com.android.fmradio",
+            "com.mediatek.fmradio",
+            "com.syu.radio",
+            "com.microntek.radio",
+            "com.navimods.radio",
+            "com.zjinnova.radio",
+            "com.ts.radio"
+        )
+        knownRadioPackages.forEach { if (launchPackage(it)) return }
+
+        // K2401-ROMs gebruiken verschillende package-namen. Zoek daarom ook
+        // naar de geïnstalleerde launcher-activity die als Radio/FM wordt getoond.
+        val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val candidate = try {
+            packageManager.queryIntentActivities(launcherIntent, 0)
+                .filter { it.activityInfo.packageName != packageName }
+                .map { info ->
+                    val label = info.loadLabel(packageManager).toString()
+                    Triple(info, label, (label + " " + info.activityInfo.packageName + " " + info.activityInfo.name).lowercase(Locale.ROOT))
+                }
+                .filter { (_, _, haystack) ->
+                    haystack.contains("radio") || haystack.contains("fmradio") || haystack.contains("fm radio")
+                }
+                .sortedBy { (_, label, _) -> if (label.equals("Radio", true) || label.equals("FM Radio", true)) 0 else 1 }
+                .firstOrNull()?.first
+        } catch (_: Exception) { null }
+
+        if (candidate != null) {
+            try {
+                startActivity(Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_LAUNCHER)
+                    setClassName(candidate.activityInfo.packageName, candidate.activityInfo.name)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+                return
+            } catch (_: Exception) {}
+        }
+
+        Toast.makeText(this, "De radio-app van deze head-unit kon niet worden gevonden", Toast.LENGTH_LONG).show()
+    }
+
+    /** Zelf toegevoegde apps krijgen dezelfde luxe badge als op de telefoon. */
+    private fun buildBadgedAppIcon(appIcon: Drawable): Drawable {
+        val badge = ContextCompat.getDrawable(this, R.drawable.bg_home_tile_badge)!!.mutate()
+        val layered = LayerDrawable(arrayOf(badge, appIcon))
+        val inset = (13 * resources.displayMetrics.density).toInt()
+        layered.setLayerInset(1, inset, inset, inset, inset)
+        return layered
     }
     private fun launchPackage(pkg: String): Boolean {
         val intent = packageManager.getLaunchIntentForPackage(pkg) ?: return false

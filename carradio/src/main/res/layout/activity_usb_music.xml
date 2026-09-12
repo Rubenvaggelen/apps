@@ -15,7 +15,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="USB muziek"
+            android:text="USB muziek • mappen"
             android:textColor="@color/amber"
             android:textSize="28sp"
             android:textStyle="bold" />
@@ -142,7 +142,7 @@
         android:layout_height="wrap_content"
         android:paddingTop="8dp"
         android:paddingBottom="4dp"
-        android:text="MAPPEN EN NUMMERS"
+        android:text="USB-STICKS • MAPPEN • NUMMERS"
         android:textColor="@color/amber"
         android:textSize="14sp"
         android:textStyle="bold" />
