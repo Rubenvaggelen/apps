@@ -4,20 +4,36 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 
+/**
+ * Houdt de autoradio-server betrouwbaar beschikbaar na een telefoonboot of
+ * app-update. De radio is de client en kan alleen automatisch terugverbinden
+ * als de telefoon al op RFCOMM luistert.
+ */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
-            val appContext = context.applicationContext
-            SupermarketGeofenceManager.reArmAfterBootIfEnabled(appContext)
-            if (SupermarketGeofenceManager.isEnabled(appContext)) {
-                SupermarketRefreshWorker.schedule(appContext)
+        val appContext = context.applicationContext
+        when (intent.action) {
+            Intent.ACTION_BOOT_COMPLETED,
+            Intent.ACTION_MY_PACKAGE_REPLACED -> {
+                SupermarketGeofenceManager.reArmAfterBootIfEnabled(appContext)
+                if (SupermarketGeofenceManager.isEnabled(appContext)) {
+                    SupermarketRefreshWorker.schedule(appContext)
+                }
+                ParkingGeofenceManager.syncAll(appContext)
+
+                // "nearby" is alleen informatief. Stop de RFCOMM-server niet:
+                // na het starten van de auto wordt ACTION_ACL_CONNECTED op
+                // sommige telefoons/head-units niet betrouwbaar opnieuw gestuurd.
+                CarRadioForwarder.setNearby(appContext, false)
+                if (CarRadioForwarder.isEnabled(appContext)) {
+                    try {
+                        CarRadioConnectionService.start(appContext)
+                    } catch (_: Exception) {
+                        // Best effort; de NotificationListener en een nieuwe
+                        // WhatsApp-melding proberen het later nogmaals.
+                    }
+                }
             }
-            ParkingGeofenceManager.syncAll(appContext)
-            // Niet meer blindelings starten bij opstarten: we weten na een
-            // herstart niet zeker of de auto al in bereik is. De
-            // CarRadioProximityReceiver start de verbinding vanzelf zodra
-            // Android een ACL-verbinding met de gekozen autoradio meldt.
-            CarRadioForwarder.setNearby(appContext, false)
         }
     }
 }

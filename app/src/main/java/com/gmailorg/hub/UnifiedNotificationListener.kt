@@ -54,12 +54,26 @@ class UnifiedNotificationListener : NotificationListenerService() {
         super.onCreate()
         NotifStore.init(applicationContext)
         appContext = applicationContext
+        ensureCarRadioServerRunning()
     }
 
     override fun onListenerConnected() {
         super.onListenerConnected()
+        // NotificationListener wordt door Android zelf opnieuw gebonden. Gebruik
+        // dat moment ook om de autoradio-server te herstellen als Android de app
+        // tussendoor heeft opgeruimd.
+        ensureCarRadioServerRunning()
         // Bij (her)verbinden: haal actieve meldingen op zodat de lijst direct gevuld is.
         activeNotifications?.forEach { handleNotification(it) }
+    }
+
+    private fun ensureCarRadioServerRunning() {
+        if (!CarRadioForwarder.isEnabled(applicationContext)) return
+        try {
+            CarRadioConnectionService.start(applicationContext)
+        } catch (_: Exception) {
+            // Een echte WhatsApp-melding probeert via forwardIfEnabled opnieuw.
+        }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
