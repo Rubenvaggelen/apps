@@ -126,6 +126,12 @@ class CarRadioConnectionService : Service() {
                 val socket = serverSocket?.accept() ?: continue
                 outputStream = socket.outputStream
                 updateStatus("Verbonden met autoradio")
+                // Als de RFCOMM-verbinding lukt, weten we zeker dat de auto
+                // in bereik is — ook als het aparte ACL-signaal (dat normaal
+                // "nearby" bijhoudt) om wat voor reden geen nieuwe gebeurtenis
+                // heeft afgevuurd (bv. omdat de Bluetooth-verbinding al vóór
+                // een app-update/herstart actief was).
+                CarRadioForwarder.setNearby(this, true)
 
                 val reader = BufferedReader(InputStreamReader(socket.inputStream))
                 var line: String?
@@ -137,9 +143,13 @@ class CarRadioConnectionService : Service() {
                 }
                 outputStream = null
                 try { socket.close() } catch (e: Exception) { /* negeren */ }
+                // Altijd een verse serverSocket opbouwen voor de volgende
+                // verbinding — hergebruik van dezelfde BluetoothServerSocket
+                // na een sessie bleek af en toe onbetrouwbaar (wisselend
+                // wel/niet verbinden, zonder duidelijk patroon).
+                try { serverSocket?.close() } catch (e: Exception) { /* negeren */ }
+                serverSocket = null
                 updateStatus("Verbinding verbroken — wachten op nieuwe verbinding...")
-                // serverSocket blijft bestaan en wordt hergebruikt voor de
-                // volgende accept() — geen nieuwe registratie nodig.
             } catch (e: SecurityException) {
                 Log.w(TAG, "Geen Bluetooth-toestemming", e)
                 updateStatus("⚠️ Geen Bluetooth-toestemming — zet dit in Instellingen nogmaals aan.")

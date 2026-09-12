@@ -52,15 +52,23 @@ object CarRadioForwarder {
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    /** Stuurt een WhatsApp-melding door, indien aangezet, een autoradio gekoppeld is, én de auto in bereik is. */
+    /**
+     * Stuurt een WhatsApp-melding door, indien aangezet en een autoradio
+     * gekoppeld is. Er wordt hier bewust niet meer gecheckt of de auto
+     * "in de buurt" is (die aparte vlag bleek soms verouderd te blijven
+     * staan, bijvoorbeeld na een app-update, en blokkeerde dan het
+     * versturen ondanks een prima werkende verbinding) — sendMessage() doet
+     * zelf al niets als er geen actieve verbinding is, dus er is geen risico
+     * dat er iets verstuurd wordt terwijl je niet in de auto bent.
+     */
     fun forwardIfEnabled(context: Context, packageName: String, title: String, text: String) {
         if (packageName != "com.whatsapp") return
         if (!isEnabled(context)) return
         if (selectedDeviceAddress(context) == null) return
-        if (!isNearby(context)) return // niet in/bij de auto — niet proberen te verbinden
 
-        // Best effort: als de verbindingsservice om wat voor reden niet draait
-        // terwijl we wél weten dat de auto in bereik is, zorg dat hij alsnog opstart.
+        // Best effort: als de verbindingsservice om wat voor reden niet
+        // draait, zorg dat hij alsnog opstart; sendMessage() stuurt sowieso
+        // alleen iets als er daadwerkelijk een actieve verbinding is.
         CarRadioConnectionService.start(context)
         CarRadioConnectionService.sendMessage("$title: $text")
     }
