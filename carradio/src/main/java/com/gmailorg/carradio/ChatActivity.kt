@@ -2,6 +2,8 @@ package com.gmailorg.carradio
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -28,6 +30,7 @@ class ChatActivity : AppCompatActivity() {
     private lateinit var input: EditText
     private lateinit var voiceButton: Button
     private val voiceRecorder = RadioVoiceRecorder()
+    private var receivedVoicePlayer: MediaPlayer? = null
 
     private val dataListener: () -> Unit = { refreshMessages() }
     private val statusListener: (String) -> Unit = { status.text = it }
@@ -79,7 +82,7 @@ class ChatActivity : AppCompatActivity() {
             Toast.makeText(this, "Wacht tot je telefoon verbonden is", Toast.LENGTH_SHORT).show()
             return
         }
-        status.text = "🎙️ Spreek je antwoord in • auto-verzenden na 10 sec stilte • max 60 sec"
+        status.text = "🎙️ Spreek je antwoord in • auto-verzenden na 5 sec stilte • max 60 sec"
         voiceButton.text = "⏹"
         voiceRecorder.start(onComplete = { result ->
             runOnUiThread { voiceButton.text = "🎤" }
@@ -109,11 +112,23 @@ class ChatActivity : AppCompatActivity() {
                 setPadding(0, 4.dp, 0, 4.dp)
             }
             val bubble = TextView(this).apply {
-                text = msg.text
+                text = if (msg.voiceNote && !msg.mine) "🎤 ${msg.text}  • tik om af te spelen" else msg.text
                 setTextColor(ContextCompat.getColor(context, R.color.text_main))
                 textSize = 17f
                 setBackgroundResource(if (msg.mine) R.drawable.bg_chat_out else R.drawable.bg_chat_in)
                 maxWidth = (resources.displayMetrics.widthPixels * 0.72).toInt()
+                if (msg.voiceNote && !msg.mine) {
+                    setOnClickListener {
+                        val path = msg.mediaPath
+                        if (!path.isNullOrBlank()) playReceivedVoice(path)
+                        else {
+                            status.text = "Spraakbericht ophalen van je telefoon…"
+                            if (!BluetoothListenerService.requestVoiceNote(contact)) {
+                                Toast.makeText(this@ChatActivity, "Geen live verbinding met je telefoon", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                }
             }
             val time = TextView(this).apply {
                 text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(msg.time))
@@ -128,6 +143,21 @@ class ChatActivity : AppCompatActivity() {
         scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
     }
 
+    private fun playReceivedVoice(path: String) {
+        try { receivedVoicePlayer?.release() } catch (_: Exception) {}
+        try {
+            receivedVoicePlayer = MediaPlayer().apply {
+                setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                setDataSource(path)
+                setOnPreparedListener { it.start(); status.text = "▶ Spraakbericht wordt afgespeeld" }
+                setOnCompletionListener { status.text = "✅ Spraakbericht afgespeeld" }
+                prepareAsync()
+            }
+        } catch (_: Exception) {
+            status.text = "Spraakbericht kon niet worden afgespeeld"
+        }
+    }
+
     private val Int.dp: Int get() = (this * resources.displayMetrics.density).toInt()
 
     override fun onResume() {
@@ -137,6 +167,7 @@ class ChatActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         voiceRecorder.stop()
+        try { receivedVoicePlayer?.release() } catch (_: Exception) {}
         MessageBus.removeDataListener(dataListener)
         MessageBus.removeStatusListener(statusListener)
         super.onDestroy()

@@ -76,8 +76,8 @@ object GeminiVoiceTranscriber {
         connection.requestMethod = "POST"
         connection.setRequestProperty("Content-Type", "application/json")
         connection.doOutput = true
-        connection.connectTimeout = 8_000
-        connection.readTimeout = 18_000
+        connection.connectTimeout = 5_000
+        connection.readTimeout = 12_000
         connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
 
         val code = connection.responseCode

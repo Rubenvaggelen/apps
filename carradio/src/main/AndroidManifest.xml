@@ -12,6 +12,8 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <queries>
@@ -22,6 +24,8 @@
         <package android:name="com.spotify.music" />
         <package android:name="com.google.android.apps.youtube.music" />
         <package android:name="com.google.android.apps.chromecast.app" />
+        <package android:name="com.google.android.apps.maps" />
+        <package android:name="com.waze" />
     </queries>
 
     <application
@@ -56,6 +60,12 @@
         <activity android:name=".MessageLogActivity" android:screenOrientation="landscape" />
         <activity android:name=".UsbMusicActivity" android:screenOrientation="landscape" />
         <activity android:name=".RadioStationsActivity" android:screenOrientation="landscape" />
+        <activity android:name=".HouseholdCarActivity" android:screenOrientation="landscape" />
+        <activity android:name=".ParkingCarActivity" android:screenOrientation="landscape" />
+        <activity android:name=".RouteCarActivity" android:screenOrientation="landscape" />
+        <activity android:name=".NewsCarActivity" android:screenOrientation="landscape" />
+        <activity android:name=".CarAppPickerActivity" android:screenOrientation="landscape" />
+        <activity android:name=".CarTileManagerActivity" android:screenOrientation="landscape" />
 
         <receiver
             android:name=".CarRadioBootReceiver"

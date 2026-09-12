@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:background="@color/bg" android:padding="16dp">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="Huishouden" android:textColor="@color/amber" android:textSize="25sp" android:textStyle="bold"/>
+    <TextView android:id="@+id/householdStatus" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:textColor="@color/text_dim" android:paddingBottom="6dp"/>
+    <Switch android:id="@+id/householdAlertSwitch" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="Melding bij supermarkt" android:textColor="@color/text_main"/>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+        <EditText android:id="@+id/householdInput" android:layout_width="0dp" android:layout_height="50dp" android:layout_weight="1"
+            android:hint="Voeg iets toe…" android:textColor="@color/text_main" android:textColorHint="@color/text_dim"
+            android:singleLine="true" android:background="@drawable/bg_outline" android:paddingHorizontal="12dp"/>
+        <Button android:id="@+id/householdAddButton" android:layout_width="wrap_content" android:layout_height="50dp" android:text="Toevoegen" android:layout_marginStart="8dp"/>
+        <Button android:id="@+id/householdRefreshButton" android:layout_width="wrap_content" android:layout_height="50dp" android:text="↻" android:layout_marginStart="6dp"/>
+    </LinearLayout>
+    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="8dp">
+        <LinearLayout android:id="@+id/householdList" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical"/>
+    </ScrollView>
+    <TextView android:id="@+id/householdEmpty" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="Je boodschappenlijst is leeg." android:textColor="@color/text_dim" android:gravity="center" android:padding="8dp"/>
+    <Button android:id="@+id/householdClearDoneButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Afgevinkte items wissen"/>
+</LinearLayout>

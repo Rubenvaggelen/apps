@@ -1,6 +1,8 @@
 package com.gmailorg.hub
 
+import android.app.AlarmManager
 import android.app.NotificationChannel
+import android.app.PendingIntent
 import android.app.NotificationManager
 import android.app.Service
 import android.bluetooth.BluetoothAdapter
@@ -32,15 +34,16 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import java.util.ArrayDeque
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Telefoonkant van The One Car.
  *
  * De telefoon-UI blijft ongewijzigd. Deze service biedt meerdere transports:
- * Wi-Fi/LAN heeft voorrang, Bluetooth UUID is tweede keus en vast kanaal 8 is
- * alleen nog legacy fallback. Zo kan de K2401 zijn eigen Bluetoothapp gebruiken
- * zonder de WhatsApp-link van The One te verstoren.
+ * Wi-Fi/LAN heeft voorrang en vast kanaal 8 is alleen noodfallback.
+ * Bluetooth UUID is op deze K2401 bewust uitgeschakeld omdat die route in
+ * praktijktests geregeld een socket opende die geen stabiel The One-protocol voerde.
  */
 class CarRadioConnectionService : Service() {
 
@@ -95,6 +98,57 @@ class CarRadioConnectionService : Service() {
         fun sendContactState(name: String, allowed: Boolean, filterEnabled: Boolean): Boolean {
             val line = "CONTACT_STATE:${if (filterEnabled) 1 else 0}:${if (allowed) 1 else 0}:${enc(name)}"
             return sendProtocolLine(line, false)
+        }
+
+        fun sendHouseholdSnapshot(context: Context): Boolean {
+            ShoppingListStore.init(context.applicationContext)
+            if (!isRadioConnected()) return false
+            sendProtocolLine("HOUSEHOLD_BEGIN", false)
+            ShoppingListStore.getAll().forEach { item ->
+                sendProtocolLine("HOUSEHOLD_ITEM:${enc(item.id)}:${if (item.done) 1 else 0}:${enc(item.text)}", false)
+            }
+            sendProtocolLine("HOUSEHOLD_ALERT_STATE:${if (SupermarketGeofenceManager.isEnabled(context)) 1 else 0}", false)
+            return sendProtocolLine("HOUSEHOLD_END", false)
+        }
+
+        fun sendParkingSnapshot(context: Context): Boolean {
+            ParkingAddressStore.init(context.applicationContext)
+            if (!isRadioConnected()) return false
+            sendProtocolLine("PARKING_BEGIN", false)
+            ParkingAddressStore.getAll().forEach { item ->
+                sendProtocolLine("PARKING_ITEM:${enc(item.id)}:${enc(item.address)}", false)
+            }
+            sendProtocolLine("PARKING_TIMER:${ParkingTimerStore.get(context) ?: -1L}", false)
+            return sendProtocolLine("PARKING_END", false)
+        }
+
+        fun sendSupermarketAlert(items: List<String>): Boolean {
+            if (items.isEmpty()) return false
+            val text = if (items.size <= 5) items.joinToString(", ") else items.take(5).joinToString(", ") + " en ${items.size - 5} meer"
+            return sendProtocolLine("SUPERMARKET_ALERT:${enc("Vergeet niet: $text")}", false)
+        }
+
+        fun sendMediaBytes(contact: String, mime: String, bytes: ByteArray): Boolean {
+            if (bytes.isEmpty() || bytes.size > 12_000_000) return false
+            val id = System.currentTimeMillis().toString(36)
+            val chunkSize = if (activeTransport == "Wi-Fi") 24_000 else 8_000
+            synchronized(writeLock) {
+                val writer = activeWriter ?: return false
+                return try {
+                    writer.write("MEDIA_BEGIN:$id:${enc(mime)}:${bytes.size}:${enc(contact)}")
+                    writer.newLine()
+                    var offset = 0
+                    while (offset < bytes.size) {
+                        val len = minOf(chunkSize, bytes.size - offset)
+                        val chunk = Base64.encodeToString(bytes, offset, len, Base64.NO_WRAP)
+                        writer.write("MEDIA_CHUNK:$id:$chunk")
+                        writer.newLine()
+                        offset += len
+                    }
+                    writer.write("MEDIA_END:$id")
+                    writer.newLine(); writer.flush(); true
+                } catch (_: Exception) { clearActiveLocked(); false }
+            }
         }
 
         private fun enc(text: String): String =
@@ -196,7 +250,6 @@ class CarRadioConnectionService : Service() {
         running = true
         Thread({ listenWifiTcpLoop() }, "TheOne-WifiServer").start()
         Thread({ discoveryResponderLoop() }, "TheOne-WifiDiscovery").start()
-        Thread({ listenBluetoothUuidLoop() }, "TheOne-BtUuidServer").start()
         Thread({ listenBluetoothFixedLoop() }, "TheOne-BtCh8Server").start()
         // Veiligheidsnet voor headunits/telefoons die soms geen ACL_DISCONNECTED sturen.
         // Zonder echte app-verbinding blijft de wachtmelding maximaal 90 seconden staan.
@@ -210,7 +263,7 @@ class CarRadioConnectionService : Service() {
             val channel = NotificationChannel(CHANNEL_ID, "Autoradio-verbinding", NotificationManager.IMPORTANCE_LOW)
             (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
         }
-        startForeground(NOTIFICATION_ID, buildStatusNotification("Wacht op The One Car via Wi-Fi/Bluetooth..."))
+        startForeground(NOTIFICATION_ID, buildStatusNotification("Wacht op The One Car via Wi-Fi of CH8..."))
     }
 
     private fun buildStatusNotification(text: String) = NotificationCompat.Builder(this, CHANNEL_ID)
@@ -381,6 +434,8 @@ class CarRadioConnectionService : Service() {
         sendProtocolLine("SYS:HELLO:THE_ONE_CAR", false)
         flushPending()
         sendContactSnapshot()
+        sendHouseholdSnapshot(this)
+        sendParkingSnapshot(this)
 
         var voiceId: String? = null
         var voiceBytes: ByteArrayOutputStream? = null
@@ -414,6 +469,76 @@ class CarRadioConnectionService : Service() {
                             WhatsAppCarFilterStore.removeContact(this, name)
                             sendContactSnapshot()
                         }
+                    }
+                    command == "HOUSEHOLD_REQUEST" -> sendHouseholdSnapshot(this)
+                    command.startsWith("HOUSEHOLD_ADD:") -> {
+                        val text = dec(command.removePrefix("HOUSEHOLD_ADD:"))
+                        ShoppingListStore.init(applicationContext)
+                        if (text.isNotBlank()) ShoppingListStore.add(text)
+                        sendHouseholdSnapshot(this)
+                    }
+                    command.startsWith("HOUSEHOLD_TOGGLE:") -> {
+                        val id = dec(command.removePrefix("HOUSEHOLD_TOGGLE:"))
+                        ShoppingListStore.init(applicationContext)
+                        if (id.isNotBlank()) ShoppingListStore.toggleDone(id)
+                        sendHouseholdSnapshot(this)
+                    }
+                    command.startsWith("HOUSEHOLD_REMOVE:") -> {
+                        val id = dec(command.removePrefix("HOUSEHOLD_REMOVE:"))
+                        ShoppingListStore.init(applicationContext)
+                        if (id.isNotBlank()) ShoppingListStore.remove(id)
+                        sendHouseholdSnapshot(this)
+                    }
+                    command == "HOUSEHOLD_CLEAR_DONE" -> {
+                        ShoppingListStore.init(applicationContext)
+                        ShoppingListStore.clearDone()
+                        sendHouseholdSnapshot(this)
+                    }
+                    command.startsWith("HOUSEHOLD_ALERT_SET:") -> {
+                        val enabled = command.removePrefix("HOUSEHOLD_ALERT_SET:") == "1"
+                        if (!enabled) {
+                            SupermarketGeofenceManager.disable(this)
+                            SupermarketRefreshWorker.cancel(this)
+                            sendHouseholdSnapshot(this)
+                        } else if (SupermarketGeofenceManager.hasLocationPermission(this)) {
+                            SupermarketGeofenceManager.enableForCurrentLocation(this) { _, _ -> sendHouseholdSnapshot(this) }
+                            SupermarketRefreshWorker.schedule(this)
+                        } else {
+                            sendProtocolLine("STATUS:Zet supermarkt-meldingen één keer op je telefoon aan om locatietoestemming te geven.", false)
+                            sendHouseholdSnapshot(this)
+                        }
+                    }
+                    command == "PARKING_REQUEST" -> sendParkingSnapshot(this)
+                    command.startsWith("PARKING_ADD:") -> {
+                        val address = dec(command.removePrefix("PARKING_ADD:"))
+                        ParkingAddressStore.init(applicationContext)
+                        val added = if (address.isNotBlank()) ParkingAddressStore.add(address) else null
+                        if (added != null && ParkingGeofenceManager.hasLocationPermission(this)) {
+                            ParkingGeofenceManager.registerNewAddress(this, added.id, added.address)
+                        }
+                        sendParkingSnapshot(this)
+                    }
+                    command.startsWith("PARKING_REMOVE:") -> {
+                        val id = dec(command.removePrefix("PARKING_REMOVE:"))
+                        ParkingAddressStore.init(applicationContext)
+                        if (id.isNotBlank()) {
+                            ParkingAddressStore.remove(id)
+                            ParkingGeofenceManager.unregister(this, id)
+                        }
+                        sendParkingSnapshot(this)
+                    }
+                    command.startsWith("PARKING_TIMER_SET:") -> {
+                        val epoch = command.removePrefix("PARKING_TIMER_SET:").toLongOrNull()
+                        if (epoch != null && epoch > System.currentTimeMillis()) scheduleParkingTimer(epoch)
+                        sendParkingSnapshot(this)
+                    }
+                    command == "PARKING_TIMER_CLEAR" -> {
+                        clearParkingTimer()
+                        sendParkingSnapshot(this)
+                    }
+                    command.startsWith("VOICE_NOTE_REQUEST:") -> {
+                        val contact = dec(command.removePrefix("VOICE_NOTE_REQUEST:"))
+                        handleVoiceNoteRequest(contact)
                     }
                     command.startsWith("REPLY_TEXT_TO:") -> {
                         val parts = command.split(":", limit = 3)
@@ -467,6 +592,75 @@ class CarRadioConnectionService : Service() {
         }
     }
 
+    private fun scheduleParkingTimer(triggerAtMillis: Long) {
+        val alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
+        val pendingIntent = PendingIntent.getBroadcast(
+            this, 3, Intent(this, ParkingTimerReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+            } else {
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+            }
+            ParkingTimerStore.set(this, triggerAtMillis)
+        } catch (_: Exception) {
+            sendProtocolLine("STATUS:Parkeertijd kon niet worden ingesteld op je telefoon.", false)
+        }
+    }
+
+    private fun clearParkingTimer() {
+        val alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
+        val pendingIntent = PendingIntent.getBroadcast(
+            this, 3, Intent(this, ParkingTimerReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        try { alarmManager.cancel(pendingIntent) } catch (_: Exception) {}
+        ParkingTimerStore.clear(this)
+    }
+
+    private fun handleVoiceNoteRequest(contact: String) {
+        if (contact.isBlank()) return
+        val source = UnifiedNotificationListener.voiceNoteSourceForConversation(contact)
+        if (source == null) {
+            sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("Geen afspeelbaar spraakbericht meer beschikbaar voor ${contact}.")}", false)
+            return
+        }
+        if (source.uri != null) {
+            Thread {
+                try {
+                    val bytes = contentResolver.openInputStream(source.uri)?.use { input ->
+                        val out = ByteArrayOutputStream()
+                        val buffer = ByteArray(32 * 1024)
+                        while (out.size() <= 12_000_000) {
+                            val read = input.read(buffer)
+                            if (read <= 0) break
+                            out.write(buffer, 0, read)
+                        }
+                        out.toByteArray()
+                    }
+                    if (bytes != null && bytes.isNotEmpty() && bytes.size <= 12_000_000) {
+                        sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("Spraakbericht naar de autoradio sturen…")}", false)
+                        if (!sendMediaBytes(contact, source.mime ?: "audio/*", bytes)) {
+                            sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("Spraakbericht kon niet naar de radio worden gestuurd.")}", false)
+                        }
+                        return@Thread
+                    }
+                } catch (_: Exception) {}
+                if (UnifiedNotificationListener.triggerVoiceNoteAction(contact)) {
+                    sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("Spraakbericht geopend via WhatsApp op je telefoon.")}", false)
+                } else {
+                    sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("WhatsApp gaf geen afspeelbare audio aan The One door.")}", false)
+                }
+            }.start()
+        } else if (UnifiedNotificationListener.triggerVoiceNoteAction(contact)) {
+            sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("Spraakbericht geopend via WhatsApp op je telefoon.")}", false)
+        } else {
+            sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("WhatsApp gaf geen afspeelbare audio aan The One door.")}", false)
+        }
+    }
+
     private fun sendContactSnapshot() {
         sendProtocolLine("CONTACTS_BEGIN:${if (WhatsAppCarFilterStore.isFilterEnabled(this)) 1 else 0}", false)
         val allowed = WhatsAppCarFilterStore.allowedContacts(this)
@@ -485,33 +679,47 @@ class CarRadioConnectionService : Service() {
             return
         }
 
-        // Snelste route: laat Android op de telefoon de reeds opgenomen radio-audio
-        // rechtstreeks herkennen. Op Android 13+ kan SpeechRecognizer een PCM-bron
-        // via EXTRA_AUDIO_SOURCE verwerken, zodat we niet hoeven te wachten op een
-        // generatief model voor iedere WhatsApp-reply.
-        sendProtocolLine("STATUS:Spraak snel herkennen op telefoon...", false)
-        InjectedAudioSpeechTranscriber.transcribe(this, wavBytes) { fastResult ->
-            when (fastResult) {
-                is InjectedAudioSpeechTranscriber.Result.Success -> {
-                    mainHandler.post { finishReply(target, fastResult.text.trim()) }
-                }
-                is InjectedAudioSpeechTranscriber.Result.Error -> {
-                    // Betrouwbare fallback: Gemini gebruikt dezelfde opname.
-                    sendProtocolLine("STATUS:Snelle herkenning niet beschikbaar — transcriptie verwerken...", false)
-                    GeminiVoiceTranscriber.transcribe(wavBytes) { result ->
-                        when (result) {
-                            is GeminiVoiceTranscriber.Result.Success -> mainHandler.post {
-                                finishReply(target, result.text.trim())
-                            }
-                            is GeminiVoiceTranscriber.Result.Error -> {
-                                sendProtocolLine("STATUS:Spraak omzetten mislukt (${result.message}). Ik probeer de telefoonmicrofoon.", false)
-                                handleReplyRequest(target)
-                            }
+        // Volledige transcriptie en snelheid tegelijk: start Gemini en de lokale
+        // Android-herkenner parallel. Gemini krijgt voorrang omdat die de hele
+        // opname verwerkt (ook na natuurlijke pauzes). De snelle lokale tekst
+        // is alleen fallback als Gemini niet binnen enkele seconden klaar is.
+        sendProtocolLine("STATUS:Spraak wordt omgezet naar tekst...", false)
+        val delivered = AtomicBoolean(false)
+        var fastText: String? = null
+
+        fun deliver(text: String) {
+            val cleaned = text.trim()
+            if (cleaned.isBlank()) return
+            if (delivered.compareAndSet(false, true)) {
+                mainHandler.post { finishReply(target, cleaned) }
+            }
+        }
+
+        GeminiVoiceTranscriber.transcribe(wavBytes) { result ->
+            when (result) {
+                is GeminiVoiceTranscriber.Result.Success -> deliver(result.text)
+                is GeminiVoiceTranscriber.Result.Error -> {
+                    val fallback = fastText
+                    if (!fallback.isNullOrBlank()) deliver(fallback)
+                    else if (delivered.compareAndSet(false, true)) {
+                        mainHandler.post {
+                            sendProtocolLine("STATUS:Spraak omzetten mislukt (${result.message}). Ik probeer de telefoonmicrofoon.", false)
+                            handleReplyRequest(target)
                         }
                     }
                 }
             }
         }
+
+        InjectedAudioSpeechTranscriber.transcribe(this, wavBytes) { fastResult ->
+            if (fastResult is InjectedAudioSpeechTranscriber.Result.Success) {
+                fastText = fastResult.text.trim()
+            }
+        }
+
+        // De lokale herkenner is alleen fallback wanneer Gemini zelf faalt.
+        // Zo voorkomen we dat een vroege eerste zin uit Android al wordt verstuurd
+        // terwijl er later in dezelfde opname nog meer is gezegd.
     }
 
     private fun finishReply(target: String?, text: String) {

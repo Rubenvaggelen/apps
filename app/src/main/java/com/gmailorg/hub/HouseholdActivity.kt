@@ -112,6 +112,7 @@ class HouseholdActivity : AppCompatActivity() {
             } else {
                 SupermarketGeofenceManager.disable(this)
                 SupermarketRefreshWorker.cancel(this)
+                if (CarRadioConnectionService.isRadioConnected()) CarRadioConnectionService.sendHouseholdSnapshot(this)
             }
         }
 
@@ -147,6 +148,7 @@ class HouseholdActivity : AppCompatActivity() {
         SupermarketGeofenceManager.enableForCurrentLocation(this) { success, message ->
             Toast.makeText(this, message, Toast.LENGTH_LONG).show()
             if (!success) supermarketSwitch.isChecked = false
+            if (CarRadioConnectionService.isRadioConnected()) CarRadioConnectionService.sendHouseholdSnapshot(this)
         }
         SupermarketRefreshWorker.schedule(this)
         // Nu we net locatietoestemming hebben gekregen, meteen ook de

@@ -93,8 +93,8 @@ class RadioVoiceRecorder {
                     }
 
                     // Geef ruimte voor langere zinnen en natuurlijke pauzes.
-                    // Pas na 10 seconden echte stilte wordt het antwoord automatisch verstuurd.
-                    if (heardSpeech && silentSince > 0L && now - silentSince >= 10_000L && elapsed >= 900L) break
+                    // Pas na 5 seconden echte stilte wordt het antwoord automatisch verstuurd.
+                    if (heardSpeech && silentSince > 0L && now - silentSince >= 5_000L && elapsed >= 900L) break
                     // Niet eindeloos wachten als iemand helemaal niet begint te praten.
                     if (!heardSpeech && elapsed >= 15_000L) break
                     // Lange WhatsApp-antwoorden mogen maximaal één minuut duren.

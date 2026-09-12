@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.PendingIntent
 import android.app.RemoteInput
 import android.content.Intent
+import android.net.Uri
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import java.util.Locale
@@ -18,6 +19,11 @@ class UnifiedNotificationListener : NotificationListenerService() {
     companion object {
         private val replyActions = ConcurrentHashMap<String, Pair<PendingIntent, RemoteInput>>()
         private val whatsAppReplyKeyByConversation = ConcurrentHashMap<String, String>()
+        private val voiceNoteSources = ConcurrentHashMap<String, VoiceNoteSource>()
+        private val voiceNotePlayActions = ConcurrentHashMap<String, PendingIntent>()
+        private val voiceNoteContentIntents = ConcurrentHashMap<String, PendingIntent>()
+
+        data class VoiceNoteSource(val uri: Uri?, val mime: String?)
 
         @Volatile
         var lastWhatsAppReplyKey: String? = null
@@ -51,17 +57,45 @@ class UnifiedNotificationListener : NotificationListenerService() {
 
         fun hasReplyTarget(title: String): Boolean =
             whatsAppReplyKeyByConversation.containsKey(conversationKey(title))
+
+        fun voiceNoteSourceForConversation(title: String): VoiceNoteSource? =
+            voiceNoteSources[conversationKey(title)]
+
+        fun triggerVoiceNoteAction(title: String): Boolean {
+            if (appContext == null) return false
+            val key = conversationKey(title)
+            val pending = voiceNotePlayActions[key] ?: voiceNoteContentIntents[key] ?: return false
+            return try { pending.send(); true } catch (_: Exception) { false }
+        }
     }
 
     override fun onCreate() {
         super.onCreate()
         NotifStore.init(applicationContext)
         appContext = applicationContext
+        purgeCarRadioStatusFromNotificationHistory()
         ensureCarRadioServerRunning()
+    }
+
+    private fun purgeCarRadioStatusFromNotificationHistory() {
+        NotifStore.removeWhere { item ->
+            item.packageName == packageName && item.title == "The One – Autoradio"
+        }
+    }
+
+    private fun isCarRadioStatusNotification(sbn: StatusBarNotification): Boolean {
+        if (sbn.packageName != packageName) return false
+        val title = sbn.notification.extras
+            .getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
+        val channel = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            sbn.notification.channelId
+        } else null
+        return channel == "car_radio_connection" || title == "The One – Autoradio"
     }
 
     override fun onListenerConnected() {
         super.onListenerConnected()
+        purgeCarRadioStatusFromNotificationHistory()
         ensureCarRadioServerRunning()
         activeNotifications?.forEach { handleNotification(it) }
     }
@@ -91,6 +125,13 @@ class UnifiedNotificationListener : NotificationListenerService() {
     }
 
     private fun handleNotification(sbn: StatusBarNotification) {
+        // The foreground service notification is operational state, not a user message.
+        // Never show it inside The One's own Meldingen screen.
+        if (isCarRadioStatusNotification(sbn)) {
+            NotifStore.removeByKey(sbn.key)
+            return
+        }
+
         val extras = sbn.notification.extras
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: return
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
@@ -119,6 +160,33 @@ class UnifiedNotificationListener : NotificationListenerService() {
                 lastWhatsAppReplyKey = sbn.key
                 whatsAppReplyKeyByConversation[conversationKey(title)] = sbn.key
             }
+        }
+
+        if (sbn.packageName == "com.whatsapp") {
+            val key = conversationKey(title)
+            val lower = text.lowercase(Locale.ROOT)
+            val looksLikeVoice = lower.contains("spraakbericht") || lower.contains("voice message") || lower.contains("audio message")
+            if (looksLikeVoice) {
+                sbn.notification.contentIntent?.let { voiceNoteContentIntents[key] = it }
+                sbn.notification.actions?.firstOrNull { action ->
+                    val label = action.title?.toString()?.lowercase(Locale.ROOT).orEmpty()
+                    label.contains("afspelen") || label == "play" || label.contains("listen")
+                }?.actionIntent?.let { voiceNotePlayActions[key] = it }
+            }
+
+            try {
+                val bundles = extras.getParcelableArray(Notification.EXTRA_MESSAGES)
+                if (bundles != null) {
+                    val messages = Notification.MessagingStyle.Message.getMessagesFromBundleArray(bundles)
+                    val withAudio = messages.lastOrNull {
+                        it.dataMimeType?.startsWith("audio/") == true && it.dataUri != null
+                    }
+                    if (withAudio != null) {
+                        voiceNoteSources[key] = VoiceNoteSource(withAudio.dataUri, withAudio.dataMimeType)
+                        sbn.notification.contentIntent?.let { voiceNoteContentIntents[key] = it }
+                    }
+                }
+            } catch (_: Exception) {}
         }
 
         NotifStore.addOrUpdate(

@@ -9,6 +9,11 @@ object CarRadioForwarder {
     private const val KEY_DEVICE_ADDRESS = "device_address"
     private const val KEY_DEVICE_NAME = "device_name"
     private const val KEY_NEARBY = "nearby"
+    private const val KEY_NEARBY_AT = "nearby_at"
+    // ACL_CONNECTED is only a hint. If Android misses ACL_DISCONNECTED, do not
+    // keep treating the car as nearby forever. A real The One connection
+    // remains authoritative via CarRadioConnectionService.isRadioConnected().
+    private const val NEARBY_HINT_TTL_MS = 3 * 60 * 1000L
 
     fun isEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_ENABLED, false)
     fun setEnabled(context: Context, enabled: Boolean) {
@@ -26,8 +31,24 @@ object CarRadioForwarder {
     }
     fun selectedDeviceAddress(context: Context): String? = prefs(context).getString(KEY_DEVICE_ADDRESS, null)
     fun selectedDeviceName(context: Context): String? = prefs(context).getString(KEY_DEVICE_NAME, null)
-    fun isNearby(context: Context): Boolean = prefs(context).getBoolean(KEY_NEARBY, false)
-    fun setNearby(context: Context, nearby: Boolean) { prefs(context).edit().putBoolean(KEY_NEARBY, nearby).apply() }
+    fun isNearby(context: Context): Boolean {
+        val p = prefs(context)
+        if (!p.getBoolean(KEY_NEARBY, false)) return false
+        val at = p.getLong(KEY_NEARBY_AT, 0L)
+        // Old builds did not store a timestamp. Treat that old persisted true as stale.
+        if (at <= 0L || System.currentTimeMillis() - at > NEARBY_HINT_TTL_MS) {
+            p.edit().putBoolean(KEY_NEARBY, false).remove(KEY_NEARBY_AT).apply()
+            return false
+        }
+        return true
+    }
+
+    fun setNearby(context: Context, nearby: Boolean) {
+        val e = prefs(context).edit().putBoolean(KEY_NEARBY, nearby)
+        if (nearby) e.putLong(KEY_NEARBY_AT, System.currentTimeMillis())
+        else e.remove(KEY_NEARBY_AT)
+        e.apply()
+    }
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

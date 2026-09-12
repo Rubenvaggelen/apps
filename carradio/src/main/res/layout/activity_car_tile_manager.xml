@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:background="@color/bg" android:padding="16dp">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Tegels beheren" android:textColor="@color/amber" android:textSize="25sp" android:textStyle="bold"/>
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Houd een tegel op het startscherm lang ingedrukt om hem te verwijderen. Zet verborgen vaste tegels hier terug." android:textColor="@color/text_dim" android:paddingVertical="10dp"/>
+    <Button android:id="@+id/restoreAllTilesButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Alle vaste tegels terugzetten"/>
+    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"><LinearLayout android:id="@+id/hiddenTilesList" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical"/></ScrollView>
+</LinearLayout>

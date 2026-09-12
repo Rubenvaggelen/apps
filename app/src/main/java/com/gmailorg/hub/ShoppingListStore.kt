@@ -67,7 +67,10 @@ object ShoppingListStore {
             arr.put(o)
         }
         prefs?.edit()?.putString(KEY_ITEMS, arr.toString())?.apply()
-        appContext?.let { ShoppingListWidgetProvider.updateAllWidgets(it) }
+        appContext?.let {
+            ShoppingListWidgetProvider.updateAllWidgets(it)
+            if (CarRadioConnectionService.isRadioConnected()) CarRadioConnectionService.sendHouseholdSnapshot(it)
+        }
     }
 
     private fun load() {

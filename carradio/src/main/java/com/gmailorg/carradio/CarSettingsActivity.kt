@@ -42,6 +42,9 @@ class CarSettingsActivity : AppCompatActivity() {
         findViewById<Button>(R.id.contactsButton).setOnClickListener {
             startActivity(Intent(this, AllowedContactsActivity::class.java))
         }
+        findViewById<Button>(R.id.tilesButton).setOnClickListener {
+            startActivity(Intent(this, CarTileManagerActivity::class.java))
+        }
         findViewById<Button>(R.id.diagnosticsButton).setOnClickListener {
             BluetoothListenerService.forcePing()
             diagnostics.text = BluetoothListenerService.diagnostics()

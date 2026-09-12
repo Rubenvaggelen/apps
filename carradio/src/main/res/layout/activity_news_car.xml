@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:background="@color/bg" android:padding="18dp">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Nieuws" android:textColor="@color/amber" android:textSize="25sp" android:textStyle="bold" android:layout_marginBottom="12dp"/>
+    <Button android:id="@+id/newsStar" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Starnieuws"/>
+    <Button android:id="@+id/newsWaterkant" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Waterkant"/>
+    <Button android:id="@+id/newsNu" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="NU.nl"/>
+    <Button android:id="@+id/newsNos" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="NOS"/>
+    <Button android:id="@+id/newsDwt" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="De Ware Tijd"/>
+</LinearLayout>

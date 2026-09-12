@@ -2,6 +2,7 @@ package com.gmailorg.carradio
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
@@ -10,6 +11,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
@@ -19,6 +22,9 @@ import android.util.Base64
 import androidx.core.app.NotificationCompat
 import java.io.BufferedReader
 import java.io.BufferedWriter
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.io.Closeable
 import java.io.IOException
 import java.io.InputStreamReader
@@ -36,11 +42,11 @@ import kotlin.concurrent.thread
  *
  * Volgorde is bewust:
  * 1) Wi-Fi/LAN wanneer radio en telefoon op hetzelfde netwerk/hotspot zitten.
- * 2) Bluetooth via The One UUID/SDP.
- * 3) Vast RFCOMM-kanaal 8 alleen als laatste fallback.
+ * 2) Vast RFCOMM-kanaal 8 als noodfallback.
  *
- * Daardoor kan de fabrieks-Bluetoothapp van de K2401 kanaal 8 gebruiken zonder
- * de WhatsApp-verbinding van The One kapot te maken.
+ * BT-UUID is bewust uitgeschakeld op deze K2401: in praktijktests pakte de
+ * headunit daarmee geregeld een ogenschijnlijk open socket zonder betrouwbaar
+ * The One-protocol. Wi-Fi is dus de voorkeursroute; CH8 is alleen fallback.
  */
 class BluetoothListenerService : Service() {
 
@@ -93,6 +99,21 @@ class BluetoothListenerService : Service() {
 
         fun requestPhoneVoiceReply(conversation: String): Boolean =
             writeLine("REPLY_REQUEST_TO:${enc(conversation)}")
+
+        fun requestHousehold(): Boolean = writeLine("HOUSEHOLD_REQUEST")
+        fun householdAdd(text: String): Boolean = writeLine("HOUSEHOLD_ADD:${enc(text)}")
+        fun householdToggle(id: String): Boolean = writeLine("HOUSEHOLD_TOGGLE:${enc(id)}")
+        fun householdRemove(id: String): Boolean = writeLine("HOUSEHOLD_REMOVE:${enc(id)}")
+        fun householdClearDone(): Boolean = writeLine("HOUSEHOLD_CLEAR_DONE")
+        fun setHouseholdAlert(enabled: Boolean): Boolean = writeLine("HOUSEHOLD_ALERT_SET:${if (enabled) 1 else 0}")
+
+        fun requestParking(): Boolean = writeLine("PARKING_REQUEST")
+        fun parkingAdd(address: String): Boolean = writeLine("PARKING_ADD:${enc(address)}")
+        fun parkingRemove(id: String): Boolean = writeLine("PARKING_REMOVE:${enc(id)}")
+        fun parkingSetTimer(epochMillis: Long): Boolean = writeLine("PARKING_TIMER_SET:$epochMillis")
+        fun parkingClearTimer(): Boolean = writeLine("PARKING_TIMER_CLEAR")
+
+        fun requestVoiceNote(conversation: String): Boolean = writeLine("VOICE_NOTE_REQUEST:${enc(conversation)}")
 
         fun sendVoiceAudio(conversation: String, wavBytes: ByteArray): Boolean {
             if (conversation.isBlank() || wavBytes.isEmpty() || wavBytes.size > 2_200_000) return false
@@ -156,6 +177,11 @@ class BluetoothListenerService : Service() {
     private val mainHandler = Handler(Looper.getMainLooper())
     @Volatile private var startupGeneration = 0L
     @Volatile private var lastWakeEnforceAt = 0L
+    private var incomingMediaId: String? = null
+    private var incomingMediaContact: String? = null
+    private var incomingMediaMime: String? = null
+    private var incomingMediaBuffer: ByteArrayOutputStream? = null
+    private var receivedMediaPlayer: MediaPlayer? = null
 
     private val wakeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -263,10 +289,6 @@ class BluetoothListenerService : Service() {
             connection = tryWifiConnection()
 
             if (connection == null && !address.isNullOrBlank()) {
-                connection = tryUuidBluetooth(address)
-            }
-
-            if (connection == null && !address.isNullOrBlank()) {
                 connection = tryFixedChannelBluetooth(address)
             }
 
@@ -274,7 +296,7 @@ class BluetoothListenerService : Service() {
                 if (address.isNullOrBlank()) {
                     MessageBus.postStatus("⚠️ Geen Wi-Fi-link gevonden; kies bij Instellingen je telefoon voor Bluetooth fallback")
                 } else {
-                    MessageBus.postStatus("Geen link • Wi-Fi/UUID/CH8 opnieuw proberen...")
+                    MessageBus.postStatus("Geen link • Wi-Fi/CH8 opnieuw proberen...")
                 }
                 return
             }
@@ -294,9 +316,20 @@ class BluetoothListenerService : Service() {
             heartbeatRunning = true
             val thisConnection = connection.closeable
             thread(name = "TheOne-CarHeartbeat") {
+                var checks = 0
                 while (running && heartbeatRunning && activeConnection === thisConnection) {
                     writeLine("SYS:PING:${System.currentTimeMillis()}")
                     sleepQuietly(5000)
+                    checks++
+                    // CH8 is alleen noodfallback. Zodra Wi-Fi later tijdens de rit
+                    // beschikbaar wordt, verbreken we de fallback zodat de volgende
+                    // reconnect automatisch via Wi-Fi/LAN loopt.
+                    if (connection.name != "WIFI-LAN" && checks % 2 == 0) {
+                        if (discoverPhoneOnWifi() != null) {
+                            try { thisConnection.close() } catch (_: Exception) {}
+                            break
+                        }
+                    }
                 }
             }
 
@@ -439,7 +472,7 @@ class BluetoothListenerService : Service() {
                 protocolVerified = true
                 lastPongAt = System.currentTimeMillis()
                 MessageBus.postStatus("✅ Verbonden met $selectedPhone • $transport")
-                requestContacts()
+                requestContacts(); requestHousehold(); requestParking()
             }
             line.startsWith("SYS:PONG:") -> {
                 protocolVerified = true
@@ -494,6 +527,37 @@ class BluetoothListenerService : Service() {
                 }
             }
             line == "CONTACTS_END" -> MessageBus.postDataChanged()
+            line == "HOUSEHOLD_BEGIN" -> HouseholdMirrorStore.beginSync()
+            line.startsWith("HOUSEHOLD_ITEM:") -> {
+                val parts = line.split(":", limit = 4)
+                if (parts.size == 4) {
+                    val id = dec(parts[1]); val done = parts[2] == "1"; val text = dec(parts[3])
+                    if (id.isNotBlank() && text.isNotBlank()) HouseholdMirrorStore.stage(CarShoppingItem(id, text, done))
+                }
+            }
+            line.startsWith("HOUSEHOLD_ALERT_STATE:") -> HouseholdMirrorStore.setAlertEnabled(this, line.removePrefix("HOUSEHOLD_ALERT_STATE:") == "1")
+            line == "HOUSEHOLD_END" -> { HouseholdMirrorStore.finishSync(this); MessageBus.postDataChanged() }
+            line == "PARKING_BEGIN" -> ParkingMirrorStore.beginSync()
+            line.startsWith("PARKING_ITEM:") -> {
+                val parts = line.split(":", limit = 3)
+                if (parts.size == 3) {
+                    val id = dec(parts[1]); val address = dec(parts[2])
+                    if (id.isNotBlank() && address.isNotBlank()) ParkingMirrorStore.stage(CarParkingAddress(id, address))
+                }
+            }
+            line.startsWith("PARKING_TIMER:") -> ParkingMirrorStore.setTimer(this, line.removePrefix("PARKING_TIMER:").toLongOrNull())
+            line == "PARKING_END" -> { ParkingMirrorStore.finishSync(this); MessageBus.postDataChanged() }
+            line.startsWith("SUPERMARKET_ALERT:") -> {
+                val text = dec(line.removePrefix("SUPERMARKET_ALERT:"))
+                if (text.isNotBlank()) showSupermarketAlert(text)
+            }
+            line.startsWith("VOICE_NOTE_STATUS:") -> {
+                val text = dec(line.removePrefix("VOICE_NOTE_STATUS:"))
+                if (text.isNotBlank()) MessageBus.postStatus(text)
+            }
+            line.startsWith("MEDIA_BEGIN:") -> beginIncomingMedia(line)
+            line.startsWith("MEDIA_CHUNK:") -> appendIncomingMedia(line)
+            line.startsWith("MEDIA_END:") -> finishIncomingMedia(line)
             line.startsWith("MSG:") -> {
                 val text = dec(line.removePrefix("MSG:"))
                 if (text.isNotBlank()) MessageBus.postMessage(text)
@@ -501,6 +565,85 @@ class BluetoothListenerService : Service() {
             line.startsWith("STATUS:") -> MessageBus.postMessage("✅ " + line.removePrefix("STATUS:"))
             else -> MessageBus.postMessage(line)
         }
+    }
+
+    private fun showSupermarketAlert(text: String) {
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        val channelId = "the_one_car_supermarket"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            manager.createNotificationChannel(NotificationChannel(channelId, "Supermarkt-herinneringen", NotificationManager.IMPORTANCE_HIGH))
+        }
+        val open = PendingIntent.getActivity(
+            this, 44, Intent(this, HouseholdCarActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val n = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("Je bent bij een supermarkt 🛒")
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(open)
+            .build()
+        manager.notify(4201, n)
+        MessageBus.postMessage("🛒 $text")
+    }
+
+    private fun beginIncomingMedia(line: String) {
+        val parts = line.split(":", limit = 5)
+        if (parts.size != 5) return
+        val expected = parts[3].toIntOrNull()?.coerceAtMost(12_000_000) ?: return
+        incomingMediaId = parts[1]
+        incomingMediaMime = dec(parts[2])
+        incomingMediaContact = dec(parts[4])
+        incomingMediaBuffer = ByteArrayOutputStream(expected.coerceAtLeast(32_000))
+    }
+
+    private fun appendIncomingMedia(line: String) {
+        val parts = line.split(":", limit = 3)
+        if (parts.size != 3 || parts[1] != incomingMediaId) return
+        val decoded = try { Base64.decode(parts[2], Base64.DEFAULT) } catch (_: Exception) { return }
+        val out = incomingMediaBuffer ?: return
+        if (out.size() + decoded.size <= 12_000_000) out.write(decoded)
+    }
+
+    private fun finishIncomingMedia(line: String) {
+        if (line.removePrefix("MEDIA_END:") != incomingMediaId) return
+        val bytes = incomingMediaBuffer?.toByteArray() ?: ByteArray(0)
+        val contact = incomingMediaContact.orEmpty()
+        val mime = incomingMediaMime.orEmpty()
+        incomingMediaId = null; incomingMediaBuffer = null; incomingMediaContact = null; incomingMediaMime = null
+        if (bytes.isEmpty() || contact.isBlank()) return
+        try {
+            val ext = when {
+                mime.contains("ogg", true) || mime.contains("opus", true) -> ".ogg"
+                mime.contains("mpeg", true) || mime.contains("mp3", true) -> ".mp3"
+                mime.contains("mp4", true) || mime.contains("m4a", true) -> ".m4a"
+                mime.contains("wav", true) -> ".wav"
+                else -> ".audio"
+            }
+            val file = File(cacheDir, "wa_voice_${System.currentTimeMillis()}$ext")
+            FileOutputStream(file).use { it.write(bytes) }
+            ConversationStore.attachLatestVoiceMedia(this, contact, file.absolutePath)
+            MessageBus.postDataChanged()
+            playReceivedVoice(file.absolutePath)
+        } catch (_: Exception) {
+            MessageBus.postStatus("Spraakbericht kon niet worden opgeslagen")
+        }
+    }
+
+    private fun playReceivedVoice(path: String) {
+        try { receivedMediaPlayer?.release() } catch (_: Exception) {}
+        receivedMediaPlayer = try {
+            MediaPlayer().apply {
+                setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                setDataSource(path)
+                setOnPreparedListener { it.start(); MessageBus.postStatus("▶ Spraakbericht wordt afgespeeld") }
+                setOnCompletionListener { MessageBus.postStatus("✅ Spraakbericht afgespeeld") }
+                prepareAsync()
+            }
+        } catch (_: Exception) { null }
     }
 
     private fun dec(value: String): String = try {
@@ -524,6 +667,7 @@ class BluetoothListenerService : Service() {
         mainHandler.removeCallbacksAndMessages(null)
         try { unregisterReceiver(wakeReceiver) } catch (_: Exception) {}
         closeActiveConnection()
+        try { receivedMediaPlayer?.release() } catch (_: Exception) {}
         connectorThread?.interrupt()
         super.onDestroy()
     }

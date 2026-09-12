@@ -25,10 +25,12 @@ object ParkingAddressStore {
     private const val KEY_ITEMS = "items"
 
     private var prefs: SharedPreferences? = null
+    private var appContext: Context? = null
     private val items = mutableListOf<ParkingAddress>()
 
     fun init(context: Context) {
         if (prefs != null) return
+        appContext = context.applicationContext
         prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         load()
         migrateSnackcidentIfNeeded()
@@ -83,6 +85,7 @@ object ParkingAddressStore {
             arr.put(o)
         }
         prefs?.edit()?.putString(KEY_ITEMS, arr.toString())?.apply()
+        appContext?.let { if (CarRadioConnectionService.isRadioConnected()) CarRadioConnectionService.sendParkingSnapshot(it) }
     }
 
     private fun load() {

@@ -46,6 +46,14 @@ object NotifStore {
         notifyListeners()
     }
 
+    fun removeWhere(predicate: (NotifItem) -> Boolean) {
+        val changed = items.removeAll(predicate)
+        if (changed) {
+            persist()
+            notifyListeners()
+        }
+    }
+
     fun clearAll() {
         items.clear()
         persist()

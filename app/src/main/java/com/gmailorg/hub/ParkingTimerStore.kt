@@ -18,9 +18,11 @@ object ParkingTimerStore {
 
     fun set(context: Context, millis: Long) {
         prefs(context).edit().putLong(KEY_END_TIME, millis).apply()
+        if (CarRadioConnectionService.isRadioConnected()) CarRadioConnectionService.sendParkingSnapshot(context)
     }
 
     fun clear(context: Context) {
         prefs(context).edit().remove(KEY_END_TIME).apply()
+        if (CarRadioConnectionService.isRadioConnected()) CarRadioConnectionService.sendParkingSnapshot(context)
     }
 }

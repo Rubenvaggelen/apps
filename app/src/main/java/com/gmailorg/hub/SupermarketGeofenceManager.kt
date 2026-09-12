@@ -1,14 +1,17 @@
 package com.gmailorg.hub
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingClient
 import com.google.android.gms.location.GeofencingRequest
@@ -39,6 +42,9 @@ object SupermarketGeofenceManager {
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     fun isEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_ENABLED, false)
+
+    fun hasLocationPermission(context: Context): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
     private fun setEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_ENABLED, enabled).apply()

@@ -42,7 +42,11 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             ShoppingListStore.init(context.applicationContext)
             val pending = ShoppingListStore.getAll().filter { !it.done }
             if (pending.isNotEmpty()) {
-                showSupermarketNotification(context, pending.map { it.text })
+                val items = pending.map { it.text }
+                showSupermarketNotification(context, items)
+                if (CarRadioConnectionService.isRadioConnected()) {
+                    CarRadioConnectionService.sendSupermarketAlert(items)
+                }
             }
         }
 
