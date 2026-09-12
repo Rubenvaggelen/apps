@@ -4,6 +4,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.content.Intent
@@ -32,6 +33,10 @@ class CarRadioConnectionService : Service() {
     companion object {
         // Moet exact overeenkomen met BluetoothListenerService.APP_UUID in de carradio-module.
         private val APP_UUID: UUID = UUID.fromString("8ab8c3d0-6b3e-4a7a-9e77-2f6a2f6d9b10")
+        // Vast RFCOMM-kanaalnummer, gebruikt om SDP-opzoeken te omzeilen —
+        // moet exact overeenkomen met FIXED_RFCOMM_CHANNEL in
+        // BluetoothListenerService.kt op de autoradio.
+        private const val FIXED_RFCOMM_CHANNEL = 8
         private const val TAG = "CarRadioConnection"
         private const val CHANNEL_ID = "car_radio_connection"
         private const val NOTIFICATION_ID = 2
@@ -121,7 +126,10 @@ class CarRadioConnectionService : Service() {
                 try { adapter.cancelDiscovery() } catch (e: SecurityException) { /* geen toestemming, negeren */ }
 
                 val device = adapter.getRemoteDevice(address)
-                socket = device.createRfcommSocketToServiceRecord(APP_UUID)
+                // Eerst proberen zonder SDP (vast kanaal) — omzeilt de
+                // SDP-opzoeking die op deze hoofdunit "Error: -1" veroorzaakt.
+                socket = createFixedChannelSocket(device)
+                    ?: device.createRfcommSocketToServiceRecord(APP_UUID)
                 socket.connect()
                 outputStream = socket.outputStream
                 updateStatus("Verbonden met ${CarRadioForwarder.selectedDeviceName(this) ?: address}")
@@ -218,4 +226,21 @@ class CarRadioConnectionService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    /**
+     * Maakt een BluetoothSocket op een vast kanaalnummer, zonder SDP-opzoek
+     * — via reflectie, zie de gelijknamige uitleg in BluetoothListenerService
+     * op de autoradio. Geeft null terug als dit niet lukt, zodat er
+     * teruggevallen kan worden op de normale (SDP-based) methode.
+     */
+    private fun createFixedChannelSocket(device: BluetoothDevice): BluetoothSocket? {
+        return try {
+            val method = device.javaClass.getMethod(
+                "createInsecureRfcommSocket", Int::class.javaPrimitiveType
+            )
+            method.invoke(device, FIXED_RFCOMM_CHANNEL) as? BluetoothSocket
+        } catch (e: Exception) {
+            null
+        }
+    }
 }
