@@ -89,7 +89,7 @@ class HouseholdCarActivity : AppCompatActivity() {
                 }
             }
             val del = Button(this).apply {
-                text = "Verwijder"
+                this.text = "Verwijder"
                 setOnClickListener { BluetoothListenerService.householdRemove(item.id) }
             }
             row.addView(check)

@@ -69,7 +69,7 @@ class ParkingCarActivity : AppCompatActivity() {
                 this.text = item.address; setTextColor(ContextCompat.getColor(context, R.color.text_main)); textSize = 17f
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
-            val del = Button(this).apply { text = "Verwijder"; setOnClickListener { BluetoothListenerService.parkingRemove(item.id) } }
+            val del = Button(this).apply { this.text = "Verwijder"; setOnClickListener { BluetoothListenerService.parkingRemove(item.id) } }
             row.addView(text); row.addView(del); list.addView(row)
         }
     }
