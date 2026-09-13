@@ -139,6 +139,15 @@
                 android:textColor="@color/text_dim"
                 android:textSize="13sp" />
 
+            <TextView
+                android:id="@+id/financeDetectionStatusText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="Laatste detectie: —"
+                android:textColor="@color/text_dim"
+                android:textSize="12sp" />
+
             <Button
                 android:id="@+id/notificationAccessButton"
                 style="?android:attr/borderlessButtonStyle"

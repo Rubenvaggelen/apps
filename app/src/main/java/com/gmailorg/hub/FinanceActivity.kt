@@ -26,6 +26,7 @@ class FinanceActivity : AppCompatActivity() {
     private lateinit var spentText: TextView
     private lateinit var warningText: TextView
     private lateinit var autoStatusText: TextView
+    private lateinit var detectionStatusText: TextView
     private lateinit var emptyState: TextView
     private lateinit var adapter: FinanceTransactionAdapter
 
@@ -38,6 +39,7 @@ class FinanceActivity : AppCompatActivity() {
         spentText = findViewById(R.id.financeSpentText)
         warningText = findViewById(R.id.financeWarningText)
         autoStatusText = findViewById(R.id.financeAutoStatusText)
+        detectionStatusText = findViewById(R.id.financeDetectionStatusText)
         emptyState = findViewById(R.id.financeEmptyState)
 
         findViewById<View>(R.id.backButton).setOnClickListener { finish() }
@@ -66,6 +68,9 @@ class FinanceActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Herverwerk actieve Wallet/Tikkie/ING-meldingen. Dit helpt ook na een app-update
+        // wanneer de betaling al in het notificatiepaneel stond.
+        UnifiedNotificationListener.rescanFinanceNotifications()
         refresh()
     }
 
@@ -102,6 +107,7 @@ class FinanceActivity : AppCompatActivity() {
         autoStatusText.setTextColor(
             ContextCompat.getColor(this, if (listenerEnabled) R.color.sage else R.color.amber)
         )
+        detectionStatusText.text = "Laatste detectie: ${FinanceNotificationProcessor.lastDiagnostic(this)}"
     }
 
     private fun showSetBudgetDialog() {

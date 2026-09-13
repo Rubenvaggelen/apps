@@ -29,6 +29,15 @@ class UnifiedNotificationListener : NotificationListenerService() {
         var lastWhatsAppReplyKey: String? = null
 
         private var appContext: android.content.Context? = null
+        @Volatile private var instance: UnifiedNotificationListener? = null
+
+        fun rescanFinanceNotifications() {
+            val service = instance ?: return
+            try {
+                service.activeNotifications?.forEach { service.handleFinanceNotification(it) }
+            } catch (_: Exception) {
+            }
+        }
 
         private fun conversationKey(title: String): String = title.trim().lowercase(Locale.ROOT)
 
@@ -73,8 +82,14 @@ class UnifiedNotificationListener : NotificationListenerService() {
         super.onCreate()
         NotifStore.init(applicationContext)
         appContext = applicationContext
+        instance = this
         purgeCarRadioStatusFromNotificationHistory()
         ensureCarRadioServerRunning()
+    }
+
+    override fun onDestroy() {
+        if (instance === this) instance = null
+        super.onDestroy()
     }
 
     private fun purgeCarRadioStatusFromNotificationHistory() {
@@ -124,6 +139,85 @@ class UnifiedNotificationListener : NotificationListenerService() {
         }
     }
 
+    private fun handleFinanceNotification(sbn: StatusBarNotification) {
+        // Een group summary kan bedragen uit meerdere child-notificaties samenvoegen.
+        // Alleen de echte child-melding verwerken voorkomt dubbele aftrek.
+        if (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
+
+        val pkg = sbn.packageName.lowercase(Locale.ROOT)
+        // Snel wegfilteren zodat we niet alle notification extras onnodig uitlezen.
+        if (!(pkg.contains("tikkie") || pkg == "com.ing.mobile" || pkg.contains("wallet"))) {
+            val label = try {
+                packageManager.getApplicationLabel(packageManager.getApplicationInfo(sbn.packageName, 0)).toString()
+            } catch (_: Exception) { "" }
+            val lowerLabel = label.lowercase(Locale.ROOT)
+            if (!(lowerLabel.contains("tikkie") || lowerLabel.contains("ing") || lowerLabel.contains("wallet") || lowerLabel.contains("google pay"))) return
+        }
+
+        val extras = sbn.notification.extras
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
+        val appLabel = try {
+            packageManager.getApplicationLabel(packageManager.getApplicationInfo(sbn.packageName, 0)).toString()
+        } catch (_: Exception) {
+            sbn.packageName
+        }
+
+        val pieces = LinkedHashSet<String>()
+        fun addText(value: Any?) {
+            when (value) {
+                is CharSequence -> value.toString().takeIf { it.isNotBlank() }?.let { pieces.add(it) }
+                is Array<*> -> value.forEach { addText(it) }
+                is Iterable<*> -> value.forEach { addText(it) }
+                is android.os.Bundle -> value.keySet().forEach { key -> addText(value.get(key)) }
+            }
+        }
+
+        // Bekende Android notificationvelden.
+        listOf(
+            Notification.EXTRA_TEXT,
+            Notification.EXTRA_BIG_TEXT,
+            Notification.EXTRA_SUB_TEXT,
+            Notification.EXTRA_SUMMARY_TEXT,
+            Notification.EXTRA_INFO_TEXT,
+            Notification.EXTRA_CONVERSATION_TITLE,
+            Notification.EXTRA_TEXT_LINES
+        ).forEach { key -> addText(extras.get(key)) }
+
+        // Sommige bankapps gebruiken eigen extras. Neem alleen tekstuele waarden mee.
+        extras.keySet().forEach { key ->
+            runCatching { addText(extras.get(key)) }
+        }
+
+        // MessagingStyle kan tekst bevatten die niet in EXTRA_TEXT staat.
+        try {
+            val bundles = extras.getParcelableArray(Notification.EXTRA_MESSAGES)
+            if (bundles != null) {
+                Notification.MessagingStyle.Message.getMessagesFromBundleArray(bundles).forEach { msg ->
+                    addText(msg.text)
+                    addText(msg.senderPerson?.name)
+                }
+            }
+        } catch (_: Exception) {
+        }
+
+        // Actietitels zoals "Betalen" / "Betaald" kunnen helpen bij classificatie.
+        sbn.notification.actions?.forEach { action -> addText(action.title) }
+
+        try {
+            FinanceNotificationProcessor.process(
+                context = applicationContext,
+                packageName = sbn.packageName,
+                appLabel = appLabel,
+                title = title,
+                body = pieces.joinToString("\n"),
+                notificationKey = sbn.key,
+                postTime = sbn.postTime
+            )
+        } catch (_: Exception) {
+            // Finance mag de algemene listener nooit laten crashen.
+        }
+    }
+
     private fun handleNotification(sbn: StatusBarNotification) {
         // The foreground service notification is operational state, not a user message.
         // Never show it inside The One's own Meldingen screen.
@@ -135,6 +229,11 @@ class UnifiedNotificationListener : NotificationListenerService() {
         val extras = sbn.notification.extras
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
+
+        // Verwerk financiën vóór de algemene group-summary filter. De finance helper
+        // filtert zelf bekende bronnen en verzamelt veel meer tekstvelden dan EXTRA_TEXT.
+        handleFinanceNotification(sbn)
+
         if (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
 
         val appLabel = try {
@@ -143,37 +242,6 @@ class UnifiedNotificationListener : NotificationListenerService() {
             ).toString()
         } catch (_: Exception) {
             sbn.packageName
-        }
-
-        // Financiën verwerkt duidelijke Google Wallet/Pay-, Tikkie- en ING-betalingen.
-        // Neem ook bigText/subText mee, omdat betaalapps het bedrag daar kunnen zetten.
-        val financeBody = buildString {
-            append(text)
-            extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()?.takeIf { it.isNotBlank() }?.let {
-                if (isNotEmpty()) append("\n")
-                append(it)
-            }
-            extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()?.takeIf { it.isNotBlank() }?.let {
-                if (isNotEmpty()) append("\n")
-                append(it)
-            }
-            extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT)?.toString()?.takeIf { it.isNotBlank() }?.let {
-                if (isNotEmpty()) append("\n")
-                append(it)
-            }
-        }
-        try {
-            FinanceNotificationProcessor.process(
-                context = applicationContext,
-                packageName = sbn.packageName,
-                appLabel = appLabel,
-                title = title,
-                body = financeBody,
-                notificationKey = sbn.key,
-                postTime = sbn.postTime
-            )
-        } catch (_: Exception) {
-            // Een betaalmelding mag nooit de algemene notificatielistener laten crashen.
         }
 
         var replyPendingIntent: PendingIntent? = null
