@@ -16,7 +16,7 @@ import java.net.URL
 object ChatGptClient {
 
     private const val TAG = "GroqAi"
-    private const val MODEL = "llama-3.3-70b-versatile"
+    private const val MODEL = "qwen/qwen3.6-27b"
     private const val CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 
     sealed class AskOutcome {
