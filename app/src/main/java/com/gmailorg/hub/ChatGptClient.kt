@@ -24,8 +24,9 @@ object ChatGptClient {
     private const val CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 
     private val QUESTION_MODELS = listOf(
-        "qwen/qwen3.6-27b",
-        "openai/gpt-oss-20b"
+        "groq/compound-mini",
+        "openai/gpt-oss-20b",
+        "qwen/qwen3.6-27b"
     )
 
     private val RECIPE_SYSTEMS = listOf(
@@ -103,8 +104,20 @@ object ChatGptClient {
                 return fetchChatAnswer(question, apiKey, model)
             } catch (e: GroqHttpException) {
                 lastError = e
+
+                // Een korte TPM/RPM-limiet kan al na een paar seconden weg zijn.
+                // Wacht één keer heel kort en probeer hetzelfde model opnieuw.
+                if (e.statusCode == 429 && e.retryAfterSeconds != null && e.retryAfterSeconds in 1..8) {
+                    try {
+                        Thread.sleep(e.retryAfterSeconds * 1000L)
+                        return fetchChatAnswer(question, apiKey, model)
+                    } catch (retry: GroqHttpException) {
+                        lastError = retry
+                    }
+                }
+
                 val mayFallback = e.statusCode == 400 || e.statusCode == 404 || e.statusCode == 429
-                if (!mayFallback || index == QUESTION_MODELS.lastIndex) throw friendlyFinalError(e)
+                if (!mayFallback || index == QUESTION_MODELS.lastIndex) throw friendlyFinalError(lastError as? GroqHttpException ?: e)
                 Log.w(TAG, "Model $model niet bruikbaar (${e.statusCode}); probeer fallback-model")
             }
         }
@@ -117,9 +130,9 @@ object ChatGptClient {
                 put("role", "system")
                 put(
                     "content",
-                    "Antwoord altijd in het Nederlands, tenzij de gebruiker expliciet om een andere taal vraagt. " +
-                        "Geef uitsluitend het uiteindelijke antwoord. Toon nooit interne analyse, redeneerstappen, " +
-                        "thinking-tags of uitleg over hoe je tot het antwoord kwam. Wees praktisch en duidelijk."
+                    "Antwoord in het Nederlands, tenzij expliciet een andere taal wordt gevraagd. " +
+                        "Geef alleen het antwoord, nooit analyse of thinking-tags. Houd een simpel antwoord kort; " +
+                        "geef alleen meer detail als de vraag dat nodig heeft."
                 )
             })
             put(JSONObject().apply {
@@ -130,18 +143,25 @@ object ChatGptClient {
         val requestBody = JSONObject().apply {
             put("model", model)
             put("messages", messages)
-            put("temperature", 0.35)
-            // Laat nooit interne redeneerstappen in de app zien. Qwen ondersteunt
-            // reasoning_format=hidden; GPT-OSS gebruikt include_reasoning=false.
+            put("temperature", 0.25)
+            put("max_completion_tokens", 420)
+
+            // Belangrijk voor de gratis Groq-limieten: geen verborgen lange
+            // redeneerketens genereren. Die tellen alsnog mee voor TPM.
             if (model.startsWith("qwen/")) {
-                put("reasoning_format", "hidden")
+                put("reasoning_effort", "none")
             } else if (model.startsWith("openai/gpt-oss")) {
+                put("reasoning_effort", "low")
                 put("include_reasoning", false)
             }
         }
 
         return sanitizeFinalAnswer(
-            executeChatRequest(apiKey, requestBody, useLatestCompoundVersion = false)
+            executeChatRequest(
+                apiKey,
+                requestBody,
+                useLatestCompoundVersion = model.startsWith("groq/compound")
+            )
         )
     }
 
@@ -229,7 +249,26 @@ object ChatGptClient {
                 Log.w(TAG, "Receptensysteem $system niet bruikbaar (${e.statusCode}); probeer fallback")
             }
         }
-        throw lastError ?: Exception("de receptzoekactie gaf geen resultaat")
+        // Als live websearch tijdelijk zijn eigen limiet raakt, geef de gebruiker
+        // alsnog één recept via de gewone Groq-modellen. De bronzoekactie blijft
+        // de voorkeursroute, maar een rate-limit mag het receptenscherm niet
+        // volledig blokkeren.
+        val fallbackPrompt = """
+            Geef precies één compleet recept voor: $dish.
+            Antwoord in het Nederlands. Geef geen keuzes en stel geen wedervraag.
+            Gebruik exact deze secties:
+            INGREDIENTEN:
+            - [hoeveelheid] [ingrediënt]
+            BEREIDING:
+            1. [stap]
+            BOODSCHAPPENLIJST:
+            - [alleen ingrediëntnaam]
+        """.trimIndent()
+        return try {
+            fetchQuestionWithFallback(fallbackPrompt, apiKey)
+        } catch (fallback: Exception) {
+            throw lastError ?: fallback
+        }
     }
 
     private fun executeChatRequest(

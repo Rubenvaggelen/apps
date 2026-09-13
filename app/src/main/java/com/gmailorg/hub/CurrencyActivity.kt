@@ -42,6 +42,7 @@ class CurrencyActivity : AppCompatActivity() {
             sourceCurrency = targetCurrency
             targetCurrency = old
             refreshCurrencyLabels()
+            updateRateStatus()
             calculate()
         }
         sourceButton.setOnClickListener { chooseCurrency(true) }
@@ -63,9 +64,18 @@ class CurrencyActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle(if (source) "Van welke valuta?" else "Naar welke valuta?")
             .setSingleChoiceItems(currencies, checked) { dialog, which ->
-                if (source) sourceCurrency = currencies[which] else targetCurrency = currencies[which]
+                val chosen = currencies[which]
+                if (source) {
+                    sourceCurrency = chosen
+                    // USD-koers wordt standaard tegenover SRD getoond.
+                    if (chosen == "USD") targetCurrency = "SRD"
+                } else {
+                    targetCurrency = chosen
+                    if (chosen == "USD") sourceCurrency = "SRD"
+                }
                 dialog.dismiss()
                 refreshCurrencyLabels()
+                updateRateStatus()
                 calculate()
             }
             .show()
@@ -85,7 +95,7 @@ class CurrencyActivity : AppCompatActivity() {
                 is CurrencyRateFetcher.RateOutcome.Success -> {
                     rates = outcome.rates
                     rateStatusText.setTextColor(ContextCompat.getColor(this, R.color.text_main))
-                    rateStatusText.text = "1 EUR = ${format(outcome.rates.eurToSrd)} SRD  •  1 EUR = ${format(outcome.rates.eurToUsd)} USD"
+                    updateRateStatus()
                     calculate()
                 }
                 is CurrencyRateFetcher.RateOutcome.Error -> {
@@ -93,6 +103,28 @@ class CurrencyActivity : AppCompatActivity() {
                     rateStatusText.text = outcome.message
                 }
             }
+        }
+    }
+
+
+    private fun updateRateStatus() {
+        val currentRates = rates ?: return
+        val sourcePerEur = currentRates.perEur(sourceCurrency) ?: return
+        val targetPerEur = currentRates.perEur(targetCurrency) ?: return
+        val pairRate = targetPerEur / sourcePerEur
+
+        rateStatusText.text = if (sourceCurrency == targetCurrency) {
+            "1 $sourceCurrency = 1.00 $targetCurrency"
+        } else {
+            "Huidige koers: 1 $sourceCurrency = ${formatRate(pairRate)} $targetCurrency"
+        }
+    }
+
+    private fun formatRate(value: Double): String {
+        return when {
+            value >= 100 -> String.format(Locale.US, "%.2f", value)
+            value >= 1 -> String.format(Locale.US, "%.4f", value)
+            else -> String.format(Locale.US, "%.6f", value)
         }
     }
 
