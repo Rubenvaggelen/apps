@@ -12,8 +12,8 @@ import java.text.NumberFormat
 import java.util.Locale
 
 /**
- * Haalt uitsluitend duidelijke uitgaande betalingen uit Google Wallet/Pay- en
- * Tikkie-meldingen. Ontvangsten/refunds worden bewust genegeerd.
+ * Haalt duidelijke uitgaande betalingen uit Google Wallet/Pay-, Tikkie- en
+ * ING-meldingen. Ontvangsten/refunds worden bewust genegeerd.
  */
 object FinanceNotificationProcessor {
     private const val CHANNEL_ID = "finance_budget_alerts"
@@ -67,6 +67,7 @@ object FinanceNotificationProcessor {
                 pkg.contains("wallet") || label.contains("google wallet") || label == "wallet" || label.contains("google pay") ->
                 "Google Wallet"
             pkg.contains("tikkie") || label.contains("tikkie") -> "Tikkie"
+            pkg == "com.ing.mobile" || label == "ing" || label.startsWith("ing ") || label.contains("ing bank") -> "ING"
             else -> null
         }
     }
@@ -77,7 +78,9 @@ object FinanceNotificationProcessor {
             "terugbetaling", "terugbetaald", "refund", "refunded",
             "ontvangen", "bijgeschreven", "geld ontvangen",
             "heeft je tikkie betaald", "heeft jouw tikkie betaald",
-            "is naar je overgemaakt", "aan jou betaald"
+            "je tikkie is betaald", "jouw tikkie is betaald",
+            "je betaalverzoek is betaald", "jouw betaalverzoek is betaald",
+            "betaalverzoek ontvangen", "is naar je overgemaakt", "aan jou betaald"
         ).any { lower.contains(it) }
         if (incomingOrRefund) return false
 
@@ -88,8 +91,14 @@ object FinanceNotificationProcessor {
             "Google Wallet" -> true
             "Tikkie" -> listOf(
                 "je hebt betaald", "jij hebt betaald", "betaling gelukt",
-                "betaling voltooid", "afgeschreven", "betaald via tikkie",
-                "je betaling is gelukt", "tikkie betaling"
+                "betaling voltooid", "afgeschreven", "afschrijving",
+                "betaald via tikkie", "je betaling is gelukt",
+                "tikkie betaling", "betaling gedaan", "betaald"
+            ).any { lower.contains(it) }
+            "ING" -> listOf(
+                "afgeschreven", "afschrijving", "van je rekening",
+                "je hebt betaald", "jij hebt betaald", "betaling gedaan",
+                "betaling voltooid", "betaling gelukt"
             ).any { lower.contains(it) }
             else -> false
         }
@@ -113,7 +122,7 @@ object FinanceNotificationProcessor {
     private fun extractDescription(source: String, title: String, body: String): String {
         val titleTrim = title.trim()
         val genericTitle = titleTrim.lowercase(Locale.ROOT) in setOf(
-            "google wallet", "wallet", "google pay", "tikkie", "betaling", "payment"
+            "google wallet", "wallet", "google pay", "tikkie", "ing", "ing nederland", "betaling", "payment"
         )
         val candidate = if (titleTrim.isNotBlank() && !genericTitle) titleTrim else body.trim()
         return candidate

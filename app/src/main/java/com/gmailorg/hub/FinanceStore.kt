@@ -115,6 +115,13 @@ object FinanceStore {
         if (timestamp < trackingSince(context)) return null
         if (isProcessed(context, uniqueNotificationId)) return null
 
+        // Dezelfde echte betaling kan kort na elkaar door bijvoorbeeld Tikkie én
+        // de bank-app worden gemeld. Trek zo'n cross-source duplicaat maar één keer af.
+        if (isLikelyCrossSourceDuplicate(context, source, amountCents, timestamp)) {
+            rememberProcessed(context, uniqueNotificationId)
+            return null
+        }
+
         val result = applyTransaction(
             context = context,
             transaction = Transaction(
@@ -129,6 +136,23 @@ object FinanceStore {
         )
         if (result != null) rememberProcessed(context, uniqueNotificationId)
         return result
+    }
+
+
+    private fun isLikelyCrossSourceDuplicate(
+        context: Context,
+        source: String,
+        amountCents: Long,
+        timestamp: Long
+    ): Boolean {
+        val windowMs = 90_000L
+        return getTransactions(context).any { tx ->
+            tx.automatic &&
+                tx.kind == Kind.EXPENSE &&
+                tx.amountCents == amountCents &&
+                !tx.source.equals(source, ignoreCase = true) &&
+                kotlin.math.abs(tx.timestamp - timestamp) <= windowMs
+        }
     }
 
     private fun applyTransaction(context: Context, transaction: Transaction): ApplyResult {

@@ -95,9 +95,9 @@ class FinanceActivity : AppCompatActivity() {
 
         val listenerEnabled = NotificationManagerCompat.getEnabledListenerPackages(this).contains(packageName)
         autoStatusText.text = if (listenerEnabled) {
-            "Automatisch actief: Google Wallet / Google Pay + Tikkie. Ontvangen Tikkies en terugbetalingen worden niet afgetrokken."
+            "Automatisch actief: Google Wallet / Google Pay + Tikkie + ING. Ontvangsten en terugbetalingen worden niet afgetrokken."
         } else {
-            "Automatisch verwerken staat nog uit. Geef The One notificatietoegang voor Google Wallet / Google Pay en Tikkie."
+            "Automatisch verwerken staat nog uit. Geef The One notificatietoegang voor Google Wallet / Google Pay, Tikkie en ING."
         }
         autoStatusText.setTextColor(
             ContextCompat.getColor(this, if (listenerEnabled) R.color.sage else R.color.amber)
@@ -117,7 +117,7 @@ class FinanceActivity : AppCompatActivity() {
 
         AlertDialog.Builder(this)
             .setTitle("Nieuw budget instellen")
-            .setMessage("Je huidige transactielijst wordt leeggemaakt. Nieuwe Wallet- en Tikkie-betalingen worden vanaf dit moment bijgehouden.")
+            .setMessage("Je huidige transactielijst wordt leeggemaakt. Nieuwe Wallet-, Tikkie- en ING-betalingen worden vanaf dit moment bijgehouden.")
             .setView(view)
             .setPositiveButton("Opslaan", null)
             .setNegativeButton("Annuleren", null)
