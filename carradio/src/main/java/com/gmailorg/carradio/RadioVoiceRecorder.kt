@@ -3,6 +3,8 @@ package com.gmailorg.carradio
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.audiofx.AutomaticGainControl
+import android.media.audiofx.NoiseSuppressor
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -12,7 +14,8 @@ import kotlin.math.sqrt
 
 /**
  * Neemt rechtstreeks PCM op van de K2401-microfoon.
- * De opname stopt pas na 5 seconden echte stilte of na 90 seconden totaal.
+ * De opname stopt automatisch na 5 seconden echte stilte. Er is geen vaste
+ * 90-secondenwachttijd; de gebruiker kan daarnaast altijd handmatig stoppen.
  * De volledige gesproken opname blijft behouden; alleen een deel van de
  * trailing stilte wordt verwijderd om overdracht/transcriptie sneller te maken.
  */
@@ -35,11 +38,23 @@ class RadioVoiceRecorder {
 
         Thread({
             var recorder: AudioRecord? = null
+            var noiseSuppressor: NoiseSuppressor? = null
+            var automaticGain: AutomaticGainControl? = null
             try {
                 val config = createRecorder() ?: throw IllegalStateException("microfoon kon niet worden geopend")
                 recorder = config.first
                 val sampleRate = config.second
                 audioRecord = recorder
+                try {
+                    if (NoiseSuppressor.isAvailable()) {
+                        noiseSuppressor = NoiseSuppressor.create(recorder.audioSessionId)?.apply { enabled = true }
+                    }
+                } catch (_: Exception) {}
+                try {
+                    if (AutomaticGainControl.isAvailable()) {
+                        automaticGain = AutomaticGainControl.create(recorder.audioSessionId)?.apply { enabled = true }
+                    }
+                } catch (_: Exception) {}
 
                 val pcm = ByteArrayOutputStream()
                 val buffer = ShortArray((sampleRate / 25).coerceAtLeast(320)) // ~40 ms
@@ -79,7 +94,9 @@ class RadioVoiceRecorder {
                     // Start iets strenger, maar zodra spraak gehoord is houden we
                     // zachte woorden/syllabes veel langer als actieve spraak vast.
                     val startThreshold = max(420.0, max(noiseFloor * 1.55, noiseFloor + 220.0))
-                    val continueThreshold = max(260.0, max(noiseFloor * 1.22, noiseFloor + 90.0))
+                    // Een duidelijkere scheiding tussen cabine-/motorgeluid en stem
+                    // voorkomt dat constant achtergrondgeluid de 5-sec timer eeuwig reset.
+                    val continueThreshold = max(320.0, max(noiseFloor * 1.35, noiseFloor + 150.0))
 
                     if (!heardSpeech) {
                         if (elapsed >= 400L && rms >= startThreshold) {
@@ -99,7 +116,6 @@ class RadioVoiceRecorder {
                         break
                     }
                     if (!heardSpeech && elapsed >= 18_000L) break
-                    if (elapsed >= 90_000L) break
                 }
 
                 val duration = System.currentTimeMillis() - started
@@ -123,6 +139,8 @@ class RadioVoiceRecorder {
             } finally {
                 recording.set(false)
                 audioRecord = null
+                try { noiseSuppressor?.release() } catch (_: Exception) {}
+                try { automaticGain?.release() } catch (_: Exception) {}
                 try { recorder?.stop() } catch (_: Exception) {}
                 try { recorder?.release() } catch (_: Exception) {}
             }

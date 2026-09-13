@@ -43,11 +43,24 @@ jobs:
           chmod 600 ~/.android/debug.keystore
           keytool -list -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android >/dev/null
 
-      - name: Inject API keys
+      - name: Inject OpenAI API key
+        shell: bash
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          if [ -f gradle.properties ]; then
-            sed -i "s|GEMINI_API_KEY=PLAATS_HIER_JE_KEY|GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}|" gradle.properties
+          set -euo pipefail
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "ERROR: OPENAI_API_KEY GitHub secret is empty"
+            exit 1
           fi
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          p = Path('gradle.properties')
+          s = p.read_text()
+          s = s.replace('OPENAI_API_KEY=PLAATS_HIER_JE_OPENAI_KEY', 'OPENAI_API_KEY=' + os.environ['OPENAI_API_KEY'])
+          p.write_text(s)
+          PY
 
       - name: Print fixed signing certificate
         run: |
@@ -62,7 +75,6 @@ jobs:
           set -euo pipefail
           BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
           APKSIGNER="$BUILD_TOOLS/apksigner"
-
           KEY_CERT=$(keytool -list -v \
             -keystore ~/.android/debug.keystore \
             -alias androiddebugkey \
@@ -71,7 +83,6 @@ jobs:
             | head -1 \
             | tr -d ':' \
             | tr '[:upper:]' '[:lower:]')
-
           for APK in "app/build/outputs/apk/debug/app-debug.apk" "carradio/build/outputs/apk/debug/carradio-debug.apk"; do
             APK_CERT=$($APKSIGNER verify --print-certs "$APK" \
               | sed -n 's/.*certificate SHA-256 digest: //p' \
@@ -81,7 +92,6 @@ jobs:
 
             echo "Keystore certificate: $KEY_CERT"
             echo "$APK certificate:     $APK_CERT"
-
             if [ -z "$KEY_CERT" ] || [ -z "$APK_CERT" ]; then
               echo "ERROR: Could not read one of the signing certificates for $APK."
               exit 1

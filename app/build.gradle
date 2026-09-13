@@ -20,9 +20,10 @@ android {
         // Zet je eigen key in gradle.properties als TMDB_API_KEY=... (niet hier hardcoden).
         buildConfigField "String", "TMDB_API_KEY", "\"${project.findProperty('TMDB_API_KEY') ?: ''}\""
 
-        // Gemini API key (gratis niveau) voor de "Vraag het"-tegel.
-        // Zet je eigen key in gradle.properties als GEMINI_API_KEY=... (niet hier hardcoden).
-        buildConfigField "String", "GEMINI_API_KEY", "\"${project.findProperty('GEMINI_API_KEY') ?: ''}\""
+        // OpenAI API-key voor Vraag het, Recepten en volledige spraaktranscriptie.
+        // GitHub Actions injecteert deze tijdens de build vanuit de OPENAI_API_KEY secret.
+        def openAiKey = project.findProperty('OPENAI_API_KEY') ?: System.getenv('OPENAI_API_KEY') ?: ''
+        buildConfigField "String", "OPENAI_API_KEY", "\"${openAiKey}\""
 
         // YouTube Data API v3 key voor de "Muziek zoeken"-sectie.
         buildConfigField "String", "YOUTUBE_API_KEY", "\"${project.findProperty('YOUTUBE_API_KEY') ?: 'AIzaSyAfJQ4-sO-VMddbdECxhN9Hnl_rt3PaLvE'}\""

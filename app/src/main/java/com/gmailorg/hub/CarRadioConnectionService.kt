@@ -34,7 +34,6 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import java.util.ArrayDeque
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -679,67 +678,48 @@ class CarRadioConnectionService : Service() {
             return
         }
 
+        // Eén volledige opname -> één OpenAI transcriptie. Geen parallelle
+        // SpeechRecognizer-race meer: die leverde bij langere zinnen geregeld
+        // alleen het eerste segment op en maakte de verwerking onnodig traag.
         sendProtocolLine("STATUS:Spraak wordt omgezet naar tekst...", false)
-        val delivered = AtomicBoolean(false)
-        val stateLock = Any()
-        val durationMs = GeminiVoiceTranscriber.durationMs(wavBytes)
-        var localDone = false
-        var geminiDone = false
-        var localText: String? = null
-        var geminiError: String? = null
-
-        fun deliver(text: String) {
-            val cleaned = text.trim().replace(Regex("\\s+"), " ")
-            if (cleaned.isBlank()) return
-            if (delivered.compareAndSet(false, true)) {
-                mainHandler.post { finishReply(target, cleaned) }
-            }
-        }
-
-        fun finishFallbackIfReady() {
-            val fallback: String?
-            val error: String?
-            synchronized(stateLock) {
-                if (delivered.get() || !localDone || !geminiDone) return
-                fallback = localText
-                error = geminiError
-            }
-            if (!fallback.isNullOrBlank()) {
-                deliver(fallback)
-            } else if (delivered.compareAndSet(false, true)) {
-                mainHandler.post {
-                    sendProtocolLine("STATUS:Spraak omzetten mislukt${if (!error.isNullOrBlank()) " ($error)" else ""}. Ik probeer de telefoonmicrofoon.", false)
-                    handleReplyRequest(target)
+        OpenAiVoiceTranscriber.transcribe(wavBytes) { result ->
+            when (result) {
+                is OpenAiVoiceTranscriber.Result.Success -> {
+                    val cleaned = result.text.trim().replace(Regex("\\s+"), " ")
+                    if (cleaned.isNotBlank()) {
+                        mainHandler.post { finishReply(target, cleaned) }
+                    } else {
+                        mainHandler.post { fallbackVoiceRecognition(wavBytes, target, "geen spraak herkend") }
+                    }
+                }
+                is OpenAiVoiceTranscriber.Result.Error -> {
+                    mainHandler.post { fallbackVoiceRecognition(wavBytes, target, result.message) }
                 }
             }
         }
+    }
 
-        // Start beide routes tegelijk. De lokale Android-route mag meteen winnen
-        // als hij een complete segmented transcriptie oplevert. Voor langere audio
-        // vertrouwen we anders op Gemini, dat de opname parallel in stukken verwerkt.
-        InjectedAudioSpeechTranscriber.transcribe(this, wavBytes) { result ->
-            when (result) {
+    private fun fallbackVoiceRecognition(wavBytes: ByteArray, target: String?, openAiError: String) {
+        // Alleen wanneer OpenAI echt faalt gebruiken we de lokale Android-route.
+        // Hierdoor vertraagt deze fallback de normale succesvolle route niet.
+        InjectedAudioSpeechTranscriber.transcribe(this, wavBytes) { local ->
+            when (local) {
                 is InjectedAudioSpeechTranscriber.Result.Success -> {
-                    val text = result.text.trim()
-                    if (result.complete || durationMs <= 8_000L) {
-                        deliver(text)
-                    } else {
-                        synchronized(stateLock) { localText = text }
+                    val text = local.text.trim().replace(Regex("\\s+"), " ")
+                    if (text.isNotBlank()) {
+                        mainHandler.post { finishReply(target, text) }
+                        return@transcribe
                     }
                 }
                 is InjectedAudioSpeechTranscriber.Result.Error -> Unit
             }
-            synchronized(stateLock) { localDone = true }
-            finishFallbackIfReady()
-        }
-
-        GeminiVoiceTranscriber.transcribe(wavBytes) { result ->
-            when (result) {
-                is GeminiVoiceTranscriber.Result.Success -> deliver(result.text)
-                is GeminiVoiceTranscriber.Result.Error -> synchronized(stateLock) { geminiError = result.message }
+            mainHandler.post {
+                sendProtocolLine(
+                    "STATUS:Spraak omzetten mislukt ($openAiError). Ik probeer de telefoonmicrofoon.",
+                    false
+                )
+                handleReplyRequest(target)
             }
-            synchronized(stateLock) { geminiDone = true }
-            finishFallbackIfReady()
         }
     }
 
