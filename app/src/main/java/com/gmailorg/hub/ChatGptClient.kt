@@ -15,8 +15,8 @@ import kotlin.math.ceil
  *
  * - Vraag het gebruikt actieve Groq-modellen en valt automatisch terug op een
  *   tweede model als het eerste model niet beschikbaar is of zijn model-limiet raakt.
- * - Recepten gebruikt Groq Compound met live web search/visit_website en beperkt
- *   de zoekresultaten tot de door de gebruiker gekozen receptbronnen.
+ * - Recepten gebruikt dezelfde stabiele Groq-chatroute als Vraag het. Zo kan een
+ *   Compound/websearch-fout het receptenscherm niet meer blokkeren.
  */
 object ChatGptClient {
 
@@ -42,11 +42,6 @@ object ChatGptClient {
 
     @Volatile private var cachedAvailableQuestionModels: List<String>? = null
     @Volatile private var cachedModelsAtMs: Long = 0L
-
-    private val RECIPE_SYSTEMS = listOf(
-        "groq/compound",
-        "groq/compound-mini"
-    )
 
     sealed class AskOutcome {
         data class Success(val answer: String) : AskOutcome()
@@ -242,109 +237,33 @@ object ChatGptClient {
     }
 
     private fun fetchRecipeWithWebSearch(dish: String, apiKey: String): String {
-        val prompt = """
-            Zoek live op internet naar een recept voor: $dish.
-
-            Zoek uitsluitend binnen deze voorkeursbronnen:
-            1. https://sranangkukru.net/recepten/
-            2. https://www.leukerecepten.nl/italiaanse-recepten/
-            3. https://www.leukerecepten.nl/hollandse-recepten/
-
-            Belangrijk:
-            - Probeer de relevante pagina's van deze bronnen daadwerkelijk te zoeken/bezoeken.
-            - Als meerdere bronnen een passend recept hebben, kies ZELF de beste match.
-            - Toon maar ÉÉN compleet recept. Vraag de gebruiker NIET om een bron of recept te kiezen.
-            - Gebruik geen bron buiten de drie genoemde domeinen.
-            - Baseer ingrediënten en bereidingswijze zo veel mogelijk op het gevonden recept en verzin geen citaat.
-            - Antwoord in het Nederlands.
-
-            Gebruik EXACT dit format:
-            BRON:
-            [naam van gebruikte website] — [volledige URL van het gebruikte recept of de best passende bronpagina]
-            INGREDIENTEN:
-            - [hoeveelheid] [ingrediënt]
-            - ... (één ingrediënt per regel, voor ongeveer 4 personen)
-            BEREIDING:
-            1. [eerste stap]
-            2. ... (genummerde stappen)
-            BOODSCHAPPENLIJST:
-            - [alleen ingrediëntnaam, zonder hoeveelheid of maateenheid]
-            - ...
-        """.trimIndent()
-
-        var lastError: Exception? = null
-        RECIPE_SYSTEMS.forEachIndexed { index, system ->
-            try {
-                val messages = JSONArray().apply {
-                    put(JSONObject().apply {
-                        put("role", "user")
-                        put("content", prompt)
-                    })
-                }
-                val requestBody = JSONObject().apply {
-                    put("model", system)
-                    put("messages", messages)
-                    put(
-                        "search_settings",
-                        JSONObject().apply {
-                            put(
-                                "include_domains",
-                                JSONArray().apply {
-                                    put("sranangkukru.net")
-                                    put("leukerecepten.nl")
-                                }
-                            )
-                            put("country", "netherlands")
-                        }
-                    )
-                    put(
-                        "compound_custom",
-                        JSONObject().apply {
-                            put(
-                                "tools",
-                                JSONObject().apply {
-                                    put(
-                                        "enabled_tools",
-                                        JSONArray().apply {
-                                            put("web_search")
-                                            put("visit_website")
-                                        }
-                                    )
-                                }
-                            )
-                        }
-                    )
-                }
-                return sanitizeFinalAnswer(
-                    executeChatRequest(apiKey, requestBody, useLatestCompoundVersion = true)
-                )
-            } catch (e: GroqHttpException) {
-                lastError = e
-                val mayFallback = e.statusCode == 400 || e.statusCode == 404 || e.statusCode == 429
-                if (!mayFallback || index == RECIPE_SYSTEMS.lastIndex) throw friendlyFinalError(e)
-                Log.w(TAG, "Receptensysteem $system niet bruikbaar (${e.statusCode}); probeer fallback")
-            }
-        }
-        // Als live websearch tijdelijk zijn eigen limiet raakt, geef de gebruiker
-        // alsnog één recept via de gewone Groq-modellen. De bronzoekactie blijft
-        // de voorkeursroute, maar een rate-limit mag het receptenscherm niet
-        // volledig blokkeren.
-        val fallbackPrompt = """
+        // Gebruik bewust dezelfde bewezen chatroute als "Vraag het". De oude
+        // Compound/web-search aanvraag kon op sommige Groq-accounts met HTTP 413
+        // (Request Entity Too Large) stoppen vóórdat de normale fallback werd
+        // bereikt. De gebruiker wil gewoon één recept; deze route is betrouwbaarder.
+        val recipePrompt = """
             Geef precies één compleet recept voor: $dish.
-            Antwoord in het Nederlands. Geef geen keuzes en stel geen wedervraag.
+
+            Antwoord uitsluitend in het Nederlands.
+            Geef geen keuzelijst, geen meerdere recepten en stel geen wedervraag.
+            Gebruik waar passend de stijl/kennis van deze voorkeursbronnen als inspiratie:
+            - Sranang Kukru voor Surinaamse gerechten
+            - Leuke Recepten voor Italiaanse en Hollandse gerechten
+            Claim niet dat je een website live hebt gelezen als dat niet zo is.
+
             Gebruik exact deze secties:
             INGREDIENTEN:
             - [hoeveelheid] [ingrediënt]
             BEREIDING:
             1. [stap]
             BOODSCHAPPENLIJST:
-            - [alleen ingrediëntnaam]
+            - [alleen ingrediëntnaam, zonder hoeveelheid]
+
+            Geef voldoende hoeveelheden voor ongeveer 4 personen, tenzij de vraag
+            duidelijk een ander aantal noemt.
         """.trimIndent()
-        return try {
-            fetchQuestionWithFallback(fallbackPrompt, apiKey)
-        } catch (fallback: Exception) {
-            throw lastError ?: fallback
-        }
+
+        return fetchQuestionWithFallback(recipePrompt, apiKey)
     }
 
     private fun executeChatRequest(
