@@ -49,6 +49,16 @@ class FinanceActivity : AppCompatActivity() {
         findViewById<View>(R.id.notificationAccessButton).setOnClickListener {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         }
+        findViewById<View>(R.id.financeRefreshButton).setOnClickListener {
+            val scanned = UnifiedNotificationListener.rescanFinanceNotifications()
+            refresh()
+            val message = when {
+                scanned < 0 -> "The One-notificatieluisteraar is nog niet actief. Controleer notificatietoegang."
+                scanned == 0 -> "Geen actieve meldingen gevonden om te scannen."
+                else -> "$scanned actieve meldingen opnieuw gescand."
+            }
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        }
 
         val list = findViewById<RecyclerView>(R.id.financeTransactionsList)
         list.layoutManager = LinearLayoutManager(this)
@@ -100,9 +110,9 @@ class FinanceActivity : AppCompatActivity() {
 
         val listenerEnabled = NotificationManagerCompat.getEnabledListenerPackages(this).contains(packageName)
         autoStatusText.text = if (listenerEnabled) {
-            "Automatisch actief: Google Wallet / Google Pay + Tikkie + ING. Ontvangsten en terugbetalingen worden niet afgetrokken."
+            "Automatisch actief: Wallet + ING + ASN/SNS + ABN AMRO + Revolut + bunq. Tikkie-ontvangsten worden nooit afgetrokken."
         } else {
-            "Automatisch verwerken staat nog uit. Geef The One notificatietoegang voor Google Wallet / Google Pay, Tikkie en ING."
+            "Automatisch verwerken staat nog uit. Geef The One notificatietoegang voor Wallet, Tikkie en je bankapps."
         }
         autoStatusText.setTextColor(
             ContextCompat.getColor(this, if (listenerEnabled) R.color.sage else R.color.amber)
@@ -123,7 +133,7 @@ class FinanceActivity : AppCompatActivity() {
 
         AlertDialog.Builder(this)
             .setTitle("Nieuw budget instellen")
-            .setMessage("Je huidige transactielijst wordt leeggemaakt. Nieuwe Wallet-, Tikkie- en ING-betalingen worden vanaf dit moment bijgehouden.")
+            .setMessage("Je huidige transactielijst wordt leeggemaakt. Nieuwe Wallet- en bankbetalingen worden vanaf dit moment bijgehouden. Tikkie-ontvangsten worden niet afgetrokken.")
             .setView(view)
             .setPositiveButton("Opslaan", null)
             .setNegativeButton("Annuleren", null)

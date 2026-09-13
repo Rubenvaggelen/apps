@@ -31,11 +31,14 @@ class UnifiedNotificationListener : NotificationListenerService() {
         private var appContext: android.content.Context? = null
         @Volatile private var instance: UnifiedNotificationListener? = null
 
-        fun rescanFinanceNotifications() {
-            val service = instance ?: return
-            try {
-                service.activeNotifications?.forEach { service.handleFinanceNotification(it) }
+        fun rescanFinanceNotifications(): Int {
+            val service = instance ?: return -1
+            return try {
+                val notifications = service.activeNotifications.orEmpty()
+                notifications.forEach { service.handleFinanceNotification(it) }
+                notifications.size
             } catch (_: Exception) {
+                -1
             }
         }
 
@@ -144,23 +147,15 @@ class UnifiedNotificationListener : NotificationListenerService() {
         // Alleen de echte child-melding verwerken voorkomt dubbele aftrek.
         if (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
 
-        val pkg = sbn.packageName.lowercase(Locale.ROOT)
-        // Snel wegfilteren zodat we niet alle notification extras onnodig uitlezen.
-        if (!(pkg.contains("tikkie") || pkg == "com.ing.mobile" || pkg.contains("wallet"))) {
-            val label = try {
-                packageManager.getApplicationLabel(packageManager.getApplicationInfo(sbn.packageName, 0)).toString()
-            } catch (_: Exception) { "" }
-            val lowerLabel = label.lowercase(Locale.ROOT)
-            if (!(lowerLabel.contains("tikkie") || lowerLabel.contains("ing") || lowerLabel.contains("wallet") || lowerLabel.contains("google pay"))) return
-        }
-
-        val extras = sbn.notification.extras
-        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
         val appLabel = try {
             packageManager.getApplicationLabel(packageManager.getApplicationInfo(sbn.packageName, 0)).toString()
         } catch (_: Exception) {
             sbn.packageName
         }
+        if (FinanceNotificationProcessor.sourceNameFor(sbn.packageName, appLabel) == null) return
+
+        val extras = sbn.notification.extras
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
 
         val pieces = LinkedHashSet<String>()
         fun addText(value: Any?) {

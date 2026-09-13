@@ -14,7 +14,9 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Verwerkt betaalmeldingen van Google Wallet/Pay, Tikkie en ING.
+ * Verwerkt betaalmeldingen van Google Wallet/Pay en ondersteunde bankapps.
+ * Tikkie-meldingen worden alleen gebruikt om ontvangsten/betaalverzoeken te herkennen;
+ * uitgaande Tikkie-betalingen worden via de bankmelding verwerkt.
  *
  * Belangrijk: bank-/betaalapps stoppen het bedrag niet altijd in EXTRA_TEXT.
  * Daarom krijgt deze processor alle tekst uit de notification extras aangeleverd
@@ -33,7 +35,7 @@ object FinanceNotificationProcessor {
     )
 
     // Fallback voor meldingen zoals "Betaling 0,50 gelukt" waarin geen valuta staat.
-    // Alleen gebruikt nadat we al zeker weten dat de melding van Wallet/Tikkie/ING komt.
+    // Alleen gebruikt nadat we al zeker weten dat de melding van een ondersteunde betaal-/bankapp komt.
     private val bareDecimalPattern = Regex("(?<![0-9])([0-9]{1,6}[.,][0-9]{2})(?![0-9])")
 
     fun process(
@@ -45,7 +47,7 @@ object FinanceNotificationProcessor {
         notificationKey: String,
         postTime: Long
     ) {
-        val source = sourceFor(packageName, appLabel) ?: return
+        val source = sourceNameFor(packageName, appLabel) ?: return
         val combined = "$title\n$body"
             .replace('\u00A0', ' ')
             .replace(Regex("[ \\t]+"), " ")
@@ -95,16 +97,36 @@ object FinanceNotificationProcessor {
         }
     }
 
-    private fun sourceFor(packageName: String, appLabel: String): String? {
+    fun sourceNameFor(packageName: String, appLabel: String): String? {
         val pkg = packageName.lowercase(Locale.ROOT)
-        val label = appLabel.lowercase(Locale.ROOT)
+        val label = appLabel.lowercase(Locale.ROOT).trim()
         return when {
             pkg == "com.google.android.apps.walletnfcrel" ||
                 pkg.contains("wallet") || label.contains("google wallet") || label == "wallet" || label.contains("google pay") ->
                 "Google Wallet"
+
+            // Tikkie vóór ABN AMRO controleren, omdat Tikkie ook van ABN AMRO is.
             pkg == "com.abnamro.nl.tikkie" || pkg == "com.abnamro.nl.tikkie.business" ||
                 pkg.contains("tikkie") || label.contains("tikkie") -> "Tikkie"
-            pkg == "com.ing.mobile" || label == "ing" || label.startsWith("ing ") || label.contains("ing bank") || label.contains("ing nederland") -> "ING"
+
+            pkg == "com.ing.mobile" || label == "ing" || label.startsWith("ing ") ||
+                label.contains("ing bank") || label.contains("ing nederland") -> "ING"
+
+            pkg == "nl.devolksbank.asn.bankieren" || pkg.contains("asn.bankieren") ||
+                label == "asn" || label.contains("asn bank") -> "ASN Bank"
+
+            pkg == "nl.devolksbank.sns.bankieren" || pkg.contains("sns.bankieren") ||
+                label == "sns" || label.contains("sns bank") -> "SNS"
+
+            pkg == "com.abnamro.nl.mobile.payments" ||
+                label == "abn amro" || label.contains("abn amro") -> "ABN AMRO"
+
+            pkg == "com.revolut.revolut" ||
+                label == "revolut" || label.startsWith("revolut ") -> "Revolut"
+
+            pkg == "com.bunq.android" ||
+                label == "bunq" || label.startsWith("bunq ") -> "bunq"
+
             else -> null
         }
     }
@@ -112,13 +134,14 @@ object FinanceNotificationProcessor {
     private fun isOutgoingPayment(source: String, lower: String): Boolean {
         // Ontvangsten/refunds mogen nooit van het budget af.
         val incomingOrRefund = listOf(
-            "terugbetaling", "terugbetaald", "refund", "refunded",
-            "ontvangen", "bijgeschreven", "geld ontvangen", "creditering",
+            "terugbetaling", "terugbetaald", "refund", "refunded", "refund received",
+            "ontvangen", "bijgeschreven", "geld ontvangen", "creditering", "bijschrijving",
             "heeft je tikkie betaald", "heeft jouw tikkie betaald",
             "je tikkie is betaald", "jouw tikkie is betaald",
             "je betaalverzoek is betaald", "jouw betaalverzoek is betaald",
             "betaalverzoek ontvangen", "is naar je overgemaakt", "aan jou betaald",
-            "bijschrijving", "geld op je rekening"
+            "geld op je rekening", "received", "money received", "transfer received",
+            "payment received", "cashback", "reverted", "reversed", "teruggestort"
         ).any { lower.contains(it) }
         if (incomingOrRefund) return false
 
@@ -126,33 +149,39 @@ object FinanceNotificationProcessor {
         val requestOnly = listOf(
             "betaalverzoek aangemaakt", "betaalverzoek verstuurd", "betaalverzoek gedeeld",
             "tikkie aangemaakt", "tikkie verstuurd", "verzoek verstuurd", "deel je tikkie",
-            "betaalverzoek van jou", "nieuw betaalverzoek"
+            "betaalverzoek van jou", "nieuw betaalverzoek", "payment request", "request sent",
+            "requested", "request money"
         ).any { lower.contains(it) }
         if (requestOnly) return false
 
-        return when (source) {
-            "Google Wallet" -> true
-            // Bij Tikkie is een bedragdragende melding die niet over ontvangst of het
-            // aanmaken van een verzoek gaat vrijwel altijd de betaling/afschrijving.
-            // We accepteren daarom ook generieke bevestigingen zonder exact woord "betaald".
-            "Tikkie" -> true
-            "ING" -> {
-                val obviousNonPayment = listOf(
-                    "saldo", "spaardoel", "rente", "inloggen", "nieuw bericht",
-                    "creditcardoverzicht", "rekeningoverzicht"
-                ).any { lower.contains(it) }
-                if (obviousNonPayment) return false
+        // Tikkie geeft op het toestel van de gebruiker vooral meldingen bij ONTVANGEN geld.
+        // Daarom trekken we nooit direct op basis van een Tikkie-melding af. De bijbehorende
+        // uitgaande betaling wordt via ING/ASN/SNS/ABN/Revolut/bunq (of Wallet) verwerkt.
+        if (source == "Tikkie") return false
 
-                listOf(
-                    "afgeschreven", "afschrijving", "van je rekening",
-                    "je hebt betaald", "jij hebt betaald", "betaald",
-                    "betaling", "ideal", "i-deal", "pinbetaling", "pasbetaling",
-                    "betaalpas", "kaartbetaling", "aankoop", "debet",
-                    "overboeking", "transactie", "rekening verlaten"
-                ).any { lower.contains(it) } || lower.contains("-") || lower.contains("−")
-            }
-            else -> false
-        }
+        if (source == "Google Wallet") return true
+
+        val supportedBanks = setOf("ING", "ASN Bank", "SNS", "ABN AMRO", "Revolut", "bunq")
+        if (source !in supportedBanks) return false
+
+        val obviousNonPayment = listOf(
+            "saldo", "spaardoel", "rente", "interest", "inloggen", "login", "nieuw bericht",
+            "creditcardoverzicht", "rekeningoverzicht", "statement", "security", "beveiliging",
+            "nieuwe pas", "new card", "card ready", "limiet gewijzigd", "limit changed"
+        ).any { lower.contains(it) }
+        if (obviousNonPayment) return false
+
+        val outgoingWords = listOf(
+            "afgeschreven", "afschrijving", "van je rekening", "rekening verlaten",
+            "je hebt betaald", "jij hebt betaald", "betaald", "betaling", "betalen",
+            "ideal", "i-deal", "pinbetaling", "pasbetaling", "betaalpas", "kaartbetaling",
+            "aankoop", "debet", "debit", "overboeking", "overschrijving", "transactie",
+            "incasso", "automatische incasso", "geld overgemaakt", "overgemaakt naar",
+            "card payment", "payment", "paid", "purchase", "bank transfer", "transfer sent",
+            "sent", "direct debit", "cash withdrawal", "withdrawal", "withdrawn", "cash opname"
+        )
+        return outgoingWords.any { lower.contains(it) } ||
+            Regex("(?:^|\\s)[-−–]\\s*(?:€|eur)?\\s*\\d", RegexOption.IGNORE_CASE).containsMatchIn(lower)
     }
 
     private fun parseEuroCents(source: String, text: String): Long? {
@@ -160,7 +189,8 @@ object FinanceNotificationProcessor {
             regex.find(text)?.groupValues?.getOrNull(1)
         }
         val raw = explicitRaw ?: when (source) {
-            "Tikkie", "ING", "Google Wallet" -> bareDecimalPattern.find(text)?.groupValues?.getOrNull(1)
+            "Tikkie", "ING", "ASN Bank", "SNS", "ABN AMRO", "Revolut", "bunq", "Google Wallet" ->
+                bareDecimalPattern.find(text)?.groupValues?.getOrNull(1)
             else -> null
         } ?: return null
 
@@ -177,7 +207,9 @@ object FinanceNotificationProcessor {
     private fun extractDescription(source: String, title: String, body: String): String {
         val titleTrim = title.trim()
         val genericTitle = titleTrim.lowercase(Locale.ROOT) in setOf(
-            "google wallet", "wallet", "google pay", "tikkie", "ing", "ing nederland", "betaling", "payment"
+            "google wallet", "wallet", "google pay", "tikkie", "ing", "ing nederland",
+            "asn", "asn bank", "sns", "sns bank", "abn amro", "revolut", "bunq",
+            "betaling", "payment"
         )
         val candidate = if (titleTrim.isNotBlank() && !genericTitle) titleTrim else body.lineSequence().firstOrNull { it.isNotBlank() }.orEmpty()
         return candidate
@@ -209,7 +241,7 @@ object FinanceNotificationProcessor {
     fun lastDiagnostic(context: Context): String =
         context.applicationContext.getSharedPreferences(DEBUG_PREFS, Context.MODE_PRIVATE)
             .getString(KEY_LAST_DIAGNOSTIC, null)
-            ?: "Nog geen Wallet-, Tikkie- of ING-melding gezien sinds deze versie."
+            ?: "Nog geen Wallet-, Tikkie- of bankmelding gezien sinds deze versie."
 
     private fun showThresholdAlert(context: Context, balanceCents: Long, warningCents: Long) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
