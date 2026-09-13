@@ -15,7 +15,7 @@ import androidx.core.content.ContextCompat
 
 /**
  * Recepten-scherm — werkt op precies dezelfde manier als "Vraag het": de
- * ingetypte of ingesproken gerechtnaam wordt als vraag naar ChatGPT/OpenAI gestuurd,
+ * ingetypte of ingesproken gerechtnaam wordt als vraag naar Groq AI gestuurd,
  * en het antwoord (het recept) wordt getoond. De ingrediënten (herkenbaar
  * aan het "INGREDIENTEN:"/"BEREIDING:"-format dat we in de prompt afdwingen)
  * kunnen met één knop naar de boodschappenlijst gestuurd worden.
@@ -98,7 +98,7 @@ class RecipesActivity : AppCompatActivity() {
             "GEEN woorden als 'snufje'/'scheutje'/'naar smaak' — bijv. gewoon 'nootmuskaat' i.p.v. 'een snufje nootmuskaat']\n" +
             "- ... (één ingrediëntnaam per regel, dezelfde ingrediënten als hierboven maar dan kaal)"
 
-        ChatGptClient.ask(prompt) { outcome ->
+        ChatGptClient.ask(this, prompt) { outcome ->
             when (outcome) {
                 is ChatGptClient.AskOutcome.Success -> {
                     answerText.setTextColor(ContextCompat.getColor(this, R.color.text_main))

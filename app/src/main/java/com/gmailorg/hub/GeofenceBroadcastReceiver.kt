@@ -93,7 +93,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             "Melding als je aankomt bij een opgeslagen parkeeradres om te betalen voor parkeren."
         )
 
-        val openIntent = Intent(context, ParkingActivity::class.java).apply {
+        val openIntent = Intent(context, ParkingPromptActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
         val contentIntent = PendingIntent.getActivity(
@@ -109,9 +109,9 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_tile_household)
-            .setContentTitle("Parkeren 🅿️")
-            .setContentText("Vergeet niet te betalen voor parkeren bij $addressText!")
-            .setStyle(NotificationCompat.BigTextStyle().bigText("Vergeet niet te betalen voor parkeren bij $addressText!"))
+            .setContentTitle("Parkeren 🅿️ — Amsterdam App openen?")
+            .setContentText("Bij $addressText. Tik om te kiezen of je de Amsterdam App wilt openen.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("Vergeet niet te betalen voor parkeren bij $addressText. Tik op deze melding: The One vraagt dan of je de Amsterdam App wilt openen voor Aanmelden parkeren."))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(contentIntent)
             .setAutoCancel(true)

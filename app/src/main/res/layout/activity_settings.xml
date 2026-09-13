@@ -108,6 +108,82 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingHorizontal="16dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="8dp"
+            android:text="Groq AI"
+            android:textColor="@color/text_main"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="16dp"
+            android:paddingBottom="10dp"
+            android:text="Wordt gebruikt voor Vraag het, Recepten en volledige transcriptie van gesproken WhatsApp-antwoorden. De key wordt alleen lokaal en versleuteld op deze telefoon bewaard."
+            android:textColor="@color/text_dim"
+            android:textSize="13sp" />
+
+        <EditText
+            android:id="@+id/groqKeyInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:hint="gsk_..."
+            android:inputType="textPassword"
+            android:singleLine="true"
+            android:background="@color/surface"
+            android:padding="12dp"
+            android:textColor="@color/text_main"
+            android:textColorHint="@color/text_dim" />
+
+        <TextView
+            android:id="@+id/groqKeyStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="16dp"
+            android:paddingTop="8dp"
+            android:text="Nog geen Groq API-key opgeslagen"
+            android:textColor="@color/text_dim"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp"
+            android:paddingBottom="16dp">
+
+            <Button
+                android:id="@+id/saveGroqKeyButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Key opslaan"
+                android:textColor="@color/on_amber"
+                android:backgroundTint="@color/amber" />
+
+            <Button
+                android:id="@+id/clearGroqKeyButton"
+                style="?android:attr/borderlessButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="Verwijderen"
+                android:textColor="@color/amber"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginBottom="16dp"
+            android:background="@color/surface" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="16dp"
             android:paddingBottom="8dp"
             android:text="Parkeeradressen"
             android:textColor="@color/text_main"

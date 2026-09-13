@@ -678,13 +678,13 @@ class CarRadioConnectionService : Service() {
             return
         }
 
-        // Eén volledige opname -> één OpenAI transcriptie. Geen parallelle
+        // Eén volledige opname -> één Groq Whisper transcriptie. Geen parallelle
         // SpeechRecognizer-race meer: die leverde bij langere zinnen geregeld
         // alleen het eerste segment op en maakte de verwerking onnodig traag.
         sendProtocolLine("STATUS:Spraak wordt omgezet naar tekst...", false)
-        OpenAiVoiceTranscriber.transcribe(wavBytes) { result ->
+        GroqVoiceTranscriber.transcribe(this, wavBytes) { result ->
             when (result) {
-                is OpenAiVoiceTranscriber.Result.Success -> {
+                is GroqVoiceTranscriber.Result.Success -> {
                     val cleaned = result.text.trim().replace(Regex("\\s+"), " ")
                     if (cleaned.isNotBlank()) {
                         mainHandler.post { finishReply(target, cleaned) }
@@ -692,15 +692,15 @@ class CarRadioConnectionService : Service() {
                         mainHandler.post { fallbackVoiceRecognition(wavBytes, target, "geen spraak herkend") }
                     }
                 }
-                is OpenAiVoiceTranscriber.Result.Error -> {
+                is GroqVoiceTranscriber.Result.Error -> {
                     mainHandler.post { fallbackVoiceRecognition(wavBytes, target, result.message) }
                 }
             }
         }
     }
 
-    private fun fallbackVoiceRecognition(wavBytes: ByteArray, target: String?, openAiError: String) {
-        // Alleen wanneer OpenAI echt faalt gebruiken we de lokale Android-route.
+    private fun fallbackVoiceRecognition(wavBytes: ByteArray, target: String?, groqError: String) {
+        // Alleen wanneer Groq echt faalt gebruiken we de lokale Android-route.
         // Hierdoor vertraagt deze fallback de normale succesvolle route niet.
         InjectedAudioSpeechTranscriber.transcribe(this, wavBytes) { local ->
             when (local) {
@@ -715,7 +715,7 @@ class CarRadioConnectionService : Service() {
             }
             mainHandler.post {
                 sendProtocolLine(
-                    "STATUS:Spraak omzetten mislukt ($openAiError). Ik probeer de telefoonmicrofoon.",
+                    "STATUS:Spraak omzetten mislukt ($groqError). Ik probeer de telefoonmicrofoon.",
                     false
                 )
                 handleReplyRequest(target)

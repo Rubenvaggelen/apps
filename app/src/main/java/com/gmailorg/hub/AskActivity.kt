@@ -89,7 +89,7 @@ class AskActivity : AppCompatActivity() {
         answerText.setTextColor(ContextCompat.getColor(this, R.color.text_dim))
         answerText.text = "Even denken..."
 
-        ChatGptClient.ask(question) { outcome ->
+        ChatGptClient.ask(this, question) { outcome ->
             when (outcome) {
                 is ChatGptClient.AskOutcome.Success -> {
                     answerText.setTextColor(ContextCompat.getColor(this, R.color.text_main))

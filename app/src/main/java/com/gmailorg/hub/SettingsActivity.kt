@@ -84,8 +84,47 @@ class SettingsActivity : AppCompatActivity() {
         )
         list.adapter = adapter
 
+        setupGroqSection()
         setupCarRadioSection()
         setupNotificationReplySection()
+    }
+
+    private fun setupGroqSection() {
+        val input = findViewById<EditText>(R.id.groqKeyInput)
+        val status = findViewById<TextView>(R.id.groqKeyStatus)
+        val save = findViewById<View>(R.id.saveGroqKeyButton)
+        val clear = findViewById<View>(R.id.clearGroqKeyButton)
+
+        fun refresh() {
+            val linked = GroqApiKeyStore.hasKey(this)
+            status.text = if (linked) "Groq gekoppeld ✓" else "Nog geen Groq API-key opgeslagen"
+            status.setTextColor(ContextCompat.getColor(this, if (linked) R.color.amber else R.color.text_dim))
+            clear.visibility = if (linked) View.VISIBLE else View.GONE
+            input.hint = if (linked) "Nieuwe key invullen om te vervangen" else "gsk_..."
+        }
+
+        save.setOnClickListener {
+            val key = input.text.toString().trim()
+            if (key.isBlank()) {
+                Toast.makeText(this, "Vul eerst je Groq API-key in.", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            try {
+                GroqApiKeyStore.set(this, key)
+                input.text.clear()
+                refresh()
+                Toast.makeText(this, "Groq API-key veilig opgeslagen.", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this, "Opslaan mislukt: ${e.message ?: "onbekende fout"}", Toast.LENGTH_LONG).show()
+            }
+        }
+        clear.setOnClickListener {
+            GroqApiKeyStore.clear(this)
+            input.text.clear()
+            refresh()
+            Toast.makeText(this, "Groq API-key verwijderd.", Toast.LENGTH_SHORT).show()
+        }
+        refresh()
     }
 
     private fun setupNotificationReplySection() {
@@ -214,7 +253,7 @@ class SettingsActivity : AppCompatActivity() {
         "recipes" to "Recepten",
         "news" to "Nieuws",
         "radio" to "Radio",
-        "currency" to "EUR/SRD-koers",
+        "currency" to "Koers (EUR / SRD / USD)",
         "whatsapp" to "WhatsApp",
         "googlehome" to "Google Home"
     )

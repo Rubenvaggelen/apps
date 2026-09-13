@@ -47,3 +47,10 @@ Deze projectversie combineert de bestaande telefoon-app met de K2401-specifieke 
 ## Radio
 - De Radio-tegel opent de The One-zenderlijst in plaats van de fabrieks-FM-app.
 
+
+
+## 2026-09-13 update
+- Groq replaces OpenAI/Gemini for AI and full voice transcription.
+- Groq key is stored locally/encrypted on the phone.
+- Currency now supports EUR, SRD and USD with selectable from/to currencies.
+- Parking notifications can ask to open the official Amsterdam App for Aanmelden parkeren.

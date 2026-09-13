@@ -38,7 +38,7 @@ class ParkingTimerReceiver : BroadcastReceiver() {
             manager.createNotificationChannel(channel)
         }
 
-        val openIntent = Intent(context, ParkingActivity::class.java).apply {
+        val openIntent = Intent(context, ParkingPromptActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
         val contentIntent = PendingIntent.getActivity(
@@ -48,8 +48,8 @@ class ParkingTimerReceiver : BroadcastReceiver() {
 
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_tile_parking)
-            .setContentTitle("Parkeertijd verlopen \u23f0")
-            .setContentText("Je ingestelde parkeer-eindtijd is bereikt.")
+            .setContentTitle("Parkeertijd verlopen \u23f0 — Amsterdam App openen?")
+            .setContentText("Je ingestelde parkeer-eindtijd is bereikt. Tik om de Amsterdam App te openen.")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(contentIntent)
             .setAutoCancel(true)

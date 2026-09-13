@@ -7,38 +7,43 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-/**
- * Haalt de actuele EUR -> SRD-wisselkoers op via een gratis, sleutelloze API.
- */
+/** Haalt EUR-basisrates op voor EUR, SRD en USD via een sleutelloze koers-API. */
 object CurrencyRateFetcher {
-
     private const val TAG = "CurrencyRateFetcher"
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    data class Rates(val eurToSrd: Double, val eurToUsd: Double) {
+        fun perEur(currency: String): Double? = when (currency.uppercase()) {
+            "EUR" -> 1.0
+            "SRD" -> eurToSrd
+            "USD" -> eurToUsd
+            else -> null
+        }
+    }
+
     sealed class RateOutcome {
-        data class Success(val eurToSrd: Double) : RateOutcome()
+        data class Success(val rates: Rates) : RateOutcome()
         data class Error(val message: String) : RateOutcome()
     }
 
     fun fetchRate(callback: (RateOutcome) -> Unit) {
         Thread {
             try {
-                val url = URL("https://open.er-api.com/v6/latest/EUR")
-                val connection = url.openConnection() as HttpURLConnection
-                connection.connectTimeout = 15000
-                connection.readTimeout = 15000
+                val connection = URL("https://open.er-api.com/v6/latest/EUR").openConnection() as HttpURLConnection
+                connection.connectTimeout = 15_000
+                connection.readTimeout = 15_000
                 connection.requestMethod = "GET"
                 val body = connection.inputStream.bufferedReader().use { it.readText() }
                 connection.disconnect()
 
                 val json = JSONObject(body)
                 val rates = json.optJSONObject("rates")
-                val srdRate = rates?.optDouble("SRD", Double.NaN) ?: Double.NaN
-
-                if (srdRate.isNaN()) {
-                    mainHandler.post { callback(RateOutcome.Error("Koers niet gevonden in het antwoord.")) }
+                val srd = rates?.optDouble("SRD", Double.NaN) ?: Double.NaN
+                val usd = rates?.optDouble("USD", Double.NaN) ?: Double.NaN
+                if (srd.isNaN() || usd.isNaN()) {
+                    mainHandler.post { callback(RateOutcome.Error("EUR/SRD/USD-koersen niet gevonden in het antwoord.")) }
                 } else {
-                    mainHandler.post { callback(RateOutcome.Success(srdRate)) }
+                    mainHandler.post { callback(RateOutcome.Success(Rates(srd, usd))) }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Koers ophalen mislukt", e)

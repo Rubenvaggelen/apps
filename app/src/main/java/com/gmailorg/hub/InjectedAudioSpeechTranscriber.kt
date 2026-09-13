@@ -19,7 +19,7 @@ import kotlin.concurrent.thread
 /**
  * Snelle transcriptieroute op de telefoon (Android 13+).
  * Probeert segmented recognition zodat een pauze midden in een lange zin niet
- * alleen het eerste deel oplevert. Deze route is alleen fallback als OpenAI faalt.
+ * alleen het eerste deel oplevert. Deze route is alleen fallback als Groq faalt.
  */
 object InjectedAudioSpeechTranscriber {
     sealed class Result {

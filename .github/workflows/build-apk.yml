@@ -43,25 +43,6 @@ jobs:
           chmod 600 ~/.android/debug.keystore
           keytool -list -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android >/dev/null
 
-      - name: Inject OpenAI API key
-        shell: bash
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: |
-          set -euo pipefail
-          if [ -z "$OPENAI_API_KEY" ]; then
-            echo "ERROR: OPENAI_API_KEY GitHub secret is empty"
-            exit 1
-          fi
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-          p = Path('gradle.properties')
-          s = p.read_text()
-          s = s.replace('OPENAI_API_KEY=PLAATS_HIER_JE_OPENAI_KEY', 'OPENAI_API_KEY=' + os.environ['OPENAI_API_KEY'])
-          p.write_text(s)
-          PY
-
       - name: Print fixed signing certificate
         run: |
           keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android

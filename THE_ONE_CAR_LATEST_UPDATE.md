@@ -1,16 +1,21 @@
-# The One Car K2401 - latest combined update
+# The One / The One Car — Groq + koers + parkeren
 
-This project includes the previous K2401/WhatsApp fixes plus the latest requested changes:
-- Mail & Kalender opens the same Gmail Org web app as the phone app.
-- USB remains directly under Muziek and now has folder navigation plus playback controls.
-- Voice replies stop after 5 seconds of silence, allow long recordings, preserve the full spoken audio, send the full recording to OpenAI Speech-to-Text; Android recognition is only a failure fallback.
-- Notifications can be cleared separately.
-- Local WhatsApp chat history is cleared at the start of a new radio connection/service session and at full headunit boot.
-- Chats can be cleared manually from the WhatsApp screen.
-- Settings has an Alles wissen action for chats, car notifications, temporary voice files and diagnostic history without deleting preferences/contacts/tiles.
+## AI en spraak
+- OpenAI/Gemini zijn uit Vraag het, Recepten en de primaire WhatsApp-spraaktranscriptie gehaald.
+- The One gebruikt Groq `llama-3.3-70b-versatile` voor tekst en `whisper-large-v3-turbo` voor volledige spraaktranscriptie.
+- De Groq API-key wordt in de telefoon-app ingevoerd via Instellingen en lokaal versleuteld met Android Keystore opgeslagen.
+- GitHub Actions heeft geen OpenAI- of Groq-secret nodig.
+- The One Car stopt een opname automatisch na 5 seconden gedetecteerde stilte en stuurt de volledige WAV daarna één keer naar de telefoon/Groq.
 
-## OpenAI / voice update
-- "Vraag het" and Recepten now use the OpenAI Responses API (`gpt-5-mini`) instead of Gemini.
-- Car voice replies now send the complete WAV once to OpenAI Speech-to-Text (`gpt-4o-mini-transcribe`); local Android speech recognition is only a failure fallback.
-- Radio recording no longer waits for or advertises a fixed 90-second duration. Five seconds of detected silence ends the recording and starts processing immediately; the stop button remains available for manual stopping.
-- The GitHub workflow now expects an `OPENAI_API_KEY` repository secret and injects it only during the build.
+## Koers
+- EUR, SRD en USD zijn beschikbaar.
+- Kies zelf Van en Naar en wissel ze met één knop om.
+
+## Parkeren
+- Een The One-parkeermelding vraagt bij openen of je de officiële Amsterdam App van Gemeente Amsterdam wilt openen voor Aanmelden parkeren.
+- Als de Amsterdam App niet geïnstalleerd is, wordt de Play Store geopend.
+
+## Bestaande The One Car-functies
+- Muziek-tegel biedt Radio of USB.
+- USB is geen losse hoofdtegel en ondersteunt USB 1/USB 2 met echte mappenstructuur.
+- Bestaande WhatsApp-, huishouden-, nieuws-, route-, parkeren-, mail/kalender-, notificatie- en tegelbeheerfuncties blijven behouden.

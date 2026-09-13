@@ -100,7 +100,7 @@ class HomeActivity : AppCompatActivity() {
             HomeTile(id = "recipes", type = TileType.RECIPES, label = "Recepten"),
             HomeTile(id = "news", type = TileType.NEWS, label = "Nieuws"),
             HomeTile(id = "radio", type = TileType.RADIO, label = "Radio"),
-            HomeTile(id = "currency", type = TileType.CURRENCY, label = "EUR/SRD-koers"),
+            HomeTile(id = "currency", type = TileType.CURRENCY, label = "Koers (EUR / SRD / USD)"),
             HomeTile(id = "whatsapp", type = TileType.APP, label = "WhatsApp", packageName = "com.whatsapp"),
             HomeTile(id = "googlehome", type = TileType.APP, label = "Google Home", packageName = "com.google.android.apps.chromecast.app")
         ).filter { tile ->
