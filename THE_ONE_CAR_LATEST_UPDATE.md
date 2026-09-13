@@ -32,3 +32,13 @@
 - Bij Groq 429 wordt `retry-after` gelezen en een bruikbare wachttijd getoond waar beschikbaar.
 - Recepten gebruiken `groq/compound` live web search + website visit, beperkt tot Sranang Kukru en Leuke Recepten.
 - Als meerdere bronnen iets vinden kiest The One automatisch de beste match en toont direct één recept; de gebruiker hoeft niets te kiezen.
+
+## 2026-09-13 – Financiën in The One (telefoon)
+- Nieuwe vaste tegel **Financiën** in de normale The One-app.
+- Zelf startbudget en waarschuwing instellen.
+- Google Wallet / Google Pay-transactiemeldingen met EUR-bedrag worden automatisch van het budget afgetrokken.
+- Duidelijke uitgaande Tikkie-betalingen worden automatisch afgetrokken; ontvangen Tikkies en refunds worden genegeerd.
+- Waarschuwing zodra het ingestelde resterende saldo wordt bereikt/onderschreden.
+- Handmatig bedrag toevoegen en handmatige uitgave mogelijk.
+- Transacties zijn lokaal zichtbaar en kunnen ongedaan worden gemaakt.
+- Verwerking start pas vanaf het moment waarop een nieuw budget wordt ingesteld en dedupliceert bijgewerkte notificaties.

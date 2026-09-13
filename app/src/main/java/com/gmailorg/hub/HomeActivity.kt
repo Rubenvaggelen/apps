@@ -101,6 +101,7 @@ class HomeActivity : AppCompatActivity() {
             HomeTile(id = "news", type = TileType.NEWS, label = "Nieuws"),
             HomeTile(id = "radio", type = TileType.RADIO, label = "Radio"),
             HomeTile(id = "currency", type = TileType.CURRENCY, label = "Koers (EUR / SRD / USD)"),
+            HomeTile(id = "finance", type = TileType.FINANCE, label = "Financiën"),
             HomeTile(id = "whatsapp", type = TileType.APP, label = "WhatsApp", packageName = "com.whatsapp"),
             HomeTile(id = "googlehome", type = TileType.APP, label = "Google Home", packageName = "com.google.android.apps.chromecast.app")
         ).filter { tile ->
@@ -129,6 +130,7 @@ class HomeActivity : AppCompatActivity() {
             TileType.NEWS -> startActivity(Intent(this, NewsActivity::class.java))
             TileType.RADIO -> startActivity(Intent(this, RadioActivity::class.java))
             TileType.CURRENCY -> startActivity(Intent(this, CurrencyActivity::class.java))
+            TileType.FINANCE -> startActivity(Intent(this, FinanceActivity::class.java))
             TileType.APP -> launchExternalApp(tile.packageName)
             TileType.ADD_BUTTON -> startActivity(Intent(this, AppPickerActivity::class.java))
         }
@@ -226,6 +228,7 @@ class HomeAdapter(
             TileType.NEWS -> ContextCompat.getDrawable(context, R.drawable.ic_home_news_fancy)
             TileType.RADIO -> ContextCompat.getDrawable(context, R.drawable.ic_home_radio_fancy)
             TileType.CURRENCY -> ContextCompat.getDrawable(context, R.drawable.ic_home_currency_fancy)
+            TileType.FINANCE -> ContextCompat.getDrawable(context, R.drawable.ic_home_currency_fancy)
             TileType.ADD_BUTTON -> ContextCompat.getDrawable(context, R.drawable.ic_home_add_fancy)
             TileType.APP -> try {
                 buildBadgedAppIcon(context, context.packageManager.getApplicationIcon(tile.packageName!!))

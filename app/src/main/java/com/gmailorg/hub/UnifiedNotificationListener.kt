@@ -145,6 +145,37 @@ class UnifiedNotificationListener : NotificationListenerService() {
             sbn.packageName
         }
 
+        // Financiën verwerkt alleen duidelijke Google Wallet/Pay- en Tikkie-betalingen.
+        // Neem ook bigText/subText mee, omdat betaalapps het bedrag daar kunnen zetten.
+        val financeBody = buildString {
+            append(text)
+            extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()?.takeIf { it.isNotBlank() }?.let {
+                if (isNotEmpty()) append("\n")
+                append(it)
+            }
+            extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()?.takeIf { it.isNotBlank() }?.let {
+                if (isNotEmpty()) append("\n")
+                append(it)
+            }
+            extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT)?.toString()?.takeIf { it.isNotBlank() }?.let {
+                if (isNotEmpty()) append("\n")
+                append(it)
+            }
+        }
+        try {
+            FinanceNotificationProcessor.process(
+                context = applicationContext,
+                packageName = sbn.packageName,
+                appLabel = appLabel,
+                title = title,
+                body = financeBody,
+                notificationKey = sbn.key,
+                postTime = sbn.postTime
+            )
+        } catch (_: Exception) {
+            // Een betaalmelding mag nooit de algemene notificatielistener laten crashen.
+        }
+
         var replyPendingIntent: PendingIntent? = null
         var replyRemoteInput: RemoteInput? = null
         sbn.notification.actions?.forEach { action ->
