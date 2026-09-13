@@ -19,3 +19,16 @@
 - Muziek-tegel biedt Radio of USB.
 - USB is geen losse hoofdtegel en ondersteunt USB 1/USB 2 met echte mappenstructuur.
 - Bestaande WhatsApp-, huishouden-, nieuws-, route-, parkeren-, mail/kalender-, notificatie- en tegelbeheerfuncties blijven behouden.
+
+## Receptbronnen update
+- Sranang Kukru toegevoegd als Surinaamse receptbron: https://sranangkukru.net/recepten/
+- Leuke Recepten Italiaans toegevoegd: https://www.leukerecepten.nl/italiaanse-recepten/
+- Leuke Recepten Hollands toegevoegd: https://www.leukerecepten.nl/hollandse-recepten/
+- Receptenscherm toont bronknoppen die de bronpagina openen.
+- Groq-receptprompt houdt rekening met deze voorkeursbronnen, zonder te claimen dat de websites live zijn uitgelezen.
+
+## 2026-09-13 – Groq/recepten live bronzoeking
+- `Vraag het` gebruikt geen uitgezet Llama-model meer; eerst `qwen/qwen3.6-27b`, met `openai/gpt-oss-20b` als fallback.
+- Bij Groq 429 wordt `retry-after` gelezen en een bruikbare wachttijd getoond waar beschikbaar.
+- Recepten gebruiken `groq/compound` live web search + website visit, beperkt tot Sranang Kukru en Leuke Recepten.
+- Als meerdere bronnen iets vinden kiest The One automatisch de beste match en toont direct één recept; de gebruiker hoeft niets te kiezen.

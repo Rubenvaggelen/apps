@@ -1,6 +1,7 @@
 package com.gmailorg.hub
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.view.View
@@ -12,6 +13,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.browser.customtabs.CustomTabsIntent
 
 /**
  * Recepten-scherm — werkt op precies dezelfde manier als "Vraag het": de
@@ -52,6 +54,15 @@ class RecipesActivity : AppCompatActivity() {
         findViewById<View>(R.id.backButton).setOnClickListener { finish() }
         findViewById<View>(R.id.recipeSearchButton).setOnClickListener { searchRecipe() }
         findViewById<View>(R.id.voiceInputButton).setOnClickListener { startVoiceInput() }
+        findViewById<View>(R.id.sourceSranangButton).setOnClickListener {
+            openRecipeSource("https://sranangkukru.net/recepten/")
+        }
+        findViewById<View>(R.id.sourceItalianButton).setOnClickListener {
+            openRecipeSource("https://www.leukerecepten.nl/italiaanse-recepten/")
+        }
+        findViewById<View>(R.id.sourceDutchButton).setOnClickListener {
+            openRecipeSource("https://www.leukerecepten.nl/hollandse-recepten/")
+        }
         addIngredientsButton.setOnClickListener { addIngredientsToShoppingList() }
         recipeInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
@@ -83,22 +94,11 @@ class RecipesActivity : AppCompatActivity() {
         addIngredientsButton.visibility = View.GONE
         currentIngredients = emptyList()
         answerText.setTextColor(ContextCompat.getColor(this, R.color.text_dim))
-        answerText.text = "Recept opzoeken..."
+        answerText.text = "Recept zoeken op de ingestelde websites..."
 
-        val prompt = "Geef mij een recept voor: $dish. " +
-            "Antwoord in het Nederlands en gebruik EXACT dit format:\n" +
-            "INGREDIENTEN:\n" +
-            "- [hoeveelheid] [ingrediënt]\n" +
-            "- ... (één ingrediënt per regel, voor ongeveer 4 personen)\n" +
-            "BEREIDING:\n" +
-            "1. [eerste stap]\n" +
-            "2. ... (genummerde stappen)\n" +
-            "BOODSCHAPPENLIJST:\n" +
-            "- [alleen de naam van het ingrediënt, GEEN hoeveelheid, GEEN maateenheid, " +
-            "GEEN woorden als 'snufje'/'scheutje'/'naar smaak' — bijv. gewoon 'nootmuskaat' i.p.v. 'een snufje nootmuskaat']\n" +
-            "- ... (één ingrediëntnaam per regel, dezelfde ingrediënten als hierboven maar dan kaal)"
-
-        ChatGptClient.ask(this, prompt) { outcome ->
+        // De bronselectie gebeurt automatisch: zoek de ingestelde websites en
+        // toon direct één compleet recept. De gebruiker hoeft niets te kiezen.
+        ChatGptClient.askRecipe(this, dish) { outcome ->
             when (outcome) {
                 is ChatGptClient.AskOutcome.Success -> {
                     answerText.setTextColor(ContextCompat.getColor(this, R.color.text_main))
@@ -144,6 +144,17 @@ class RecipesActivity : AppCompatActivity() {
             .filter { it.isNotEmpty() }
             .map { it.removePrefix("-").removePrefix("*").trim() }
             .filter { it.isNotEmpty() }
+    }
+
+    private fun openRecipeSource(url: String) {
+        try {
+            CustomTabsIntent.Builder()
+                .setShowTitle(true)
+                .build()
+                .launchUrl(this, Uri.parse(url))
+        } catch (_: Exception) {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        }
     }
 
     private fun addIngredientsToShoppingList() {
