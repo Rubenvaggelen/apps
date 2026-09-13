@@ -1,7 +1,5 @@
 package com.gmailorg.hub
 
-import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.view.View
@@ -13,7 +11,6 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.browser.customtabs.CustomTabsIntent
 
 /**
  * Recepten-scherm — werkt op precies dezelfde manier als "Vraag het": de
@@ -54,15 +51,6 @@ class RecipesActivity : AppCompatActivity() {
         findViewById<View>(R.id.backButton).setOnClickListener { finish() }
         findViewById<View>(R.id.recipeSearchButton).setOnClickListener { searchRecipe() }
         findViewById<View>(R.id.voiceInputButton).setOnClickListener { startVoiceInput() }
-        findViewById<View>(R.id.sourceSranangButton).setOnClickListener {
-            openRecipeSource("https://sranangkukru.net/recepten/")
-        }
-        findViewById<View>(R.id.sourceItalianButton).setOnClickListener {
-            openRecipeSource("https://www.leukerecepten.nl/italiaanse-recepten/")
-        }
-        findViewById<View>(R.id.sourceDutchButton).setOnClickListener {
-            openRecipeSource("https://www.leukerecepten.nl/hollandse-recepten/")
-        }
         addIngredientsButton.setOnClickListener { addIngredientsToShoppingList() }
         recipeInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
@@ -94,7 +82,7 @@ class RecipesActivity : AppCompatActivity() {
         addIngredientsButton.visibility = View.GONE
         currentIngredients = emptyList()
         answerText.setTextColor(ContextCompat.getColor(this, R.color.text_dim))
-        answerText.text = "Recept zoeken op de ingestelde websites..."
+        answerText.text = "Recept zoeken..."
 
         // De bronselectie gebeurt automatisch: zoek de ingestelde websites en
         // toon direct één compleet recept. De gebruiker hoeft niets te kiezen.
@@ -114,10 +102,32 @@ class RecipesActivity : AppCompatActivity() {
         }
     }
 
-    /** Toont alleen de INGREDIENTEN- en BEREIDING-secties; de kale BOODSCHAPPENLIJST-sectie is alleen intern. */
+    /**
+     * Toon alleen het recept zelf. Bronkeuze en broninformatie blijven op de
+     * achtergrond; de gebruiker krijgt gewoon één recept als antwoord.
+     */
     private fun displayableRecipe(answer: String): String {
-        val cutIndex = answer.indexOf("BOODSCHAPPENLIJST:", ignoreCase = true)
-        return if (cutIndex == -1) answer else answer.substring(0, cutIndex).trim()
+        val shoppingIndex = answer.indexOf("BOODSCHAPPENLIJST:", ignoreCase = true)
+        var visible = if (shoppingIndex == -1) answer else answer.substring(0, shoppingIndex)
+
+        val ingredientsIndex = visible.indexOf("INGREDIENTEN:", ignoreCase = true)
+        if (ingredientsIndex >= 0) {
+            visible = visible.substring(ingredientsIndex)
+        } else {
+            // Als Groq toch alleen een BRON:-regel vooraan zet, verberg die.
+            visible = visible.lines()
+                .dropWhile { line ->
+                    val t = line.trim()
+                    t.isBlank() || t.startsWith("BRON:", ignoreCase = true) ||
+                        t.startsWith("http://", ignoreCase = true) ||
+                        t.startsWith("https://", ignoreCase = true) ||
+                        t.contains("sranangkukru.net", ignoreCase = true) ||
+                        t.contains("leukerecepten.nl", ignoreCase = true)
+                }
+                .joinToString("\n")
+        }
+
+        return visible.trim()
     }
 
     /** Haalt de kale ingrediëntnamen uit de "BOODSCHAPPENLIJST:"-sectie (zonder hoeveelheden). */
@@ -144,17 +154,6 @@ class RecipesActivity : AppCompatActivity() {
             .filter { it.isNotEmpty() }
             .map { it.removePrefix("-").removePrefix("*").trim() }
             .filter { it.isNotEmpty() }
-    }
-
-    private fun openRecipeSource(url: String) {
-        try {
-            CustomTabsIntent.Builder()
-                .setShowTitle(true)
-                .build()
-                .launchUrl(this, Uri.parse(url))
-        } catch (_: Exception) {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-        }
     }
 
     private fun addIngredientsToShoppingList() {

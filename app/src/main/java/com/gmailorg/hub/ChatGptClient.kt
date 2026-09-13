@@ -118,7 +118,8 @@ object ChatGptClient {
                 put(
                     "content",
                     "Antwoord altijd in het Nederlands, tenzij de gebruiker expliciet om een andere taal vraagt. " +
-                        "Geef een praktisch, duidelijk antwoord en volg gevraagde formats exact."
+                        "Geef uitsluitend het uiteindelijke antwoord. Toon nooit interne analyse, redeneerstappen, " +
+                        "thinking-tags of uitleg over hoe je tot het antwoord kwam. Wees praktisch en duidelijk."
                 )
             })
             put(JSONObject().apply {
@@ -130,9 +131,18 @@ object ChatGptClient {
             put("model", model)
             put("messages", messages)
             put("temperature", 0.35)
+            // Laat nooit interne redeneerstappen in de app zien. Qwen ondersteunt
+            // reasoning_format=hidden; GPT-OSS gebruikt include_reasoning=false.
+            if (model.startsWith("qwen/")) {
+                put("reasoning_format", "hidden")
+            } else if (model.startsWith("openai/gpt-oss")) {
+                put("include_reasoning", false)
+            }
         }
 
-        return executeChatRequest(apiKey, requestBody, useLatestCompoundVersion = false)
+        return sanitizeFinalAnswer(
+            executeChatRequest(apiKey, requestBody, useLatestCompoundVersion = false)
+        )
     }
 
     private fun fetchRecipeWithWebSearch(dish: String, apiKey: String): String {
@@ -209,7 +219,9 @@ object ChatGptClient {
                         }
                     )
                 }
-                return executeChatRequest(apiKey, requestBody, useLatestCompoundVersion = true)
+                return sanitizeFinalAnswer(
+                    executeChatRequest(apiKey, requestBody, useLatestCompoundVersion = true)
+                )
             } catch (e: GroqHttpException) {
                 lastError = e
                 val mayFallback = e.statusCode == 400 || e.statusCode == 404 || e.statusCode == 429
@@ -269,6 +281,40 @@ object ChatGptClient {
             .orEmpty()
         if (answer.isBlank()) throw Exception("Groq gaf geen antwoordtekst terug")
         return answer
+    }
+
+    /**
+     * Extra vangnet: sommige modellen kunnen ondanks instellingen nog een
+     * <think>...</think>-blok terugsturen. De gebruiker hoort alleen het
+     * uiteindelijke antwoord te zien.
+     */
+    private fun sanitizeFinalAnswer(raw: String): String {
+        var text = raw.trim()
+
+        // Verwijder volledige thinking-blokken (ook over meerdere regels).
+        text = text.replace(
+            Regex("(?is)<think>.*?</think>\\s*"),
+            ""
+        ).trim()
+
+        // Als een provider alleen een openings-tag teruggeeft, pak dan bij
+        // voorkeur tekst na een herkenbare final-answer markering.
+        if (text.contains("<think>", ignoreCase = true)) {
+            val markers = listOf("</think>", "Final answer:", "Final:", "Antwoord:")
+            val marker = markers
+                .mapNotNull { m -> text.indexOf(m, ignoreCase = true).takeIf { it >= 0 }?.let { it to m.length } }
+                .maxByOrNull { it.first }
+            if (marker != null) {
+                text = text.substring(marker.first + marker.second).trim()
+            } else {
+                text = text.replace(Regex("(?is)<think>.*"), "").trim()
+            }
+        }
+
+        return text
+            .removePrefix("Final answer:").removePrefix("Final:").removePrefix("Antwoord:")
+            .trim()
+            .ifBlank { "Ik kreeg geen bruikbaar antwoord terug. Probeer het nog een keer." }
     }
 
     private fun friendlyFinalError(error: GroqHttpException): Exception {

@@ -93,44 +93,6 @@
                 android:textSize="15sp"
                 android:lineSpacingExtra="4dp" />
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginHorizontal="16dp"
-                android:layout_marginTop="8dp"
-                android:layout_marginBottom="8dp"
-                android:text="Receptbronnen"
-                android:textColor="@color/text_main"
-                android:textSize="16sp"
-                android:textStyle="bold" />
-
-            <Button
-                android:id="@+id/sourceSranangButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginHorizontal="16dp"
-                android:layout_marginBottom="8dp"
-                android:text="Sranang Kukru — Surinaams"
-                android:textAllCaps="false" />
-
-            <Button
-                android:id="@+id/sourceItalianButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginHorizontal="16dp"
-                android:layout_marginBottom="8dp"
-                android:text="Leuke Recepten — Italiaans"
-                android:textAllCaps="false" />
-
-            <Button
-                android:id="@+id/sourceDutchButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginHorizontal="16dp"
-                android:layout_marginBottom="16dp"
-                android:text="Leuke Recepten — Hollands"
-                android:textAllCaps="false" />
-
             <Button
                 android:id="@+id/addIngredientsButton"
                 android:layout_width="wrap_content"
