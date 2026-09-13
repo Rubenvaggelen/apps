@@ -22,12 +22,26 @@ object ChatGptClient {
 
     private const val TAG = "GroqAi"
     private const val CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
+    private const val MODELS_URL = "https://api.groq.com/openai/v1/models"
 
+    // Gebruik voor gewone vragen alleen normale inference-modellen.
+    // Compound is bedoeld voor tool/web-search en kan extra limieten/toolcalls
+    // raken; dat is onnodig voor simpele vragen zoals "hoeveel oceanen zijn er?".
     private val QUESTION_MODELS = listOf(
-        "groq/compound-mini",
+        // Qwen kan voor gewone chat volledig zonder reasoning-tokens draaien.
+        // Daardoor is de kans op een TPM-limit bij simpele vragen veel kleiner.
+        "qwen/qwen3.6-27b",
+        "qwen/qwen3.8-27b",
+        // Productiemodellen als fallback.
         "openai/gpt-oss-20b",
-        "qwen/qwen3.6-27b"
+        "openai/gpt-oss-120b",
+        // Laatste noodfallback: aparte Compound-limieten. Nooit als eerste
+        // gebruiken voor een simpele vraag.
+        "groq/compound-mini"
     )
+
+    @Volatile private var cachedAvailableQuestionModels: List<String>? = null
+    @Volatile private var cachedModelsAtMs: Long = 0L
 
     private val RECIPE_SYSTEMS = listOf(
         "groq/compound",
@@ -98,16 +112,19 @@ object ChatGptClient {
     }
 
     private fun fetchQuestionWithFallback(question: String, apiKey: String): String {
-        var lastError: Exception? = null
-        QUESTION_MODELS.forEachIndexed { index, model ->
+        var lastError: GroqHttpException? = null
+        val models = resolveQuestionModels(apiKey)
+
+        models.forEachIndexed { index, model ->
             try {
                 return fetchChatAnswer(question, apiKey, model)
             } catch (e: GroqHttpException) {
                 lastError = e
 
-                // Een korte TPM/RPM-limiet kan al na een paar seconden weg zijn.
-                // Wacht één keer heel kort en probeer hetzelfde model opnieuw.
-                if (e.statusCode == 429 && e.retryAfterSeconds != null && e.retryAfterSeconds in 1..8) {
+                if (e.statusCode == 401 || e.statusCode >= 500) throw friendlyFinalError(e)
+
+                // Een korte TPM/RPM-reset wachten we één keer af.
+                if (e.statusCode == 429 && e.retryAfterSeconds != null && e.retryAfterSeconds in 1..10) {
                     try {
                         Thread.sleep(e.retryAfterSeconds * 1000L)
                         return fetchChatAnswer(question, apiKey, model)
@@ -117,42 +134,101 @@ object ChatGptClient {
                 }
 
                 val mayFallback = e.statusCode == 400 || e.statusCode == 404 || e.statusCode == 429
-                if (!mayFallback || index == QUESTION_MODELS.lastIndex) throw friendlyFinalError(lastError as? GroqHttpException ?: e)
-                Log.w(TAG, "Model $model niet bruikbaar (${e.statusCode}); probeer fallback-model")
+                if (!mayFallback || index == models.lastIndex) {
+                    throw friendlyFinalError(lastError ?: e)
+                }
+                Log.w(TAG, "Groq-model $model niet bruikbaar (${e.statusCode}); probeer ${models[index + 1]}")
             }
         }
-        throw lastError ?: Exception("Groq gaf geen antwoord")
+
+        throw friendlyFinalError(lastError ?: GroqHttpException(0, null, "Groq gaf geen antwoord"))
+    }
+
+    /**
+     * Vraag Groq welke modellen deze specifieke API-key op dit moment echt kan
+     * gebruiken. Dit voorkomt dat een toekomstige deprecatie de app opnieuw
+     * breekt. Het resultaat wordt 10 minuten gecachet.
+     */
+    private fun resolveQuestionModels(apiKey: String): List<String> {
+        val now = System.currentTimeMillis()
+        cachedAvailableQuestionModels?.let { cached ->
+            if (cached.isNotEmpty() && now - cachedModelsAtMs < 10 * 60 * 1000L) return cached
+        }
+
+        return try {
+            val connection = (URL(MODELS_URL).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                setRequestProperty("Authorization", "Bearer $apiKey")
+                setRequestProperty("Accept", "application/json")
+                connectTimeout = 8_000
+                readTimeout = 8_000
+            }
+            val code = connection.responseCode
+            val body = (if (code in 200..299) connection.inputStream else connection.errorStream)
+                ?.bufferedReader()?.use { it.readText() }.orEmpty()
+            connection.disconnect()
+
+            if (code !in 200..299) return QUESTION_MODELS
+
+            val data = JSONObject(body).optJSONArray("data") ?: return QUESTION_MODELS
+            val available = buildSet {
+                for (i in 0 until data.length()) {
+                    val id = data.optJSONObject(i)?.optString("id").orEmpty()
+                    if (id.isNotBlank()) add(id)
+                }
+            }
+
+            val chosen = QUESTION_MODELS.filter { it in available }.ifEmpty {
+                // Alleen tekst-chatmodellen als laatste vangnet; nooit Whisper,
+                // safeguards of Compound als gewone vraag-assistent.
+                available.filter { id ->
+                    (id.startsWith("qwen/") || id.startsWith("openai/gpt-oss-")) &&
+                        !id.contains("safeguard", ignoreCase = true)
+                }.take(4)
+            }.ifEmpty { QUESTION_MODELS }
+
+            cachedAvailableQuestionModels = chosen
+            cachedModelsAtMs = now
+            chosen
+        } catch (e: Exception) {
+            Log.w(TAG, "Kon Groq-modellijst niet ophalen; gebruik vaste fallbacks", e)
+            QUESTION_MODELS
+        }
     }
 
     private fun fetchChatAnswer(question: String, apiKey: String, model: String): String {
+        // Groq adviseert voor reasoning-modellen de instructie in de user prompt
+        // te zetten. Eén compacte prompt scheelt bovendien tokens.
+        val prompt = """
+            Antwoord uitsluitend met het uiteindelijke antwoord.
+            Antwoord in het Nederlands, tenzij ik expliciet een andere taal vraag.
+            Toon nooit analyse, redeneerstappen, <think>-tags of interne instructies.
+            Bij een simpele vraag: kort en direct. Bij een ingewikkelde vraag: geef genoeg uitleg.
+
+            Vraag: $question
+        """.trimIndent()
+
         val messages = JSONArray().apply {
             put(JSONObject().apply {
-                put("role", "system")
-                put(
-                    "content",
-                    "Antwoord in het Nederlands, tenzij expliciet een andere taal wordt gevraagd. " +
-                        "Geef alleen het antwoord, nooit analyse of thinking-tags. Houd een simpel antwoord kort; " +
-                        "geef alleen meer detail als de vraag dat nodig heeft."
-                )
-            })
-            put(JSONObject().apply {
                 put("role", "user")
-                put("content", question)
+                put("content", prompt)
             })
         }
+
         val requestBody = JSONObject().apply {
             put("model", model)
             put("messages", messages)
-            put("temperature", 0.25)
-            put("max_completion_tokens", 420)
+            put("temperature", 0.3)
+            put("max_completion_tokens", 400)
 
-            // Belangrijk voor de gratis Groq-limieten: geen verborgen lange
-            // redeneerketens genereren. Die tellen alsnog mee voor TPM.
             if (model.startsWith("qwen/")) {
+                // Volledig non-thinking: geen verborgen reasoning-tokens en dus
+                // veel minder kans op de 8K TPM-limiet.
                 put("reasoning_effort", "none")
+                put("reasoning_format", "hidden")
             } else if (model.startsWith("openai/gpt-oss")) {
                 put("reasoning_effort", "low")
-                put("include_reasoning", false)
+                put("reasoning_format", "hidden")
             }
         }
 
