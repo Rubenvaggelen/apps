@@ -27,17 +27,21 @@ object ConversationStore {
         return l.contains("spraakbericht") || l.contains("voice message") || l.contains("audio message") || l.startsWith("🎤")
     }
 
-    @Synchronized fun addIncoming(context: Context, contact: String, text: String, time: Long) = add(context, contact, text, time, false, false, looksVoice(text), null)
-    @Synchronized fun addOutgoing(context: Context, contact: String, text: String, time: Long) = add(context, contact, text, time, true, true, false, null)
+    @Synchronized fun addIncoming(context: Context, contact: String, text: String, time: Long): Boolean =
+        add(context, contact, text, time, false, false, looksVoice(text), null)
 
-    private fun add(context: Context, contact: String, text: String, time: Long, mine: Boolean, read: Boolean, voice: Boolean, mediaPath: String?) {
-        if (contact.isBlank() || text.isBlank()) return
+    @Synchronized fun addOutgoing(context: Context, contact: String, text: String, time: Long): Boolean =
+        add(context, contact, text, time, true, true, false, null)
+
+    private fun add(context: Context, contact: String, text: String, time: Long, mine: Boolean, read: Boolean, voice: Boolean, mediaPath: String?): Boolean {
+        if (contact.isBlank() || text.isBlank()) return false
         val list = readAll(context).toMutableList()
         val duplicate = list.takeLast(12).any { it.contact == contact && it.text == text && it.mine == mine && kotlin.math.abs(it.time - time) < 2500L }
-        if (duplicate) return
+        if (duplicate) return false
         list.add(ChatMessage(contact.trim(), text.trim(), time, mine, read, voice, mediaPath))
         while (list.size > MAX_MESSAGES) list.removeAt(0)
         save(context, list)
+        return true
     }
 
     @Synchronized fun attachLatestVoiceMedia(context: Context, contact: String, path: String) {

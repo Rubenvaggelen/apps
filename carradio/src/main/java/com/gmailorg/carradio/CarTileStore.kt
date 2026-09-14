@@ -6,6 +6,9 @@ object CarTileStore {
     private const val PREFS = "car_tiles"
     private const val KEY_HIDDEN = "hidden_fixed"
     private const val KEY_APPS = "user_apps"
+    private const val KEY_ORDER = "dashboard_order"
+    private const val ORDER_SEPARATOR = "\n"
+
     private fun prefs(context: Context) = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     fun hidden(context: Context): Set<String> = prefs(context).getStringSet(KEY_HIDDEN, emptySet())?.toSet().orEmpty()
@@ -23,5 +26,29 @@ object CarTileStore {
     }
     fun removeApp(context: Context, pkg: String) {
         val set = apps(context).toMutableSet(); set.remove(pkg); prefs(context).edit().putStringSet(KEY_APPS, set).apply()
+    }
+
+    /** Dashboardvolgorde. Sleutels zijn bijvoorbeeld fixed:music of app:com.spotify.music. */
+    fun savedOrder(context: Context): List<String> =
+        prefs(context).getString(KEY_ORDER, "")
+            .orEmpty()
+            .split(ORDER_SEPARATOR)
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+
+    /**
+     * Geeft alle zichtbare sleutels terug in de opgeslagen volgorde. Nieuwe tegels
+     * worden achteraan toegevoegd zodat bestaande persoonlijke indeling intact blijft.
+     */
+    fun orderedKeys(context: Context, visibleKeys: List<String>): List<String> {
+        val visible = visibleKeys.distinct()
+        val visibleSet = visible.toSet()
+        val saved = savedOrder(context).filter { it in visibleSet }
+        return saved + visible.filterNot { it in saved.toSet() }
+    }
+
+    fun saveOrder(context: Context, keys: List<String>) {
+        prefs(context).edit().putString(KEY_ORDER, keys.distinct().joinToString(ORDER_SEPARATOR)).apply()
     }
 }

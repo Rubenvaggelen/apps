@@ -24,6 +24,7 @@ class WhatsAppConversationsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_conversations)
+        DashboardUnreadStore.clear(this)
         container = findViewById(R.id.conversationContainer)
         emptyText = findViewById(R.id.emptyText)
         connectionText = findViewById(R.id.connectionText)

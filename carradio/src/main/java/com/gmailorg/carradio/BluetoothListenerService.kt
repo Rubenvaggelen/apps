@@ -503,10 +503,11 @@ clearHistoryForNewSessionIfNeeded()
                     val text = dec(parts[2])
                     val time = parts[3].toLongOrNull() ?: System.currentTimeMillis()
                     if (contact.isNotBlank() && text.isNotBlank()) {
-                        ConversationStore.addIncoming(this, contact, text, time)
+                        val added = ConversationStore.addIncoming(this, contact, text, time)
                         CarNotificationStore.add(this, contact, text, time)
                         RadioContactStore.registerKnown(this, contact)
-                        MessageBus.postMessage("${ContactAliases.displayName(contact)}: $text")
+                        if (added) DashboardUnreadStore.increment(this)
+                        // Geen groot bericht op het hoofdscherm: alleen de teller op de Car-tegel.
                         MessageBus.postDataChanged()
                     }
                 }

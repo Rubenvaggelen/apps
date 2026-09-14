@@ -7,6 +7,7 @@ import java.io.File
 object CarSessionCleaner {
     fun clearChats(context: Context) {
         ConversationStore.clear(context)
+        DashboardUnreadStore.clear(context)
         clearVoiceCache(context)
         MessageBus.postDataChanged()
     }
@@ -18,6 +19,7 @@ object CarSessionCleaner {
 
     fun clearAllEphemeral(context: Context) {
         ConversationStore.clear(context)
+        DashboardUnreadStore.clear(context)
         CarNotificationStore.clear(context)
         clearVoiceCache(context)
         MessageBus.clearHistory()

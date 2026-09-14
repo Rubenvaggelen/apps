@@ -1,6 +1,7 @@
 package com.gmailorg.carradio
 
 import android.Manifest
+import android.content.ClipData
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
@@ -10,6 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.DragEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.GridLayout
@@ -32,12 +34,28 @@ class MainActivity : AppCompatActivity() {
     private lateinit var clockText: TextView
     private val handler = Handler(Looper.getMainLooper())
     private val statusListener: (String) -> Unit = { text -> statusText.text = text }
+    private val dataListener: () -> Unit = {
+        if (!isFinishing && !isDestroyed) buildTiles()
+    }
+    private var visibleTileOrder: List<String> = emptyList()
+    private var draggingView: View? = null
 
     private data class FixedTile(val id: String, val label: String, val icon: Int, val featured: Boolean = false, val action: (MainActivity) -> Unit)
+    private data class RenderTile(
+        val key: String,
+        val label: String,
+        val icon: Drawable?,
+        val featured: Boolean,
+        val badgeCount: Int = 0,
+        val action: () -> Unit
+    )
 
     private val fixedTiles by lazy {
         listOf(
-            FixedTile("theonecar", "The One Car", R.drawable.the_one_logo, true) { it.startActivity(Intent(it, WhatsAppConversationsActivity::class.java)) },
+            FixedTile("theonecar", "The One Car", R.drawable.the_one_logo, true) { activity ->
+                DashboardUnreadStore.clear(activity)
+                activity.startActivity(Intent(activity, WhatsAppConversationsActivity::class.java))
+            },
             FixedTile("notifications", "Meldingen", R.drawable.ic_home_notifications_fancy) { it.startActivity(Intent(it, MessageLogActivity::class.java)) },
             FixedTile("mail", "Mail & Kalender", R.drawable.ic_home_mail_fancy) { it.openMailCalendar() },
             FixedTile("route", "Route", R.drawable.ic_home_route_fancy) { it.startActivity(Intent(it, RouteCarActivity::class.java)) },
@@ -60,6 +78,8 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         statusText = findViewById(R.id.statusText); tileGrid = findViewById(R.id.tileGrid); clockText = findViewById(R.id.clockText)
         MessageBus.addStatusListener(statusListener)
+        MessageBus.addDataListener(dataListener)
+        tileGrid.setOnDragListener { _, event -> handleTileDrag(event) }
         UsbPlaybackService.resumeLastSessionIfNeeded(this)
         buildTiles(); ensurePermissionThenStart(); ensureNotificationPermission(); handler.post(clockTick); UpdateChecker.checkForUpdate(this)
     }
@@ -67,10 +87,18 @@ class MainActivity : AppCompatActivity() {
     private fun buildTiles() {
         tileGrid.removeAllViews()
         val hidden = CarTileStore.hidden(this)
+        val renderTiles = mutableListOf<RenderTile>()
+
         fixedTiles.filterNot { hidden.contains(it.id) }.forEach { tile ->
-            addTile(tile.label, ContextCompat.getDrawable(this, tile.icon), tile.featured,
-                onClick = { cancelStartupGuard(); tile.action(this) },
-                onLongClick = { confirmHideFixed(tile.id, tile.label); true })
+            val badge = if (tile.id == "theonecar") DashboardUnreadStore.count(this) else 0
+            renderTiles += RenderTile(
+                key = "fixed:${tile.id}",
+                label = tile.label,
+                icon = ContextCompat.getDrawable(this, tile.icon),
+                featured = tile.featured,
+                badgeCount = badge,
+                action = { cancelStartupGuard(); tile.action(this) }
+            )
         }
 
         val pm = packageManager
@@ -79,40 +107,111 @@ class MainActivity : AppCompatActivity() {
         }.forEach { pkg ->
             val label = try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() } catch (_: Exception) { pkg }
             val icon = try { buildBadgedAppIcon(pm.getApplicationIcon(pkg)) } catch (_: Exception) { ContextCompat.getDrawable(this, R.drawable.ic_home_add_fancy) }
-            addTile(label, icon, false,
-                onClick = { cancelStartupGuard(); if (!launchPackage(pkg)) Toast.makeText(this, "App is niet meer geïnstalleerd", Toast.LENGTH_SHORT).show() },
-                onLongClick = { confirmRemoveApp(pkg, label); true })
+            renderTiles += RenderTile(
+                key = "app:$pkg",
+                label = label,
+                icon = icon,
+                featured = false,
+                action = {
+                    cancelStartupGuard()
+                    if (!launchPackage(pkg)) Toast.makeText(this, "App is niet meer geïnstalleerd", Toast.LENGTH_SHORT).show()
+                }
+            )
         }
 
-        addTile("App toevoegen", ContextCompat.getDrawable(this, R.drawable.ic_home_add_fancy), false,
-            onClick = { cancelStartupGuard(); startActivity(Intent(this, CarAppPickerActivity::class.java)) },
-            onLongClick = { false })
+        val byKey = renderTiles.associateBy { it.key }
+        visibleTileOrder = CarTileStore.orderedKeys(this, renderTiles.map { it.key })
+        visibleTileOrder.mapNotNull { byKey[it] }.forEach { tile ->
+            addTile(tile.key, tile.label, tile.icon, tile.featured, tile.badgeCount, tile.action)
+        }
+
+        addTile(
+            key = null,
+            label = "App toevoegen",
+            icon = ContextCompat.getDrawable(this, R.drawable.ic_home_add_fancy),
+            featured = false,
+            badgeCount = 0,
+            onClick = { cancelStartupGuard(); startActivity(Intent(this, CarAppPickerActivity::class.java)) }
+        )
     }
 
-    private fun addTile(label: String, icon: Drawable?, featured: Boolean, onClick: () -> Unit, onLongClick: () -> Boolean) {
+    private fun addTile(key: String?, label: String, icon: Drawable?, featured: Boolean, badgeCount: Int, onClick: () -> Unit) {
         val view = LayoutInflater.from(this).inflate(R.layout.view_car_tile, tileGrid, false)
         view.findViewById<TextView>(R.id.tileLabel).text = label
         view.findViewById<ImageView>(R.id.tileIcon).setImageDrawable(icon)
-        if (featured) view.findViewById<View>(R.id.tileRoot).setBackgroundResource(R.drawable.bg_car_tile_featured)
+        val root = view.findViewById<View>(R.id.tileRoot)
+        if (featured) root.setBackgroundResource(R.drawable.bg_car_tile_featured)
+        val badge = view.findViewById<TextView>(R.id.tileBadge)
+        if (badgeCount > 0) {
+            badge.visibility = View.VISIBLE
+            badge.text = if (badgeCount > 99) "99+" else badgeCount.toString()
+        } else {
+            badge.visibility = View.GONE
+        }
+
+        view.tag = key
         view.setOnClickListener { onClick() }
-        view.setOnLongClickListener { onLongClick() }
+        if (key != null) {
+            view.setOnLongClickListener {
+                draggingView = view
+                view.alpha = 0.48f
+                val clip = ClipData.newPlainText("the_one_car_tile", key)
+                view.startDragAndDrop(clip, View.DragShadowBuilder(view), key, 0)
+                true
+            }
+        } else {
+            view.setOnLongClickListener { false }
+        }
+
         val params = GridLayout.LayoutParams().apply {
-            width = 0; height = GridLayout.LayoutParams.WRAP_CONTENT; columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+            width = 0
+            height = GridLayout.LayoutParams.WRAP_CONTENT
+            columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
             setMargins(7.dp, 7.dp, 7.dp, 7.dp)
         }
         tileGrid.addView(view, params)
     }
 
-    private fun confirmHideFixed(id: String, label: String) {
-        AlertDialog.Builder(this).setTitle("Tegel verwijderen?")
-            .setMessage("$label wordt van The One Car verwijderd. Je kunt hem via Instellingen > Tegels beheren terugzetten.")
-            .setPositiveButton("Verwijderen") { _, _ -> CarTileStore.hide(this, id); buildTiles() }
-            .setNegativeButton("Annuleren", null).show()
+    private fun handleTileDrag(event: DragEvent): Boolean {
+        val sourceKey = event.localState as? String ?: return false
+        return when (event.action) {
+            DragEvent.ACTION_DRAG_STARTED -> sourceKey in visibleTileOrder
+            DragEvent.ACTION_DRAG_ENTERED,
+            DragEvent.ACTION_DRAG_LOCATION,
+            DragEvent.ACTION_DRAG_EXITED -> true
+            DragEvent.ACTION_DROP -> {
+                val targetKey = findTileKeyAt(event.x.toInt(), event.y.toInt())
+                val order = visibleTileOrder.toMutableList()
+                val from = order.indexOf(sourceKey)
+                if (from >= 0 && targetKey != sourceKey) {
+                    val moved = order.removeAt(from)
+                    val targetIndex = targetKey?.let { order.indexOf(it) }?.takeIf { it >= 0 } ?: order.size
+                    order.add(targetIndex.coerceIn(0, order.size), moved)
+                    CarTileStore.saveOrder(this, order)
+                    visibleTileOrder = order
+                    Toast.makeText(this, "Tegelvolgorde opgeslagen", Toast.LENGTH_SHORT).show()
+                }
+                draggingView?.alpha = 1f
+                draggingView = null
+                buildTiles()
+                true
+            }
+            DragEvent.ACTION_DRAG_ENDED -> {
+                draggingView?.alpha = 1f
+                draggingView = null
+                true
+            }
+            else -> true
+        }
     }
-    private fun confirmRemoveApp(pkg: String, label: String) {
-        AlertDialog.Builder(this).setTitle("Tegel verwijderen?").setMessage("$label wordt van het dashboard verwijderd.")
-            .setPositiveButton("Verwijderen") { _, _ -> CarTileStore.removeApp(this, pkg); buildTiles() }
-            .setNegativeButton("Annuleren", null).show()
+
+    private fun findTileKeyAt(x: Int, y: Int): String? {
+        for (i in 0 until tileGrid.childCount) {
+            val child = tileGrid.getChildAt(i)
+            val key = child.tag as? String ?: continue
+            if (x >= child.left && x <= child.right && y >= child.top && y <= child.bottom) return key
+        }
+        return null
     }
 
     private fun ensureNotificationPermission() {
@@ -213,6 +312,6 @@ class MainActivity : AppCompatActivity() {
     private fun cancelStartupGuard() { try { startService(Intent(this, BluetoothListenerService::class.java).apply { action = BluetoothListenerService.ACTION_CANCEL_STARTUP }) } catch (_: Exception) {} }
     override fun onUserInteraction() { super.onUserInteraction(); cancelStartupGuard() }
     override fun onResume() { super.onResume(); statusText.text = MessageBus.currentStatus(); buildTiles() }
-    override fun onDestroy() { MessageBus.removeStatusListener(statusListener); handler.removeCallbacks(clockTick); super.onDestroy() }
+    override fun onDestroy() { MessageBus.removeStatusListener(statusListener); MessageBus.removeDataListener(dataListener); handler.removeCallbacks(clockTick); super.onDestroy() }
     private val Int.dp: Int get() = (this * resources.displayMetrics.density).toInt()
 }
