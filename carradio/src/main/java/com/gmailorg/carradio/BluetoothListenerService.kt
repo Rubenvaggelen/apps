@@ -53,6 +53,7 @@ class BluetoothListenerService : Service() {
         private const val CHANNEL_ID = "car_radio_service"
         private const val NOTIFICATION_ID = 1
         private const val FIXED_RFCOMM_CHANNEL = 8
+        private const val WIFI_TCP_PORT = 38471
         private const val WIFI_DISCOVERY_PORT = 38472
         private const val WIFI_DISCOVER = "THE_ONE_DISCOVER_V1"
         private const val WIFI_REPLY_PREFIX = "THE_ONE_HERE:"
