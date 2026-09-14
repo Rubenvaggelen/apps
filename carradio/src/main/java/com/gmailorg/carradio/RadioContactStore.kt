@@ -97,10 +97,11 @@ object RadioContactStore {
     fun putContact(context: Context, name: String, isAllowed: Boolean) {
         ensureDefaults(context)
         val fixedName = ContactAliases.canonicalRealName(name) ?: return
-        val allowed = allowed(context).toMutableSet().apply {
-            removeAll { it.equals(fixedName, ignoreCase = true) }
-            if (isAllowed) add(fixedName)
+        val allowed: MutableSet<String> = HashSet(allowed(context))
+        for (existing in allowed.toList()) {
+            if (existing.equals(fixedName, ignoreCase = true)) allowed.remove(existing)
         }
+        if (isAllowed) allowed.add(fixedName)
         prefs(context).edit()
             .putStringSet(KEY_KNOWN, ContactAliases.defaultRealNames)
             .putStringSet(KEY_ALLOWED, allowed)
@@ -120,10 +121,14 @@ object RadioContactStore {
         ensureDefaults(context)
         val fixedName = ContactAliases.canonicalRealName(name) ?: return
         val p = prefs(context)
-        val on = p.getStringSet(KEY_PENDING_ON, emptySet())?.toMutableSet().orEmpty()
-        val off = p.getStringSet(KEY_PENDING_OFF, emptySet())?.toMutableSet().orEmpty()
-        on.removeAll { it.equals(fixedName, ignoreCase = true) }
-        off.removeAll { it.equals(fixedName, ignoreCase = true) }
+        val on: MutableSet<String> = HashSet(p.getStringSet(KEY_PENDING_ON, emptySet()) ?: emptySet())
+        val off: MutableSet<String> = HashSet(p.getStringSet(KEY_PENDING_OFF, emptySet()) ?: emptySet())
+        for (existing in on.toList()) {
+            if (existing.equals(fixedName, ignoreCase = true)) on.remove(existing)
+        }
+        for (existing in off.toList()) {
+            if (existing.equals(fixedName, ignoreCase = true)) off.remove(existing)
+        }
         if (isAllowed) on.add(fixedName) else off.add(fixedName)
         p.edit().putStringSet(KEY_PENDING_ON, on).putStringSet(KEY_PENDING_OFF, off).apply()
     }
@@ -132,10 +137,14 @@ object RadioContactStore {
         ensureDefaults(context)
         val fixedName = ContactAliases.canonicalRealName(name) ?: return
         val p = prefs(context)
-        val on = p.getStringSet(KEY_PENDING_ON, emptySet())?.toMutableSet().orEmpty()
-        val off = p.getStringSet(KEY_PENDING_OFF, emptySet())?.toMutableSet().orEmpty()
-        on.removeAll { it.equals(fixedName, ignoreCase = true) }
-        off.removeAll { it.equals(fixedName, ignoreCase = true) }
+        val on: MutableSet<String> = HashSet(p.getStringSet(KEY_PENDING_ON, emptySet()) ?: emptySet())
+        val off: MutableSet<String> = HashSet(p.getStringSet(KEY_PENDING_OFF, emptySet()) ?: emptySet())
+        for (existing in on.toList()) {
+            if (existing.equals(fixedName, ignoreCase = true)) on.remove(existing)
+        }
+        for (existing in off.toList()) {
+            if (existing.equals(fixedName, ignoreCase = true)) off.remove(existing)
+        }
         p.edit().putStringSet(KEY_PENDING_ON, on).putStringSet(KEY_PENDING_OFF, off).apply()
     }
 
