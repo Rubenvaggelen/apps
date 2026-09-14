@@ -1,0 +1,16 @@
+THE ONE - Groq instellen
+
+Deze versie gebruikt Groq voor:
+- Vraag het
+- Recepten
+- volledige transcriptie van gesproken WhatsApp-antwoorden vanuit The One Car
+
+Instellen op de telefoon (eenmalig):
+1. Open The One op je telefoon.
+2. Open Instellingen en voer de pincode in.
+3. Ga naar Groq AI.
+4. Plak je Groq API-key in het veld en kies Key opslaan.
+5. De key wordt lokaal versleuteld op je telefoon bewaard.
+
+Er is GEEN GROQ_API_KEY of OPENAI_API_KEY GitHub-secret nodig.
+De autoradio krijgt de API-key niet; audio gaat naar je telefoon en de telefoon doet de Groq-aanroep.
