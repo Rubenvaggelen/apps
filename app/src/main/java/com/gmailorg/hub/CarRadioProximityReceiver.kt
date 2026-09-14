@@ -35,7 +35,11 @@ class CarRadioProximityReceiver : BroadcastReceiver() {
             }
             BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
                 CarRadioForwarder.setNearby(appContext, false)
-                CarRadioConnectionService.stop(appContext)
+                // Een telefoon-hotspot is nu een zelfstandige transportlaag.
+                // Bluetooth wegvallen mag een actieve/verwachte hotspotverbinding niet meer stoppen.
+                if (!CarHotspotDetector.isHotspotLikelyActive(appContext) && !CarRadioConnectionService.isRadioConnected()) {
+                    CarRadioConnectionService.stop(appContext)
+                }
             }
         }
     }

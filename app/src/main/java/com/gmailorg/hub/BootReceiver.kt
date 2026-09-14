@@ -18,6 +18,9 @@ class BootReceiver : BroadcastReceiver() {
             // CarRadioProximityReceiver start de verbinding vanzelf zodra
             // Android een ACL-verbinding met de gekozen autoradio meldt.
             CarRadioForwarder.setNearby(appContext, false)
+            if (CarRadioForwarder.isEnabled(appContext) && CarHotspotDetector.isHotspotLikelyActive(appContext)) {
+                try { CarRadioConnectionService.start(appContext) } catch (_: Exception) {}
+            }
         }
     }
 }

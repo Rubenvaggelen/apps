@@ -3,8 +3,6 @@ package com.gmailorg.carradio
 import android.Manifest
 import android.content.ContentUris
 import android.content.pm.PackageManager
-import android.media.AudioAttributes
-import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -71,8 +69,6 @@ class UsbMusicActivity : AppCompatActivity() {
     private var playbackQueue: List<Track> = emptyList()
     private var currentVolumeKey: String? = null
     private var currentFolder = ""
-    private var player: MediaPlayer? = null
-    private var currentTrack: Track? = null
     private var userSeeking = false
     private val handler = Handler(Looper.getMainLooper())
 
@@ -85,16 +81,18 @@ class UsbMusicActivity : AppCompatActivity() {
 
     private val progressTick = object : Runnable {
         override fun run() {
-            val mp = player
-            if (mp != null) {
-                try {
-                    if (!userSeeking && mp.duration > 0) {
-                        seekBar.max = mp.duration
-                        seekBar.progress = mp.currentPosition
-                        timeText.text = "${formatTime(mp.currentPosition)} / ${formatTime(mp.duration)}"
-                    }
-                } catch (_: IllegalStateException) {}
+            val state = UsbPlaybackService.snapshot()
+            if (!userSeeking) {
+                seekBar.max = state.durationMs.coerceAtLeast(1)
+                seekBar.progress = state.positionMs.coerceIn(0, seekBar.max)
+                timeText.text = "${formatTime(state.positionMs)} / ${formatTime(state.durationMs)}"
             }
+            nowPlayingText.text = when {
+                state.isPreparing -> "Laden: ${state.title}"
+                state.hasTrack -> state.title
+                else -> "Geen nummer geselecteerd"
+            }
+            playPauseButton.text = if (state.isPlaying) "⏸ Pauze" else "▶ Afspelen"
             handler.postDelayed(this, 500L)
         }
     }
@@ -142,7 +140,7 @@ class UsbMusicActivity : AppCompatActivity() {
         seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) {
-                    val duration = try { player?.duration ?: 0 } catch (_: IllegalStateException) { 0 }
+                    val duration = UsbPlaybackService.snapshot().durationMs
                     timeText.text = "${formatTime(progress)} / ${formatTime(duration)}"
                 }
             }
@@ -150,7 +148,7 @@ class UsbMusicActivity : AppCompatActivity() {
             override fun onStartTrackingTouch(seekBar: SeekBar?) { userSeeking = true }
 
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                try { player?.seekTo(seekBar?.progress ?: 0) } catch (_: Exception) {}
+                UsbPlaybackService.seek(this@UsbMusicActivity, seekBar?.progress ?: 0)
                 userSeeking = false
             }
         })
@@ -173,7 +171,7 @@ class UsbMusicActivity : AppCompatActivity() {
     }
 
     private fun scanUsbVolumes() {
-        stopPlayback(resetSelection = true)
+        // Alleen de USB-bibliotheek opnieuw scannen. De achtergrondspeler blijft bewust doorlopen.
         allTracks.clear()
         usbVolumes.clear()
         browserEntries.clear()
@@ -491,83 +489,36 @@ class UsbMusicActivity : AppCompatActivity() {
     }
 
     private fun playTrack(track: Track) {
-        currentTrack = track
-        stopPlayback(resetSelection = false)
+        val queue = if (playbackQueue.isNotEmpty()) playbackQueue else listOf(track)
+        val index = queue.indexOfFirst { it.uri == track.uri }.let { if (it < 0) 0 else it }
+        val serviceQueue = queue.map { UsbPlaybackService.QueueItem(it.uri.toString(), it.displayName) }
+        UsbPlaybackService.play(this, serviceQueue, index)
         nowPlayingText.text = "Laden: ${track.displayName}"
-        val mp = MediaPlayer()
-        player = mp
-        try {
-            mp.setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build()
-            )
-            mp.setDataSource(this, track.uri)
-            mp.setOnPreparedListener {
-                seekBar.max = it.duration.coerceAtLeast(1)
-                nowPlayingText.text = track.displayName
-                it.start()
-                playPauseButton.text = "⏸ Pauze"
-            }
-            mp.setOnCompletionListener { playNext() }
-            mp.setOnErrorListener { _, _, _ ->
-                Toast.makeText(this, "Dit nummer kon niet worden afgespeeld", Toast.LENGTH_SHORT).show()
-                playPauseButton.text = "▶ Afspelen"
-                true
-            }
-            mp.prepareAsync()
-        } catch (_: Exception) {
-            try { mp.release() } catch (_: Exception) {}
-            if (player === mp) player = null
-            Toast.makeText(this, "Kon dit USB-nummer niet openen", Toast.LENGTH_LONG).show()
-        }
     }
 
     private fun togglePlayPause() {
-        val mp = player
-        if (mp == null) {
+        val state = UsbPlaybackService.snapshot()
+        if (!state.hasTrack) {
             val first = playbackQueue.firstOrNull()
             if (first != null) playTrack(first)
             return
         }
-        try {
-            if (mp.isPlaying) {
-                mp.pause()
-                playPauseButton.text = "▶ Afspelen"
-            } else {
-                mp.start()
-                playPauseButton.text = "⏸ Pauze"
-            }
-        } catch (_: Exception) {}
+        UsbPlaybackService.toggle(this)
     }
 
     private fun playNext() {
-        val queue = playbackQueue
-        if (queue.isEmpty()) return
-        val index = queue.indexOfFirst { it.uri == currentTrack?.uri }
-        playTrack(queue[if (index < 0) 0 else (index + 1) % queue.size])
+        if (UsbPlaybackService.snapshot().hasTrack) {
+            UsbPlaybackService.next(this)
+        } else {
+            playbackQueue.firstOrNull()?.let { playTrack(it) }
+        }
     }
 
     private fun playPrevious() {
-        val queue = playbackQueue
-        if (queue.isEmpty()) return
-        val index = queue.indexOfFirst { it.uri == currentTrack?.uri }
-        playTrack(queue[if (index < 0) 0 else (index - 1 + queue.size) % queue.size])
-    }
-
-    private fun stopPlayback(resetSelection: Boolean) {
-        player?.let {
-            try { it.stop() } catch (_: Exception) {}
-            try { it.release() } catch (_: Exception) {}
-        }
-        player = null
-        seekBar.progress = 0
-        timeText.text = "0:00 / 0:00"
-        playPauseButton.text = "▶ Afspelen"
-        if (resetSelection) {
-            currentTrack = null
-            nowPlayingText.text = "Geen nummer geselecteerd"
+        if (UsbPlaybackService.snapshot().hasTrack) {
+            UsbPlaybackService.previous(this)
+        } else {
+            playbackQueue.firstOrNull()?.let { playTrack(it) }
         }
     }
 
@@ -578,7 +529,7 @@ class UsbMusicActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         handler.removeCallbacks(progressTick)
-        stopPlayback(resetSelection = false)
+        // Niet stoppen: UsbPlaybackService houdt de muziek aan wanneer dit scherm sluit.
         super.onDestroy()
     }
 }

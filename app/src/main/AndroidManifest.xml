@@ -126,6 +126,14 @@
             </intent-filter>
         </receiver>
         <receiver
+            android:name=".CarHotspotReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.net.wifi.WIFI_AP_STATE_CHANGED" />
+                <action android:name="android.net.conn.TETHER_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+        <receiver
             android:name=".ShoppingListWidgetProvider"
             android:exported="false">
             <intent-filter>

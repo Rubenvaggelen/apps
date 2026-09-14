@@ -120,7 +120,8 @@ class UnifiedNotificationListener : NotificationListenerService() {
 
     private fun ensureCarRadioServerRunning() {
         if (!CarRadioForwarder.isEnabled(applicationContext)) return
-        if (!CarRadioForwarder.isNearby(applicationContext) && !CarRadioConnectionService.isRadioConnected()) return
+        val hotspotActive = CarHotspotDetector.isHotspotLikelyActive(applicationContext)
+        if (!CarRadioForwarder.isNearby(applicationContext) && !hotspotActive && !CarRadioConnectionService.isRadioConnected()) return
         try {
             CarRadioConnectionService.start(applicationContext)
         } catch (_: Exception) {

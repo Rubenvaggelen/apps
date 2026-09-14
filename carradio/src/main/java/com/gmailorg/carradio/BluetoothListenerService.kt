@@ -116,7 +116,7 @@ class BluetoothListenerService : Service() {
         fun sendVoiceAudio(conversation: String, wavBytes: ByteArray): Boolean {
             if (conversation.isBlank() || wavBytes.isEmpty() || wavBytes.size > 7_000_000) return false
             val id = System.currentTimeMillis().toString(36)
-            val chunkBytes = if (transport == "WIFI-LAN") 48_000 else 12_000
+            val chunkBytes = if (transport.startsWith("WIFI")) 48_000 else 12_000
             synchronized(writeLock) {
                 val writer = activeWriter ?: return false
                 return try {
@@ -192,7 +192,7 @@ class BluetoothListenerService : Service() {
                     enforceStartup(intArrayOf(900, 2800, 6500))
                 }
             }
-            if (action == BluetoothAdapter.ACTION_STATE_CHANGED && transport != "WIFI-LAN") {
+            if (action == BluetoothAdapter.ACTION_STATE_CHANGED && !transport.startsWith("WIFI")) {
                 // Forceer een nieuwe poging wanneer de gebruiker Bluetooth aan/uit zet.
                 closeActiveConnection()
             }
@@ -323,8 +323,8 @@ class BluetoothListenerService : Service() {
                     // CH8 is alleen noodfallback. Zodra Wi-Fi later tijdens de rit
                     // beschikbaar wordt, verbreken we de fallback zodat de volgende
                     // reconnect automatisch via Wi-Fi/LAN loopt.
-                    if (connection.name != "WIFI-LAN" && checks % 2 == 0) {
-                        if (discoverPhoneOnWifi() != null) {
+                    if (!connection.name.startsWith("WIFI") && checks % 2 == 0) {
+                        if (wifiPhoneEndpointAvailable()) {
                             try { thisConnection.close() } catch (_: Exception) {}
                             break
                         }
@@ -359,21 +359,30 @@ class BluetoothListenerService : Service() {
     }
 
     private fun tryWifiConnection(): Connection? {
-        val target = discoverPhoneOnWifi() ?: return null
-        return try {
-            val socket = Socket()
-            socket.connect(InetSocketAddress(target.first, target.second), 1400)
-            socket.tcpNoDelay = true
-            socket.keepAlive = true
-            val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8))
-            val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
-            writer.write("AUTH:$WIFI_AUTH")
-            writer.newLine()
-            writer.flush()
-            Connection(socket, reader, writer, "WIFI-LAN")
-        } catch (_: Exception) {
-            null
+        // Eerst normale UDP-discovery. Als de telefoon zelf hotspot is blokkeren
+        // sommige Android/K2401-combinaties broadcasts; in dat geval is de
+        // DHCP-gateway vrijwel altijd de telefoon zelf en proberen we die direct.
+        val targets = linkedSetOf<Pair<InetAddress, Int>>()
+        discoverPhoneOnWifi()?.let { targets += it }
+        gatewayAddress()?.let { targets += (it to WIFI_TCP_PORT) }
+
+        for (target in targets) {
+            try {
+                val socket = Socket()
+                socket.connect(InetSocketAddress(target.first, target.second), 1400)
+                socket.tcpNoDelay = true
+                socket.keepAlive = true
+                val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8))
+                val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
+                writer.write("AUTH:$WIFI_AUTH")
+                writer.newLine()
+                writer.flush()
+                return Connection(socket, reader, writer, "WIFI-HOTSPOT/LAN")
+            } catch (_: Exception) {
+                // Volgende target proberen; daarna pas CH8 fallback.
+            }
         }
+        return null
     }
 
     /** Zoek de telefoon via een kleine UDP-discovery op hotspot/LAN. */
@@ -424,6 +433,24 @@ class BluetoothListenerService : Service() {
             InetAddress.getByAddress(bytes)
         } catch (_: Exception) {
             null
+        }
+    }
+
+
+    /**
+     * Ook zonder UDP-broadcast kunnen we op een telefoon-hotspot zien dat de telefoon
+     * op de DHCP-gateway luistert. Zo kan CH8 automatisch plaatsmaken voor hotspot-Wi-Fi.
+     */
+    private fun wifiPhoneEndpointAvailable(): Boolean {
+        if (discoverPhoneOnWifi() != null) return true
+        val gateway = gatewayAddress() ?: return false
+        return try {
+            val probe = Socket()
+            probe.connect(InetSocketAddress(gateway, WIFI_TCP_PORT), 450)
+            try { probe.close() } catch (_: Exception) {}
+            true
+        } catch (_: Exception) {
+            false
         }
     }
 
