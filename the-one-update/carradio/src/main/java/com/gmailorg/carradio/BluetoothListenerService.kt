@@ -475,6 +475,14 @@ class BluetoothListenerService : Service() {
         }
     }
 
+    private fun flushPendingContactChoices() {
+        RadioContactStore.pending(this).forEach { (name, allowed) ->
+            if (setContactAllowed(name, allowed)) {
+                RadioContactStore.clearPending(this, name)
+            }
+        }
+    }
+
     private fun clearHistoryForNewSessionIfNeeded() {
         if (historyClearedForServiceLifetime) return
         historyClearedForServiceLifetime = true
@@ -489,6 +497,7 @@ class BluetoothListenerService : Service() {
                 clearHistoryForNewSessionIfNeeded()
                 RadioContactStore.resetForReconnect(this)
                 MessageBus.postStatus("✅ Verbonden met $selectedPhone • $transport")
+                flushPendingContactChoices()
                 requestContacts(); requestHousehold(); requestParking()
             }
             line.startsWith("SYS:PONG:") -> {

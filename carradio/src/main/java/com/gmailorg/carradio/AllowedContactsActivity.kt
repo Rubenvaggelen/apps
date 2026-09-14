@@ -100,16 +100,21 @@ class AllowedContactsActivity : AppCompatActivity() {
                 setPadding(8, 6, 8, 6)
                 setOnCheckedChangeListener { _, checked ->
                     if (rendering) return@setOnCheckedChangeListener
-                    if (!BluetoothListenerService.setContactAllowed(contact.realName, checked)) {
+
+                    // De keuze op de autoradio werkt altijd, ook zonder telefoonverbinding.
+                    RadioContactStore.setAllowedLocal(this@AllowedContactsActivity, contact.realName, checked)
+                    RadioContactStore.markPending(this@AllowedContactsActivity, contact.realName, checked)
+
+                    if (BluetoothListenerService.setContactAllowed(contact.realName, checked)) {
+                        // De wijziging staat op de actieve verbinding; geen offline wachtrij meer nodig.
+                        RadioContactStore.clearPending(this@AllowedContactsActivity, contact.realName)
+                    } else {
                         Toast.makeText(
                             this@AllowedContactsActivity,
-                            "Telefoon nog niet verbonden. Verbind eerst om de keuze te wijzigen.",
+                            "Keuze opgeslagen. Wordt naar je telefoon gestuurd zodra die weer verbonden is.",
                             Toast.LENGTH_SHORT
                         ).show()
-                        container.post { renderContacts() }
-                        return@setOnCheckedChangeListener
                     }
-                    RadioContactStore.setAllowedLocal(this@AllowedContactsActivity, contact.realName, checked)
                 }
             }
             row.addView(toggle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))

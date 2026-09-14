@@ -61,6 +61,7 @@ class MainActivity : AppCompatActivity() {
             FixedTile("route", "Route", R.drawable.ic_home_route_fancy) { it.startActivity(Intent(it, RouteCarActivity::class.java)) },
             FixedTile("household", "Huishouden", R.drawable.ic_home_household_fancy) { it.startActivity(Intent(it, HouseholdCarActivity::class.java)) },
             FixedTile("music", "Muziek", R.drawable.ic_home_music_fancy) { it.showMusicChooser() },
+            FixedTile("radio", "Radio", R.drawable.ic_home_radio_fancy) { it.startActivity(Intent(it, RadioStationsActivity::class.java)) },
             FixedTile("parking", "Parkeren", R.drawable.ic_home_parking_fancy) { it.startActivity(Intent(it, ParkingCarActivity::class.java)) },
             FixedTile("news", "Nieuws", R.drawable.ic_home_news_fancy) { it.startActivity(Intent(it, NewsCarActivity::class.java)) },
             FixedTile("settings", "Instellingen", R.drawable.ic_home_settings_fancy) { it.startActivity(Intent(it, CarSettingsActivity::class.java)) }
