@@ -10,8 +10,12 @@ import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import androidx.core.app.NotificationCompat
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Achtergrondspeler voor USB-muziek.
@@ -19,6 +23,10 @@ import androidx.core.app.NotificationCompat
  * De MediaPlayer leeft in deze foreground service in plaats van in UsbMusicActivity.
  * Daardoor blijft muziek spelen wanneer de gebruiker teruggaat naar The One Car,
  * Route/WhatsApp opent of naar een andere app op de head-unit schakelt.
+ *
+ * De afspeelsessie wordt bovendien lokaal opgeslagen. Als de auto/head-unit uitgaat
+ * terwijl muziek speelt, herstelt The One Car na de volgende start hetzelfde nummer
+ * en ongeveer dezelfde afspeelpositie en speelt automatisch verder.
  */
 class UsbPlaybackService : Service() {
 
@@ -43,9 +51,20 @@ class UsbPlaybackService : Service() {
         private const val ACTION_PREVIOUS = "com.gmailorg.carradio.USB_PREVIOUS"
         private const val ACTION_SEEK = "com.gmailorg.carradio.USB_SEEK"
         private const val ACTION_STOP = "com.gmailorg.carradio.USB_STOP"
+        private const val ACTION_RESTORE_LAST = "com.gmailorg.carradio.USB_RESTORE_LAST"
 
         private const val EXTRA_INDEX = "index"
         private const val EXTRA_POSITION = "position"
+
+        private const val PREFS = "the_one_usb_playback_state"
+        private const val KEY_HAS_SESSION = "has_session"
+        private const val KEY_QUEUE = "queue_json"
+        private const val KEY_INDEX = "index"
+        private const val KEY_POSITION = "position_ms"
+        private const val KEY_WAS_PLAYING = "was_playing"
+        private const val KEY_TITLE = "title"
+        private const val KEY_URI = "uri"
+        private const val KEY_SAVED_AT = "saved_at"
 
         @Volatile private var pendingQueue: List<QueueItem> = emptyList()
         @Volatile private var instance: UsbPlaybackService? = null
@@ -70,6 +89,18 @@ class UsbPlaybackService : Service() {
         })
         fun stop(context: Context) = start(context, Intent(context, UsbPlaybackService::class.java).apply { action = ACTION_STOP })
 
+        /**
+         * Start de speler opnieuw na een reboot/app-herstart als er een opgeslagen sessie is.
+         * Was de muziek vóór het uitzetten actief, dan speelt hij automatisch verder.
+         * Was hij gepauzeerd, dan wordt alleen het nummer/positie hersteld.
+         */
+        fun resumeLastSessionIfNeeded(context: Context) {
+            if (instance != null) return
+            val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            if (!prefs.getBoolean(KEY_HAS_SESSION, false)) return
+            start(context, Intent(context, UsbPlaybackService::class.java).apply { action = ACTION_RESTORE_LAST })
+        }
+
         fun snapshot(): PlaybackState = instance?.snapshotInternal() ?: lastState
 
         private fun start(context: Context, intent: Intent) {
@@ -83,11 +114,22 @@ class UsbPlaybackService : Service() {
     private var queue: List<QueueItem> = emptyList()
     private var index = -1
     @Volatile private var preparing = false
+    private var requestedStartPositionMs = 0
+    private var requestedAutoStart = true
+    private var restoring = false
+    private val stateHandler = Handler(Looper.getMainLooper())
+    private val saveTick = object : Runnable {
+        override fun run() {
+            if (queue.isNotEmpty()) persistSession()
+            stateHandler.postDelayed(this, 2500L)
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
         instance = this
         createChannel()
+        stateHandler.post(saveTick)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -98,32 +140,48 @@ class UsbPlaybackService : Service() {
             ACTION_PLAY_INDEX -> {
                 val replacement = pendingQueue
                 if (replacement.isNotEmpty()) queue = replacement
-                if (queue.isNotEmpty()) playIndex(intent.getIntExtra(EXTRA_INDEX, 0))
+                if (queue.isNotEmpty()) playIndex(intent.getIntExtra(EXTRA_INDEX, 0), 0, true, false)
             }
             ACTION_TOGGLE -> toggleInternal()
             ACTION_NEXT -> playRelative(+1)
             ACTION_PREVIOUS -> playRelative(-1)
             ACTION_SEEK -> seekInternal(intent.getIntExtra(EXTRA_POSITION, 0))
             ACTION_STOP -> stopPlaybackAndService()
+            ACTION_RESTORE_LAST -> restoreLastSession()
+            null -> {
+                // START_STICKY kan een service na procesherstart zonder intent terugbrengen.
+                if (queue.isEmpty()) restoreLastSession()
+            }
         }
         return START_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun playIndex(requestedIndex: Int) {
+    private fun playIndex(
+        requestedIndex: Int,
+        startPositionMs: Int = 0,
+        autoStart: Boolean = true,
+        fromRestore: Boolean = false
+    ) {
         if (queue.isEmpty()) return
         val newIndex = requestedIndex.coerceIn(0, queue.lastIndex)
         val item = queue[newIndex]
         index = newIndex
         preparing = true
+        requestedStartPositionMs = startPositionMs.coerceAtLeast(0)
+        requestedAutoStart = autoStart
+        restoring = fromRestore
         releasePlayer()
         lastState = PlaybackState(
             hasTrack = true,
             title = item.title,
             uri = item.uri,
+            positionMs = requestedStartPositionMs,
+            isPlaying = false,
             isPreparing = true
         )
+        persistSession(explicitPosition = requestedStartPositionMs, explicitPlaying = autoStart)
         updateNotification()
 
         val mp = MediaPlayer()
@@ -139,8 +197,16 @@ class UsbPlaybackService : Service() {
             mp.setOnPreparedListener {
                 if (player !== it) return@setOnPreparedListener
                 preparing = false
-                try { it.start() } catch (_: Exception) {}
+                val seekTo = requestedStartPositionMs.coerceAtMost(it.duration.coerceAtLeast(0))
+                if (seekTo > 0) {
+                    try { it.seekTo(seekTo) } catch (_: Exception) {}
+                }
+                if (requestedAutoStart) {
+                    try { it.start() } catch (_: Exception) {}
+                }
+                restoring = false
                 updateStateCache()
+                persistSession()
                 updateNotification()
             }
             mp.setOnCompletionListener {
@@ -151,6 +217,13 @@ class UsbPlaybackService : Service() {
                     preparing = false
                     updateStateCache()
                     updateNotification()
+                    if (restoring) {
+                        // USB kan tijdens vroege boot nog niet gemount zijn. Bewaar de sessie zodat
+                        // UsbMusicActivity later nogmaals kan herstellen zodra de stick beschikbaar is.
+                        restoring = false
+                        stopForeground(Service.STOP_FOREGROUND_REMOVE)
+                        stopSelf()
+                    }
                 }
                 true
             }
@@ -160,19 +233,50 @@ class UsbPlaybackService : Service() {
             releasePlayer()
             updateStateCache()
             updateNotification()
+            if (fromRestore) {
+                restoring = false
+                stopForeground(Service.STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
         }
+    }
+
+    private fun restoreLastSession() {
+        if (queue.isNotEmpty() || player != null) return
+        val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(KEY_HAS_SESSION, false)) {
+            stopForeground(Service.STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return
+        }
+
+        val restoredQueue = decodeQueue(prefs.getString(KEY_QUEUE, null))
+        if (restoredQueue.isEmpty()) {
+            clearPersistedSession()
+            stopForeground(Service.STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return
+        }
+
+        queue = restoredQueue
+        val restoredIndex = prefs.getInt(KEY_INDEX, 0).coerceIn(0, queue.lastIndex)
+        val restoredPosition = prefs.getInt(KEY_POSITION, 0).coerceAtLeast(0)
+        val shouldPlay = prefs.getBoolean(KEY_WAS_PLAYING, true)
+        playIndex(restoredIndex, restoredPosition, shouldPlay, true)
     }
 
     private fun toggleInternal() {
         val mp = player
         if (mp == null) {
             if (queue.isNotEmpty()) playIndex(if (index in queue.indices) index else 0)
+            else restoreLastSession()
             return
         }
         try {
             if (mp.isPlaying) mp.pause() else if (!preparing) mp.start()
         } catch (_: Exception) {}
         updateStateCache()
+        persistSession()
         updateNotification()
     }
 
@@ -180,7 +284,7 @@ class UsbPlaybackService : Service() {
         if (queue.isEmpty()) return
         val base = if (index in queue.indices) index else 0
         val next = (base + delta + queue.size) % queue.size
-        playIndex(next)
+        playIndex(next, 0, true, false)
     }
 
     private fun seekInternal(positionMs: Int) {
@@ -189,6 +293,7 @@ class UsbPlaybackService : Service() {
             if (!preparing) mp.seekTo(positionMs.coerceAtMost(mp.duration.coerceAtLeast(0)))
         } catch (_: Exception) {}
         updateStateCache()
+        persistSession()
     }
 
     private fun stopPlaybackAndService() {
@@ -197,6 +302,7 @@ class UsbPlaybackService : Service() {
         index = -1
         preparing = false
         lastState = PlaybackState()
+        clearPersistedSession()
         stopForeground(Service.STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -214,12 +320,12 @@ class UsbPlaybackService : Service() {
         val item = queue.getOrNull(index)
         val mp = player
         var duration = 0
-        var position = 0
+        var position = requestedStartPositionMs.coerceAtLeast(0)
         var playing = false
         if (mp != null) {
             try {
                 duration = if (preparing) 0 else mp.duration.coerceAtLeast(0)
-                position = if (preparing) 0 else mp.currentPosition.coerceAtLeast(0)
+                position = if (preparing) position else mp.currentPosition.coerceAtLeast(0)
                 playing = !preparing && mp.isPlaying
             } catch (_: Exception) {}
         }
@@ -238,6 +344,52 @@ class UsbPlaybackService : Service() {
 
     private fun updateStateCache() {
         snapshotInternal()
+    }
+
+    private fun persistSession(explicitPosition: Int? = null, explicitPlaying: Boolean? = null) {
+        if (queue.isEmpty() || index !in queue.indices) return
+        val state = snapshotInternal()
+        val pos = explicitPosition ?: state.positionMs
+        val playing = explicitPlaying ?: state.isPlaying
+        val item = queue[index]
+        val array = JSONArray()
+        queue.forEach { q ->
+            array.put(JSONObject().apply {
+                put("uri", q.uri)
+                put("title", q.title)
+            })
+        }
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_HAS_SESSION, true)
+            .putString(KEY_QUEUE, array.toString())
+            .putInt(KEY_INDEX, index)
+            .putInt(KEY_POSITION, pos.coerceAtLeast(0))
+            .putBoolean(KEY_WAS_PLAYING, playing)
+            .putString(KEY_TITLE, item.title)
+            .putString(KEY_URI, item.uri)
+            .putLong(KEY_SAVED_AT, System.currentTimeMillis())
+            .apply()
+    }
+
+    private fun decodeQueue(raw: String?): List<QueueItem> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return try {
+            val array = JSONArray(raw)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val obj = array.optJSONObject(i) ?: continue
+                    val uri = obj.optString("uri").trim()
+                    if (uri.isBlank()) continue
+                    add(QueueItem(uri, obj.optString("title", "Nummer")))
+                }
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun clearPersistedSession() {
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
     }
 
     private fun createChannel() {
@@ -298,6 +450,8 @@ class UsbPlaybackService : Service() {
     }
 
     override fun onDestroy() {
+        if (queue.isNotEmpty()) persistSession()
+        stateHandler.removeCallbacks(saveTick)
         releasePlayer()
         if (instance === this) instance = null
         super.onDestroy()

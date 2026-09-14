@@ -100,6 +100,7 @@ class UsbMusicActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_usb_music)
+        UsbPlaybackService.resumeLastSessionIfNeeded(this)
 
         statusText = findViewById(R.id.usbStatusText)
         pathText = findViewById(R.id.usbPathText)
