@@ -181,6 +181,7 @@ class BluetoothListenerService : Service() {
     private var incomingMediaMime: String? = null
     private var incomingMediaBuffer: ByteArrayOutputStream? = null
     private var receivedMediaPlayer: MediaPlayer? = null
+    private var incomingVoiceDucked = false
     private var historyClearedForServiceLifetime = false
 
     private val wakeReceiver = object : BroadcastReceiver() {
@@ -615,6 +616,8 @@ clearHistoryForNewSessionIfNeeded()
         incomingMediaMime = dec(parts[2])
         incomingMediaContact = dec(parts[4])
         incomingMediaBuffer = ByteArrayOutputStream(expected.coerceAtLeast(32_000))
+        // De echte audio komt naar de radio; de tijdelijke request-duck hoeft niet langer.
+        UsbPlaybackService.endDucking(UsbPlaybackService.DUCK_REASON_CHAT_REQUEST)
     }
 
     private fun appendIncomingMedia(line: String) {
@@ -651,16 +654,38 @@ clearHistoryForNewSessionIfNeeded()
     }
 
     private fun playReceivedVoice(path: String) {
-        try { receivedMediaPlayer?.release() } catch (_: Exception) {}
+        releaseReceivedMediaPlayer()
+        incomingVoiceDucked = true
+        UsbPlaybackService.beginDucking(UsbPlaybackService.DUCK_REASON_INCOMING_MEDIA, 0.03f)
         receivedMediaPlayer = try {
             MediaPlayer().apply {
                 setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
                 setDataSource(path)
                 setOnPreparedListener { it.start(); MessageBus.postStatus("▶ Spraakbericht wordt afgespeeld") }
-                setOnCompletionListener { MessageBus.postStatus("✅ Spraakbericht afgespeeld") }
+                setOnCompletionListener {
+                    MessageBus.postStatus("✅ Spraakbericht afgespeeld")
+                    releaseReceivedMediaPlayer()
+                }
+                setOnErrorListener { _, _, _ ->
+                    MessageBus.postStatus("Spraakbericht kon niet worden afgespeeld")
+                    releaseReceivedMediaPlayer()
+                    true
+                }
                 prepareAsync()
             }
-        } catch (_: Exception) { null }
+        } catch (_: Exception) {
+            releaseReceivedMediaPlayer()
+            null
+        }
+    }
+
+    private fun releaseReceivedMediaPlayer() {
+        try { receivedMediaPlayer?.release() } catch (_: Exception) {}
+        receivedMediaPlayer = null
+        if (incomingVoiceDucked) {
+            incomingVoiceDucked = false
+            UsbPlaybackService.endDucking(UsbPlaybackService.DUCK_REASON_INCOMING_MEDIA)
+        }
     }
 
     private fun dec(value: String): String = try {
@@ -684,7 +709,8 @@ clearHistoryForNewSessionIfNeeded()
         mainHandler.removeCallbacksAndMessages(null)
         try { unregisterReceiver(wakeReceiver) } catch (_: Exception) {}
         closeActiveConnection()
-        try { receivedMediaPlayer?.release() } catch (_: Exception) {}
+        releaseReceivedMediaPlayer()
+        UsbPlaybackService.endDucking(UsbPlaybackService.DUCK_REASON_CHAT_REQUEST)
         connectorThread?.interrupt()
         super.onDestroy()
     }

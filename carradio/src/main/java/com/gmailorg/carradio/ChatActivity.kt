@@ -5,6 +5,8 @@ import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -31,6 +33,12 @@ class ChatActivity : AppCompatActivity() {
     private lateinit var voiceButton: Button
     private val voiceRecorder = RadioVoiceRecorder()
     private var receivedVoicePlayer: MediaPlayer? = null
+    private var chatVoiceDucked = false
+    private var recordingDucked = false
+    private val duckHandler = Handler(Looper.getMainLooper())
+    private val releaseRequestDuck = Runnable {
+        UsbPlaybackService.endDucking(UsbPlaybackService.DUCK_REASON_CHAT_REQUEST)
+    }
 
     private val dataListener: () -> Unit = { refreshMessages() }
     private val statusListener: (String) -> Unit = { status.text = it }
@@ -84,7 +92,13 @@ class ChatActivity : AppCompatActivity() {
         }
         status.text = "🎙️ Spreek je antwoord in • automatisch verwerken na 5 sec stilte"
         voiceButton.text = "⏹"
+        recordingDucked = true
+        UsbPlaybackService.beginDucking(UsbPlaybackService.DUCK_REASON_RECORDING, 0.12f)
         voiceRecorder.start(onComplete = { result ->
+            if (recordingDucked) {
+                recordingDucked = false
+                UsbPlaybackService.endDucking(UsbPlaybackService.DUCK_REASON_RECORDING)
+            }
             runOnUiThread { voiceButton.text = "🎤" }
             when (result) {
                 is RadioVoiceRecorder.Result.Success -> {
@@ -123,7 +137,13 @@ class ChatActivity : AppCompatActivity() {
                         if (!path.isNullOrBlank()) playReceivedVoice(path)
                         else {
                             status.text = "Spraakbericht ophalen van je telefoon…"
+                            duckHandler.removeCallbacks(releaseRequestDuck)
+                            UsbPlaybackService.beginDucking(UsbPlaybackService.DUCK_REASON_CHAT_REQUEST, 0.04f)
+                            val holdMs = voiceRequestDuckDurationMs(msg.text)
+                            duckHandler.postDelayed(releaseRequestDuck, holdMs)
                             if (!BluetoothListenerService.requestVoiceNote(contact)) {
+                                duckHandler.removeCallbacks(releaseRequestDuck)
+                                UsbPlaybackService.endDucking(UsbPlaybackService.DUCK_REASON_CHAT_REQUEST)
                                 Toast.makeText(this@ChatActivity, "Geen live verbinding met je telefoon", Toast.LENGTH_SHORT).show()
                             }
                         }
@@ -144,18 +164,48 @@ class ChatActivity : AppCompatActivity() {
     }
 
     private fun playReceivedVoice(path: String) {
-        try { receivedVoicePlayer?.release() } catch (_: Exception) {}
+        releaseChatVoicePlayer()
         try {
+            chatVoiceDucked = true
+            UsbPlaybackService.beginDucking(UsbPlaybackService.DUCK_REASON_CHAT_PLAYBACK, 0.03f)
             receivedVoicePlayer = MediaPlayer().apply {
                 setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
                 setDataSource(path)
                 setOnPreparedListener { it.start(); status.text = "▶ Spraakbericht wordt afgespeeld" }
-                setOnCompletionListener { status.text = "✅ Spraakbericht afgespeeld" }
+                setOnCompletionListener {
+                    status.text = "✅ Spraakbericht afgespeeld"
+                    releaseChatVoicePlayer()
+                }
+                setOnErrorListener { _, _, _ ->
+                    status.text = "Spraakbericht kon niet worden afgespeeld"
+                    releaseChatVoicePlayer()
+                    true
+                }
                 prepareAsync()
             }
         } catch (_: Exception) {
             status.text = "Spraakbericht kon niet worden afgespeeld"
+            releaseChatVoicePlayer()
         }
+    }
+
+    private fun releaseChatVoicePlayer() {
+        try { receivedVoicePlayer?.release() } catch (_: Exception) {}
+        receivedVoicePlayer = null
+        if (chatVoiceDucked) {
+            chatVoiceDucked = false
+            UsbPlaybackService.endDucking(UsbPlaybackService.DUCK_REASON_CHAT_PLAYBACK)
+        }
+    }
+
+    private fun voiceRequestDuckDurationMs(text: String): Long {
+        val match = Regex("""(\d{1,2}):(\d{2})""").find(text)
+        val seconds = if (match != null) {
+            val minutes = match.groupValues[1].toLongOrNull() ?: 0L
+            val secs = match.groupValues[2].toLongOrNull() ?: 0L
+            minutes * 60L + secs
+        } else 20L
+        return ((seconds + 8L) * 1000L).coerceIn(12_000L, 120_000L)
     }
 
     private val Int.dp: Int get() = (this * resources.displayMetrics.density).toInt()
@@ -167,7 +217,13 @@ class ChatActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         voiceRecorder.stop()
-        try { receivedVoicePlayer?.release() } catch (_: Exception) {}
+        if (recordingDucked) {
+            recordingDucked = false
+            UsbPlaybackService.endDucking(UsbPlaybackService.DUCK_REASON_RECORDING)
+        }
+        duckHandler.removeCallbacks(releaseRequestDuck)
+        UsbPlaybackService.endDucking(UsbPlaybackService.DUCK_REASON_CHAT_REQUEST)
+        releaseChatVoicePlayer()
         MessageBus.removeDataListener(dataListener)
         MessageBus.removeStatusListener(statusListener)
         super.onDestroy()

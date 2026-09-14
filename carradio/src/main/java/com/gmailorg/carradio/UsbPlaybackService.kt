@@ -70,6 +70,35 @@ class UsbPlaybackService : Service() {
         @Volatile private var instance: UsbPlaybackService? = null
         @Volatile private var lastState = PlaybackState()
 
+        const val DUCK_REASON_RECORDING = "whatsapp_recording"
+        const val DUCK_REASON_CHAT_REQUEST = "whatsapp_voice_request"
+        const val DUCK_REASON_CHAT_PLAYBACK = "whatsapp_voice_chat_playback"
+        const val DUCK_REASON_INCOMING_MEDIA = "whatsapp_voice_incoming_media"
+
+        private val duckLock = Any()
+        private val duckReasons = LinkedHashMap<String, Float>()
+
+        /**
+         * Verlaagt alleen het volume van The One's eigen USB-speler. Het Android
+         * systeemvolume van de K2401 blijft onaangeraakt. Meerdere redenen kunnen
+         * tegelijk actief zijn; het laagste gevraagde volume wint.
+         */
+        fun beginDucking(reason: String, volume: Float = 0.12f) {
+            synchronized(duckLock) {
+                duckReasons[reason] = volume.coerceIn(0.0f, 1.0f)
+            }
+            instance?.applyDuckingVolume()
+        }
+
+        fun endDucking(reason: String) {
+            synchronized(duckLock) { duckReasons.remove(reason) }
+            instance?.applyDuckingVolume()
+        }
+
+        private fun targetVolume(): Float = synchronized(duckLock) {
+            duckReasons.values.minOrNull() ?: 1.0f
+        }
+
         fun play(context: Context, queue: List<QueueItem>, index: Int) {
             if (queue.isEmpty()) return
             pendingQueue = queue.toList()
@@ -204,6 +233,7 @@ class UsbPlaybackService : Service() {
                 if (requestedAutoStart) {
                     try { it.start() } catch (_: Exception) {}
                 }
+                applyDuckingVolume()
                 restoring = false
                 updateStateCache()
                 persistSession()
@@ -314,6 +344,11 @@ class UsbPlaybackService : Service() {
             try { it.release() } catch (_: Exception) {}
         }
         player = null
+    }
+
+    private fun applyDuckingVolume() {
+        val volume = targetVolume()
+        try { player?.setVolume(volume, volume) } catch (_: Exception) {}
     }
 
     private fun snapshotInternal(): PlaybackState {

@@ -623,7 +623,14 @@ class CarRadioConnectionService : Service() {
         if (contact.isBlank()) return
         val source = UnifiedNotificationListener.voiceNoteSourceForConversation(contact)
         if (source == null) {
-            sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("Geen afspeelbaar spraakbericht meer beschikbaar voor ${contact}.")}", false)
+            // WhatsApp geeft niet op elk toestel de audiobron als content-URI vrij.
+            // In dat geval proberen we de Play/content PendingIntent uit de notificatie,
+            // zodat het spraakbericht alsnog via WhatsApp kan worden afgespeeld.
+            if (UnifiedNotificationListener.triggerVoiceNoteAction(contact)) {
+                sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("Spraakbericht geopend via WhatsApp op je telefoon.")}", false)
+            } else {
+                sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("WhatsApp gaf geen afspeelbare audio aan The One door.")}", false)
+            }
             return
         }
         if (source.uri != null) {
