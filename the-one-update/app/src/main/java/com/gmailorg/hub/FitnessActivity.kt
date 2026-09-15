@@ -1,5 +1,7 @@
 package com.gmailorg.hub
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.os.Bundle
 import android.text.InputType
 import android.view.View
@@ -123,82 +125,40 @@ class FitnessActivity : AppCompatActivity() {
 
     private fun showPlan() {
         val profile = requireProfile() ?: return
-        val schedule = weeklySessions(profile)
-        val dayNames = listOf(
-            DayOfWeek.MONDAY to "MAANDAG",
-            DayOfWeek.TUESDAY to "DINSDAG",
-            DayOfWeek.WEDNESDAY to "WOENSDAG",
-            DayOfWeek.THURSDAY to "DONDERDAG",
-            DayOfWeek.FRIDAY to "VRIJDAG",
-            DayOfWeek.SATURDAY to "ZATERDAG",
-            DayOfWeek.SUNDAY to "ZONDAG"
-        )
-        val plan = buildString {
-            append("DOEL\n${goalExplanation(profile.goal)}\n\n")
-            if (profile.hasGym) {
-                append("GYMTOEGANG\n${gymAvailabilityText(profile)}. Het schema plant gymtrainingen alleen op dagen waarop je toegang hebt.\n\n")
-            }
-            append("JOUW WEEK • ${profile.daysPerWeek} TRAININGSDAGEN\n")
-            dayNames.forEach { (day, label) ->
-                val session = schedule[day] ?: SessionKind.REST
-                append("\n$label — ${sessionTitle(profile, session, day)}\n")
-                append(sessionShortDescription(profile, session, day))
-                append("\n")
-            }
-            append("\nPROGRESSIE\n")
-            append("Verhoog eerst herhalingen of duur. Gaat dat 2 trainingen achter elkaar comfortabel en technisch goed, verhoog dan pas rustig gewicht, snelheid of helling. Train kracht meestal met ongeveer 2–3 goede herhalingen over; spierfalen is niet nodig.")
-        }
+        val plan = trainingPlanText(profile)
         sectionTitle.text = "Trainingsschema • persoonlijk"
         sectionBody.text = plan
-        primaryButton.text = "Naar training van vandaag"
-        primaryButton.setOnClickListener { showSection(Section.TODAY) }
+        primaryButton.text = "Delen via WhatsApp"
+        primaryButton.setOnClickListener {
+            shareViaWhatsApp(
+                "🏋️ Mijn trainingsschema • The One\n\n" +
+                    "Doel: ${profile.goal}\n" +
+                    "Ritme: ${profile.daysPerWeek} dagen per week\n\n" +
+                    plan
+            )
+        }
         secondaryButton.visibility = View.VISIBLE
-        secondaryButton.text = "Profiel / trainingsdagen aanpassen"
-        secondaryButton.setOnClickListener { showProfileDialog(firstSetup = false) }
+        secondaryButton.text = "Naar training van vandaag"
+        secondaryButton.setOnClickListener { showSection(Section.TODAY) }
     }
 
     private fun showFood() {
         val profile = requireProfile() ?: return
-        val (lowProtein, highProtein) = proteinRange(profile)
-        val goalNote = when (profile.goal) {
-            "Afvallen + fitter worden" -> "Werk met kleine, vol te houden portie-aanpassingen. Geen crashdieet: conditie en krachttraining hebben brandstof nodig."
-            "Meer spiermassa / sterker" -> "Start rond gewichtsonderhoud en verhoog porties alleen licht als kracht en lichaamsgewicht wekenlang niet vooruitgaan."
-            "Conditie verbeteren" -> "Eet voldoende om trainingen energiek te kunnen doen; extreme tekorten helpen je conditie niet."
-            else -> "Je hoeft niet te 'bulken'. Gewicht ongeveer stabiel houden terwijl je sterker en fitter wordt is een prima uitgangspunt."
-        }
+        val foodPlan = nutritionPlanText(profile)
         sectionTitle.text = "Eten • passend bij jouw profiel"
-        sectionBody.text = """
-            UITGANGSPUNT
-            $goalNote
-            Op basis van ${formatWeight(profile.weightKg)} kg is een praktische eiwitrichtlijn ongeveer $lowProtein–$highProtein g per dag. Dit is een richtlijn, geen verplicht exact getal.
-
-            ONTBIJT
-            Neem een eiwitbron + vezels + fruit. Bijvoorbeeld kwark/Skyr met havermout en fruit, of eieren met brood en fruit.
-
-            LUNCH
-            Kies bijvoorbeeld kip, vis, eieren, tofu/tempeh of peulvruchten + brood/rijst/aardappelen + groente.
-
-            TUSSENDOOR
-            Denk aan yoghurt/kwark, fruit, melk, noten of een andere simpele eiwitrijke snack.
-
-            AVONDETEN
-            Eiwitbron + veel groente + een normale portie rijst, aardappel, pasta of ander koolhydraatproduct.
-
-            RONDOM TRAINING
-            • 1–2 uur vooraf: iets lichts met koolhydraten en wat eiwit.
-            • Na training: binnen een paar uur een normale maaltijd met eiwit en koolhydraten.
-
-            DRINKEN
-            Water is de basis. Drink verspreid over de dag en extra bij warm weer of veel zweten.
-
-            BIJSTUREN
-            Kijk niet alleen naar de weegschaal. Let ook op conditie, kracht, energie, slaap en hoe kleding zit. Verander porties klein en beoordeel pas na 2–3 weken het effect.
-        """.trimIndent()
-        primaryButton.text = "Gewicht registreren"
-        primaryButton.setOnClickListener { showWeightDialog() }
+        sectionBody.text = foodPlan
+        primaryButton.text = "🍽 Recept van de dag"
+        primaryButton.setOnClickListener { requestDailyFitnessRecipe(profile) }
         secondaryButton.visibility = View.VISIBLE
-        secondaryButton.text = "Profiel aanpassen"
-        secondaryButton.setOnClickListener { showProfileDialog(firstSetup = false) }
+        secondaryButton.text = "Delen via WhatsApp"
+        secondaryButton.setOnClickListener {
+            shareViaWhatsApp(
+                "🥗 Mijn voedingsschema • The One\n\n" +
+                    "Doel: ${profile.goal}\n" +
+                    "Gewicht: ${formatWeight(profile.weightKg)} kg\n\n" +
+                    foodPlan
+            )
+        }
     }
 
     private fun showSuggestion() {
@@ -684,6 +644,133 @@ class FitnessActivity : AppCompatActivity() {
             "MOBILITEIT / HERSTEL\n2 rustige rondes: heupbuiger stretch 30 sec/zijde • borstopening 30 sec • calf stretch 30 sec/zijde • 8 squats • 8 wall slides • 5 min wandelen.",
             "INTERVAL LIGHT\n5 min warm-up • 5× (1 min flink tempo + 2 min rustig) • 5 min cool-down. Stop ruim voor maximale inspanning."
         )
+    }
+
+    private fun trainingPlanText(profile: FitnessStore.Profile): String {
+        val schedule = weeklySessions(profile)
+        val dayNames = listOf(
+            DayOfWeek.MONDAY to "MAANDAG",
+            DayOfWeek.TUESDAY to "DINSDAG",
+            DayOfWeek.WEDNESDAY to "WOENSDAG",
+            DayOfWeek.THURSDAY to "DONDERDAG",
+            DayOfWeek.FRIDAY to "VRIJDAG",
+            DayOfWeek.SATURDAY to "ZATERDAG",
+            DayOfWeek.SUNDAY to "ZONDAG"
+        )
+        return buildString {
+            append("DOEL\n${goalExplanation(profile.goal)}\n\n")
+            if (profile.hasGym) {
+                append("GYMTOEGANG\n${gymAvailabilityText(profile)}. Het schema plant gymtrainingen alleen op dagen waarop je toegang hebt.\n\n")
+            }
+            append("JOUW WEEK • ${profile.daysPerWeek} TRAININGSDAGEN\n")
+            dayNames.forEach { (day, label) ->
+                val session = schedule[day] ?: SessionKind.REST
+                append("\n$label — ${sessionTitle(profile, session, day)}\n")
+                append(sessionShortDescription(profile, session, day))
+                append("\n")
+            }
+            append("\nPROGRESSIE\n")
+            append("Verhoog eerst herhalingen of duur. Gaat dat 2 trainingen achter elkaar comfortabel en technisch goed, verhoog dan pas rustig gewicht, snelheid of helling. Train kracht meestal met ongeveer 2–3 goede herhalingen over; spierfalen is niet nodig.")
+        }
+    }
+
+    private fun nutritionPlanText(profile: FitnessStore.Profile): String {
+        val (lowProtein, highProtein) = proteinRange(profile)
+        val goalNote = when (profile.goal) {
+            "Afvallen + fitter worden" -> "Werk met kleine, vol te houden portie-aanpassingen. Geen crashdieet: conditie en krachttraining hebben brandstof nodig."
+            "Meer spiermassa / sterker" -> "Start rond gewichtsonderhoud en verhoog porties alleen licht als kracht en lichaamsgewicht wekenlang niet vooruitgaan."
+            "Conditie verbeteren" -> "Eet voldoende om trainingen energiek te kunnen doen; extreme tekorten helpen je conditie niet."
+            else -> "Je hoeft niet te 'bulken'. Gewicht ongeveer stabiel houden terwijl je sterker en fitter wordt is een prima uitgangspunt."
+        }
+        return """
+            UITGANGSPUNT
+            $goalNote
+            Op basis van ${formatWeight(profile.weightKg)} kg is een praktische eiwitrichtlijn ongeveer $lowProtein–$highProtein g per dag. Dit is een richtlijn, geen verplicht exact getal.
+
+            ONTBIJT
+            Neem een eiwitbron + vezels + fruit. Bijvoorbeeld kwark/Skyr met havermout en fruit, of eieren met brood en fruit.
+
+            LUNCH
+            Kies bijvoorbeeld kip, vis, eieren, tofu/tempeh of peulvruchten + brood/rijst/aardappelen + groente.
+
+            TUSSENDOOR
+            Denk aan yoghurt/kwark, fruit, melk, noten of een andere simpele eiwitrijke snack.
+
+            AVONDETEN
+            Eiwitbron + veel groente + een normale portie rijst, aardappel, pasta of ander koolhydraatproduct.
+
+            RONDOM TRAINING
+            • 1–2 uur vooraf: iets lichts met koolhydraten en wat eiwit.
+            • Na training: binnen een paar uur een normale maaltijd met eiwit en koolhydraten.
+
+            DRINKEN
+            Water is de basis. Drink verspreid over de dag en extra bij warm weer of veel zweten.
+
+            BIJSTUREN
+            Kijk niet alleen naar de weegschaal. Let ook op conditie, kracht, energie, slaap en hoe kleding zit. Verander porties klein en beoordeel pas na 2–3 weken het effect.
+        """.trimIndent()
+    }
+
+    private fun requestDailyFitnessRecipe(profile: FitnessStore.Profile) {
+        primaryButton.isEnabled = false
+        primaryButton.text = "Recept zoeken…"
+        val (lowProtein, highProtein) = proteinRange(profile)
+        val profileText = buildString {
+            append("Geslacht: ${profile.sex}; leeftijd: ${profile.age}; lengte: ${profile.heightCm} cm; ")
+            append("gewicht: ${formatWeight(profile.weightKg)} kg; doel: ${profile.goal}; ")
+            append("trainingsdagen: ${profile.daysPerWeek} per week; eiwitrichtlijn: $lowProtein–$highProtein g per dag.")
+        }
+        ChatGptClient.askFitnessRecipe(this, profileText) { outcome ->
+            if (section == Section.FOOD) {
+                primaryButton.isEnabled = true
+                primaryButton.text = "🍽 Recept van de dag"
+            }
+            when (outcome) {
+                is ChatGptClient.AskOutcome.Success -> showDailyRecipeDialog(outcome.answer)
+                is ChatGptClient.AskOutcome.Error -> Toast.makeText(this, outcome.message, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun showDailyRecipeDialog(recipe: String) {
+        val pad = (20 * resources.displayMetrics.density).toInt()
+        val recipeView = TextView(this).apply {
+            text = recipe
+            textSize = 16f
+            setTextColor(ContextCompat.getColor(context, R.color.text_main))
+            setPadding(pad, pad / 2, pad, pad / 2)
+            setTextIsSelectable(true)
+        }
+        val scroll = ScrollView(this).apply { addView(recipeView) }
+        AlertDialog.Builder(this)
+            .setTitle("Recept van de dag")
+            .setView(scroll)
+            .setNeutralButton("Delen via WhatsApp") { _, _ ->
+                shareViaWhatsApp("🍽 Recept van de dag • The One\n\n$recipe")
+            }
+            .setPositiveButton("Sluiten", null)
+            .show()
+    }
+
+    private fun shareViaWhatsApp(text: String) {
+        val baseIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        val whatsappPackages = listOf("com.whatsapp", "com.whatsapp.w4b")
+        for (packageName in whatsappPackages) {
+            try {
+                startActivity(Intent(baseIntent).setPackage(packageName))
+                return
+            } catch (_: ActivityNotFoundException) {
+                // Try the next WhatsApp variant.
+            }
+        }
+        try {
+            startActivity(Intent.createChooser(baseIntent, "Schema delen"))
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, "Geen app gevonden om dit schema te delen.", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun proteinRange(profile: FitnessStore.Profile): Pair<Int, Int> {

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="oval">
+            <gradient android:angle="315" android:startColor="#F7D98B" android:centerColor="#D89A3A" android:endColor="#8E5B14" />
+        </shape>
+    </item>
+    <item android:left="3dp" android:top="3dp" android:right="3dp" android:bottom="3dp">
+        <shape android:shape="oval">
+            <gradient android:angle="315" android:startColor="#2D5A43" android:endColor="#10251C" />
+            <stroke android:width="1dp" android:color="#F4D08A" />
+        </shape>
+    </item>
+    <item android:width="32dp" android:height="32dp" android:gravity="center">
+        <vector android:width="32dp" android:height="32dp" android:viewportWidth="24" android:viewportHeight="24">
+            <!-- heart + activity pulse: lifestyle / health -->
+            <path android:fillColor="#FFF1C7" android:pathData="M12,21s-7.2,-4.35 -9.55,-8.38C0.4,9.1 2.13,5 6.18,5c2.16,0 3.52,1.19 4.32,2.2C11.3,6.19 12.66,5 14.82,5c4.05,0 5.78,4.1 3.73,7.62C16.2,16.65 12,21 12,21z" />
+            <path android:fillColor="#10251C" android:pathData="M4.4,12h3.1l1.15,-2.5 2.1,5 1.4,-3h2.25" />
+        </vector>
+    </item>
+</layer-list>

@@ -64,6 +64,21 @@ object ChatGptClient {
         }, "TheOne-KIE-Recipe").start()
     }
 
+    fun askFitnessRecipe(context: Context, profileSummary: String, callback: (AskOutcome) -> Unit) {
+        @Suppress("UNUSED_VARIABLE")
+        val appContext = context.applicationContext
+        Thread({
+            try {
+                val answer = fetchFitnessRecipe(profileSummary)
+                mainHandler.post { callback(AskOutcome.Success(answer)) }
+            } catch (e: Exception) {
+                Log.e(TAG, "KIE fitnessrecept mislukt", e)
+                val message = e.message ?: "onbekende fout"
+                mainHandler.post { callback(AskOutcome.Error("Recept van de dag kon niet worden gemaakt: $message")) }
+            }
+        }, "TheOne-KIE-FitnessRecipe").start()
+    }
+
     private fun fetchQuestion(question: String): String {
         val prompt = """
             Antwoord uitsluitend met het uiteindelijke antwoord.
@@ -183,6 +198,83 @@ object ChatGptClient {
             }
             throw finalError
         }
+    }
+
+    private fun fetchFitnessRecipe(profileSummary: String): String {
+        val today = java.time.LocalDate.now().toString()
+        val searchPrompt = """
+            JE BENT DE FITNESS-RECEPTENFUNCTIE VAN THE ONE.
+            Kies voor vandaag ($today) één lekkere, normale maaltijd die goed past bij dit fitnessprofiel:
+            $profileSummary
+
+            Zoek met Google Search inspiratie voor een smakelijk, praktisch gerecht. Het hoeft geen saai dieetgerecht te zijn.
+            Kies zelf één gerecht; stel GEEN vervolgvragen en geef GEEN keuzelijst.
+            Vermijd extreme diëten en onnodige supplementen. Gebruik gewone supermarktproducten.
+
+            Geef exact deze onderdelen:
+            TITEL:
+            [naam gerecht]
+
+            WAAROM DIT PAST:
+            [2 korte zinnen]
+
+            INGREDIENTEN:
+            - [hoeveelheid] [ingrediënt]
+            - ... voor 1 royale portie of 2 normale porties
+
+            BEREIDING:
+            1. [concrete stap]
+            2. [concrete stap]
+            3. [ga door totdat het gerecht klaar is]
+
+            VOEDINGSWAARDEN (SCHATTING):
+            [globale kcal en eiwit per portie; vermeld duidelijk dat het een schatting is]
+
+            Stel geen toestemming-vraag en eindig niet met "laat het me weten".
+        """.trimIndent()
+
+        try {
+            val grounded = sanitizeFinalAnswer(
+                executeKieRequest(searchPrompt, enableGoogleSearch = true, timeoutMs = 75_000)
+            )
+            if (isCompleteRecipeAnswer(grounded)) return grounded
+        } catch (e: KieHttpException) {
+            if (e.statusCode == 401) throw friendlyFinalError(e)
+            Log.w(TAG, "KIE fitnessrecept met webzoeking mislukt; gebruik fallback", e)
+        } catch (e: Exception) {
+            Log.w(TAG, "KIE fitnessrecept met webzoeking gaf fout; gebruik fallback", e)
+        }
+
+        val fallbackPrompt = """
+            JE BENT DE FITNESS-RECEPTENFUNCTIE VAN THE ONE.
+            Maak direct één lekkere, praktische maaltijd voor vandaag passend bij:
+            $profileSummary
+
+            Gebruik gewone supermarktproducten. Vermijd extreme diëten en supplementen.
+            Geef één gerecht, geen keuzelijst en geen vervolgvragen.
+
+            TITEL:
+            [naam gerecht]
+
+            WAAROM DIT PAST:
+            [2 korte zinnen]
+
+            INGREDIENTEN:
+            - [hoeveelheid] [ingrediënt]
+
+            BEREIDING:
+            1. [concrete stap]
+            2. [concrete stap]
+
+            VOEDINGSWAARDEN (SCHATTING):
+            [globale kcal en eiwit per portie; duidelijk als schatting]
+        """.trimIndent()
+
+        val fallback = sanitizeFinalAnswer(
+            executeKieRequest(fallbackPrompt, enableGoogleSearch = false, timeoutMs = 55_000)
+        )
+        if (isCompleteRecipeAnswer(fallback)) return fallback
+        throw Exception("KIE gaf geen volledig fitnessrecept terug")
     }
 
     private fun executeKieRequest(
