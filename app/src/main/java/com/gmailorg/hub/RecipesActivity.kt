@@ -15,7 +15,7 @@ import androidx.core.content.ContextCompat
 
 /**
  * Recepten-scherm — werkt op precies dezelfde manier als "Vraag het": de
- * ingetypte of ingesproken gerechtnaam wordt als vraag naar Groq AI gestuurd,
+ * ingetypte of ingesproken gerechtnaam wordt als vraag naar KIE Gemini gestuurd,
  * en het antwoord (het recept) wordt getoond. De ingrediënten (herkenbaar
  * aan het "INGREDIENTEN:"/"BEREIDING:"-format dat we in de prompt afdwingen)
  * kunnen met één knop naar de boodschappenlijst gestuurd worden.
@@ -116,7 +116,7 @@ class RecipesActivity : AppCompatActivity() {
         if (ingredientsIndex >= 0) {
             visible = visible.substring(ingredientsIndex)
         } else {
-            // Als Groq toch alleen een BRON:-regel vooraan zet, verberg die.
+            // Als KIE toch alleen een BRON:-regel vooraan zet, verberg die.
             visible = visible.lines()
                 .dropWhile { line ->
                     val t = line.trim()

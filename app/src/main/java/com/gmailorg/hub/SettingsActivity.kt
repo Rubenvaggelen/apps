@@ -85,47 +85,24 @@ class SettingsActivity : AppCompatActivity() {
         )
         list.adapter = adapter
 
-        setupGroqSection()
+        setupKieSection()
         setupCarRadioSection()
         setupNotificationReplySection()
     }
 
-    private fun setupGroqSection() {
+    private fun setupKieSection() {
         val input = findViewById<EditText>(R.id.groqKeyInput)
         val status = findViewById<TextView>(R.id.groqKeyStatus)
         val save = findViewById<View>(R.id.saveGroqKeyButton)
         val clear = findViewById<View>(R.id.clearGroqKeyButton)
 
-        fun refresh() {
-            val linked = GroqApiKeyStore.hasKey(this)
-            status.text = if (linked) "Groq gekoppeld ✓" else "Nog geen Groq API-key opgeslagen"
-            status.setTextColor(ContextCompat.getColor(this, if (linked) R.color.amber else R.color.text_dim))
-            clear.visibility = if (linked) View.VISIBLE else View.GONE
-            input.hint = if (linked) "Nieuwe key invullen om te vervangen" else "gsk_..."
-        }
-
-        save.setOnClickListener {
-            val key = input.text.toString().trim()
-            if (key.isBlank()) {
-                Toast.makeText(this, "Vul eerst je Groq API-key in.", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            try {
-                GroqApiKeyStore.set(this, key)
-                input.text.clear()
-                refresh()
-                Toast.makeText(this, "Groq API-key veilig opgeslagen.", Toast.LENGTH_SHORT).show()
-            } catch (e: Exception) {
-                Toast.makeText(this, "Opslaan mislukt: ${e.message ?: "onbekende fout"}", Toast.LENGTH_LONG).show()
-            }
-        }
-        clear.setOnClickListener {
-            GroqApiKeyStore.clear(this)
-            input.text.clear()
-            refresh()
-            Toast.makeText(this, "Groq API-key verwijderd.", Toast.LENGTH_SHORT).show()
-        }
-        refresh()
+        // De KIE-key is bewust in deze build ingebouwd. Toon de key zelf nooit
+        // in de interface en log hem nergens.
+        input.visibility = View.GONE
+        save.visibility = View.GONE
+        clear.visibility = View.GONE
+        status.text = "KIE API actief ✓ — key is ingebouwd in deze build"
+        status.setTextColor(ContextCompat.getColor(this, R.color.amber))
     }
 
     private fun setupNotificationReplySection() {

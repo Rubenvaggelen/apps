@@ -687,30 +687,10 @@ class CarRadioConnectionService : Service() {
             return
         }
 
-        // Eén volledige opname -> één Groq Whisper transcriptie. Geen parallelle
-        // SpeechRecognizer-race meer: die leverde bij langere zinnen geregeld
-        // alleen het eerste segment op en maakte de verwerking onnodig traag.
+        // Groq is volledig vervangen. Gesproken WhatsApp-antwoorden worden nu
+        // lokaal via Android SpeechRecognizer omgezet, zodat hiervoor geen tweede
+        // cloud-API of aparte sleutel meer nodig is.
         sendProtocolLine("STATUS:Spraak wordt omgezet naar tekst...", false)
-        GroqVoiceTranscriber.transcribe(this, wavBytes) { result ->
-            when (result) {
-                is GroqVoiceTranscriber.Result.Success -> {
-                    val cleaned = result.text.trim().replace(Regex("\\s+"), " ")
-                    if (cleaned.isNotBlank()) {
-                        mainHandler.post { finishReply(target, cleaned) }
-                    } else {
-                        mainHandler.post { fallbackVoiceRecognition(wavBytes, target, "geen spraak herkend") }
-                    }
-                }
-                is GroqVoiceTranscriber.Result.Error -> {
-                    mainHandler.post { fallbackVoiceRecognition(wavBytes, target, result.message) }
-                }
-            }
-        }
-    }
-
-    private fun fallbackVoiceRecognition(wavBytes: ByteArray, target: String?, groqError: String) {
-        // Alleen wanneer Groq echt faalt gebruiken we de lokale Android-route.
-        // Hierdoor vertraagt deze fallback de normale succesvolle route niet.
         InjectedAudioSpeechTranscriber.transcribe(this, wavBytes) { local ->
             when (local) {
                 is InjectedAudioSpeechTranscriber.Result.Success -> {
@@ -719,17 +699,21 @@ class CarRadioConnectionService : Service() {
                         mainHandler.post { finishReply(target, text) }
                         return@transcribe
                     }
+                    mainHandler.post { fallbackToPhoneMic(target, "geen spraak herkend") }
                 }
-                is InjectedAudioSpeechTranscriber.Result.Error -> Unit
-            }
-            mainHandler.post {
-                sendProtocolLine(
-                    "STATUS:Spraak omzetten mislukt ($groqError). Ik probeer de telefoonmicrofoon.",
-                    false
-                )
-                handleReplyRequest(target)
+                is InjectedAudioSpeechTranscriber.Result.Error -> {
+                    mainHandler.post { fallbackToPhoneMic(target, local.message) }
+                }
             }
         }
+    }
+
+    private fun fallbackToPhoneMic(target: String?, localError: String) {
+        sendProtocolLine(
+            "STATUS:Spraak omzetten mislukt ($localError). Ik probeer de telefoonmicrofoon.",
+            false
+        )
+        handleReplyRequest(target)
     }
 
     private fun finishReply(target: String?, text: String) {

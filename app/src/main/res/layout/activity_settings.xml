@@ -110,7 +110,7 @@
             android:paddingHorizontal="16dp"
             android:paddingTop="4dp"
             android:paddingBottom="8dp"
-            android:text="Groq AI"
+            android:text="KIE AI"
             android:textColor="@color/text_main"
             android:textSize="16sp"
             android:textStyle="bold" />
@@ -120,7 +120,7 @@
             android:layout_height="wrap_content"
             android:paddingHorizontal="16dp"
             android:paddingBottom="10dp"
-            android:text="Wordt gebruikt voor Vraag het, Recepten en volledige transcriptie van gesproken WhatsApp-antwoorden. De key wordt alleen lokaal en versleuteld op deze telefoon bewaard."
+            android:text="Wordt gebruikt voor Vraag het en Recepten via Gemini 3 Flash. De API-key is ingebouwd in deze persoonlijke build."
             android:textColor="@color/text_dim"
             android:textSize="13sp" />
 
@@ -129,7 +129,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="16dp"
-            android:hint="gsk_..."
+            android:hint="KIE API-key ingebouwd"
             android:inputType="textPassword"
             android:singleLine="true"
             android:background="@color/surface"
@@ -143,7 +143,7 @@
             android:layout_height="wrap_content"
             android:paddingHorizontal="16dp"
             android:paddingTop="8dp"
-            android:text="Nog geen Groq API-key opgeslagen"
+            android:text="KIE API actief"
             android:textColor="@color/text_dim"
             android:textSize="13sp" />
 

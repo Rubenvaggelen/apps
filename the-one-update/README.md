@@ -134,3 +134,6 @@ Heb je toch een keer toegang tot een computer, dan kan het ook lokaal:
 - Gesproken WhatsApp-antwoorden vanuit The One Car stoppen na 5 seconden stilte en gebruiken de volledige opname voor Groq Whisper transcriptie.
 - Koers ondersteunt EUR, SRD en USD.
 - Parkeermeldingen kunnen je na bevestiging naar de officiële Amsterdam App sturen voor Aanmelden parkeren.
+
+## KIE AI integration (2026-09-15)
+The One now uses KIE Gemini 3 Flash for Vraag het and Recepten. The API credential is embedded in this personal build at the owner's explicit request. Do not publish this source tree or APK publicly without rotating/removing that credential.
