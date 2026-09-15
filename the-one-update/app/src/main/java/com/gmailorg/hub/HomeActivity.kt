@@ -130,7 +130,7 @@ class HomeActivity : AppCompatActivity() {
         when (tile.type) {
             TileType.NOTIFICATIONS -> startActivity(Intent(this, NotificationsActivity::class.java))
             TileType.MAIL -> openMailInCustomTab()
-            TileType.ROUTE -> openRouteInCustomTab()
+            TileType.ROUTE -> startActivity(Intent(this, RouteHubActivity::class.java))
             TileType.HOUSEHOLD -> startActivity(Intent(this, HouseholdActivity::class.java))
             TileType.MOVIES -> startActivity(Intent(this, MoviesActivity::class.java))
             TileType.PARKING -> startActivity(Intent(this, ParkingActivity::class.java))

@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="16dp">
+
+        <Button
+            android:id="@+id/backButton"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="←"
+            android:textSize="20sp"
+            android:textColor="@color/text_main" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Route"
+            android:textColor="@color/text_main"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="16dp"
+            android:paddingBottom="32dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Plan je route of zoek de goedkoopste brandstof binnen 5 km van je huidige locatie."
+                android:textColor="@color/text_dim"
+                android:textSize="14sp"
+                android:layout_marginBottom="16dp" />
+
+            <Button
+                android:id="@+id/routePlannerButton"
+                android:layout_width="match_parent"
+                android:layout_height="72dp"
+                android:text="🧭  Routeplanner"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/on_amber"
+                android:backgroundTint="@color/amber" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="Opent je bestaande The One routeplanner."
+                android:textColor="@color/text_dim"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/fuelPricesButton"
+                android:layout_width="match_parent"
+                android:layout_height="72dp"
+                android:layout_marginTop="18dp"
+                android:text="⛽  Brandstofprijzen"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_main"
+                android:backgroundTint="@color/surface_raised" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="Zoekt binnen 5 km, sorteert op goedkoopste prijs en laat je met één tik via Waze navigeren."
+                android:textColor="@color/text_dim"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>
