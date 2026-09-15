@@ -320,9 +320,30 @@ object ChatGptClient {
                 )
             } catch (e: GroqHttpException) {
                 lastError = e
-                val mayFallback = e.statusCode == 400 || e.statusCode == 404 || e.statusCode == 429
-                if (!mayFallback || index == RECIPE_SYSTEMS.lastIndex) throw friendlyFinalError(e)
-                Log.w(TAG, "Receptensysteem $system niet bruikbaar (${e.statusCode}); probeer fallback")
+
+                // Een ongeldige API-key (401) wordt niet beter door een ander model
+                // te proberen. Toon die fout meteen. Problemen die specifiek bij
+                // Compound/web-search kunnen horen (400/404/429 en serverfouten)
+                // mogen Recepten echter NOOIT volledig blokkeren: probeer eerst het
+                // andere Compound-model en val daarna terug op dezelfde gewone
+                // Groq-modellen die "Vraag het" gebruikt.
+                if (e.statusCode == 401) throw friendlyFinalError(e)
+
+                val canTryAnotherCompound = index < RECIPE_SYSTEMS.lastIndex
+                if (canTryAnotherCompound) {
+                    Log.w(TAG, "Receptensysteem $system niet bruikbaar (${e.statusCode}); probeer volgende webzoekroute")
+                } else {
+                    Log.w(TAG, "Alle Groq-webzoekroutes mislukt (${e.statusCode}); gebruik gewone receptfallback")
+                }
+            } catch (e: Exception) {
+                // Ook time-outs, tijdelijke netwerk-/JSON-fouten of een wijziging in
+                // de web-searchtool mogen het receptenscherm niet doodleggen.
+                lastError = e
+                if (index < RECIPE_SYSTEMS.lastIndex) {
+                    Log.w(TAG, "Receptensysteem $system gaf een technische fout; probeer volgende webzoekroute", e)
+                } else {
+                    Log.w(TAG, "Alle Groq-webzoekroutes gaven een technische fout; gebruik gewone receptfallback", e)
+                }
             }
         }
         // Als live websearch tijdelijk zijn eigen limiet raakt, geef de gebruiker
