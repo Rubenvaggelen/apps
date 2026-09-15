@@ -91,6 +91,10 @@
             android:name=".FinanceActivity"
             android:exported="false"
             android:theme="@style/Theme.GmailOrgHub" />
+        <activity
+            android:name=".FitnessActivity"
+            android:exported="false"
+            android:theme="@style/Theme.GmailOrgHub" />
         <service
             android:name=".UnifiedNotificationListener"
             android:exported="true"

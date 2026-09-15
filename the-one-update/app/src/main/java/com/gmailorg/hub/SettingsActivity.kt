@@ -233,6 +233,7 @@ class SettingsActivity : AppCompatActivity() {
         "radio" to "Radio",
         "currency" to "Koers (EUR / SRD / USD)",
         "finance" to "Financiën",
+        "fitness" to "Fitness",
         "whatsapp" to "WhatsApp",
         "googlehome" to "Google Home"
     )
