@@ -234,7 +234,7 @@ class MainActivity : AppCompatActivity() {
     }
     private fun openUrl(url: String) { try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (_: Exception) { Toast.makeText(this, "Geen browser gevonden", Toast.LENGTH_SHORT).show() } }
     private fun openMailCalendar() {
-        val url = Uri.parse("https://rubenvaggelen.github.io/Gmailorg/")
+        val url = Uri.parse(BuildConfig.APP_BASE_URL)
         try {
             CustomTabsIntent.Builder().build().launchUrl(this, url)
         } catch (_: Exception) {
