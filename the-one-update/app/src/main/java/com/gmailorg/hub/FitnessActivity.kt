@@ -319,6 +319,22 @@ class FitnessActivity : AppCompatActivity() {
             })
         }
 
+        // Always-visible action at the top of the form. On smaller screens the
+        // AlertDialog's standard positive button can end up below the fold.
+        val topSaveButton = Button(this).apply {
+            text = if (firstSetup) "VERDER" else "OPSLAAN"
+            textSize = 16f
+            isAllCaps = true
+            setPadding(pad / 2, pad / 3, pad / 2, pad / 3)
+        }
+        container.addView(
+            topSaveButton,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = fieldGap }
+        )
+
         label("Geslacht")
         val sexOptions = listOf("Niet opgegeven", "Man", "Vrouw", "Anders / liever niet zeggen")
         val sexSpinner = Spinner(this).apply {
@@ -397,40 +413,38 @@ class FitnessActivity : AppCompatActivity() {
             .create()
         dialog.setCancelable(!firstSetup)
         dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val saveProfile = View.OnClickListener {
                 val age = ageInput.text.toString().trim().toIntOrNull()
                 val height = heightInput.text.toString().trim().toIntOrNull()
                 val weight = weightInput.text.toString().trim().replace(',', '.').toFloatOrNull()
                 val days = dayOptions[daysSpinner.selectedItemPosition].toInt()
                 if (age == null || age !in 18..90) {
                     Toast.makeText(this, "Vul een leeftijd tussen 18 en 90 in.", Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
-                }
-                if (height == null || height !in 130..220) {
+                } else if (height == null || height !in 130..220) {
                     Toast.makeText(this, "Vul een geldige lengte in (130–220 cm).", Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
-                }
-                if (weight == null || weight !in 35f..250f) {
+                } else if (weight == null || weight !in 35f..250f) {
                     Toast.makeText(this, "Vul een geldig gewicht in (35–250 kg).", Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
-                }
-                FitnessStore.saveProfile(
-                    this,
-                    FitnessStore.Profile(
-                        sex = sexOptions[sexSpinner.selectedItemPosition],
-                        age = age,
-                        heightCm = height,
-                        weightKg = weight,
-                        goal = goalOptions[goalSpinner.selectedItemPosition],
-                        daysPerWeek = days,
-                        hasTreadmill = treadmillCheck.isChecked,
-                        hasGym = gymCheck.isChecked
+                } else {
+                    FitnessStore.saveProfile(
+                        this,
+                        FitnessStore.Profile(
+                            sex = sexOptions[sexSpinner.selectedItemPosition],
+                            age = age,
+                            heightCm = height,
+                            weightKg = weight,
+                            goal = goalOptions[goalSpinner.selectedItemPosition],
+                            daysPerWeek = days,
+                            hasTreadmill = treadmillCheck.isChecked,
+                            hasGym = gymCheck.isChecked
+                        )
                     )
-                )
-                dialog.dismiss()
-                refreshStatus()
-                showSection(if (section == Section.PROFILE) Section.PROFILE else Section.TODAY)
+                    dialog.dismiss()
+                    refreshStatus()
+                    showSection(if (section == Section.PROFILE) Section.PROFILE else Section.TODAY)
+                }
             }
+            topSaveButton.setOnClickListener(saveProfile)
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(saveProfile)
         }
         dialog.show()
     }
