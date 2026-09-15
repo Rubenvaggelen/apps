@@ -315,9 +315,17 @@ object ChatGptClient {
                         }
                     )
                 }
-                return sanitizeFinalAnswer(
+                val answer = sanitizeFinalAnswer(
                     executeChatRequest(apiKey, requestBody, useLatestCompoundVersion = true)
                 )
+                if (isCompleteRecipeAnswer(answer)) return answer
+
+                // Een webzoekmodel kan soms alleen een uitnodiging of korte
+                // samenvatting teruggeven (bijv. "als je wilt kan ik...").
+                // Dat is voor Recepten geen geldig resultaat: probeer de volgende
+                // route en accepteer alleen een echt uitgewerkt recept.
+                lastError = Exception("Groq gaf geen volledig recept terug")
+                Log.w(TAG, "Receptensysteem $system gaf geen gestructureerd recept; probeer volgende route")
             } catch (e: GroqHttpException) {
                 lastError = e
 
@@ -350,22 +358,125 @@ object ChatGptClient {
         // alsnog één recept via de gewone Groq-modellen. De bronzoekactie blijft
         // de voorkeursroute, maar een rate-limit mag het receptenscherm niet
         // volledig blokkeren.
-        val fallbackPrompt = """
-            Geef precies één compleet recept voor: $dish.
-            Antwoord in het Nederlands. Geef geen keuzes en stel geen wedervraag.
-            Gebruik exact deze secties:
+        return try {
+            fetchRecipeWithStandardModels(dish, apiKey)
+        } catch (fallback: Exception) {
+            throw fallback
+        }
+    }
+
+    /**
+     * Noodroute voor Recepten zonder web-search. Deze gebruikt dezelfde gewone
+     * Groq-modellen als Vraag het, maar met een eigen strikte receptprompt en
+     * ruimere outputlimiet. Zo wordt een antwoord als "als je wilt kan ik..."
+     * nooit als voltooid recept geaccepteerd.
+     */
+    private fun fetchRecipeWithStandardModels(dish: String, apiKey: String): String {
+        val models = resolveQuestionModels(apiKey)
+        var lastError: Exception? = null
+
+        models.forEachIndexed { index, model ->
+            try {
+                val answer = fetchRecipeAnswer(dish, apiKey, model)
+                if (isCompleteRecipeAnswer(answer)) return answer
+
+                lastError = Exception("AI gaf geen volledig recept terug")
+                Log.w(TAG, "Receptfallback $model gaf geen volledig recept")
+            } catch (e: GroqHttpException) {
+                lastError = e
+                if (e.statusCode == 401) throw friendlyFinalError(e)
+
+                val mayFallback = e.statusCode == 400 || e.statusCode == 404 ||
+                    e.statusCode == 429 || e.statusCode >= 500
+                if (!mayFallback || index == models.lastIndex) {
+                    throw friendlyFinalError(e)
+                }
+                Log.w(TAG, "Receptfallback $model niet bruikbaar (${e.statusCode}); probeer volgend model")
+            } catch (e: Exception) {
+                lastError = e
+                Log.w(TAG, "Receptfallback $model gaf een technische fout", e)
+            }
+        }
+
+        throw lastError ?: Exception("AI gaf geen volledig recept terug")
+    }
+
+    private fun fetchRecipeAnswer(dish: String, apiKey: String, model: String): String {
+        val prompt = """
+            JE BENT DE RECEPTENFUNCTIE VAN THE ONE.
+            Dit is geen gesprek en je mag GEEN toestemming of vervolgvragen vragen.
+
+            Gerecht: $dish
+
+            Geef NU direct één volledig, praktisch Nederlands recept voor ongeveer 4 personen.
+            Gebruik je algemene culinaire kennis als live webzoekresultaten niet beschikbaar zijn.
+
+            VERBODEN:
+            - Zeg niet "als je wilt", "laat het me weten", "ik kan je een recept geven" of iets vergelijkbaars.
+            - Geef geen keuzelijst en stel geen wedervraag.
+            - Geef geen uitleg over wat je zou kunnen doen.
+
+            Je antwoord MOET direct beginnen met INGREDIENTEN: en exact deze secties bevatten:
             INGREDIENTEN:
             - [hoeveelheid] [ingrediënt]
+            - [hoeveelheid] [ingrediënt]
+
             BEREIDING:
-            1. [stap]
+            1. [concrete bereidingsstap]
+            2. [concrete bereidingsstap]
+            3. [ga door tot het gerecht volledig bereid is]
+
             BOODSCHAPPENLIJST:
-            - [alleen ingrediëntnaam]
+            - [alleen ingrediëntnaam, zonder hoeveelheid]
+            - [alleen ingrediëntnaam, zonder hoeveelheid]
+
+            Schrijf voldoende details om het gerecht daadwerkelijk te kunnen koken.
         """.trimIndent()
-        return try {
-            fetchQuestionWithFallback(fallbackPrompt, apiKey)
-        } catch (fallback: Exception) {
-            throw lastError ?: fallback
+
+        val messages = JSONArray().apply {
+            put(JSONObject().apply {
+                put("role", "user")
+                put("content", prompt)
+            })
         }
+
+        val requestBody = JSONObject().apply {
+            put("model", model)
+            put("messages", messages)
+            put("temperature", 0.15)
+            put("max_completion_tokens", 1400)
+
+            if (model.startsWith("qwen/")) {
+                put("reasoning_effort", "none")
+                put("reasoning_format", "hidden")
+            } else if (model.startsWith("openai/gpt-oss")) {
+                put("reasoning_effort", "low")
+                put("reasoning_format", "hidden")
+            }
+        }
+
+        return sanitizeFinalAnswer(
+            executeChatRequest(
+                apiKey,
+                requestBody,
+                useLatestCompoundVersion = model.startsWith("groq/compound")
+            )
+        )
+    }
+
+    private fun isCompleteRecipeAnswer(answer: String): Boolean {
+        val normalized = answer.uppercase()
+        if (!normalized.contains("INGREDIENTEN:") || !normalized.contains("BEREIDING:")) return false
+
+        val ingredientLines = answer.lines().count { line ->
+            val trimmed = line.trim()
+            trimmed.startsWith("-") || trimmed.startsWith("*")
+        }
+        val preparationLines = answer.lines().count { line ->
+            line.trim().matches(Regex("\\d+[.)]\\s+.+"))
+        }
+
+        return ingredientLines >= 3 && preparationLines >= 2
     }
 
     private fun executeChatRequest(
