@@ -102,7 +102,7 @@ class FitnessActivity : AppCompatActivity() {
         val session = weeklySessions(profile)[today.dayOfWeek] ?: SessionKind.REST
         val completed = FitnessStore.isCompleted(this, today)
         sectionTitle.text = "Vandaag • ${today.format(DateTimeFormatter.ofPattern("EEEE d MMMM", Locale("nl", "NL")))}"
-        sectionBody.text = workoutFor(profile, session)
+        sectionBody.text = workoutFor(profile, session, today.dayOfWeek)
 
         if (session == SessionKind.REST) {
             primaryButton.text = "Trainingsvoorstel bekijken"
@@ -135,11 +135,14 @@ class FitnessActivity : AppCompatActivity() {
         )
         val plan = buildString {
             append("DOEL\n${goalExplanation(profile.goal)}\n\n")
+            if (profile.hasGym) {
+                append("GYMTOEGANG\n${gymAvailabilityText(profile)}. Het schema plant gymtrainingen alleen op dagen waarop je toegang hebt.\n\n")
+            }
             append("JOUW WEEK • ${profile.daysPerWeek} TRAININGSDAGEN\n")
             dayNames.forEach { (day, label) ->
                 val session = schedule[day] ?: SessionKind.REST
-                append("\n$label — ${sessionTitle(profile, session)}\n")
-                append(sessionShortDescription(profile, session))
+                append("\n$label — ${sessionTitle(profile, session, day)}\n")
+                append(sessionShortDescription(profile, session, day))
                 append("\n")
             }
             append("\nPROGRESSIE\n")
@@ -400,8 +403,36 @@ class FitnessActivity : AppCompatActivity() {
             setTextColor(ContextCompat.getColor(context, R.color.text_main))
             isChecked = existing?.hasGym ?: false
         }
+        val gymAvailability = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, 0, 0, 0)
+        }
+        val gymWeekdaysCheck = CheckBox(this).apply {
+            text = "Door de week (maandag t/m vrijdag)"
+            setTextColor(ContextCompat.getColor(context, R.color.text_main))
+            isChecked = existing?.gymWeekdays ?: (existing?.hasGym ?: false)
+        }
+        val gymWeekendCheck = CheckBox(this).apply {
+            text = "Weekend (zaterdag en zondag)"
+            setTextColor(ContextCompat.getColor(context, R.color.text_main))
+            isChecked = existing?.gymWeekend ?: (existing?.hasGym ?: false)
+        }
+        gymAvailability.addView(gymWeekdaysCheck)
+        gymAvailability.addView(gymWeekendCheck)
+        fun updateGymAvailabilityVisibility() {
+            gymAvailability.visibility = if (gymCheck.isChecked) View.VISIBLE else View.GONE
+        }
+        gymCheck.setOnCheckedChangeListener { _, checked ->
+            if (checked && !gymWeekdaysCheck.isChecked && !gymWeekendCheck.isChecked) {
+                gymWeekdaysCheck.isChecked = true
+                gymWeekendCheck.isChecked = true
+            }
+            updateGymAvailabilityVisibility()
+        }
         container.addView(treadmillCheck)
         container.addView(gymCheck)
+        container.addView(gymAvailability)
+        updateGymAvailabilityVisibility()
 
         val scroll = ScrollView(this).apply { addView(container) }
         val dialog = AlertDialog.Builder(this)
@@ -424,6 +455,8 @@ class FitnessActivity : AppCompatActivity() {
                     Toast.makeText(this, "Vul een geldige lengte in (130–220 cm).", Toast.LENGTH_SHORT).show()
                 } else if (weight == null || weight !in 35f..250f) {
                     Toast.makeText(this, "Vul een geldig gewicht in (35–250 kg).", Toast.LENGTH_SHORT).show()
+                } else if (gymCheck.isChecked && !gymWeekdaysCheck.isChecked && !gymWeekendCheck.isChecked) {
+                    Toast.makeText(this, "Kies wanneer je toegang hebt tot de fitnessruimte: door de week en/of weekend.", Toast.LENGTH_LONG).show()
                 } else {
                     FitnessStore.saveProfile(
                         this,
@@ -435,7 +468,9 @@ class FitnessActivity : AppCompatActivity() {
                             goal = goalOptions[goalSpinner.selectedItemPosition],
                             daysPerWeek = days,
                             hasTreadmill = treadmillCheck.isChecked,
-                            hasGym = gymCheck.isChecked
+                            hasGym = gymCheck.isChecked,
+                            gymWeekdays = gymCheck.isChecked && gymWeekdaysCheck.isChecked,
+                            gymWeekend = gymCheck.isChecked && gymWeekendCheck.isChecked
                         )
                     )
                     dialog.dismiss()
@@ -516,62 +551,110 @@ class FitnessActivity : AppCompatActivity() {
                 sessions[DayOfWeek.SATURDAY] = SessionKind.CARDIO_INTERVAL
             }
         }
+
+        if (!profile.hasGym || (profile.gymWeekdays && profile.gymWeekend)) return sessions
+
+        fun isStrength(kind: SessionKind?) = kind == SessionKind.STRENGTH_A || kind == SessionKind.STRENGTH_B || kind == SessionKind.STRENGTH_C
+        fun swap(dayA: DayOfWeek, dayB: DayOfWeek) {
+            val a = sessions[dayA]
+            val b = sessions[dayB]
+            if (a == null && b == null) return
+            if (b == null) sessions.remove(dayA) else sessions[dayA] = b
+            if (a == null) sessions.remove(dayB) else sessions[dayB] = a
+        }
+
+        if (profile.gymWeekdays && !profile.gymWeekend) {
+            // If a strength session landed in the weekend, exchange it with a
+            // weekday cardio/recovery session. That keeps gym work on access days.
+            val weekendStrength = listOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY)
+                .firstOrNull { isStrength(sessions[it]) }
+            if (weekendStrength != null) {
+                val weekdayCardio = listOf(DayOfWeek.WEDNESDAY, DayOfWeek.TUESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.MONDAY)
+                    .firstOrNull { sessions[it] != null && !isStrength(sessions[it]) }
+                if (weekdayCardio != null) swap(weekendStrength, weekdayCardio)
+                else {
+                    // Three-day plans are the common case: move the second full-body
+                    // session to Friday and keep Saturday for home cardio/recovery.
+                    val moved = sessions.remove(weekendStrength)
+                    if (moved != null) {
+                        val previousFriday = sessions.put(DayOfWeek.FRIDAY, moved)
+                        if (previousFriday != null) sessions[weekendStrength] = previousFriday
+                    }
+                }
+            }
+        } else if (!profile.gymWeekdays && profile.gymWeekend) {
+            // Prefer one of the weekend training slots for strength. Other strength
+            // sessions remain valid home sessions so consecutive full-body days are avoided.
+            val weekendNonStrength = listOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY)
+                .firstOrNull { sessions[it] != null && !isStrength(sessions[it]) }
+            val weekdayStrength = listOf(DayOfWeek.FRIDAY, DayOfWeek.THURSDAY, DayOfWeek.WEDNESDAY, DayOfWeek.TUESDAY, DayOfWeek.MONDAY)
+                .firstOrNull { isStrength(sessions[it]) && !gymAvailableOn(profile, it) }
+            if (weekendNonStrength != null && weekdayStrength != null) swap(weekdayStrength, weekendNonStrength)
+        }
         return sessions
     }
 
-    private fun workoutFor(profile: FitnessStore.Profile, session: SessionKind): String {
+    private fun gymAvailableOn(profile: FitnessStore.Profile, day: DayOfWeek): Boolean {
+        if (!profile.hasGym) return false
+        return if (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY) profile.gymWeekend else profile.gymWeekdays
+    }
+
+    private fun workoutFor(profile: FitnessStore.Profile, session: SessionKind, day: DayOfWeek = LocalDate.now().dayOfWeek): String {
         val warmup = if (profile.age >= 50) "8–10 min rustig opwarmen" else "5–8 min rustig opwarmen"
         return when (session) {
-            SessionKind.STRENGTH_A -> if (profile.hasGym) {
+            SessionKind.STRENGTH_A -> if (gymAvailableOn(profile, day)) {
                 """FULL BODY A • GYM\n\n$warmup.\nLeg press 3×10–12\nChest press 3×8–12\nLat pulldown 3×8–12\nSeated row 2×10–12\nShoulder press 2×8–12\nPlank 3×30–45 sec\n\nRust 60–90 sec. Stop de meeste sets met ongeveer 2–3 goede herhalingen over.""".replace("\\n", "\n")
             } else {
                 """FULL BODY A • THUIS\n\n$warmup.\nSquat naar stoel 3×10–15\nIncline push-up tegen tafel/bank 3×8–12\nGlute bridge 3×12–15\nRugzak-row 3×10–12\nStep-up 2×10/been\nPlank 3×20–45 sec\n\nWerk beheerst en stop voor techniek verslechtert.""".replace("\\n", "\n")
             }
-            SessionKind.STRENGTH_B -> if (profile.hasGym) {
+            SessionKind.STRENGTH_B -> if (gymAvailableOn(profile, day)) {
                 """FULL BODY B • GYM\n\n$warmup.\nLeg curl 3×10–12\nLeg extension of split squat 2×10/been\nIncline chest press 3×8–12\nCable row 3×10–12\nLat pulldown 2×10–12\nWoodchop of dead bug 3 sets\n\nRust 60–90 sec en houd de uitvoering rustig.""".replace("\\n", "\n")
             } else {
                 """FULL BODY B • THUIS\n\n$warmup.\nReverse lunge of split squat 3×8–10/been\nIncline push-up 3×8–12\nHip hinge met rugzak 3×10–12\nRugzak-row 3×10–12\nCalf raise 3×12–20\nDead bug 3×8/zijde\n\nNeem 60–90 sec rust tussen sets.""".replace("\\n", "\n")
             }
-            SessionKind.STRENGTH_C -> if (profile.hasGym) {
+            SessionKind.STRENGTH_C -> if (gymAvailableOn(profile, day)) {
                 """FULL BODY C • LICHT/MIDDEL\n\n$warmup.\nGoblet squat of leg press 2×10–12\nMachine chest press 2×10–12\nRow 2×10–12\nRomanian deadlift-machine/kabel 2×10\nLateral raise 2×12–15\nCore 2–3 sets\n\nDeze derde krachtsessie blijft iets lichter dan A en B.""".replace("\\n", "\n")
-            } else workoutFor(profile, SessionKind.STRENGTH_A)
-            SessionKind.CARDIO_BASE -> cardioBase(profile)
-            SessionKind.CARDIO_INTERVAL -> cardioInterval(profile)
-            SessionKind.CARDIO_RECOVERY -> """LICHTE CONDITIE / HERSTEL\n\n${cardioMode(profile)} 20–30 min op rustig tempo. Je moet makkelijk kunnen praten. Sluit af met 5–10 min rustige mobiliteit.""".replace("\\n", "\n")
+            } else workoutFor(profile, SessionKind.STRENGTH_A, day)
+            SessionKind.CARDIO_BASE -> cardioBase(profile, day)
+            SessionKind.CARDIO_INTERVAL -> cardioInterval(profile, day)
+            SessionKind.CARDIO_RECOVERY -> """LICHTE CONDITIE / HERSTEL\n\n${cardioMode(profile, day)} 20–30 min op rustig tempo. Je moet makkelijk kunnen praten. Sluit af met 5–10 min rustige mobiliteit.""".replace("\\n", "\n")
             SessionKind.REST -> """HERSTELDAG\n\nVandaag staat geen kerntraining gepland. Een ontspannen wandeling of 8–10 min mobiliteit is prima. Herstel hoort bij vooruitgang: slaap, eet normaal en forceer geen extra zware training omdat je 'een dag mist'.""".replace("\\n", "\n")
         }
     }
 
-    private fun cardioBase(profile: FitnessStore.Profile): String {
-        val mode = cardioMode(profile)
+    private fun cardioBase(profile: FitnessStore.Profile, day: DayOfWeek = LocalDate.now().dayOfWeek): String {
+        val mode = cardioMode(profile, day)
         return """BASISCONDITIE • $mode\n\n5 min rustig opwarmen\n20–30 min stevig, gelijkmatig tempo\n5 min rustig uitlopen\n\nIntensiteit: je kunt nog in korte zinnen praten. Totaal ongeveer 30–40 min.""".replace("\\n", "\n")
     }
 
-    private fun cardioInterval(profile: FitnessStore.Profile): String {
-        val mode = cardioMode(profile)
+    private fun cardioInterval(profile: FitnessStore.Profile, day: DayOfWeek = LocalDate.now().dayOfWeek): String {
+        val mode = cardioMode(profile, day)
         val ageNote = if (profile.age >= 50) "Begin desnoods met stevig wandelen; joggen is alleen nodig als dat comfortabel voelt." else "Verhoog eerst tempo of helling, niet alles tegelijk."
         return """INTERVALLEN • $mode\n\n5–8 min warm-up\n6×: 1 min vlot + 90 sec rustig\n5 min cool-down\n\n$ageNote De snelle minuten zijn stevig, maar niet maximaal.""".replace("\\n", "\n")
     }
 
-    private fun cardioMode(profile: FitnessStore.Profile): String = when {
+    private fun cardioMode(profile: FitnessStore.Profile, day: DayOfWeek = LocalDate.now().dayOfWeek): String = when {
         profile.hasTreadmill -> "LOOPBAND"
-        profile.hasGym -> "CARDIOMACHINE / LOOPBAND"
+        gymAvailableOn(profile, day) -> "CARDIOMACHINE / LOOPBAND"
         else -> "WANDELEN / FIETSEN BUITEN"
     }
 
-    private fun sessionTitle(profile: FitnessStore.Profile, session: SessionKind): String = when (session) {
-        SessionKind.STRENGTH_A -> if (profile.hasGym) "Full body A • gym" else "Full body A • thuis"
-        SessionKind.STRENGTH_B -> if (profile.hasGym) "Full body B • gym" else "Full body B • thuis"
-        SessionKind.STRENGTH_C -> if (profile.hasGym) "Full body C • licht" else "Full body • thuis"
-        SessionKind.CARDIO_BASE -> "Basisconditie • ${cardioMode(profile).lowercase()}"
-        SessionKind.CARDIO_INTERVAL -> "Intervallen • ${cardioMode(profile).lowercase()}"
+    private fun sessionTitle(profile: FitnessStore.Profile, session: SessionKind, day: DayOfWeek = LocalDate.now().dayOfWeek): String = when (session) {
+        SessionKind.STRENGTH_A -> if (gymAvailableOn(profile, day)) "Full body A • gym" else "Full body A • thuis"
+        SessionKind.STRENGTH_B -> if (gymAvailableOn(profile, day)) "Full body B • gym" else "Full body B • thuis"
+        SessionKind.STRENGTH_C -> if (gymAvailableOn(profile, day)) "Full body C • gym licht" else "Full body • thuis licht"
+        SessionKind.CARDIO_BASE -> "Basisconditie • ${cardioMode(profile, day).lowercase()}"
+        SessionKind.CARDIO_INTERVAL -> "Intervallen • ${cardioMode(profile, day).lowercase()}"
         SessionKind.CARDIO_RECOVERY -> "Lichte conditie / herstel"
         SessionKind.REST -> "Herstel / rust"
     }
 
-    private fun sessionShortDescription(profile: FitnessStore.Profile, session: SessionKind): String = when (session) {
-        SessionKind.STRENGTH_A, SessionKind.STRENGTH_B -> "45–55 min kracht, hele lichaam. Goede techniek en rustige progressie."
-        SessionKind.STRENGTH_C -> "30–45 min lichtere derde krachtsessie."
+    private fun sessionShortDescription(profile: FitnessStore.Profile, session: SessionKind, day: DayOfWeek = LocalDate.now().dayOfWeek): String = when (session) {
+        SessionKind.STRENGTH_A, SessionKind.STRENGTH_B -> if (gymAvailableOn(profile, day))
+            "45–55 min full-body kracht in de gym. Goede techniek en rustige progressie."
+        else
+            "35–50 min full-body kracht thuis. Goede techniek en rustige progressie."
+        SessionKind.STRENGTH_C -> if (gymAvailableOn(profile, day)) "30–45 min lichtere derde krachtsessie in de gym." else "25–40 min lichte kracht thuis."
         SessionKind.CARDIO_BASE -> "30–40 min gelijkmatig tempo; nog kunnen praten."
         SessionKind.CARDIO_INTERVAL -> "25–30 min inclusief korte, gecontroleerde intervallen."
         SessionKind.CARDIO_RECOVERY -> "20–30 min zeer rustig bewegen + mobiliteit."
@@ -579,7 +662,7 @@ class FitnessActivity : AppCompatActivity() {
     }
 
     private fun personalizedSuggestions(profile: FitnessStore.Profile): List<String> {
-        val strengthExpress = if (profile.hasGym) {
+        val strengthExpress = if (gymAvailableOn(profile, LocalDate.now().dayOfWeek)) {
             "30-MINUTEN GYM EXPRESS\n3 rondes: leg press 10–12 • chest press 10–12 • lat pulldown 10–12 • cable row 10–12 • plank 30 sec. Rust 60–90 sec tussen rondes."
         } else {
             "25-MINUTEN THUIS FULL BODY\n3 rondes: stoel-squat 12 • incline push-up 8–12 • glute bridge 15 • rugzak-row 10–12 • plank 30 sec. Rust 60 sec tussen rondes."
@@ -589,7 +672,7 @@ class FitnessActivity : AppCompatActivity() {
         } else {
             "25-MINUTEN BUITENCONDITIE\n5 min rustig wandelen • 15 min stevig wandelen of fietsen • 5 min rustig. Houd een tempo waarbij je nog kunt praten."
         }
-        val combo = if (profile.hasGym) {
+        val combo = if (gymAvailableOn(profile, LocalDate.now().dayOfWeek)) {
             "CONDITIE + KRACHT COMBI\n10 min cardio • 2 sets leg press • 2 sets chest press • 2 sets row • 2 sets pulldown • 10 min cardio. Totaal ±40 min."
         } else {
             "CONDITIE + KRACHT COMBI\n10 min wandelen • 3 rondes squat 12 + incline push-up 10 + glute bridge 15 + plank 30 sec • 10 min wandelen."
@@ -620,11 +703,25 @@ class FitnessActivity : AppCompatActivity() {
         else -> "Meer conditie, een atletischer/sterker lichaam en geleidelijk wat spiermassa zonder bodybuilding-volume."
     }
 
-    private fun equipmentText(profile: FitnessStore.Profile): String = when {
-        profile.hasTreadmill && profile.hasGym -> "loopband + volledige fitnessruimte"
-        profile.hasTreadmill -> "loopband"
-        profile.hasGym -> "volledige fitnessruimte"
-        else -> "geen vaste apparatuur; thuis/buiten"
+    private fun gymAvailabilityText(profile: FitnessStore.Profile): String = when {
+        !profile.hasGym -> "Geen volledige fitnessruimte"
+        profile.gymWeekdays && profile.gymWeekend -> "Door de week én in het weekend"
+        profile.gymWeekdays -> "Alleen door de week (maandag t/m vrijdag)"
+        profile.gymWeekend -> "Alleen in het weekend (zaterdag en zondag)"
+        else -> "Niet ingesteld"
+    }
+
+    private fun equipmentText(profile: FitnessStore.Profile): String {
+        val gym = when {
+            !profile.hasGym -> null
+            profile.gymWeekdays && profile.gymWeekend -> "gym: hele week"
+            profile.gymWeekdays -> "gym: alleen door de week"
+            profile.gymWeekend -> "gym: alleen weekend"
+            else -> "gym: beschikbaarheid niet ingesteld"
+        }
+        return listOfNotNull(if (profile.hasTreadmill) "loopband" else null, gym)
+            .ifEmpty { listOf("geen vaste apparatuur; thuis/buiten") }
+            .joinToString(" + ")
     }
 
     private fun formatHeight(cm: Int): String = String.format(Locale("nl", "NL"), "%.2f m", cm / 100.0)
