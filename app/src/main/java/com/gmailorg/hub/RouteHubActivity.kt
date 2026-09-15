@@ -9,7 +9,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.browser.customtabs.CustomTabsIntent
 
 class RouteHubActivity : AppCompatActivity() {
-    private val mailUrl = "https://rubenvaggelen.github.io/Gmailorg/"
+    private val mailUrl = BuildConfig.APP_BASE_URL
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

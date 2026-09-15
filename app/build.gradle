@@ -10,18 +10,21 @@ android {
     def appVersionCode = project.hasProperty('appVersionCode') ? project.property('appVersionCode').toString().toInteger() : 1
 
     defaultConfig {
-        applicationId "com.gmailorg.hub"
+        applicationId "com.gmailorg.hub.studio"
         minSdk 26
         targetSdk 34
         versionCode appVersionCode
         versionName "1.${appVersionCode}"
+
+        // Afzonderlijke Studio-kopie: de bestaande The One-app blijft intact.
+        buildConfigField "String", "APP_BASE_URL", '"https://studio.rubenvanaggelen.com/"'
 
         // TMDB API key voor de "Film zoeken"-functie onder Huishouden.
         // Zet je eigen key in gradle.properties als TMDB_API_KEY=... (niet hier hardcoden).
         buildConfigField "String", "TMDB_API_KEY", "\"${project.findProperty('TMDB_API_KEY') ?: ''}\""
 
         // YouTube Data API v3 key voor de "Muziek zoeken"-sectie.
-        buildConfigField "String", "YOUTUBE_API_KEY", "\"${project.findProperty('YOUTUBE_API_KEY') ?: 'AIzaSyAfJQ4-sO-VMddbdECxhN9Hnl_rt3PaLvE'}\""
+        buildConfigField "String", "YOUTUBE_API_KEY", "\"${project.findProperty('YOUTUBE_API_KEY') ?: ''}\""
     }
 
     signingConfigs {

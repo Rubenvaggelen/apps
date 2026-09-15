@@ -21,9 +21,7 @@ import androidx.recyclerview.widget.RecyclerView
 
 class HomeActivity : AppCompatActivity() {
 
-    // Vast adres van de Gmail Org web-app (mail + kalender). Wijzig hier als
-    // je 'm ooit naar een andere URL verhuist.
-    private val mailUrl = "https://rubenvaggelen.github.io/Gmailorg/"
+    private val mailUrl = BuildConfig.APP_BASE_URL
 
     private lateinit var adapter: HomeAdapter
 

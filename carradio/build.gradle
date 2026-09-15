@@ -10,11 +10,12 @@ android {
     def appVersionCode = project.hasProperty('appVersionCode') ? project.property('appVersionCode').toString().toInteger() : 1
 
     defaultConfig {
-        applicationId "com.gmailorg.carradio"
+        applicationId "com.gmailorg.carradio.studio"
         minSdk 26
         targetSdk 34
         versionCode appVersionCode
         versionName "1.${appVersionCode}"
+        buildConfigField "String", "APP_BASE_URL", '"https://studio.rubenvanaggelen.com/"'
     }
 
     signingConfigs {
