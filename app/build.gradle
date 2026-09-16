@@ -17,11 +17,12 @@ android {
         versionName "1.${appVersionCode}"
 
         // TMDB API key voor de "Film zoeken"-functie onder Huishouden.
-        // Zet je eigen key in gradle.properties als TMDB_API_KEY=... (niet hier hardcoden).
+        // Zet de key buiten de repository, bijvoorbeeld in gradle.properties.
         buildConfigField "String", "TMDB_API_KEY", "\"${project.findProperty('TMDB_API_KEY') ?: ''}\""
 
         // YouTube Data API v3 key voor de "Muziek zoeken"-sectie.
-        buildConfigField "String", "YOUTUBE_API_KEY", "\"${project.findProperty('YOUTUBE_API_KEY') ?: 'AIzaSyAfJQ4-sO-VMddbdECxhN9Hnl_rt3PaLvE'}\""
+        // Geen hardcoded fallback: de key moet buiten de repository worden ingesteld.
+        buildConfigField "String", "YOUTUBE_API_KEY", "\"${project.findProperty('YOUTUBE_API_KEY') ?: ''}\""
     }
 
     signingConfigs {
