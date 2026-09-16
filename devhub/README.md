@@ -39,6 +39,6 @@ chmod +x devhub/deploy.sh
 ./devhub/deploy.sh
 ```
 
-The deployment script backs up an existing `index.html`, `index.php` and `api.php` before replacing public Dev Hub files. It does **not** alter `.htaccess`, `.well-known`, cPanel Directory Privacy, SSL or the Android projects.
+The deployment script validates the PHP files, backs up an existing `index.html`, `index.php` and `api.php`, copies the Dev Hub into the web root, and then automatically switches the repository clone back to `main` and fast-forwards it.
 
-After testing, switch the repository back to `main` if required.
+It does **not** alter `.htaccess`, `.well-known`, cPanel Directory Privacy, SSL or the Android projects.
