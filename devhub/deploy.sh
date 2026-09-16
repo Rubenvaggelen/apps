@@ -3,6 +3,7 @@ set -euo pipefail
 
 DOCROOT="/home/vanawiwj/dev.vanaggelen.com"
 CORE="/home/vanawiwj/devhub-core"
+REPO="/home/vanawiwj/repos/the-one-apps"
 SOURCE="$(cd "$(dirname "$0")" && pwd)/public"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 
@@ -16,19 +17,18 @@ done
 php -l "$SOURCE/index.php"
 php -l "$SOURCE/api.php"
 
-if [ -f "$DOCROOT/index.html" ]; then
-  cp "$DOCROOT/index.html" "$DOCROOT/index.html.backup-$STAMP"
-fi
-if [ -f "$DOCROOT/index.php" ]; then
-  cp "$DOCROOT/index.php" "$DOCROOT/index.php.backup-$STAMP"
-fi
-if [ -f "$DOCROOT/api.php" ]; then
-  cp "$DOCROOT/api.php" "$DOCROOT/api.php.backup-$STAMP"
-fi
+if [ -f "$DOCROOT/index.html" ]; then cp "$DOCROOT/index.html" "$DOCROOT/index.html.backup-$STAMP"; fi
+if [ -f "$DOCROOT/index.php" ]; then cp "$DOCROOT/index.php" "$DOCROOT/index.php.backup-$STAMP"; fi
+if [ -f "$DOCROOT/api.php" ]; then cp "$DOCROOT/api.php" "$DOCROOT/api.php.backup-$STAMP"; fi
 
 cp "$SOURCE/index.php" "$DOCROOT/index.php"
 cp "$SOURCE/api.php" "$DOCROOT/api.php"
 chmod 640 "$DOCROOT/index.php" "$DOCROOT/api.php"
 
+cd "$REPO"
+git checkout main
+git pull --ff-only origin main
+
 echo "The One Dev Hub is deployed to $DOCROOT"
+echo "Repository is back on main for normal Dev Hub editing."
 echo "Directory Privacy/.htaccess was not changed."
