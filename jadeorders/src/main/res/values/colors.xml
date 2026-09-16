@@ -1,0 +1,11 @@
+<resources>
+    <color name="black">#0B0B0D</color>
+    <color name="surface">#17181D</color>
+    <color name="surface_alt">#22242B</color>
+    <color name="gold">#D9A441</color>
+    <color name="gold_light">#F2CF7A</color>
+    <color name="white">#FFFFFF</color>
+    <color name="muted">#A8A8AE</color>
+    <color name="green">#35B66A</color>
+    <color name="red">#D84C4C</color>
+</resources>
