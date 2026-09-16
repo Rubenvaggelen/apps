@@ -2,7 +2,7 @@ name: Build APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, feature/jade-orders ]
   workflow_dispatch: {}
 
 permissions:
@@ -45,62 +45,44 @@ jobs:
           chmod 600 ~/.android/debug.keystore
           keytool -list -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android >/dev/null
 
-      - name: Print fixed signing certificate
-        run: |
-          keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android
-
-      - name: Build clean debug APKs with fixed key
+      - name: Build debug APKs with fixed key
         run: gradle clean assembleDebug --no-daemon --no-build-cache -PappVersionCode=${{ github.run_number }}
 
-      - name: Verify APKs use fixed signing certificate
+      - name: Verify APK signing
         shell: bash
         run: |
           set -euo pipefail
           BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
           APKSIGNER="$BUILD_TOOLS/apksigner"
-          KEY_CERT=$(keytool -list -v \
-            -keystore ~/.android/debug.keystore \
-            -alias androiddebugkey \
-            -storepass android \
-            | sed -n 's/^[[:space:]]*SHA256: //p' \
-            | head -1 \
-            | tr -d ':' \
-            | tr '[:upper:]' '[:lower:]')
-          for APK in "app/build/outputs/apk/debug/app-debug.apk" "carradio/build/outputs/apk/debug/carradio-debug.apk"; do
-            APK_CERT=$($APKSIGNER verify --print-certs "$APK" \
-              | sed -n 's/.*certificate SHA-256 digest: //p' \
-              | head -1 \
-              | tr -d ':' \
-              | tr '[:upper:]' '[:lower:]')
-
-            echo "Keystore certificate: $KEY_CERT"
-            echo "$APK certificate:     $APK_CERT"
-            if [ -z "$KEY_CERT" ] || [ -z "$APK_CERT" ]; then
-              echo "ERROR: Could not read one of the signing certificates for $APK."
-              exit 1
-            fi
-
-            if [ "$KEY_CERT" != "$APK_CERT" ]; then
-              echo "ERROR: $APK was NOT signed with DEBUG_KEYSTORE_BASE64. Release blocked."
-              exit 1
-            fi
+          KEY_CERT=$(keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android | sed -n 's/^[[:space:]]*SHA256: //p' | head -1 | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          for APK in \
+            "app/build/outputs/apk/debug/app-debug.apk" \
+            "carradio/build/outputs/apk/debug/carradio-debug.apk" \
+            "jadeorders/build/outputs/apk/debug/jadeorders-debug.apk"; do
+            APK_CERT=$($APKSIGNER verify --print-certs "$APK" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1 | tr -d ':' | tr '[:upper:]' '[:lower:]')
+            test -n "$KEY_CERT" && test -n "$APK_CERT" && test "$KEY_CERT" = "$APK_CERT"
           done
 
-          echo "OK: both APKs are signed with the fixed keystore."
-
-      - name: Upload APK as artifact
+      - name: Upload The One APK
         uses: actions/upload-artifact@v4
         with:
           name: gmail-org-hub-apk
           path: app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Upload Car Radio APK as artifact
+      - name: Upload The One Car APK
         uses: actions/upload-artifact@v4
         with:
           name: the-one-car-radio-apk
           path: carradio/build/outputs/apk/debug/carradio-debug.apk
 
+      - name: Upload Jade Orders APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: jade-orders-apk
+          path: jadeorders/build/outputs/apk/debug/jadeorders-debug.apk
+
       - name: Create GitHub Release with APKs
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_number }}
@@ -108,5 +90,6 @@ jobs:
           files: |
             app/build/outputs/apk/debug/app-debug.apk
             carradio/build/outputs/apk/debug/carradio-debug.apk
+            jadeorders/build/outputs/apk/debug/jadeorders-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
