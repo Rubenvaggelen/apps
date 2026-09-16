@@ -17,18 +17,22 @@ done
 php -l "$SOURCE/index.php"
 php -l "$SOURCE/api.php"
 
-if [ -f "$DOCROOT/index.html" ]; then cp "$DOCROOT/index.html" "$DOCROOT/index.html.backup-$STAMP"; fi
-if [ -f "$DOCROOT/index.php" ]; then cp "$DOCROOT/index.php" "$DOCROOT/index.php.backup-$STAMP"; fi
-if [ -f "$DOCROOT/api.php" ]; then cp "$DOCROOT/api.php" "$DOCROOT/api.php.backup-$STAMP"; fi
+# Preserve the legacy dashboard, but move it out of the default index position
+# so Apache/cPanel serves index.php instead of index.html.
+if [ -f "$DOCROOT/index.html" ]; then
+  mv "$DOCROOT/index.html" "$DOCROOT/index.html.backup-$STAMP"
+fi
+if [ -f "$DOCROOT/index.php" ]; then
+  cp "$DOCROOT/index.php" "$DOCROOT/index.php.backup-$STAMP"
+fi
+if [ -f "$DOCROOT/api.php" ]; then
+  cp "$DOCROOT/api.php" "$DOCROOT/api.php.backup-$STAMP"
+fi
 
 cp "$SOURCE/index.php" "$DOCROOT/index.php"
 cp "$SOURCE/api.php" "$DOCROOT/api.php"
 chmod 640 "$DOCROOT/index.php" "$DOCROOT/api.php"
 
-cd "$REPO"
-git checkout main
-git pull --ff-only origin main
-
 echo "The One Dev Hub is deployed to $DOCROOT"
-echo "Repository is back on main for normal Dev Hub editing."
+echo "Legacy index.html moved to a timestamped backup, so index.php is now served."
 echo "Directory Privacy/.htaccess was not changed."
