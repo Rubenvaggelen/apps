@@ -18,6 +18,9 @@ class RadioActivity : AppCompatActivity() {
         findViewById<View>(R.id.radio538Button).setOnClickListener {
             openUrl("https://www.538.nl/radio/luisteren")
         }
+        findViewById<View>(R.id.radio3fmButton).setOnClickListener {
+            openUrl("https://www.npo3fm.nl/")
+        }
         findViewById<View>(R.id.radioFunxButton).setOnClickListener {
             openUrl("https://www.funx.nl/")
         }
