@@ -1,0 +1,8 @@
+{
+  "source_sha": "4fcca6a2050d741fe6691f860109ad7e45de52be",
+  "builds": [
+    {"run":35254517722,"workflow":".github/workflows/build-apk.yml","artifact":"jade-orders-apk","file":"jadeorders-debug.apk","target":"Rutu-BBQ-Android.apk","sha256":"0838c28622c9955b7d8de6e7f8d34372ca961201d86c17b9534cde1de7051139"},
+    {"run":35254517717,"workflow":".github/workflows/build-rutu-windows.yml","artifact":"rutu-bbq-windows-installer","file":"Rutu BBQ Simulator Setup 0.3.0.exe","target":"Rutu-BBQ-Windows-0.3.0.exe","sha256":"2d50b15310a481695369eeaa27fbddfbc3178b2ca92be1bb8aa544337fa5d0e9"}
+  ]
+}
+
