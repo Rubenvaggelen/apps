@@ -1,0 +1,45 @@
+name: Build Rutu BBQ iOS
+
+on:
+  push:
+    branches: [ feature/jade-orders ]
+    paths:
+      - 'rutu-ios/**'
+      - '.github/workflows/build-rutu-ios.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: rutu-ios
+        run: xcodegen generate
+
+      - name: Build for iPhone Simulator
+        working-directory: rutu-ios
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project RutuBBQ.xcodeproj \
+            -scheme RutuBBQ \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            build | tee xcodebuild.log
+
+      - name: Upload iOS build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rutu-ios-build-log
+          path: rutu-ios/xcodebuild.log
