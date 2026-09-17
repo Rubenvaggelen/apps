@@ -1,0 +1,63 @@
+name: Publish Rutu to Dev Hub
+on:
+  push:
+    branches: [feature/jade-orders]
+    paths:
+      - 'devhub-rutu/**'
+      - '.github/workflows/publish-rutu.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: rutu-devhub-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/feature/jade-orders'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          sparse-checkout: devhub-rutu
+      - name: Validate and package selected builds
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash -n devhub-rutu/install.sh
+          python3 devhub-rutu/package.py
+      - name: Publish and verify with backup and rollback
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            if [ -z "${!name}" ]; then echo "::error::Missing secret: $name"; exit 1; fi
+          done
+          umask 077
+          keydir=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$keydir"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$keydir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$keydir/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$keydir/askpass"
+          chmod 700 "$keydir/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$keydir/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$keydir/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          opts=(-i "$keydir/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$keydir/known_hosts" -o ConnectTimeout=20 -o ServerAliveInterval=15)
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'mktemp -d "$HOME/.rutu-stage.XXXXXXXX"')
+          [[ "$stage" =~ ^/home/[a-zA-Z0-9_-]+/\.rutu-stage\.[a-zA-Z0-9]+$ ]]
+          scp -O -P "$DEPLOY_PORT" "${opts[@]}" rutu-package.tar.gz "$remote:$stage/package.tar.gz"
+          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "bash -s -- '$stage'" < devhub-rutu/install.sh
+          echo "### Rutu publication verified" >> "$GITHUB_STEP_SUMMARY"
+          echo "Page, assets and selected Android/Windows builds published with SHA-256 verification. Previous files backed up on host." >> "$GITHUB_STEP_SUMMARY"
+          echo "https://dev.rubenvanaggelen.com/rutu.html" >> "$GITHUB_STEP_SUMMARY"

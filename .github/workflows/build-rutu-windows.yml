@@ -1,0 +1,44 @@
+name: Build Rutu BBQ Windows Simulator
+
+on:
+  push:
+    branches: [ feature/jade-orders ]
+    paths:
+      - 'rutu-windows/**'
+      - '.github/workflows/build-rutu-windows.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: rutu-windows
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Windows installer
+        run: npm run dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: rutu-bbq-windows-installer
+          path: |
+            rutu-windows/dist/*.exe
+            rutu-windows/dist/*.yml
+          if-no-files-found: error

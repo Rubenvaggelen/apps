@@ -1,0 +1,79 @@
+name: Build Rutu BBQ iOS
+
+on:
+  push:
+    branches: [ feature/jade-orders ]
+    paths:
+      - 'rutu-ios/**'
+      - '.github/workflows/build-rutu-ios.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: rutu-ios
+        run: xcodegen generate
+
+      - name: Build for iPhone Simulator
+        working-directory: rutu-ios
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project RutuBBQ.xcodeproj \
+            -scheme RutuBBQ \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build | tee xcodebuild.log
+
+      - name: Launch app and capture screenshot
+        working-directory: rutu-ios
+        shell: bash
+        timeout-minutes: 4
+        run: |
+          set -euo pipefail
+          UDID=$(xcrun simctl list devices available | awk -F '[()]' '/iPhone 17 Pro \(/ {print $2; exit}')
+          if [ -z "$UDID" ]; then
+            UDID=$(xcrun simctl list devices available | awk -F '[()]' '/iPhone 17 \(/ {print $2; exit}')
+          fi
+          test -n "$UDID"
+          xcrun simctl boot "$UDID" || true
+          READY=0
+          for i in $(seq 1 90); do
+            if xcrun simctl list devices | grep "$UDID" | grep -q '(Booted)'; then READY=1; break; fi
+            sleep 2
+          done
+          test "$READY" = "1"
+          APP_PATH="build/Build/Products/Debug-iphonesimulator/Rutu BBQ.app"
+          test -d "$APP_PATH"
+          xcrun simctl install "$UDID" "$APP_PATH"
+          xcrun simctl launch "$UDID" com.vanaggelen.rutubbq
+          sleep 4
+          xcrun simctl io "$UDID" screenshot rutu-ios-test.png
+          test -s rutu-ios-test.png
+
+      - name: Upload iOS test screenshot
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rutu-ios-test-screenshot
+          path: rutu-ios/rutu-ios-test.png
+
+      - name: Upload iOS build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rutu-ios-build-log
+          path: rutu-ios/xcodebuild.log
