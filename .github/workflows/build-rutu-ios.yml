@@ -41,6 +41,7 @@ jobs:
       - name: Launch app and capture screenshot
         working-directory: rutu-ios
         shell: bash
+        timeout-minutes: 4
         run: |
           set -euo pipefail
           UDID=$(xcrun simctl list devices available | awk -F '[()]' '/iPhone 17 Pro \(/ {print $2; exit}')
@@ -49,7 +50,12 @@ jobs:
           fi
           test -n "$UDID"
           xcrun simctl boot "$UDID" || true
-          xcrun simctl bootstatus "$UDID" -b
+          READY=0
+          for i in $(seq 1 90); do
+            if xcrun simctl list devices | grep "$UDID" | grep -q '(Booted)'; then READY=1; break; fi
+            sleep 2
+          done
+          test "$READY" = "1"
           APP_PATH="build/Build/Products/Debug-iphonesimulator/Rutu BBQ.app"
           test -d "$APP_PATH"
           xcrun simctl install "$UDID" "$APP_PATH"
@@ -59,6 +65,7 @@ jobs:
           test -s rutu-ios-test.png
 
       - name: Upload iOS test screenshot
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: rutu-ios-test-screenshot
