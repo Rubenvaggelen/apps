@@ -3,6 +3,8 @@ package com.vanaggelen.jadeorders
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Typeface
+import android.widget.ImageView
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
@@ -306,7 +308,7 @@ class MainActivity : AppCompatActivity() {
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(24), dp(20), dp(44))
-            setBackgroundColor(Color.rgb(8, 8, 10))
+            setBackgroundColor(Color.rgb(9, 8, 7))
         }
         setContentView(ScrollView(this).apply { addView(root) })
     }
@@ -315,12 +317,12 @@ class MainActivity : AppCompatActivity() {
         role = Role.NONE; screen = "landing"; connectedEndpoint = null
         windowsConnected = false; uiHandler.removeCallbacks(windowsPoller)
         nearby.stopAllEndpoints(); nearby.stopAdvertising(); nearby.stopDiscovery()
-        page(); spacer(36); logoMark(); title("RUTU BBQ")
+        page(); spacer(8); logoMark(); title("Welkom bij Rutu BBQ")
         centered("More than food. It’s an experience.", 16f, Color.rgb(205, 179, 122)); spacer(34)
-        hero("🔥 Fire. Roots. Flavour.", "Test de klantomgeving op Android en ontvang bestellingen in de Windows bedrijfsapp.")
-        button("🔥 Klantomgeving") { enterCustomer() }
-        button("🏪 Android bedrijfsmodus", secondary = true) { enterBusiness() }
-        spacer(20); centered("Android • Rutu BBQ", 12f, Color.GRAY)
+        hero("Fire. Roots. Flavour.", "Geworteld in smaak. Gemaakt met vuur. Kies je favorieten en geniet.")
+        button("Bekijk het menu") { enterCustomer() }
+        button("Open bedrijfsomgeving", secondary = true) { enterBusiness() }
+        spacer(20); centered("Android • Rutu BBQ", 12f, Color.rgb(189, 178, 161))
     }
 
     private fun enterCustomer() { role = Role.CUSTOMER; renderCustomer() }
@@ -344,19 +346,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderCustomer() {
-        screen = "customer"; page(); back { landing() }; title("Rutu BBQ • Klant"); connectionCard()
+        screen = "customer"; page(); back { landing() }; logoMark(true); title("Ons menu"); connectionCard()
         section("Windows bedrijf koppelen")
         val ip = EditText(this).apply {
             hint = "Bijv. 192.168.1.25"
             setText(windowsHost)
-            setTextColor(Color.WHITE); setHintTextColor(Color.GRAY)
+            setTextColor(Color.WHITE); setHintTextColor(Color.rgb(189, 178, 161))
             setSingleLine(true); setPadding(dp(14), dp(12), dp(14), dp(12))
-            background = rounded(Color.rgb(24, 24, 28), Color.rgb(70, 70, 80))
+            background = rounded(Color.rgb(23, 20, 15), Color.rgb(70, 70, 80))
         }
         root.addView(ip, marginParams(0, 0, 0, 6))
         button(if (windowsConnected) "✓ Opnieuw testen" else "💻 Verbinden met Windows") { testWindowsConnection(ip.text.toString()) }
         if (!windowsConnected && connectedEndpoint == null) button("Android-bedrijf zoeken", secondary = true) { ensureConnection() }
-        hero("🔥 Welkom bij Rutu BBQ", "Kies je favorieten. Voor deze test wordt je bestelling rechtstreeks naar de Windows bedrijfsomgeving gestuurd.")
+        hero("Van het vuur. Voor jou.", "Kies je favorieten. Met aandacht bereid, vers van het vuur.")
         products.groupBy { it.category }.forEach { (category, items) ->
             section(category)
             items.forEach { p ->
@@ -371,7 +373,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun cartScreen() {
-        screen = "cart"; page(); back { renderCustomer() }; title("Winkelmand"); connectionCard()
+        screen = "cart"; page(); back { renderCustomer() }; logoMark(true); title("Jouw winkelmand"); connectionCard()
         if (cart.isEmpty()) { hero("Je winkelmand is leeg", "Voeg eerst iets lekkers toe."); return }
         var total = 0.0
         cart.toMap().forEach { (name, qty) ->
@@ -382,7 +384,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         section("Totaal  ${money.format(total)}")
-        button("🔥 Bestelling plaatsen") {
+        button("Bestelling plaatsen") {
             if (!windowsConnected && connectedEndpoint == null) { toast("Verbind eerst met de Windows bedrijfsapp."); return@button }
             val order = Store.create(this, cart, total)
             if (windowsConnected) sendWindowsOrder(order)
@@ -391,7 +393,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun myOrders(sync: Boolean = true) {
-        screen = "orders"; page(); back { renderCustomer() }; title("Mijn bestellingen"); connectionCard()
+        screen = "orders"; page(); back { renderCustomer() }; logoMark(true); title("Mijn bestellingen"); connectionCard()
         if (sync) syncWindowsStatuses()
         val orders = Store.all(this).reversed()
         if (orders.isEmpty()) hero("Nog geen bestellingen", "Je geplaatste bestellingen verschijnen hier.")
@@ -400,10 +402,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderBusiness() {
-        screen = "business"; page(); back { landing() }; title("Rutu BBQ • Android Bedrijf"); connectionCard()
+        screen = "business"; page(); back { landing() }; logoMark(true); title("Jouw keuken"); connectionCard()
         val orders = Store.all(this).reversed()
         hero("${orders.count { it.status == "Nieuw" }} nieuwe bestellingen", "Deze Android bedrijfsmodus blijft beschikbaar voor Android-naar-Android tests.")
-        if (orders.isEmpty()) centered("Wachten op de eerste bestelling…", 15f, Color.LTGRAY)
+        if (orders.isEmpty()) centered("Wachten op de eerste bestelling…", 15f, Color.rgb(210, 199, 182))
         orders.forEach { orderView(it, true) }
         button("Verversen", secondary = true) { renderBusiness() }
         if (connectedEndpoint == null) button("Ontvanger opnieuw starten", secondary = true) { ensureConnection() }
@@ -421,35 +423,36 @@ class MainActivity : AppCompatActivity() {
 
     private fun changeStatus(o: Order, status: String) { Store.status(this, o.id, status); sendStatus(o.id, status); renderBusiness() }
 
-    private fun logoMark() {
-        val mark = TextView(this).apply {
-            text = "🌳\n🔥🔥🔥"
-            textSize = 38f; gravity = Gravity.CENTER; setTextColor(Color.rgb(242, 207, 122)); setPadding(0, dp(18), 0, dp(18))
-            background = rounded(Color.rgb(25, 17, 10), Color.rgb(179, 126, 49))
+    private fun logoMark(compact: Boolean = false) {
+        val mark = ImageView(this).apply {
+            setImageResource(R.drawable.rutu_logo)
+            contentDescription = "Rutu BBQ — gouden levensboom met vlammen"
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            adjustViewBounds = true
         }
-        root.addView(mark, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(150)))
+        root.addView(mark, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(if (compact) 90 else 260)))
     }
 
     private fun hero(head: String, body: String) {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(18), dp(18), dp(18)); background = rounded(Color.rgb(28, 22, 15), Color.rgb(91, 69, 34)) }
-        box.addView(TextView(this).apply { text = head; textSize = 21f; setTextColor(Color.rgb(242, 207, 122)) })
-        box.addView(TextView(this).apply { text = body; textSize = 14f; setTextColor(Color.LTGRAY); setPadding(0, dp(7), 0, 0) })
+        box.addView(TextView(this).apply { text = head; textSize = 21f; setTextColor(Color.rgb(244, 213, 147)) })
+        box.addView(TextView(this).apply { text = body; textSize = 14f; setTextColor(Color.rgb(210, 199, 182)); setPadding(0, dp(7), 0, 0) })
         root.addView(box, marginParams(0, 0, 0, 14))
     }
 
     private fun card(text: String, actions: LinearLayout.() -> Unit = {}) {
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(16)); background = rounded(Color.rgb(24, 24, 28), Color.rgb(50, 50, 58)) }
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(16)); background = rounded(Color.rgb(23, 20, 15), Color.rgb(70, 56, 32)) }
         box.addView(TextView(this).apply { this.text = text; textSize = 16f; setTextColor(Color.WHITE); setLineSpacing(0f, 1.15f) })
         box.actions(); root.addView(box, marginParams(0, 0, 0, 10))
     }
 
-    private fun title(s: String) { root.addView(TextView(this).apply { text = s; textSize = 30f; gravity = Gravity.CENTER; setTextColor(Color.rgb(242, 207, 122)); setPadding(0, dp(12), 0, dp(22)) }) }
-    private fun section(s: String) { root.addView(TextView(this).apply { text = s; textSize = 20f; setTextColor(Color.rgb(242, 207, 122)); setPadding(0, dp(18), 0, dp(10)) }) }
+    private fun title(s: String) { root.addView(TextView(this).apply { text = s; typeface = Typeface.create("serif", Typeface.BOLD); textSize = 28f; gravity = Gravity.CENTER; setTextColor(Color.rgb(244, 213, 147)); setPadding(0, dp(12), 0, dp(22)) }) }
+    private fun section(s: String) { root.addView(TextView(this).apply { text = s; typeface = Typeface.create("serif", Typeface.BOLD); textSize = 22f; setTextColor(Color.rgb(244, 213, 147)); setPadding(0, dp(18), 0, dp(10)) }) }
     private fun centered(s: String, size: Float, color: Int) { root.addView(TextView(this).apply { text = s; textSize = size; gravity = Gravity.CENTER; setTextColor(color) }) }
-    private fun label(s: String, bg: Int = Color.rgb(24, 24, 28)) { root.addView(TextView(this).apply { text = s; textSize = 14f; setTextColor(Color.WHITE); setPadding(dp(14), dp(12), dp(14), dp(12)); background = rounded(bg, Color.rgb(48, 48, 55)) }, marginParams(0, 0, 0, 12)) }
-    private fun button(s: String, secondary: Boolean = false, action: () -> Unit) { root.addView(Button(this).apply { text = s; textSize = 16f; setTextColor(if (secondary) Color.WHITE else Color.rgb(20, 14, 7)); backgroundTintList = android.content.res.ColorStateList.valueOf(if (secondary) Color.rgb(45, 45, 52) else Color.rgb(229, 184, 92)); setOnClickListener { action() } }, marginParams(0, 10, 0, 0)) }
-    private fun LinearLayout.smallButton(s: String, action: () -> Unit) { addView(Button(this@MainActivity).apply { text = s; setTextColor(Color.rgb(20, 14, 7)); backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(229, 184, 92)); setOnClickListener { action() } }, marginParams(0, 8, 0, 0)) }
-    private fun back(action: () -> Unit) { root.addView(Button(this).apply { text = "← Terug"; setTextColor(Color.WHITE); backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(38, 38, 44)); setOnClickListener { action() } }, marginParams(0, 0, 0, 8)) }
+    private fun label(s: String, bg: Int = Color.rgb(23, 20, 15)) { root.addView(TextView(this).apply { text = s; textSize = 14f; setTextColor(Color.WHITE); setPadding(dp(14), dp(12), dp(14), dp(12)); background = rounded(bg, Color.rgb(48, 48, 55)) }, marginParams(0, 0, 0, 12)) }
+    private fun button(s: String, secondary: Boolean = false, action: () -> Unit) { root.addView(Button(this).apply { text = s; isAllCaps = false; minHeight = dp(52); textSize = 16f; setTextColor(if (secondary) Color.WHITE else Color.rgb(20, 14, 7)); backgroundTintList = android.content.res.ColorStateList.valueOf(if (secondary) Color.rgb(36, 32, 25) else Color.rgb(229, 184, 92)); setOnClickListener { action() } }, marginParams(0, 10, 0, 0)) }
+    private fun LinearLayout.smallButton(s: String, action: () -> Unit) { addView(Button(this@MainActivity).apply { text = s; isAllCaps = false; minHeight = dp(48); setTextColor(Color.rgb(20, 14, 7)); backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(229, 184, 92)); setOnClickListener { action() } }, marginParams(0, 8, 0, 0)) }
+    private fun back(action: () -> Unit) { root.addView(Button(this).apply { text = "← Terug"; setTextColor(Color.WHITE); backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(36, 32, 25)); setOnClickListener { action() } }, marginParams(0, 0, 0, 8)) }
     private fun spacer(h: Int) { root.addView(TextView(this), LinearLayout.LayoutParams(1, dp(h))) }
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_LONG).show()
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
@@ -482,3 +485,4 @@ class MainActivity : AppCompatActivity() {
         fun status(c: Context, id: Int, status: String) { val orders = all(c); orders.firstOrNull { it.id == id }?.status = status; save(c, orders) }
     }
 }
+

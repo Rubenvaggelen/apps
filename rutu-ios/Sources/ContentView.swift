@@ -2,7 +2,7 @@ import SwiftUI
 
 private let rutuGold = Color(red: 0.90, green: 0.72, blue: 0.36)
 private let rutuGoldLight = Color(red: 0.96, green: 0.82, blue: 0.48)
-private let rutuPanel = Color(red: 0.09, green: 0.09, blue: 0.11)
+private let rutuPanel = Color(red: 0.09, green: 0.08, blue: 0.06)
 
 struct ContentView: View {
     @EnvironmentObject var store: RutuStore
@@ -32,18 +32,14 @@ struct LandingView: View {
     let business: () -> Void
 
     var body: some View {
-        VStack(spacing: 24) {
+        ScrollView { VStack(spacing: 20) {
             Spacer()
-            ZStack {
-                Circle().stroke(rutuGold.opacity(0.7), lineWidth: 3).frame(width: 170, height: 170)
-                VStack(spacing: 2) {
-                    Image(systemName: "tree.fill").font(.system(size: 58)).foregroundStyle(rutuGoldLight)
-                    Text("RUTU BBQ").font(.system(size: 25, weight: .black, design: .serif)).foregroundStyle(rutuGoldLight)
-                    Image(systemName: "flame.fill").foregroundStyle(.orange)
-                }
-            }
+            Image("RutuLogo")
+                .resizable().scaledToFit()
+                .frame(maxWidth: 300, maxHeight: 280)
+                .accessibilityLabel("Rutu BBQ — gouden levensboom met vlammen")
             VStack(spacing: 7) {
-                Text("RUTU BBQ").font(.system(size: 38, weight: .black, design: .serif)).foregroundStyle(rutuGoldLight)
+                Text("Geworteld in smaak.").font(.system(size: 30, weight: .bold, design: .serif)).foregroundStyle(rutuGoldLight)
                 Text("More than food. It’s an experience.").foregroundStyle(.secondary).italic()
             }
             VStack(spacing: 12) {
@@ -52,9 +48,9 @@ struct LandingView: View {
             }
             .padding(.horizontal, 28)
             Spacer()
-            Text("Android + iOS • Rutu BBQ").font(.footnote).foregroundStyle(.secondary)
+            Text("Rutu BBQ • iOS testomgeving").font(.footnote).foregroundStyle(.secondary)
         }
-        .padding(.vertical, 24)
+        .padding(.vertical, 24).padding(.horizontal, 16) }
     }
 }
 
@@ -69,7 +65,7 @@ struct CustomerView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     HeroCard(title: "Fire. Roots. Flavour.", subtitle: "Kies je favorieten en bestel bij Rutu BBQ.")
-                    Text("Menu").font(.title2.bold())
+                    Text("Ons menu").font(.system(.title2, design: .serif, weight: .bold)).foregroundStyle(rutuGoldLight)
                     ForEach(store.products) { product in ProductCard(product: product) }
                     Color.clear.frame(height: 80)
                 }.padding()
@@ -101,13 +97,13 @@ struct ProductCard: View {
                     .font(.title).foregroundStyle(product.category == "Dessert" ? rutuGoldLight : .orange)
             }.frame(width: 72, height: 72)
             VStack(alignment: .leading, spacing: 5) {
-                Text(product.name).font(.headline)
+                Text(product.name).font(.headline).fixedSize(horizontal: false, vertical: true)
                 Text(product.category).font(.caption).foregroundStyle(.secondary)
                 Text(product.price, format: .currency(code: "EUR")).font(.subheadline.bold()).foregroundStyle(rutuGoldLight)
             }
             Spacer()
             VStack(spacing: 8) {
-                Button { store.add(product) } label: { Image(systemName: "plus").frame(width: 32, height: 32) }.buttonStyle(.borderedProminent)
+                Button { store.add(product) } label: { Image(systemName: "plus").frame(width: 44, height: 44) }.buttonStyle(.borderedProminent)
                 if store.cart[product.name, default: 0] > 0 {
                     Text("\(store.cart[product.name, default: 0])×").font(.caption.bold())
                 }
@@ -178,6 +174,7 @@ struct BusinessView: View {
     var body: some View {
         NavigationStack {
             List {
+                HeroCard(title: "Jouw keuken", subtitle: "Alles in beeld. Met aandacht bereid.").listRowInsets(EdgeInsets()).listRowBackground(Color.clear)
                 Section("Overzicht") {
                     HStack { Label("Nieuw", systemImage: "bell.badge.fill"); Spacer(); Text("\(store.orders.filter { $0.status == "Nieuw" }.count)").bold().foregroundStyle(.orange) }
                     HStack { Label("In bereiding", systemImage: "flame.fill"); Spacer(); Text("\(store.orders.filter { $0.status == "In bereiding" }.count)").bold() }
@@ -225,9 +222,9 @@ struct HeroCard: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 7) { Text(title).font(.title2.bold()).foregroundStyle(rutuGoldLight); Text(subtitle).foregroundStyle(.secondary) }
-            Spacer(); Image(systemName: "flame.fill").font(.system(size: 48)).foregroundStyle(.orange)
+            Spacer(); Image("RutuLogo").resizable().scaledToFit().frame(width: 88, height: 88).accessibilityHidden(true)
         }
-        .padding(20).background(LinearGradient(colors: [Color.orange.opacity(0.16), rutuGold.opacity(0.08), rutuPanel], startPoint: .topLeading, endPoint: .bottomTrailing)).clipShape(RoundedRectangle(cornerRadius: 22))
+        .padding(20).background(LinearGradient(colors: [Color.orange.opacity(0.16), rutuGold.opacity(0.08), rutuPanel], startPoint: .topLeading, endPoint: .bottomTrailing)).clipShape(RoundedRectangle(cornerRadius: 22)).overlay(RoundedRectangle(cornerRadius: 22).stroke(rutuGold.opacity(0.25)))
     }
 }
 
@@ -237,8 +234,9 @@ struct RutuButton: View {
     var secondary = false
     let action: () -> Void
     var body: some View {
-        Button(action: action) { Label(title, systemImage: icon).font(.headline).frame(maxWidth: .infinity).padding(.vertical, 7) }
-            .buttonStyle(.borderedProminent).tint(secondary ? Color.gray.opacity(0.35) : rutuGold)
+        Button(action: action) { Label(title, systemImage: icon).font(.headline).frame(maxWidth: .infinity, minHeight: 44).padding(.vertical, 7) }
+            .buttonStyle(.borderedProminent).tint(secondary ? rutuPanel : rutuGold)
             .foregroundStyle(secondary ? Color.white : Color.black)
     }
 }
+

@@ -1,6 +1,6 @@
 {
   "name": "rutu-bbq-windows-simulator",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Rutu BBQ Windows business test environment with Android LAN order bridge",
   "main": "main.js",
   "author": "Rutu BBQ",
@@ -25,10 +25,15 @@
       "preload.js",
       "launcher.html",
       "customer.html",
-      "business.html"
+      "business.html",
+      "brand.css",
+      "assets/**"
     ],
     "win": {
-      "target": ["nsis"]
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/rutu.ico"
     },
     "nsis": {
       "oneClick": false,

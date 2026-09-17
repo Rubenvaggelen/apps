@@ -16,7 +16,8 @@ function makeWindow(file, opts = {}) {
     height: opts.height || 850,
     minWidth: 420,
     minHeight: 650,
-    backgroundColor: '#0b0b0d',
+    backgroundColor: '#090807',
+    icon: path.join(__dirname, 'assets', 'rutu.ico'),
     title: opts.title || 'Rutu BBQ Simulator',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -43,7 +44,7 @@ function openCustomer() {
 
 function openBusiness() {
   if (businessWindow && !businessWindow.isDestroyed()) return businessWindow.focus();
-  businessWindow = makeWindow('business.html', { title: 'Rutu BBQ — Bedrijf' });
+  businessWindow = makeWindow('business.html', { width: 1120, height: 850, title: 'Rutu BBQ — Bedrijf' });
   businessWindow.on('closed', () => businessWindow = null);
 }
 
@@ -145,7 +146,7 @@ function startApiServer() {
 
 app.whenReady().then(() => {
   startApiServer();
-  const launcher = makeWindow('launcher.html', { width: 680, height: 520, title: 'Rutu BBQ Simulator' });
+  const launcher = makeWindow('launcher.html', { width: 980, height: 720, title: 'Rutu BBQ Simulator' });
   ipcMain.on('open-customer', openCustomer);
   ipcMain.on('open-business', openBusiness);
 
@@ -170,3 +171,4 @@ app.on('before-quit', () => {
   if (apiServer) apiServer.close();
 });
 app.on('window-all-closed', () => app.quit());
+
