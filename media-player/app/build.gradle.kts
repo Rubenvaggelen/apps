@@ -2,6 +2,11 @@ plugins {
     id("com.android.application")
 }
 
+val mediaPlayerKeystorePath = System.getenv("MEDIA_PLAYER_KEYSTORE_PATH")
+val mediaPlayerKeystorePassword = System.getenv("MEDIA_PLAYER_KEYSTORE_PASSWORD")
+val mediaPlayerKeyAlias = System.getenv("MEDIA_PLAYER_KEY_ALIAS")
+val mediaPlayerKeyPassword = System.getenv("MEDIA_PLAYER_KEY_PASSWORD")
+
 android {
     namespace = "com.theone.mediaplayer"
     compileSdk = 36
@@ -12,6 +17,31 @@ android {
         targetSdk = 36
         versionCode = 4
         versionName = "0.3.1-hotfix"
+    }
+
+    signingConfigs {
+        if (
+            !mediaPlayerKeystorePath.isNullOrBlank() &&
+            !mediaPlayerKeystorePassword.isNullOrBlank() &&
+            !mediaPlayerKeyAlias.isNullOrBlank() &&
+            !mediaPlayerKeyPassword.isNullOrBlank()
+        ) {
+            create("mediaPlayerRelease") {
+                storeFile = file(mediaPlayerKeystorePath)
+                storePassword = mediaPlayerKeystorePassword
+                keyAlias = mediaPlayerKeyAlias
+                keyPassword = mediaPlayerKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            signingConfigs.findByName("mediaPlayerRelease")?.let {
+                signingConfig = it
+            }
+        }
     }
 
     compileOptions {
