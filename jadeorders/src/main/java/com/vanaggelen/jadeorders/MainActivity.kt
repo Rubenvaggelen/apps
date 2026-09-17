@@ -6,9 +6,12 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -18,7 +21,10 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.google.android.gms.nearby.Nearby
 import com.google.android.gms.nearby.connection.*
+import org.json.JSONArray
 import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -47,13 +53,28 @@ class MainActivity : AppCompatActivity() {
     private var screen = "landing"
     private val serviceId by lazy { "$packageName.rutubbq.v1" }
 
+    private val uiHandler = Handler(Looper.getMainLooper())
+    private var windowsHost = ""
+    private var windowsConnected = false
+    private var windowsText = "Windows bedrijf niet verbonden"
+    private val windowsPoller = object : Runnable {
+        override fun run() {
+            if (windowsConnected && role == Role.CUSTOMER) {
+                syncWindowsStatuses()
+                uiHandler.postDelayed(this, 2500)
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         nearby = Nearby.getConnectionsClient(this)
+        windowsHost = getSharedPreferences("rutu_windows", Context.MODE_PRIVATE).getString("host", "") ?: ""
         landing()
     }
 
     override fun onDestroy() {
+        uiHandler.removeCallbacks(windowsPoller)
         nearby.stopAllEndpoints(); nearby.stopAdvertising(); nearby.stopDiscovery()
         super.onDestroy()
     }
@@ -86,7 +107,7 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == permissionRequest && pendingStart) {
             pendingStart = false
             if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) startNearbyForRole()
-            else toast("Toestemming is nodig om bestellingen tussen de twee telefoons te versturen.")
+            else toast("Toestemming is nodig voor een directe Android-naar-Android verbinding.")
         }
     }
 
@@ -97,9 +118,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startDiscovery() {
-        connectionText = "Rutu BBQ zoeken…"; refreshRoleScreen()
+        connectionText = "Android bedrijf zoeken…"; refreshRoleScreen()
         nearby.startDiscovery(serviceId, endpointDiscoveryCallback, DiscoveryOptions.Builder().setStrategy(strategy).build())
-            .addOnSuccessListener { connectionText = "Zoeken naar Rutu BBQ…"; refreshRoleScreen() }
+            .addOnSuccessListener { connectionText = "Zoeken naar Android bedrijf…"; refreshRoleScreen() }
             .addOnFailureListener { connectionText = "Zoeken mislukt"; refreshRoleScreen() }
     }
 
@@ -113,11 +134,11 @@ class MainActivity : AppCompatActivity() {
     private val endpointDiscoveryCallback = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
             if (role != Role.CUSTOMER || connectedEndpoint != null) return
-            connectionText = "Rutu BBQ gevonden • verbinden…"; refreshRoleScreen()
+            connectionText = "Android bedrijf gevonden • verbinden…"; refreshRoleScreen()
             nearby.requestConnection("Rutu BBQ Klant", endpointId, connectionLifecycleCallback)
         }
         override fun onEndpointLost(endpointId: String) {
-            if (connectedEndpoint == null) { connectionText = "Verbinding zoeken…"; refreshRoleScreen() }
+            if (connectedEndpoint == null) { connectionText = "Android verbinding zoeken…"; refreshRoleScreen() }
         }
     }
 
@@ -130,7 +151,7 @@ class MainActivity : AppCompatActivity() {
             if (resolution.status.statusCode == ConnectionsStatusCodes.STATUS_OK) {
                 connectedEndpoint = endpointId
                 nearby.stopDiscovery(); nearby.stopAdvertising()
-                connectionText = if (role == Role.CUSTOMER) "Verbonden met Rutu BBQ ✓" else "Klant verbonden ✓"
+                connectionText = if (role == Role.CUSTOMER) "Verbonden met Android bedrijf ✓" else "Klant verbonden ✓"
                 runOnUiThread { toast("Verbonden ✓"); refreshRoleScreen() }
             } else {
                 connectedEndpoint = null; connectionText = "Koppeling mislukt"; refreshRoleScreen()
@@ -140,7 +161,6 @@ class MainActivity : AppCompatActivity() {
             if (connectedEndpoint == endpointId) connectedEndpoint = null
             connectionText = "Verbinding verbroken"
             runOnUiThread { refreshRoleScreen() }
-            if (hasPermissions()) startNearbyForRole()
         }
     }
 
@@ -158,7 +178,7 @@ class MainActivity : AppCompatActivity() {
                     "status" -> if (role == Role.CUSTOMER) {
                         val id = json.getInt("id"); val status = json.getString("status")
                         Store.status(this@MainActivity, id, status)
-                        runOnUiThread { toast("Bestelling #$id: $status"); if (screen == "orders") myOrders() }
+                        runOnUiThread { toast("Bestelling #$id: $status"); if (screen == "orders") myOrders(false) }
                     }
                 }
             } catch (_: Exception) { runOnUiThread { toast("Bericht kon niet worden gelezen") } }
@@ -166,7 +186,7 @@ class MainActivity : AppCompatActivity() {
         override fun onPayloadTransferUpdate(endpointId: String, update: PayloadTransferUpdate) = Unit
     }
 
-    private fun sendOrder(order: Order): Boolean {
+    private fun sendNearbyOrder(order: Order): Boolean {
         val endpoint = connectedEndpoint ?: return false
         val json = JSONObject().put("type", "order").put("order", orderToJson(order))
         nearby.sendPayload(endpoint, Payload.fromBytes(json.toString().toByteArray()))
@@ -189,6 +209,99 @@ class MainActivity : AppCompatActivity() {
         return Order(json.getInt("id"), items, json.getDouble("total"), json.getString("status"))
     }
 
+    private fun normalizedWindowsHost(raw: String): String {
+        return raw.trim().removePrefix("http://").removePrefix("https://").substringBefore('/').substringBefore(':').trim()
+    }
+
+    private fun windowsBase() = "http://$windowsHost:8765"
+
+    private fun httpJson(method: String, path: String, body: JSONObject? = null): Pair<Int, String> {
+        val connection = (URL(windowsBase() + path).openConnection() as HttpURLConnection).apply {
+            requestMethod = method
+            connectTimeout = 3500
+            readTimeout = 3500
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            if (body != null) doOutput = true
+        }
+        if (body != null) connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+        val code = connection.responseCode
+        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+        val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+        connection.disconnect()
+        return code to text
+    }
+
+    private fun testWindowsConnection(rawHost: String) {
+        val host = normalizedWindowsHost(rawHost)
+        if (host.isBlank()) { toast("Vul het IP-adres uit de Windows bedrijfsapp in."); return }
+        windowsHost = host
+        getSharedPreferences("rutu_windows", Context.MODE_PRIVATE).edit().putString("host", host).apply()
+        windowsText = "Verbinden met $host…"; windowsConnected = false; refreshRoleScreen()
+        Thread {
+            try {
+                val (code, text) = httpJson("GET", "/api/health")
+                val ok = code == 200 && JSONObject(text).optBoolean("ok")
+                windowsConnected = ok
+                windowsText = if (ok) "Windows bedrijf verbonden ✓" else "Windows verbinding mislukt"
+                runOnUiThread {
+                    if (ok) {
+                        toast("Verbonden met Windows bedrijf ✓")
+                        uiHandler.removeCallbacks(windowsPoller)
+                        uiHandler.post(windowsPoller)
+                    } else toast("Kan Windows bedrijf niet bereiken.")
+                    refreshRoleScreen()
+                }
+            } catch (_: Exception) {
+                windowsConnected = false; windowsText = "Windows bedrijf niet bereikbaar"
+                runOnUiThread { toast("Geen verbinding. Controleer IP, wifi en Windows Firewall."); refreshRoleScreen() }
+            }
+        }.start()
+    }
+
+    private fun sendWindowsOrder(order: Order) {
+        val payload = orderToJson(order).put("customer", "Android klant")
+        Thread {
+            try {
+                val (code, _) = httpJson("POST", "/api/orders", payload)
+                if (code in 200..299) {
+                    runOnUiThread { cart.clear(); toast("Bestelling #${order.id} ontvangen door Windows ✓"); myOrders(false) }
+                } else {
+                    Store.status(this, order.id, "Verzenden mislukt")
+                    runOnUiThread { toast("Windows heeft de bestelling niet geaccepteerd."); myOrders(false) }
+                }
+            } catch (_: Exception) {
+                windowsConnected = false; windowsText = "Windows verbinding verbroken"
+                Store.status(this, order.id, "Verzenden mislukt")
+                runOnUiThread { toast("Verbinding met Windows verloren."); myOrders(false) }
+            }
+        }.start()
+    }
+
+    private fun syncWindowsStatuses() {
+        if (!windowsConnected || windowsHost.isBlank()) return
+        Thread {
+            try {
+                val (code, text) = httpJson("GET", "/api/orders")
+                if (code != 200) return@Thread
+                val arr = JSONArray(text)
+                var changed = false
+                for (i in 0 until arr.length()) {
+                    val obj = arr.getJSONObject(i)
+                    val id = obj.getInt("id")
+                    val status = obj.optString("status", "Nieuw")
+                    val local = Store.all(this).firstOrNull { it.id == id }
+                    if (local != null && local.status != status) {
+                        Store.status(this, id, status); changed = true
+                    }
+                }
+                if (changed && screen == "orders") runOnUiThread { myOrders(false) }
+            } catch (_: Exception) {
+                windowsConnected = false; windowsText = "Windows verbinding verbroken"
+                runOnUiThread { if (screen == "customer" || screen == "cart" || screen == "orders") refreshRoleScreen() }
+            }
+        }.start()
+    }
+
     private fun page() {
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -200,32 +313,50 @@ class MainActivity : AppCompatActivity() {
 
     private fun landing() {
         role = Role.NONE; screen = "landing"; connectedEndpoint = null
+        windowsConnected = false; uiHandler.removeCallbacks(windowsPoller)
         nearby.stopAllEndpoints(); nearby.stopAdvertising(); nearby.stopDiscovery()
-        page()
-        spacer(36)
-        logoMark()
-        title("RUTU BBQ")
-        centered("More than food. It’s an experience.", 16f, Color.rgb(205, 179, 122))
-        spacer(34)
-        hero("🔥 Fire. Roots. Flavour.", "Bestel als klant of open de bedrijfsmodus om bestellingen te ontvangen.")
-        button("🔥 Bestellen") { enterCustomer() }
-        button("🏪 Bedrijfsmodus", secondary = true) { enterBusiness() }
-        spacer(20)
-        centered("Android • Rutu BBQ", 12f, Color.GRAY)
+        page(); spacer(36); logoMark(); title("RUTU BBQ")
+        centered("More than food. It’s an experience.", 16f, Color.rgb(205, 179, 122)); spacer(34)
+        hero("🔥 Fire. Roots. Flavour.", "Test de klantomgeving op Android en ontvang bestellingen in de Windows bedrijfsapp.")
+        button("🔥 Klantomgeving") { enterCustomer() }
+        button("🏪 Android bedrijfsmodus", secondary = true) { enterBusiness() }
+        spacer(20); centered("Android • Rutu BBQ", 12f, Color.GRAY)
     }
 
-    private fun enterCustomer() { role = Role.CUSTOMER; renderCustomer(); ensureConnection() }
+    private fun enterCustomer() { role = Role.CUSTOMER; renderCustomer() }
     private fun enterBusiness() { role = Role.BUSINESS; renderBusiness(); ensureConnection() }
 
     private fun refreshRoleScreen() = runOnUiThread {
-        when { role == Role.CUSTOMER && screen == "customer" -> renderCustomer(); role == Role.BUSINESS && screen == "business" -> renderBusiness() }
+        when {
+            role == Role.CUSTOMER && screen == "customer" -> renderCustomer()
+            role == Role.CUSTOMER && screen == "cart" -> cartScreen()
+            role == Role.CUSTOMER && screen == "orders" -> myOrders(false)
+            role == Role.BUSINESS && screen == "business" -> renderBusiness()
+        }
     }
 
-    private fun connectionCard() = label(if (connectedEndpoint != null) "🟢 $connectionText" else "🟠 $connectionText", Color.rgb(29, 38, 30))
+    private fun connectionCard() {
+        when {
+            windowsConnected -> label("🟢 $windowsText • $windowsHost:8765", Color.rgb(29, 38, 30))
+            connectedEndpoint != null -> label("🟢 $connectionText", Color.rgb(29, 38, 30))
+            else -> label("🟠 $windowsText", Color.rgb(44, 34, 19))
+        }
+    }
 
     private fun renderCustomer() {
-        screen = "customer"; page(); back { landing() }; title("Rutu BBQ • Menu"); connectionCard()
-        hero("🔥 Welkom bij Rutu BBQ", "Kies je favorieten. Je bestelling wordt rechtstreeks naar het bedrijf gestuurd.")
+        screen = "customer"; page(); back { landing() }; title("Rutu BBQ • Klant"); connectionCard()
+        section("Windows bedrijf koppelen")
+        val ip = EditText(this).apply {
+            hint = "Bijv. 192.168.1.25"
+            setText(windowsHost)
+            setTextColor(Color.WHITE); setHintTextColor(Color.GRAY)
+            setSingleLine(true); setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = rounded(Color.rgb(24, 24, 28), Color.rgb(70, 70, 80))
+        }
+        root.addView(ip, marginParams(0, 0, 0, 6))
+        button(if (windowsConnected) "✓ Opnieuw testen" else "💻 Verbinden met Windows") { testWindowsConnection(ip.text.toString()) }
+        if (!windowsConnected && connectedEndpoint == null) button("Android-bedrijf zoeken", secondary = true) { ensureConnection() }
+        hero("🔥 Welkom bij Rutu BBQ", "Kies je favorieten. Voor deze test wordt je bestelling rechtstreeks naar de Windows bedrijfsomgeving gestuurd.")
         products.groupBy { it.category }.forEach { (category, items) ->
             section(category)
             items.forEach { p ->
@@ -237,7 +368,6 @@ class MainActivity : AppCompatActivity() {
         }
         button("🛒 Winkelmand (${cart.values.sum()})") { cartScreen() }
         button("🧾 Mijn bestellingen", secondary = true) { myOrders() }
-        if (connectedEndpoint == null) button("Opnieuw verbinden", secondary = true) { ensureConnection() }
     }
 
     private fun cartScreen() {
@@ -253,24 +383,26 @@ class MainActivity : AppCompatActivity() {
         }
         section("Totaal  ${money.format(total)}")
         button("🔥 Bestelling plaatsen") {
-            if (connectedEndpoint == null) { toast("Nog niet verbonden met Rutu BBQ."); return@button }
+            if (!windowsConnected && connectedEndpoint == null) { toast("Verbind eerst met de Windows bedrijfsapp."); return@button }
             val order = Store.create(this, cart, total)
-            if (sendOrder(order)) { cart.clear(); toast("Bestelling #${order.id} verzonden ✓"); myOrders() }
+            if (windowsConnected) sendWindowsOrder(order)
+            else if (sendNearbyOrder(order)) { cart.clear(); toast("Bestelling #${order.id} verzonden ✓"); myOrders(false) }
         }
     }
 
-    private fun myOrders() {
+    private fun myOrders(sync: Boolean = true) {
         screen = "orders"; page(); back { renderCustomer() }; title("Mijn bestellingen"); connectionCard()
+        if (sync) syncWindowsStatuses()
         val orders = Store.all(this).reversed()
         if (orders.isEmpty()) hero("Nog geen bestellingen", "Je geplaatste bestellingen verschijnen hier.")
         orders.forEach { orderView(it, false) }
-        button("Verversen", secondary = true) { myOrders() }
+        button("Status nu ophalen", secondary = true) { syncWindowsStatuses() }
     }
 
     private fun renderBusiness() {
-        screen = "business"; page(); back { landing() }; title("Rutu BBQ • Bedrijf"); connectionCard()
+        screen = "business"; page(); back { landing() }; title("Rutu BBQ • Android Bedrijf"); connectionCard()
         val orders = Store.all(this).reversed()
-        hero("${orders.count { it.status == "Nieuw" }} nieuwe bestellingen", "Beheer de keukenstatus en stuur updates terug naar de klant.")
+        hero("${orders.count { it.status == "Nieuw" }} nieuwe bestellingen", "Deze Android bedrijfsmodus blijft beschikbaar voor Android-naar-Android tests.")
         if (orders.isEmpty()) centered("Wachten op de eerste bestelling…", 15f, Color.LTGRAY)
         orders.forEach { orderView(it, true) }
         button("Verversen", secondary = true) { renderBusiness() }
@@ -308,8 +440,7 @@ class MainActivity : AppCompatActivity() {
     private fun card(text: String, actions: LinearLayout.() -> Unit = {}) {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(16)); background = rounded(Color.rgb(24, 24, 28), Color.rgb(50, 50, 58)) }
         box.addView(TextView(this).apply { this.text = text; textSize = 16f; setTextColor(Color.WHITE); setLineSpacing(0f, 1.15f) })
-        box.actions()
-        root.addView(box, marginParams(0, 0, 0, 10))
+        box.actions(); root.addView(box, marginParams(0, 0, 0, 10))
     }
 
     private fun title(s: String) { root.addView(TextView(this).apply { text = s; textSize = 30f; gravity = Gravity.CENTER; setTextColor(Color.rgb(242, 207, 122)); setPadding(0, dp(12), 0, dp(22)) }) }
