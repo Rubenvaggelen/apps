@@ -33,11 +33,27 @@ jobs:
         with:
           gradle-version: '9.6.0'
 
-      - name: Prepare stable app source
+      - name: Prepare stable package
         run: |
-          python -c "from pathlib import Path; p=Path('media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java'); s=p.read_text(); a=s.index('        Button back = button(\"← Terug\");'); b=s.index('        setContentView(root);', a); s=s[:a]+s[b:]; marker='    private void addNavButton'; insert='    @Override\\n    public void onBackPressed() {\\n        if (playerFullscreen) {\\n            showShell(\"Live TV\");\\n        } else {\\n            super.onBackPressed();\\n        }\\n    }\\n\\n'; s=s.replace(marker, insert+marker, 1); s=s.replace('package com.theone.mediaplayer;', 'package com.theone.mediaplayer.stable;', 1); p.write_text(s)"
-          python -c "from pathlib import Path; p=Path('media-player/app/build.gradle.kts'); s=p.read_text().replace('namespace = \"com.theone.mediaplayer\"','namespace = \"com.theone.mediaplayer.stable\"').replace('applicationId = \"com.theone.mediaplayer\"','applicationId = \"com.theone.mediaplayer.stable\"').replace('versionCode = 4','versionCode = 100').replace('versionName = \"0.3.1-hotfix\"','versionName = \"1.0.0-stable\"'); p.write_text(s)"
-          python -c "from pathlib import Path; p=Path('media-player/app/src/main/AndroidManifest.xml'); s=p.read_text().replace('android:label=\"The One Media Player\"','android:label=\"The One Media Player Stable\"'); p.write_text(s)"
+          python - <<'PY'
+          from pathlib import Path
+          root = Path('media-player/app/src/main/java/com/theone/mediaplayer')
+          for p in root.glob('*.java'):
+              s = p.read_text()
+              s = s.replace('package com.theone.mediaplayer;', 'package com.theone.mediaplayer.stable;', 1)
+              p.write_text(s)
+          p = Path('media-player/app/build.gradle.kts')
+          s = p.read_text()
+          s = s.replace('namespace = "com.theone.mediaplayer"', 'namespace = "com.theone.mediaplayer.stable"')
+          s = s.replace('applicationId = "com.theone.mediaplayer"', 'applicationId = "com.theone.mediaplayer.stable"')
+          import re
+          s = re.sub(r'versionCode = \d+', 'versionCode = 101', s)
+          s = re.sub(r'versionName = "[^"]+"', 'versionName = "1.0.1-stable"', s)
+          p.write_text(s)
+          p = Path('media-player/app/src/main/AndroidManifest.xml')
+          s = p.read_text().replace('android:label="The One Media Player"', 'android:label="The One Media Player Stable"')
+          p.write_text(s)
+          PY
 
       - name: Build unsigned stable release APK
         working-directory: media-player
@@ -46,5 +62,5 @@ jobs:
       - name: Upload unsigned stable APK
         uses: actions/upload-artifact@v4
         with:
-          name: the-one-media-player-stable-v1.0.0-unsigned
+          name: the-one-media-player-stable-v1.0.1-unsigned
           path: media-player/app/build/outputs/apk/release/app-release-unsigned.apk
