@@ -1,7 +1,7 @@
 {
   "name": "rutu-bbq-windows-simulator",
-  "version": "0.1.0",
-  "description": "Rutu BBQ Windows test simulator for customer and business order flow",
+  "version": "0.2.0",
+  "description": "Rutu BBQ Windows business test environment with Android LAN order bridge",
   "main": "main.js",
   "author": "Rutu BBQ",
   "license": "UNLICENSED",
