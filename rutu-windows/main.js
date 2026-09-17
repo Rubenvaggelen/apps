@@ -1,10 +1,14 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
+const http = require('http');
+const os = require('os');
 
 let orders = [];
 let nextId = 1046;
 let customerWindow = null;
 let businessWindow = null;
+let apiServer = null;
+const API_PORT = 8765;
 
 function makeWindow(file, opts = {}) {
   const win = new BrowserWindow({
@@ -43,33 +47,112 @@ function openBusiness() {
   businessWindow.on('closed', () => businessWindow = null);
 }
 
+function localAddresses() {
+  const result = [];
+  for (const values of Object.values(os.networkInterfaces())) {
+    for (const item of values || []) {
+      if (item.family === 'IPv4' && !item.internal) result.push(item.address);
+    }
+  }
+  return [...new Set(result)];
+}
+
+function normalizeItems(items) {
+  if (Array.isArray(items)) return items.map(i => ({ name: String(i.name || ''), qty: Number(i.qty || 0) })).filter(i => i.name && i.qty > 0);
+  if (items && typeof items === 'object') return Object.entries(items).map(([name, qty]) => ({ name, qty: Number(qty || 0) })).filter(i => i.qty > 0);
+  return [];
+}
+
+function addOrder(input = {}) {
+  let requestedId = Number(input.id || 0);
+  if (!Number.isFinite(requestedId) || requestedId <= 0 || orders.some(o => o.id === requestedId)) requestedId = nextId++;
+  nextId = Math.max(nextId, requestedId + 1);
+  const created = {
+    id: requestedId,
+    items: normalizeItems(input.items),
+    total: Number(input.total || 0),
+    customer: input.customer || 'Android klant',
+    created: new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }),
+    status: input.status || 'Nieuw'
+  };
+  orders.unshift(created);
+  broadcast();
+  return created;
+}
+
+function setOrderStatus(id, status) {
+  const item = orders.find(o => o.id === Number(id));
+  if (item) item.status = String(status || item.status);
+  broadcast();
+  return item || null;
+}
+
+function sendJson(res, status, value) {
+  const body = JSON.stringify(value);
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(body),
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'
+  });
+  res.end(body);
+}
+
+function readJson(req) {
+  return new Promise((resolve, reject) => {
+    let raw = '';
+    req.on('data', chunk => {
+      raw += chunk;
+      if (raw.length > 1024 * 1024) req.destroy();
+    });
+    req.on('end', () => {
+      try { resolve(raw ? JSON.parse(raw) : {}); } catch (e) { reject(e); }
+    });
+    req.on('error', reject);
+  });
+}
+
+function startApiServer() {
+  if (apiServer) return;
+  apiServer = http.createServer(async (req, res) => {
+    if (req.method === 'OPTIONS') return sendJson(res, 200, { ok: true });
+    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    try {
+      if (req.method === 'GET' && url.pathname === '/api/health') {
+        return sendJson(res, 200, { ok: true, name: 'Rutu BBQ Windows Bedrijf', port: API_PORT, addresses: localAddresses() });
+      }
+      if (req.method === 'GET' && url.pathname === '/api/orders') {
+        return sendJson(res, 200, orders);
+      }
+      if (req.method === 'POST' && url.pathname === '/api/orders') {
+        const body = await readJson(req);
+        return sendJson(res, 201, addOrder(body));
+      }
+      const statusMatch = url.pathname.match(/^\/api\/orders\/(\d+)\/status$/);
+      if (req.method === 'POST' && statusMatch) {
+        const body = await readJson(req);
+        const updated = setOrderStatus(Number(statusMatch[1]), body.status);
+        return sendJson(res, updated ? 200 : 404, updated || { error: 'Order not found' });
+      }
+      return sendJson(res, 404, { error: 'Not found' });
+    } catch (error) {
+      return sendJson(res, 400, { error: String(error.message || error) });
+    }
+  });
+  apiServer.listen(API_PORT, '0.0.0.0');
+}
+
 app.whenReady().then(() => {
+  startApiServer();
   const launcher = makeWindow('launcher.html', { width: 680, height: 520, title: 'Rutu BBQ Simulator' });
   ipcMain.on('open-customer', openCustomer);
   ipcMain.on('open-business', openBusiness);
 
+  ipcMain.handle('get-server-info', () => ({ port: API_PORT, addresses: localAddresses() }));
   ipcMain.handle('get-orders', () => JSON.parse(JSON.stringify(orders)));
-  ipcMain.handle('place-order', (_event, order) => {
-    const created = {
-      id: nextId++,
-      items: Array.isArray(order.items) ? order.items : [],
-      total: Number(order.total || 0),
-      customer: order.customer || 'Testklant',
-      created: new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }),
-      status: 'Nieuw'
-    };
-    orders.unshift(created);
-    broadcast();
-    return created;
-  });
-
-  ipcMain.handle('set-status', (_event, { id, status }) => {
-    const item = orders.find(o => o.id === id);
-    if (item) item.status = status;
-    broadcast();
-    return item || null;
-  });
-
+  ipcMain.handle('place-order', (_event, order) => addOrder(order));
+  ipcMain.handle('set-status', (_event, { id, status }) => setOrderStatus(id, status));
   ipcMain.handle('reset-orders', () => {
     orders = [];
     nextId = 1046;
@@ -83,4 +166,7 @@ app.whenReady().then(() => {
   });
 });
 
+app.on('before-quit', () => {
+  if (apiServer) apiServer.close();
+});
 app.on('window-all-closed', () => app.quit());
