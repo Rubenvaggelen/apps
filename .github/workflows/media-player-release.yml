@@ -1,0 +1,49 @@
+name: Build Signed The One Media Player APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Accept Android SDK licenses
+        run: yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null || true
+
+      - name: Install Android SDK 36
+        run: /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.6
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Restore permanent signing key
+        shell: bash
+        run: |
+          test -n "${{ secrets.MEDIA_PLAYER_KEYSTORE_BASE64 }}"
+          echo "${{ secrets.MEDIA_PLAYER_KEYSTORE_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/the-one-media-player.jks"
+
+      - name: Build signed release APK
+        working-directory: media-player
+        env:
+          MEDIA_PLAYER_KEYSTORE_PATH: ${{ runner.temp }}/the-one-media-player.jks
+          MEDIA_PLAYER_KEYSTORE_PASSWORD: ${{ secrets.MEDIA_PLAYER_KEYSTORE_PASSWORD }}
+          MEDIA_PLAYER_KEY_ALIAS: ${{ secrets.MEDIA_PLAYER_KEY_ALIAS }}
+          MEDIA_PLAYER_KEY_PASSWORD: ${{ secrets.MEDIA_PLAYER_KEY_PASSWORD }}
+        run: gradle :app:assembleRelease --stacktrace
+
+      - name: Upload signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: the-one-media-player-signed-release
+          path: media-player/app/build/outputs/apk/release/app-release.apk
