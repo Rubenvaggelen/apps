@@ -76,7 +76,7 @@ public class MainActivity extends Activity {
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.addView(text("◉  THE ONE", 24, BLUE, true));
-        header.addView(text("   MEDIA PLAYER TEST", 20, Color.WHITE, true));
+        header.addView(text("   MEDIA PLAYER", 20, Color.WHITE, true));
         root.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         HorizontalScrollView navScroll = new HorizontalScrollView(this);
@@ -86,7 +86,7 @@ public class MainActivity extends Activity {
         nav.setPadding(0, dp(16), 0, dp(14));
         addNavButton(nav, "Live TV", this::showLiveTv);
         addNavButton(nav, "Films", this::showFilms);
-        addNavButton(nav, "Series", () -> showSection("Series", "Series komen hier zodra jouw echte bron is gekoppeld."));
+        addNavButton(nav, "Series", () -> showSection("Series", "Series verschijnen hier zodra je bron is gekoppeld."));
         addNavButton(nav, "Test M3U", this::showDemoM3u);
         addNavButton(nav, "Verder kijken", () -> showSection("Verder kijken", "Je kijkvoortgang verschijnt hier."));
         addNavButton(nav, "Favorieten", () -> showSection("Favorieten", "Je favoriete zenders, films en series verschijnen hier."));
@@ -101,29 +101,56 @@ public class MainActivity extends Activity {
 
         if ("Films".equals(section)) showFilms();
         else if ("Test M3U".equals(section)) showDemoM3u();
+        else if ("Instellingen".equals(section)) showSettings();
         else showLiveTv();
     }
 
     private void showLiveTv() {
         content.removeAllViews();
         ScrollView scroll = new ScrollView(this);
-        LinearLayout box = baseBox("Live TV - gratis test", "Openbare teststreams om de player op telefoon en TV te controleren.");
+        LinearLayout box = baseBox("Live TV", "Gebruik de gratis teststreams of koppel je eigen bron via Instellingen.");
+        addConfiguredSourceSummary(box);
         addPlayableCard(box, "Apple HLS Test", "Adaptieve HLS teststream", APPLE_HLS);
         addPlayableCard(box, "Mux HLS Test", "Big Buck Bunny via HLS", MUX_HLS);
         addExternalCard(box, "NASA Live", "Gratis officiële NASA-stream via YouTube", NASA_YOUTUBE);
-        addInfo(box, "The One Media Player toont zelf geen reclame. Later koppelen we jouw eigen geautoriseerde M3U/Xtream-bron.");
+        addInfo(box, "The One Media Player bevat zelf geen advertenties.");
         scroll.addView(box);
         content.addView(scroll);
+    }
+
+    private void addConfiguredSourceSummary(LinearLayout box) {
+        String type = prefs.getString("source_type", "STALKER");
+        String label;
+        String value;
+        if ("XTREAM".equals(type)) {
+            label = "Xtream";
+            value = prefs.getString("xtream_server", "http://line.liondnscloud.ru:80");
+        } else if ("M3U".equals(type)) {
+            label = "M3U";
+            value = prefs.getString("m3u_url", "Nog geen M3U-URL ingesteld");
+        } else {
+            label = "Stalker / MAC";
+            value = prefs.getString("stalker_server", "http://line.liondnscloud.ru:80");
+        }
+        LinearLayout card = cardContainer();
+        card.addView(text("Bron: " + label, 18, BLUE, true));
+        TextView detail = text(value, 14, MUTED, false);
+        detail.setPadding(0, dp(5), 0, dp(10));
+        card.addView(detail);
+        Button settings = button("Bron instellen");
+        settings.setOnClickListener(v -> startActivity(new Intent(this, SourceConfigActivity.class)));
+        card.addView(settings);
+        addCard(box, card);
     }
 
     private void showFilms() {
         content.removeAllViews();
         ScrollView scroll = new ScrollView(this);
-        LinearLayout box = baseBox("Films - gratis test", "Vrij beschikbare Blender Open Movies voor onze eerste afspeeltest.");
+        LinearLayout box = baseBox("Films", "Gratis Blender Open Movies voor de afspeeltest.");
         addPlayableCard(box, "Big Buck Bunny", "Blender Foundation - direct MP4", BBB_MP4);
         addPlayableCard(box, "Sintel", "Blender Foundation - direct MKV", SINTEL_MKV);
         addExternalCard(box, "Big Buck Bunny op YouTube", "Officiële Blender-video", BBB_YOUTUBE);
-        addInfo(box, "Geen advertenties van The One Media Player. Externe apps zoals YouTube kunnen hun eigen advertenties tonen.");
+        addInfo(box, "Externe apps zoals YouTube kunnen hun eigen advertenties tonen.");
         scroll.addView(box);
         content.addView(scroll);
     }
@@ -131,23 +158,12 @@ public class MainActivity extends Activity {
     private void showDemoM3u() {
         content.removeAllViews();
         ScrollView scroll = new ScrollView(this);
-        LinearLayout box = baseBox("Ingebouwde test-M3U", "Deze lijst demonstreert M3U-items met HLS, films en YouTube-links.");
+        LinearLayout box = baseBox("Ingebouwde test-M3U", "Test HLS, films en externe YouTube-links.");
         List<DemoEntry> entries = parseM3u(DEMO_M3U);
         for (DemoEntry entry : entries) {
-            if (isExternalUrl(entry.url)) {
-                addExternalCard(box, entry.title, entry.group + " • opent extern", entry.url);
-            } else {
-                addPlayableCard(box, entry.title, entry.group + " • speelt in Media3", entry.url);
-            }
+            if (isExternalUrl(entry.url)) addExternalCard(box, entry.title, entry.group + " • opent extern", entry.url);
+            else addPlayableCard(box, entry.title, entry.group + " • speelt in Media3", entry.url);
         }
-        TextView rawTitle = text("M3U testinhoud", 18, BLUE, true);
-        rawTitle.setPadding(0, dp(18), 0, dp(8));
-        box.addView(rawTitle);
-        TextView raw = text(DEMO_M3U, 12, MUTED, false);
-        raw.setTextIsSelectable(true);
-        raw.setBackgroundColor(PANEL);
-        raw.setPadding(dp(12), dp(12), dp(12), dp(12));
-        box.addView(raw);
         scroll.addView(box);
         content.addView(scroll);
     }
@@ -231,12 +247,20 @@ public class MainActivity extends Activity {
     private void showSettings() {
         content.removeAllViews();
         ScrollView scroll = new ScrollView(this);
-        LinearLayout box = baseBox("Instellingen", "Je kunt een losse stream-URL testen. Jouw echte TV/film/series-bron koppelen we later.");
+        LinearLayout box = baseBox("Instellingen", "Beheer je bron of test een losse stream-URL.");
+
+        Button source = button("Bron instellen: Stalker / Xtream / M3U");
+        source.setOnClickListener(v -> startActivity(new Intent(this, SourceConfigActivity.class)));
+        box.addView(source);
+
+        TextView sourceInfo = text("Server voorgeladen: http://line.liondnscloud.ru:80", 14, MUTED, false);
+        sourceInfo.setPadding(0, dp(8), 0, dp(18));
+        box.addView(sourceInfo);
 
         EditText url = new EditText(this);
         url.setTextColor(Color.WHITE);
         url.setHintTextColor(MUTED);
-        url.setHint("Bron- of test-URL");
+        url.setHint("Losse test-stream URL");
         url.setSingleLine(true);
         url.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         url.setText(prefs.getString("source_url", ""));
@@ -250,7 +274,7 @@ public class MainActivity extends Activity {
         Button save = button("Opslaan");
         save.setOnClickListener(v -> {
             prefs.edit().putString("source_url", url.getText().toString().trim()).apply();
-            Toast.makeText(this, "Bron opgeslagen", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Test-URL opgeslagen", Toast.LENGTH_SHORT).show();
         });
         actions.addView(save);
 
@@ -274,7 +298,7 @@ public class MainActivity extends Activity {
         box.addView(demo);
 
         TextView multi = text(
-                "Meerdere apparaten\n\nDeze APK kan op meerdere Android-telefoons en Android/Google TV's worden geïnstalleerd. Tijdens video kun je je telefoon draaien zonder dat de stream opnieuw begint. De player gebruikt volledig scherm zonder status- of navigatiebalk. WhatsApp-meldingen blijven toegestaan. The One Media Player bevat zelf geen advertenties.",
+                "Meerdere apparaten\n\nDeze APK kan op meerdere Android-telefoons en Android/Google TV's worden geïnstalleerd. Tijdens video kun je draaien zonder herstart. Fullscreen verbergt klok en navigatiebalk. WhatsApp-meldingen blijven toegestaan. The One Media Player bevat zelf geen advertenties.",
                 17,
                 Color.WHITE,
                 false
@@ -348,13 +372,6 @@ public class MainActivity extends Activity {
         player.play();
 
         root.addView(activePlayerView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-        Button back = button("← Terug");
-        back.setOnClickListener(v -> showShell("Live TV"));
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
-        lp.setMargins(dp(16), dp(16), 0, 0);
-        root.addView(back, lp);
-
         setContentView(root);
         root.post(this::enterImmersiveFullscreen);
     }
@@ -370,7 +387,6 @@ public class MainActivity extends Activity {
                             | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
             );
         } catch (Throwable ignored) {
-            // Fullscreen mag nooit de player laten crashen.
         }
     }
 
@@ -378,7 +394,6 @@ public class MainActivity extends Activity {
         try {
             getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
         } catch (Throwable ignored) {
-            // Ook bij recente Android/Samsung-versies veilig terugkeren.
         }
     }
 
@@ -386,9 +401,7 @@ public class MainActivity extends Activity {
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         if (playerFullscreen) {
-            if (activePlayerView != null) {
-                activePlayerView.requestLayout();
-            }
+            if (activePlayerView != null) activePlayerView.requestLayout();
             enterImmersiveFullscreen();
         }
     }
@@ -396,9 +409,13 @@ public class MainActivity extends Activity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus && playerFullscreen) {
-            enterImmersiveFullscreen();
-        }
+        if (hasFocus && playerFullscreen) enterImmersiveFullscreen();
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (playerFullscreen) showShell("Live TV");
+        else super.onBackPressed();
     }
 
     private void addNavButton(LinearLayout parent, String label, Runnable action) {
