@@ -36,8 +36,11 @@ jobs:
       - name: Remove fullscreen back overlay
         run: python -c "from pathlib import Path; p=Path('media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java'); s=p.read_text(); a=s.index('        Button back = button(\"← Terug\");'); b=s.index('        setContentView(root);', a); p.write_text(s[:a] + s[b:])"
 
+      - name: Add Android back navigation
+        run: python -c "from pathlib import Path; p=Path('media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java'); s=p.read_text(); marker='    private void addNavButton'; insert='    @Override\\n    public void onBackPressed() {\\n        if (playerFullscreen) {\\n            showShell(\"Live TV\");\\n        } else {\\n            super.onBackPressed();\\n        }\\n    }\\n\\n'; p.write_text(s.replace(marker, insert + marker, 1))"
+
       - name: Bump APK version
-        run: python -c "from pathlib import Path; p=Path('media-player/app/build.gradle.kts'); s=p.read_text().replace('versionCode = 4','versionCode = 5').replace('versionName = \"0.3.1-hotfix\"','versionName = \"0.3.2-fullscreen\"'); p.write_text(s)"
+        run: python -c "from pathlib import Path; p=Path('media-player/app/build.gradle.kts'); s=p.read_text().replace('versionCode = 4','versionCode = 6').replace('versionName = \"0.3.1-hotfix\"','versionName = \"0.3.3-fullscreen\"'); p.write_text(s)"
 
       - name: Build unsigned release APK
         working-directory: media-player
@@ -46,5 +49,5 @@ jobs:
       - name: Upload unsigned APK
         uses: actions/upload-artifact@v4
         with:
-          name: the-one-media-player-v0.3.2-unsigned
+          name: the-one-media-player-v0.3.3-unsigned
           path: media-player/app/build/outputs/apk/release/app-release-unsigned.apk
