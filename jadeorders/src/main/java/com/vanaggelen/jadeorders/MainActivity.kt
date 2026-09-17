@@ -319,7 +319,7 @@ class MainActivity : AppCompatActivity() {
         nearby.stopAllEndpoints(); nearby.stopAdvertising(); nearby.stopDiscovery()
         page(); spacer(8); logoMark(); title("Welkom bij Rutu BBQ")
         centered("More than food. It’s an experience.", 16f, Color.rgb(205, 179, 122)); spacer(34)
-        hero("Fire. Roots. Flavour.", "Geworteld in smaak. Gemaakt met vuur. Kies je favorieten en geniet.")
+        hero("Fire. Roots. Flavour.", "Gemaakt in vuur. Unieke smaak. Kies je favorieten en geniet.")
         button("Bekijk het menu") { enterCustomer() }
         button("Open bedrijfsomgeving", secondary = true) { enterBusiness() }
         spacer(20); centered("Android • Rutu BBQ", 12f, Color.rgb(189, 178, 161))
@@ -485,4 +485,3 @@ class MainActivity : AppCompatActivity() {
         fun status(c: Context, id: Int, status: String) { val orders = all(c); orders.firstOrNull { it.id == id }?.status = status; save(c, orders) }
     }
 }
-
