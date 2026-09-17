@@ -2,12 +2,13 @@ package com.theone.mediaplayer;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
-import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
@@ -22,11 +23,30 @@ import androidx.media3.common.MediaItem;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class MainActivity extends Activity {
     private static final int BLUE = Color.rgb(32, 184, 255);
     private static final int BG = Color.rgb(5, 7, 11);
     private static final int PANEL = Color.rgb(17, 23, 34);
     private static final int MUTED = Color.rgb(154, 166, 178);
+
+    private static final String APPLE_HLS = "https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8";
+    private static final String MUX_HLS = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
+    private static final String BBB_MP4 = "https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4";
+    private static final String SINTEL_MKV = "https://download.blender.org/durian/movies/Sintel.2010.720p.mkv";
+    private static final String BBB_YOUTUBE = "https://www.youtube.com/watch?v=aqz-KE-bpKQ";
+    private static final String NASA_YOUTUBE = "https://www.youtube.com/@NASA/live";
+
+    private static final String DEMO_M3U =
+            "#EXTM3U\n" +
+            "#EXTINF:-1 group-title=\"Live TV\",Apple HLS Test\n" + APPLE_HLS + "\n" +
+            "#EXTINF:-1 group-title=\"Live TV\",Mux Big Buck Bunny HLS\n" + MUX_HLS + "\n" +
+            "#EXTINF:-1 group-title=\"Live TV\",NASA Live (YouTube)\n" + NASA_YOUTUBE + "\n" +
+            "#EXTINF:-1 group-title=\"Films\",Big Buck Bunny\n" + BBB_MP4 + "\n" +
+            "#EXTINF:-1 group-title=\"Films\",Sintel\n" + SINTEL_MKV + "\n" +
+            "#EXTINF:-1 group-title=\"YouTube\",Big Buck Bunny - Blender Official\n" + BBB_YOUTUBE + "\n";
 
     private FrameLayout content;
     private ExoPlayer player;
@@ -49,11 +69,8 @@ public class MainActivity extends Activity {
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-
-        TextView logo = text("◉  THE ONE", 24, BLUE, true);
-        header.addView(logo);
-        TextView title = text("   MEDIA PLAYER", 20, Color.WHITE, true);
-        header.addView(title);
+        header.addView(text("◉  THE ONE", 24, BLUE, true));
+        header.addView(text("   MEDIA PLAYER TEST", 20, Color.WHITE, true));
         root.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         HorizontalScrollView navScroll = new HorizontalScrollView(this);
@@ -61,9 +78,10 @@ public class MainActivity extends Activity {
         LinearLayout nav = new LinearLayout(this);
         nav.setOrientation(LinearLayout.HORIZONTAL);
         nav.setPadding(0, dp(16), 0, dp(14));
-        addNavButton(nav, "Live TV", () -> showSection("Live TV", "Je zenders komen hier zodra we jouw bron koppelen."));
-        addNavButton(nav, "Films", () -> showSection("Films", "Films en categorieën worden straks uit jouw bron geladen."));
-        addNavButton(nav, "Series", () -> showSection("Series", "Series, seizoenen en afleveringen komen hier."));
+        addNavButton(nav, "Live TV", this::showLiveTv);
+        addNavButton(nav, "Films", this::showFilms);
+        addNavButton(nav, "Series", () -> showSection("Series", "Series komen hier zodra jouw echte bron is gekoppeld."));
+        addNavButton(nav, "Test M3U", this::showDemoM3u);
         addNavButton(nav, "Verder kijken", () -> showSection("Verder kijken", "Je kijkvoortgang verschijnt hier."));
         addNavButton(nav, "Favorieten", () -> showSection("Favorieten", "Je favoriete zenders, films en series verschijnen hier."));
         addNavButton(nav, "Instellingen", this::showSettings);
@@ -73,12 +91,72 @@ public class MainActivity extends Activity {
         content = new FrameLayout(this);
         root.addView(content, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         setContentView(root);
-        showSection(section, "Je zenders komen hier zodra we jouw bron koppelen.");
+
+        if ("Films".equals(section)) showFilms();
+        else if ("Test M3U".equals(section)) showDemoM3u();
+        else showLiveTv();
+    }
+
+    private void showLiveTv() {
+        content.removeAllViews();
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout box = baseBox("Live TV - gratis test", "Openbare teststreams om de player op telefoon en TV te controleren.");
+        addPlayableCard(box, "Apple HLS Test", "Adaptieve HLS teststream", APPLE_HLS);
+        addPlayableCard(box, "Mux HLS Test", "Big Buck Bunny via HLS", MUX_HLS);
+        addExternalCard(box, "NASA Live", "Gratis officiële NASA-stream via YouTube", NASA_YOUTUBE);
+        addInfo(box, "Dit zijn testbronnen. Random gratis IPTV-lijsten zijn bewust niet ingebouwd; later koppelen we jouw eigen geautoriseerde M3U/Xtream-bron.");
+        scroll.addView(box);
+        content.addView(scroll);
+    }
+
+    private void showFilms() {
+        content.removeAllViews();
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout box = baseBox("Films - gratis test", "Vrij beschikbare Blender Open Movies voor onze eerste afspeeltest.");
+        addPlayableCard(box, "Big Buck Bunny", "Blender Foundation - direct MP4", BBB_MP4);
+        addPlayableCard(box, "Sintel", "Blender Foundation - direct MKV", SINTEL_MKV);
+        addExternalCard(box, "Big Buck Bunny op YouTube", "Officiële Blender-video", BBB_YOUTUBE);
+        scroll.addView(box);
+        content.addView(scroll);
+    }
+
+    private void showDemoM3u() {
+        content.removeAllViews();
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout box = baseBox("Ingebouwde test-M3U", "Deze lijst demonstreert M3U-items met HLS, films en YouTube-links.");
+        List<DemoEntry> entries = parseM3u(DEMO_M3U);
+        for (DemoEntry entry : entries) {
+            if (isExternalUrl(entry.url)) {
+                addExternalCard(box, entry.title, entry.group + " • opent extern", entry.url);
+            } else {
+                addPlayableCard(box, entry.title, entry.group + " • speelt in Media3", entry.url);
+            }
+        }
+        TextView rawTitle = text("M3U testinhoud", 18, BLUE, true);
+        rawTitle.setPadding(0, dp(18), 0, dp(8));
+        box.addView(rawTitle);
+        TextView raw = text(DEMO_M3U, 12, MUTED, false);
+        raw.setTextIsSelectable(true);
+        raw.setBackgroundColor(PANEL);
+        raw.setPadding(dp(12), dp(12), dp(12), dp(12));
+        box.addView(raw);
+        scroll.addView(box);
+        content.addView(scroll);
     }
 
     private void showSection(String title, String subtitle) {
         content.removeAllViews();
         ScrollView scroll = new ScrollView(this);
+        LinearLayout box = baseBox(title, subtitle);
+        String[] cards = title.equals("Series")
+                ? new String[]{"Verder kijken", "Nieuw", "Drama", "Crime", "Comedy"}
+                : new String[]{"Nog leeg", "Klaar voor synchronisatie"};
+        for (String card : cards) addStaticCard(box, card);
+        scroll.addView(box);
+        content.addView(scroll);
+    }
+
+    private LinearLayout baseBox(String title, String subtitle) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(6), dp(12), dp(6), dp(18));
@@ -86,40 +164,66 @@ public class MainActivity extends Activity {
         TextView sub = text(subtitle, 17, MUTED, false);
         sub.setPadding(0, dp(8), 0, dp(22));
         box.addView(sub);
+        return box;
+    }
 
-        String[] cards = title.equals("Live TV")
-                ? new String[]{"Favoriete zenders", "Alle zenders", "Sport", "Nieuws", "Entertainment"}
-                : title.equals("Films")
-                ? new String[]{"Nieuw", "Actie", "Comedy", "Thriller", "Familie"}
-                : title.equals("Series")
-                ? new String[]{"Verder kijken", "Nieuw", "Drama", "Crime", "Comedy"}
-                : new String[]{"Nog leeg", "Klaar voor synchronisatie"};
+    private void addPlayableCard(LinearLayout box, String title, String subtitle, String url) {
+        LinearLayout card = cardContainer();
+        card.addView(text(title, 20, Color.WHITE, true));
+        TextView desc = text(subtitle, 14, MUTED, false);
+        desc.setPadding(0, dp(5), 0, dp(10));
+        card.addView(desc);
+        Button play = button("▶ Afspelen");
+        play.setOnClickListener(v -> showPlayer(url));
+        card.addView(play);
+        addCard(box, card);
+    }
 
-        for (String card : cards) {
-            TextView tile = text(card, 20, Color.WHITE, true);
-            tile.setBackgroundColor(PANEL);
-            tile.setPadding(dp(20), dp(22), dp(20), dp(22));
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.bottomMargin = dp(12);
-            box.addView(tile, lp);
-        }
-        TextView note = text("Ga naar Instellingen om later je TV/film/series-URL toe te voegen.", 16, BLUE, true);
-        note.setPadding(0, dp(10), 0, 0);
+    private void addExternalCard(LinearLayout box, String title, String subtitle, String url) {
+        LinearLayout card = cardContainer();
+        card.addView(text(title, 20, Color.WHITE, true));
+        TextView desc = text(subtitle, 14, MUTED, false);
+        desc.setPadding(0, dp(5), 0, dp(10));
+        card.addView(desc);
+        Button open = button("Openen");
+        open.setOnClickListener(v -> openExternal(url));
+        card.addView(open);
+        addCard(box, card);
+    }
+
+    private void addStaticCard(LinearLayout box, String label) {
+        TextView tile = text(label, 20, Color.WHITE, true);
+        tile.setBackgroundColor(PANEL);
+        tile.setPadding(dp(20), dp(22), dp(20), dp(22));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dp(12);
+        box.addView(tile, lp);
+    }
+
+    private LinearLayout cardContainer() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackgroundColor(PANEL);
+        card.setPadding(dp(18), dp(16), dp(18), dp(16));
+        return card;
+    }
+
+    private void addCard(LinearLayout box, LinearLayout card) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dp(12);
+        box.addView(card, lp);
+    }
+
+    private void addInfo(LinearLayout box, String value) {
+        TextView note = text(value, 14, BLUE, false);
+        note.setPadding(0, dp(8), 0, 0);
         box.addView(note);
-        scroll.addView(box);
-        content.addView(scroll);
     }
 
     private void showSettings() {
         content.removeAllViews();
         ScrollView scroll = new ScrollView(this);
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(6), dp(12), dp(6), dp(18));
-        box.addView(text("Instellingen", 32, Color.WHITE, true));
-        TextView info = text("Je echte TV/film/series-bron voegen we later toe. Je kunt nu al een losse stream-URL opslaan en testen.", 17, MUTED, false);
-        info.setPadding(0, dp(8), 0, dp(18));
-        box.addView(info);
+        LinearLayout box = baseBox("Instellingen", "Je kunt een losse stream-URL testen. Jouw echte TV/film/series-bron koppelen we later.");
 
         EditText url = new EditText(this);
         url.setTextColor(Color.WHITE);
@@ -146,7 +250,7 @@ public class MainActivity extends Activity {
             String value = url.getText().toString().trim();
             if (value.startsWith("http://") || value.startsWith("https://")) {
                 prefs.edit().putString("source_url", value).apply();
-                showPlayer(value);
+                if (isExternalUrl(value)) openExternal(value); else showPlayer(value);
             } else {
                 Toast.makeText(this, "Vul eerst een geldige http(s)-URL in", Toast.LENGTH_SHORT).show();
             }
@@ -156,12 +260,60 @@ public class MainActivity extends Activity {
         actions.addView(test, testLp);
         box.addView(actions);
 
+        Button demo = button("Open ingebouwde test-M3U");
+        demo.setOnClickListener(v -> showDemoM3u());
+        box.addView(demo);
+
         TextView multi = text("Meerdere apparaten\n\nDeze APK kan op meerdere Android-telefoons en Android/Google TV's worden geïnstalleerd. Account-sync voor favorieten en kijkvoortgang bouwen we daarna in.", 17, Color.WHITE, false);
         multi.setBackgroundColor(PANEL);
         multi.setPadding(dp(18), dp(18), dp(18), dp(18));
-        box.addView(multi);
+        LinearLayout.LayoutParams multiLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        multiLp.topMargin = dp(18);
+        box.addView(multi, multiLp);
+
         scroll.addView(box);
         content.addView(scroll);
+    }
+
+    private List<DemoEntry> parseM3u(String m3u) {
+        List<DemoEntry> result = new ArrayList<>();
+        String pendingTitle = null;
+        String pendingGroup = "Overig";
+        for (String rawLine : m3u.split("\\r?\\n")) {
+            String line = rawLine.trim();
+            if (line.startsWith("#EXTINF:")) {
+                int comma = line.indexOf(',');
+                pendingTitle = comma >= 0 ? line.substring(comma + 1).trim() : "Media";
+                pendingGroup = extractGroup(line);
+            } else if (!line.isEmpty() && !line.startsWith("#") && pendingTitle != null) {
+                result.add(new DemoEntry(pendingTitle, pendingGroup, line));
+                pendingTitle = null;
+                pendingGroup = "Overig";
+            }
+        }
+        return result;
+    }
+
+    private String extractGroup(String extinf) {
+        String token = "group-title=\"";
+        int start = extinf.indexOf(token);
+        if (start < 0) return "Overig";
+        start += token.length();
+        int end = extinf.indexOf('"', start);
+        return end > start ? extinf.substring(start, end) : "Overig";
+    }
+
+    private boolean isExternalUrl(String url) {
+        String lower = url.toLowerCase();
+        return lower.contains("youtube.com") || lower.contains("youtu.be") || lower.contains("nasa.gov");
+    }
+
+    private void openExternal(String url) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (Exception e) {
+            Toast.makeText(this, "Geen app gevonden om deze link te openen", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void showPlayer(String url) {
@@ -233,5 +385,17 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         releasePlayer();
         super.onDestroy();
+    }
+
+    private static class DemoEntry {
+        final String title;
+        final String group;
+        final String url;
+
+        DemoEntry(String title, String group, String url) {
+            this.title = title;
+            this.group = group;
+            this.url = url;
+        }
     }
 }
