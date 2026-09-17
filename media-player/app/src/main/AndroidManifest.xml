@@ -12,6 +12,9 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.TheOneMediaPlayer">
         <activity
+            android:name=".SourceConfigActivity"
+            android:exported="false" />
+        <activity
             android:name=".MainActivity"
             android:exported="true"
             android:resizeableActivity="true"
