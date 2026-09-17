@@ -1,0 +1,41 @@
+{
+  "name": "rutu-bbq-windows-simulator",
+  "version": "0.1.0",
+  "description": "Rutu BBQ Windows test simulator for customer and business order flow",
+  "main": "main.js",
+  "author": "Rutu BBQ",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^37.3.1",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.vanaggelen.rutubbq.simulator",
+    "productName": "Rutu BBQ Simulator",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "launcher.html",
+      "customer.html",
+      "business.html"
+    ],
+    "win": {
+      "target": ["nsis"]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Rutu BBQ Simulator"
+    }
+  }
+}
