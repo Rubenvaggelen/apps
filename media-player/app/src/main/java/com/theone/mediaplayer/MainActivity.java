@@ -4,12 +4,17 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -50,7 +55,9 @@ public class MainActivity extends Activity {
 
     private FrameLayout content;
     private ExoPlayer player;
+    private PlayerView activePlayerView;
     private SharedPreferences prefs;
+    private boolean playerFullscreen = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -60,7 +67,10 @@ public class MainActivity extends Activity {
     }
 
     private void showShell(String section) {
+        playerFullscreen = false;
+        exitImmersiveFullscreen();
         releasePlayer();
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(BG);
@@ -104,7 +114,7 @@ public class MainActivity extends Activity {
         addPlayableCard(box, "Apple HLS Test", "Adaptieve HLS teststream", APPLE_HLS);
         addPlayableCard(box, "Mux HLS Test", "Big Buck Bunny via HLS", MUX_HLS);
         addExternalCard(box, "NASA Live", "Gratis officiële NASA-stream via YouTube", NASA_YOUTUBE);
-        addInfo(box, "Dit zijn testbronnen. Random gratis IPTV-lijsten zijn bewust niet ingebouwd; later koppelen we jouw eigen geautoriseerde M3U/Xtream-bron.");
+        addInfo(box, "The One Media Player toont zelf geen reclame. Later koppelen we jouw eigen geautoriseerde M3U/Xtream-bron.");
         scroll.addView(box);
         content.addView(scroll);
     }
@@ -116,6 +126,7 @@ public class MainActivity extends Activity {
         addPlayableCard(box, "Big Buck Bunny", "Blender Foundation - direct MP4", BBB_MP4);
         addPlayableCard(box, "Sintel", "Blender Foundation - direct MKV", SINTEL_MKV);
         addExternalCard(box, "Big Buck Bunny op YouTube", "Officiële Blender-video", BBB_YOUTUBE);
+        addInfo(box, "Geen advertenties van The One Media Player. Externe apps zoals YouTube kunnen hun eigen advertenties tonen.");
         scroll.addView(box);
         content.addView(scroll);
     }
@@ -245,6 +256,7 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Bron opgeslagen", Toast.LENGTH_SHORT).show();
         });
         actions.addView(save);
+
         Button test = button("Test afspelen");
         test.setOnClickListener(v -> {
             String value = url.getText().toString().trim();
@@ -264,7 +276,12 @@ public class MainActivity extends Activity {
         demo.setOnClickListener(v -> showDemoM3u());
         box.addView(demo);
 
-        TextView multi = text("Meerdere apparaten\n\nDeze APK kan op meerdere Android-telefoons en Android/Google TV's worden geïnstalleerd. Account-sync voor favorieten en kijkvoortgang bouwen we daarna in.", 17, Color.WHITE, false);
+        TextView multi = text(
+                "Meerdere apparaten\n\nDeze APK kan op meerdere Android-telefoons en Android/Google TV's worden geïnstalleerd. Tijdens video kun je je telefoon draaien zonder dat de stream opnieuw begint. De player gebruikt volledig scherm zonder status- of navigatiebalk. WhatsApp-meldingen blijven toegestaan. The One Media Player bevat zelf geen advertenties.",
+                17,
+                Color.WHITE,
+                false
+        );
         multi.setBackgroundColor(PANEL);
         multi.setPadding(dp(18), dp(18), dp(18), dp(18));
         LinearLayout.LayoutParams multiLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -318,16 +335,23 @@ public class MainActivity extends Activity {
 
     private void showPlayer(String url) {
         releasePlayer();
+        playerFullscreen = true;
+        enterImmersiveFullscreen();
+
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
-        PlayerView playerView = new PlayerView(this);
+
+        activePlayerView = new PlayerView(this);
         player = new ExoPlayer.Builder(this).build();
-        playerView.setPlayer(player);
-        playerView.setUseController(true);
+        activePlayerView.setPlayer(player);
+        activePlayerView.setUseController(true);
+        activePlayerView.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT);
+
         player.setMediaItem(MediaItem.fromUri(url));
         player.prepare();
         player.play();
-        root.addView(playerView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        root.addView(activePlayerView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         Button back = button("← Terug");
         back.setOnClickListener(v -> showShell("Live TV"));
@@ -335,6 +359,54 @@ public class MainActivity extends Activity {
         lp.setMargins(dp(16), dp(16), 0, 0);
         root.addView(back, lp);
         setContentView(root);
+    }
+
+    private void enterImmersiveFullscreen() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            getWindow().setDecorFitsSystemWindows(false);
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            }
+        } else {
+            getWindow().getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                            | View.SYSTEM_UI_FLAG_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            );
+        }
+    }
+
+    private void exitImmersiveFullscreen() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            getWindow().setDecorFitsSystemWindows(true);
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                controller.show(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+            }
+        } else {
+            getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+        }
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        if (playerFullscreen) {
+            enterImmersiveFullscreen();
+        }
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus && playerFullscreen) {
+            enterImmersiveFullscreen();
+        }
     }
 
     private void addNavButton(LinearLayout parent, String label, Runnable action) {
@@ -369,6 +441,10 @@ public class MainActivity extends Activity {
     }
 
     private void releasePlayer() {
+        if (activePlayerView != null) {
+            activePlayerView.setPlayer(null);
+            activePlayerView = null;
+        }
         if (player != null) {
             player.release();
             player = null;
