@@ -33,12 +33,36 @@ jobs:
         with:
           gradle-version: '9.6.0'
 
-      - name: Build debug APK
-        working-directory: media-player
-        run: gradle :app:assembleDebug --stacktrace
+      - name: Remove player overlay and bump version
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java')
+          s = p.read_text()
+          old = '''        Button back = button("← Terug");
+        back.setOnClickListener(v -> showShell("Live TV"));
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
+        lp.setMargins(dp(16), dp(16), 0, 0);
+        root.addView(back, lp);
 
-      - name: Upload APK
+'''
+          if old not in s:
+              raise SystemExit('Expected player back-button block not found')
+          p.write_text(s.replace(old, ''))
+
+          g = Path('media-player/app/build.gradle.kts')
+          t = g.read_text()
+          t = t.replace('versionCode = 4', 'versionCode = 5')
+          t = t.replace('versionName = "0.3.1-hotfix"', 'versionName = "0.3.2-fullscreen"')
+          g.write_text(t)
+          PY
+
+      - name: Build unsigned release APK
+        working-directory: media-player
+        run: gradle :app:assembleRelease --stacktrace
+
+      - name: Upload unsigned APK
         uses: actions/upload-artifact@v4
         with:
-          name: the-one-media-player-v0.1-debug
-          path: media-player/app/build/outputs/apk/debug/app-debug.apk
+          name: the-one-media-player-v0.3.2-unsigned
+          path: media-player/app/build/outputs/apk/release/app-release-unsigned.apk
