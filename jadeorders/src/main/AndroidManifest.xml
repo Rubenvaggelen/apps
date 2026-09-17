@@ -11,7 +11,7 @@
 
     <application
         android:allowBackup="true"
-        android:label="The Jade Emperor Orders"
+        android:label="Rutu BBQ"
         android:theme="@style/Theme.JadeOrders">
         <activity
             android:name=".MainActivity"
