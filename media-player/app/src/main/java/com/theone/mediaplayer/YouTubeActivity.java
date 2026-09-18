@@ -44,28 +44,20 @@ public class YouTubeActivity extends Activity {
         shell.setBackgroundColor(BG);
 
         LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(android.view.Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(18), dp(18), dp(18), dp(14));
+        header.setOrientation(LinearLayout.VERTICAL);
+        header.setPadding(dp(18), dp(14), dp(18), dp(10));
 
-        Button back = new Button(this);
-        back.setText("←");
-        back.setAllCaps(false);
-        back.setTextColor(Color.WHITE);
-        back.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(20, 92, 130)));
+        LinearLayout brand = PremiumUi.brandHeader(this, "YouTube");
+        header.addView(brand);
+
+        Button back = PremiumUi.chipButton(this, "←  Terug");
         back.setOnClickListener(v -> goBack());
-        header.addView(back);
-
-        TextView title = new TextView(this);
-        title.setText("  ◉  THE ONE   MEDIA PLAYER");
-        title.setTextColor(BLUE);
-        title.setTextSize(22);
-        title.setTypeface(title.getTypeface(), android.graphics.Typeface.BOLD);
-        header.addView(title, new LinearLayout.LayoutParams(
-                0,
+        LinearLayout.LayoutParams backLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                1f
-        ));
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        backLp.topMargin = dp(6);
+        header.addView(back, backLp);
 
         shell.addView(header);
 
