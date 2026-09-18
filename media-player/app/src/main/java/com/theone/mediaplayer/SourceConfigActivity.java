@@ -2,8 +2,10 @@ package com.theone.mediaplayer;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
@@ -15,12 +17,20 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+
 public class SourceConfigActivity extends Activity {
     private static final int BLUE = Color.rgb(32, 184, 255);
     private static final int BG = Color.rgb(5, 7, 11);
     private static final int PANEL = Color.rgb(17, 23, 34);
     private static final int MUTED = Color.rgb(154, 166, 178);
     private static final String DEFAULT_SERVER = "http://line.liondnscloud.ru:80";
+    private static final int REQUEST_IMPORT_SOURCE = 7001;
 
     private SharedPreferences prefs;
     private LinearLayout fields;
