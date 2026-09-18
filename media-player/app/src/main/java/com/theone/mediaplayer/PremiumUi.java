@@ -2,6 +2,9 @@ package com.theone.mediaplayer;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.widget.ImageView;
+import android.graphics.BitmapFactory;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -17,6 +20,9 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 // v18 premium prototype
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 public final class PremiumUi {
     public static final int BG = Color.rgb(4, 7, 12);
     public static final int PANEL = Color.rgb(12, 18, 28);
@@ -32,15 +38,18 @@ public final class PremiumUi {
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(0, dp(context, 2), 0, dp(context, 8));
 
-        BrandMarkView mark = new BrandMarkView(context);
-        row.addView(mark, new LinearLayout.LayoutParams(dp(context, 52), dp(context, 52)));
+        ImageView mark = new ImageView(context);
+        mark.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        mark.setAdjustViewBounds(true);
+        row.addView(mark, new LinearLayout.LayoutParams(dp(context, 58), dp(context, 58)));
+        loadMainTheOneLogo(mark);
 
         LinearLayout titles = new LinearLayout(context);
         titles.setOrientation(LinearLayout.VERTICAL);
         titles.setPadding(dp(context, 12), 0, 0, 0);
 
         TextView brand = new TextView(context);
-        brand.setText("THE ONE  MEDIA");
+        brand.setText("THE ONE");
         brand.setTextColor(BLUE_SOFT);
         brand.setTextSize(12);
         brand.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
@@ -48,7 +57,7 @@ public final class PremiumUi {
         titles.addView(brand);
 
         TextView product = new TextView(context);
-        product.setText(section == null || section.isEmpty() ? "PLAYER" : section.toUpperCase());
+        product.setText(section == null || section.isEmpty() ? "MEDIA PLAYER" : "MEDIA PLAYER • " + section.toUpperCase());
         product.setTextColor(Color.WHITE);
         product.setTextSize(22);
         product.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
@@ -160,6 +169,34 @@ public final class PremiumUi {
         d.setCornerRadius(dp(context, radiusDp));
         d.setStroke(dp(context, strokeDp), stroke);
         return d;
+    }
+
+    private static final String MAIN_THE_ONE_LOGO_URL =
+            "https://raw.githubusercontent.com/Rubenvaggelen/apps/main/app/src/main/res/drawable-nodpi/the_one_logo.png";
+
+    private static void loadMainTheOneLogo(ImageView view) {
+        // Fallback blijft The One-achtig als internet even niet beschikbaar is.
+        view.setBackgroundColor(Color.TRANSPARENT);
+
+        new Thread(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) new URL(MAIN_THE_ONE_LOGO_URL).openConnection();
+                connection.setConnectTimeout(8000);
+                connection.setReadTimeout(12000);
+                connection.setRequestProperty("User-Agent", "TheOneMediaPlayer/2.0");
+
+                try (InputStream input = connection.getInputStream()) {
+                    Bitmap bitmap = BitmapFactory.decodeStream(input);
+                    if (bitmap != null) {
+                        view.post(() -> view.setImageBitmap(bitmap));
+                    }
+                }
+            } catch (Throwable ignored) {
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        }).start();
     }
 
     public static int dp(Context context, int value) {
