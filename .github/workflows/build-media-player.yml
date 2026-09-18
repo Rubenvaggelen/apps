@@ -8,11 +8,17 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      MEDIA_PLAYER_KEYSTORE_BASE64: ${{ secrets.MEDIA_PLAYER_KEYSTORE_BASE64 }}
+      MEDIA_PLAYER_KEYSTORE_PASSWORD: ${{ secrets.MEDIA_PLAYER_KEYSTORE_PASSWORD }}
+      MEDIA_PLAYER_KEY_ALIAS: ${{ secrets.MEDIA_PLAYER_KEY_ALIAS }}
+      MEDIA_PLAYER_KEY_PASSWORD: ${{ secrets.MEDIA_PLAYER_KEY_PASSWORD }}
+      MEDIA_PLAYER_KEYSTORE_PATH: ${{ github.workspace }}/media-player/the-one-media-player.jks
 
     steps:
       - name: Checkout code
@@ -83,3 +89,36 @@ jobs:
             fi
             grep -q 'com.theone.mediaplayer' /tmp/activity.txt
             echo 'MEDIA_PLAYER_SMOKE_TEST_OK'
+
+
+      - name: Prepare Media Player signing key
+        if: env.MEDIA_PLAYER_KEYSTORE_BASE64 != '' && env.MEDIA_PLAYER_KEYSTORE_PASSWORD != '' && env.MEDIA_PLAYER_KEY_ALIAS != '' && env.MEDIA_PLAYER_KEY_PASSWORD != ''
+        shell: bash
+        run: |
+          printf '%s' "$MEDIA_PLAYER_KEYSTORE_BASE64" | base64 --decode > "$MEDIA_PLAYER_KEYSTORE_PATH"
+          test -s "$MEDIA_PLAYER_KEYSTORE_PATH"
+
+      - name: Build signed Media Player update
+        if: env.MEDIA_PLAYER_KEYSTORE_BASE64 != '' && env.MEDIA_PLAYER_KEYSTORE_PASSWORD != '' && env.MEDIA_PLAYER_KEY_ALIAS != '' && env.MEDIA_PLAYER_KEY_PASSWORD != ''
+        shell: bash
+        run: |
+          gradle -p media-player assembleRelease --no-daemon
+          test -s media-player/app/build/outputs/apk/release/app-release.apk
+          cp media-player/app/build/outputs/apk/release/app-release.apk              media-player/app/build/outputs/apk/release/The-One-Media-Player-v21.apk
+
+      - name: Publish Media Player v2.1 update
+        if: env.MEDIA_PLAYER_KEYSTORE_BASE64 != '' && env.MEDIA_PLAYER_KEYSTORE_PASSWORD != '' && env.MEDIA_PLAYER_KEY_ALIAS != '' && env.MEDIA_PLAYER_KEY_PASSWORD != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: media-player-v2100
+          target_commitish: ${{ github.sha }}
+          name: The One Media Player v2.1
+          body: |
+            The One Media Player update:
+            - corrected movie year metadata (no internal Unix timestamps)
+            - compact two-line movie titles
+            - provider, year and rating on one clean line
+            - premium neon buttons throughout the app
+            - selectable subtitle tracks during playback
+          files: media-player/app/build/outputs/apk/release/The-One-Media-Player-v21.apk
+          overwrite_files: true
