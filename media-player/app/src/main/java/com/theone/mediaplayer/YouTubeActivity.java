@@ -135,8 +135,13 @@ public class YouTubeActivity extends Activity {
 
         setContentView(root);
 
-        String videoUrl = getIntent().getStringExtra("video_url");
-        String videoId = extractVideoId(videoUrl);
+        String videoId = getIntent().getStringExtra("video_id");
+        if (videoId == null || videoId.trim().isEmpty()) {
+            String videoUrl = getIntent().getStringExtra("video_url");
+            videoId = extractVideoId(videoUrl);
+        } else {
+            videoId = videoId.trim();
+        }
 
         if (!videoId.isEmpty()) {
             String embed = "https://www.youtube.com/embed/" + videoId
