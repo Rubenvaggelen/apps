@@ -56,7 +56,7 @@ public class TmdbCatalogActivity extends Activity {
         super.onCreate(savedInstanceState);
         prefs = getSharedPreferences("media_player", Context.MODE_PRIVATE);
         mode = getIntent().getStringExtra("mode");
-        if (mode == null || mode.isBlank()) mode = "all";
+        if (mode == null || mode.trim().isEmpty()) mode = "all";
         renderHome();
     }
 
@@ -229,7 +229,7 @@ public class TmdbCatalogActivity extends Activity {
         LinearLayout.LayoutParams posterLp = new LinearLayout.LayoutParams(dp(108), dp(162));
         posterLp.rightMargin = dp(14);
         card.addView(poster, posterLp);
-        if (meta.posterPath != null && !meta.posterPath.isBlank()) {
+        if (meta.posterPath != null && !meta.posterPath.trim().isEmpty()) {
             loadImage(poster, TMDB_IMAGE + meta.posterPath);
         }
 
@@ -243,7 +243,7 @@ public class TmdbCatalogActivity extends Activity {
         metaLine.setPadding(0, dp(4), 0, dp(7));
         info.addView(metaLine);
 
-        String overview = meta.overview == null || meta.overview.isBlank() ? "Geen beschrijving beschikbaar." : meta.overview;
+        String overview = meta.overview == null || meta.overview.trim().isEmpty() ? "Geen beschrijving beschikbaar." : meta.overview;
         if (overview.length() > 280) overview = overview.substring(0, 277) + "…";
         TextView desc = text(overview, 14, MUTED, false);
         desc.setPadding(0, 0, 0, dp(10));
@@ -313,7 +313,7 @@ public class TmdbCatalogActivity extends Activity {
         }
 
         String overview = details.optString("overview", meta.overview);
-        TextView desc = text(overview == null || overview.isBlank() ? "Geen beschrijving beschikbaar." : overview, 16, Color.WHITE, false);
+        TextView desc = text(overview == null || overview.trim().isEmpty() ? "Geen beschrijving beschikbaar." : overview, 16, Color.WHITE, false);
         desc.setPadding(0, 0, 0, dp(14));
         content.addView(desc);
 
@@ -385,13 +385,13 @@ public class TmdbCatalogActivity extends Activity {
 
             LinearLayout card = card();
             card.addView(text(String.format(Locale.US, "S%02dE%02d • %s", seasonNumber, epNumber, name), 18, Color.WHITE, true));
-            String small = airDate.isBlank() ? "" : airDate;
+            String small = airDate.trim().isEmpty() ? "" : airDate;
             if (!small.isEmpty()) {
                 TextView air = text(small, 13, BLUE, false);
                 air.setPadding(0, dp(3), 0, dp(5));
                 card.addView(air);
             }
-            if (!overview.isBlank()) {
+            if (!overview.trim().isEmpty()) {
                 String shortOverview = overview.length() > 240 ? overview.substring(0, 237) + "…" : overview;
                 TextView desc = text(shortOverview, 14, MUTED, false);
                 desc.setPadding(0, 0, 0, dp(8));
@@ -446,7 +446,7 @@ public class TmdbCatalogActivity extends Activity {
         String server = trimSlash(prefs.getString("xtream_server", ""));
         String user = prefs.getString("xtream_user", "");
         String pass = prefs.getString("xtream_pass", "");
-        if (server.isBlank() || user.isBlank() || pass.isBlank()) {
+        if (server.trim().isEmpty() || user.trim().isEmpty() || pass.trim().isEmpty()) {
             Toast.makeText(this, "Stel eerst je eigen Xtream-server, gebruikersnaam en wachtwoord in.", Toast.LENGTH_LONG).show();
             return;
         }
@@ -725,7 +725,7 @@ public class TmdbCatalogActivity extends Activity {
             JSONObject g = genres.optJSONObject(i);
             if (g != null) {
                 String name = g.optString("name", "");
-                if (!name.isBlank()) names.add(name);
+                if (!name.trim().isEmpty()) names.add(name);
             }
         }
         StringBuilder joined = new StringBuilder();
@@ -760,7 +760,7 @@ public class TmdbCatalogActivity extends Activity {
         content.removeAllViews();
         content.addView(sectionTitle(heading));
         String message = e.getMessage();
-        if (message == null || message.isBlank()) message = e.getClass().getSimpleName();
+        if (message == null || message.trim().isEmpty()) message = e.getClass().getSimpleName();
         content.addView(text(message, 15, MUTED, false));
         Button settings = button("Instellingen");
         settings.setOnClickListener(v -> startActivity(new Intent(this, SourceConfigActivity.class)));
@@ -849,7 +849,7 @@ public class TmdbCatalogActivity extends Activity {
             if (id <= 0) return null;
 
             String title = "movie".equals(type) ? item.optString("title", "") : item.optString("name", "");
-            if (title.isBlank()) return null;
+            if (title.trim().isEmpty()) return null;
 
             String date = "movie".equals(type) ? item.optString("release_date", "") : item.optString("first_air_date", "");
             String year = date.length() >= 4 ? date.substring(0, 4) : "";
