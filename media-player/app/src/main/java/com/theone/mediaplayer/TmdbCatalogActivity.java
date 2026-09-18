@@ -728,7 +728,12 @@ public class TmdbCatalogActivity extends Activity {
                 if (!name.isBlank()) names.add(name);
             }
         }
-        return String.join(", ", names);
+        StringBuilder joined = new StringBuilder();
+        for (String name : names) {
+            if (joined.length() > 0) joined.append(", ");
+            joined.append(name);
+        }
+        return joined.toString();
     }
 
     private void addTmdbAttribution(LinearLayout parent) {
