@@ -60,7 +60,12 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = getSharedPreferences("media_player", Context.MODE_PRIVATE);
-        showShell("Live TV");
+        String playUrl = getIntent().getStringExtra("play_url");
+        if (playUrl != null && (playUrl.startsWith("http://") || playUrl.startsWith("https://"))) {
+            showPlayer(playUrl);
+        } else {
+            showShell("Live TV");
+        }
     }
 
     private void showShell(String section) {
@@ -85,8 +90,9 @@ public class MainActivity extends Activity {
         nav.setOrientation(LinearLayout.HORIZONTAL);
         nav.setPadding(0, dp(16), 0, dp(14));
         addNavButton(nav, "Live TV", this::showLiveTv);
-        addNavButton(nav, "Films", this::showFilms);
-        addNavButton(nav, "Series", () -> showSection("Series", "Series verschijnen hier zodra je bron is gekoppeld."));
+        addNavButton(nav, "Films", () -> openCatalog("movie"));
+        addNavButton(nav, "Series", () -> openCatalog("tv"));
+        addNavButton(nav, "Ontdekken", () -> openCatalog("all"));
         addNavButton(nav, "Test M3U", this::showDemoM3u);
         addNavButton(nav, "Verder kijken", () -> showSection("Verder kijken", "Je kijkvoortgang verschijnt hier."));
         addNavButton(nav, "Favorieten", () -> showSection("Favorieten", "Je favoriete zenders, films en series verschijnen hier."));
@@ -103,6 +109,12 @@ public class MainActivity extends Activity {
         else if ("Test M3U".equals(section)) showDemoM3u();
         else if ("Instellingen".equals(section)) showSettings();
         else showLiveTv();
+    }
+
+    private void openCatalog(String mode) {
+        Intent intent = new Intent(this, TmdbCatalogActivity.class);
+        intent.putExtra("mode", mode);
+        startActivity(intent);
     }
 
     private void showLiveTv() {
