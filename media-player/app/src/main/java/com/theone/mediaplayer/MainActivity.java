@@ -1,6 +1,7 @@
 package com.theone.mediaplayer;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -22,7 +23,11 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.media3.common.C;
+import androidx.media3.common.Format;
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.TrackSelectionOverride;
+import androidx.media3.common.Tracks;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
 
@@ -562,8 +567,110 @@ public class MainActivity extends Activity {
                         ViewGroup.LayoutParams.MATCH_PARENT
                 )
         );
+        Button subtitles = PremiumUi.chipButton(this, "CC  Ondertiteling");
+        subtitles.setOnClickListener(v -> showSubtitleSelector());
+        FrameLayout.LayoutParams subtitleLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP | Gravity.END
+        );
+        subtitleLp.topMargin = dp(14);
+        subtitleLp.rightMargin = dp(14);
+        root.addView(subtitles, subtitleLp);
+
         setContentView(root);
         root.post(this::enterImmersiveFullscreen);
+    }
+
+    private void showSubtitleSelector() {
+        if (player == null) return;
+
+        List<SubtitleOption> options = new ArrayList<>();
+        int selectedIndex = 0;
+        int optionNumber = 1;
+
+        Tracks tracks = player.getCurrentTracks();
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() != C.TRACK_TYPE_TEXT) continue;
+
+            for (int i = 0; i < group.length; i++) {
+                if (!group.isTrackSupported(i, true)) continue;
+
+                Format format = group.getTrackFormat(i);
+                String label = subtitleLabel(format, optionNumber++);
+                SubtitleOption option = new SubtitleOption(group, i, label);
+                options.add(option);
+
+                if (group.isTrackSelected(i)) selectedIndex = options.size();
+            }
+        }
+
+        if (options.isEmpty()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Ondertiteling")
+                    .setMessage("Voor deze video zijn geen selecteerbare ondertitels gevonden.")
+                    .setPositiveButton("OK", null)
+                    .show();
+            return;
+        }
+
+        String[] labels = new String[options.size() + 1];
+        labels[0] = "Uit";
+        for (int i = 0; i < options.size(); i++) labels[i + 1] = options.get(i).label;
+
+        final int initiallySelected = selectedIndex;
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Ondertiteling kiezen")
+                .setSingleChoiceItems(labels, initiallySelected, null)
+                .setNegativeButton("Annuleren", null)
+                .setPositiveButton("Kiezen", null)
+                .create();
+
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setOnClickListener(v -> {
+                    int checked = dialog.getListView().getCheckedItemPosition();
+
+                    if (checked <= 0) {
+                        player.setTrackSelectionParameters(
+                                player.getTrackSelectionParameters()
+                                        .buildUpon()
+                                        .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                                        .build()
+                        );
+                    } else {
+                        SubtitleOption chosen = options.get(checked - 1);
+                        TrackSelectionOverride override = new TrackSelectionOverride(
+                                chosen.group.getMediaTrackGroup(),
+                                chosen.trackIndex
+                        );
+                        player.setTrackSelectionParameters(
+                                player.getTrackSelectionParameters()
+                                        .buildUpon()
+                                        .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                                        .setOverrideForType(override)
+                                        .build()
+                        );
+                    }
+
+                    dialog.dismiss();
+                    enterImmersiveFullscreen();
+                }));
+
+        dialog.show();
+    }
+
+    private String subtitleLabel(Format format, int fallbackIndex) {
+        String label = format.label == null ? "" : format.label.trim();
+        String language = format.language == null ? "" : format.language.trim();
+
+        if (!label.isEmpty() && !language.isEmpty() && !label.equalsIgnoreCase(language)) {
+            return label + " • " + language.toUpperCase();
+        }
+        if (!label.isEmpty()) return label;
+        if (!language.isEmpty()) return language.toUpperCase();
+        return "Ondertiteling " + fallbackIndex;
     }
 
     private void enterImmersiveFullscreen() {
@@ -657,6 +764,18 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         releasePlayer();
         super.onDestroy();
+    }
+
+    private static class SubtitleOption {
+        final Tracks.Group group;
+        final int trackIndex;
+        final String label;
+
+        SubtitleOption(Tracks.Group group, int trackIndex, String label) {
+            this.group = group;
+            this.trackIndex = trackIndex;
+            this.label = label;
+        }
     }
 
     private static class DemoEntry {
