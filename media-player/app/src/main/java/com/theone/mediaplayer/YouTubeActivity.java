@@ -2,6 +2,7 @@ package com.theone.mediaplayer;
 
 import android.app.Activity;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
 import android.view.ViewGroup;
@@ -134,15 +135,47 @@ public class YouTubeActivity extends Activity {
 
         setContentView(root);
 
-        String query = getIntent().getStringExtra("query");
-        if (query == null) query = "";
+        String videoUrl = getIntent().getStringExtra("video_url");
+        String videoId = extractVideoId(videoUrl);
 
-        try {
-            String encoded = URLEncoder.encode(query, "UTF-8");
-            webView.loadUrl("https://m.youtube.com/results?search_query=" + encoded);
-        } catch (Exception e) {
-            webView.loadUrl("https://m.youtube.com/");
+        if (!videoId.isEmpty()) {
+            String embed = "https://www.youtube.com/embed/" + videoId
+                    + "?autoplay=1&playsinline=1&rel=0&controls=1";
+            webView.loadUrl(embed);
+        } else {
+            String query = getIntent().getStringExtra("query");
+            if (query == null) query = "";
+            try {
+                String encoded = URLEncoder.encode(query, "UTF-8");
+                webView.loadUrl("https://m.youtube.com/results?search_query=" + encoded);
+            } catch (Exception e) {
+                webView.loadUrl("https://m.youtube.com/");
+            }
         }
+    }
+
+    private String extractVideoId(String value) {
+        if (value == null || value.trim().isEmpty()) return "";
+        try {
+            Uri uri = Uri.parse(value);
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase();
+            if (host.contains("youtu.be")) {
+                String path = uri.getPath();
+                return path == null ? "" : path.replace("/", "").trim();
+            }
+            String v = uri.getQueryParameter("v");
+            if (v != null && !v.trim().isEmpty()) return v.trim();
+
+            String path = uri.getPath() == null ? "" : uri.getPath();
+            int shorts = path.indexOf("/shorts/");
+            if (shorts >= 0) {
+                String id = path.substring(shorts + 8);
+                int slash = id.indexOf('/');
+                return (slash >= 0 ? id.substring(0, slash) : id).trim();
+            }
+        } catch (Throwable ignored) {
+        }
+        return "";
     }
 
     private void goBack() {
