@@ -10,6 +10,7 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -226,7 +227,7 @@ public class TmdbCatalogActivity extends Activity {
         poster.setAdjustViewBounds(true);
         poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
         poster.setBackgroundColor(Color.rgb(25, 31, 42));
-        LinearLayout.LayoutParams posterLp = new LinearLayout.LayoutParams(dp(108), dp(162));
+        LinearLayout.LayoutParams posterLp = new LinearLayout.LayoutParams(dp(88), dp(132));
         posterLp.rightMargin = dp(14);
         card.addView(poster, posterLp);
         if (meta.posterPath != null && !meta.posterPath.trim().isEmpty()) {
@@ -237,9 +238,13 @@ public class TmdbCatalogActivity extends Activity {
         info.setOrientation(LinearLayout.VERTICAL);
         card.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        info.addView(text(meta.title, 20, Color.WHITE, true));
+        TextView cardTitle = text(meta.title, 18, Color.WHITE, true);
+        cardTitle.setMaxLines(2);
+        cardTitle.setEllipsize(TextUtils.TruncateAt.END);
+        info.addView(cardTitle);
+
         String typeLabel = "movie".equals(meta.type) ? "Film" : "Serie";
-        TextView metaLine = text(typeLabel + (meta.year.isEmpty() ? "" : " • " + meta.year) + (meta.rating > 0 ? " • ★ " + String.format(Locale.US, "%.1f", meta.rating) : ""), 14, BLUE, false);
+        TextView metaLine = text("TMDB" + (meta.year.isEmpty() ? "" : " • " + meta.year) + (meta.rating > 0 ? " • ⭐ " + String.format(Locale.US, "%.1f", meta.rating) : ""), 13, BLUE, false);
         metaLine.setPadding(0, dp(4), 0, dp(7));
         info.addView(metaLine);
 
@@ -772,8 +777,9 @@ public class TmdbCatalogActivity extends Activity {
     private LinearLayout card() {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackgroundColor(PANEL);
-        card.setPadding(dp(16), dp(16), dp(16), dp(16));
+        card.setBackground(PremiumUi.card(this));
+        card.setElevation(dp(4));
+        card.setPadding(dp(12), dp(12), dp(12), dp(12));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.bottomMargin = dp(12);
         card.setLayoutParams(lp);
@@ -787,12 +793,8 @@ public class TmdbCatalogActivity extends Activity {
     }
 
     private Button button(String label) {
-        Button b = new Button(this);
-        b.setText(label);
-        b.setAllCaps(false);
-        b.setTextColor(Color.WHITE);
+        Button b = PremiumUi.primaryButton(this, label);
         b.setFocusable(true);
-        b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(20, 92, 130)));
         return b;
     }
 
