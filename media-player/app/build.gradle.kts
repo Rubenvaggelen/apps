@@ -12,11 +12,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.theone.mediaplayer"
+        applicationId = "com.theone.mediaplayer.private"
         minSdk = 23
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.4.0-catalog"
+        versionCode = 1
+        versionName = "0.4.1-private"
     }
 
     signingConfigs {
