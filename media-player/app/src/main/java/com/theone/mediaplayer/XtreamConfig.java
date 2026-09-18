@@ -1,6 +1,7 @@
 package com.theone.mediaplayer;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.net.Uri;
 
 import org.json.JSONObject;
@@ -23,17 +24,40 @@ public final class XtreamConfig {
     }
 
     public static XtreamConfig load(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences("media_player", Context.MODE_PRIVATE);
+
+        XtreamConfig saved = new XtreamConfig(
+                prefs.getString("xtream_server", ""),
+                prefs.getString("xtream_user", ""),
+                prefs.getString("xtream_pass", "")
+        );
+        if (saved.isConfigured()) {
+            return saved;
+        }
+
         try (InputStream in = context.getAssets().open("private_xtream.json");
              BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
             StringBuilder raw = new StringBuilder();
             String line;
             while ((line = reader.readLine()) != null) raw.append(line);
             JSONObject json = new JSONObject(raw.toString());
-            return new XtreamConfig(
+
+            XtreamConfig bundled = new XtreamConfig(
                     json.optString("server", ""),
                     json.optString("username", ""),
                     json.optString("password", "")
             );
+
+            if (bundled.isConfigured()) {
+                prefs.edit()
+                        .putString("source_type", "XTREAM")
+                        .putString("xtream_server", bundled.server)
+                        .putString("xtream_user", bundled.username)
+                        .putString("xtream_pass", bundled.password)
+                        .apply();
+            }
+
+            return bundled;
         } catch (Throwable ignored) {
             return new XtreamConfig("", "", "");
         }
