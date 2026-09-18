@@ -48,11 +48,7 @@ public class YouTubeActivity extends Activity {
         header.setGravity(android.view.Gravity.CENTER_VERTICAL);
         header.setPadding(dp(18), dp(18), dp(18), dp(14));
 
-        Button back = new Button(this);
-        back.setText("←");
-        back.setAllCaps(false);
-        back.setTextColor(Color.WHITE);
-        back.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(20, 92, 130)));
+        Button back = PremiumUi.chipButton(this, "←");
         back.setOnClickListener(v -> goBack());
         header.addView(back);
 
