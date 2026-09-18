@@ -3,6 +3,7 @@ name: Fast Media Player APK
 on:
   push:
     paths:
+      - 'media-player/**'
       - '.github/workflows/fast-media-player.yml'
   workflow_dispatch: {}
 
