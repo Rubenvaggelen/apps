@@ -66,7 +66,7 @@ jobs:
             | head -1 \
             | tr -d ':' \
             | tr '[:upper:]' '[:lower:]')
-          for APK in "app/build/outputs/apk/debug/app-debug.apk" "carradio/build/outputs/apk/debug/carradio-debug.apk"; do
+          for APK in "app/build/outputs/apk/debug/app-debug.apk" "carradio/build/outputs/apk/debug/carradio-debug.apk" "remoteapp/build/outputs/apk/debug/remoteapp-debug.apk"; do
             APK_CERT=$($APKSIGNER verify --print-certs "$APK" \
               | sed -n 's/.*certificate SHA-256 digest: //p' \
               | head -1 \
@@ -86,7 +86,7 @@ jobs:
             fi
           done
 
-          echo "OK: both APKs are signed with the fixed keystore."
+          echo "OK: all APKs are signed with the fixed keystore."
 
       - name: Upload APK as artifact
         uses: actions/upload-artifact@v4
@@ -100,6 +100,12 @@ jobs:
           name: the-one-car-radio-apk
           path: carradio/build/outputs/apk/debug/carradio-debug.apk
 
+      - name: Upload The One Remote APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: the-one-remote-apk
+          path: remoteapp/build/outputs/apk/debug/remoteapp-debug.apk
+
       - name: Create GitHub Release with APKs
         uses: softprops/action-gh-release@v2
         with:
@@ -108,5 +114,6 @@ jobs:
           files: |
             app/build/outputs/apk/debug/app-debug.apk
             carradio/build/outputs/apk/debug/carradio-debug.apk
+            remoteapp/build/outputs/apk/debug/remoteapp-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
