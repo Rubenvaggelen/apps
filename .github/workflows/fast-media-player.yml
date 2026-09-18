@@ -41,3 +41,5 @@ jobs:
         with:
           name: media-player-v12-fast
           path: media-player/app/build/outputs/apk/debug/app-debug.apk
+
+# v18 premium build trigger
