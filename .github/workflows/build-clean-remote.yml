@@ -78,6 +78,9 @@ jobs:
           gradle = Path("flutter/android/app/build.gradle")
           s = gradle.read_text()
           s = s.replace('applicationId "com.carriez.flutter_hbb"', 'applicationId "com.theone.remote"')
+          # Force a higher Android versionCode so this installs as an update over the current phone build.
+          s = re.sub(r'versionCode\s+\d+', 'versionCode 200', s, count=1)
+          s = re.sub(r'versionName\s+["\']?[^\n"\']+["\']?', 'versionName "2.0-logo"', s, count=1)
           gradle.write_text(s)
 
           strings = Path("flutter/android/app/src/main/res/values/strings.xml")
