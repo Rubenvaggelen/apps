@@ -11,6 +11,8 @@ import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
+import android.content.res.ColorStateList;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -77,19 +79,13 @@ public final class PremiumUi {
         b.setTextColor(Color.WHITE);
         b.setTextSize(16);
         b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        b.setLetterSpacing(0.025f);
         b.setAllCaps(false);
         b.setGravity(Gravity.CENTER);
-        b.setPadding(dp(context, 18), dp(context, 11), dp(context, 18), dp(context, 11));
-        b.setMinHeight(dp(context, 50));
-        b.setBackground(gradient(
-                context,
-                Color.rgb(11, 88, 132),
-                Color.rgb(24, 166, 218),
-                24,
-                Color.rgb(76, 211, 255),
-                1
-        ));
-        b.setElevation(dp(context, 5));
+        b.setPadding(dp(context, 20), dp(context, 12), dp(context, 20), dp(context, 12));
+        b.setMinHeight(dp(context, 52));
+        b.setBackground(neonButtonBackground(context, true));
+        b.setElevation(dp(context, 8));
         b.setStateListAnimator(null);
         return b;
     }
@@ -99,18 +95,13 @@ public final class PremiumUi {
         b.setText(label);
         b.setTextColor(Color.WHITE);
         b.setTextSize(14);
+        b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        b.setLetterSpacing(0.015f);
         b.setAllCaps(false);
-        b.setPadding(dp(context, 16), dp(context, 8), dp(context, 16), dp(context, 8));
-        b.setMinHeight(dp(context, 42));
-        b.setBackground(gradient(
-                context,
-                Color.rgb(16, 27, 41),
-                Color.rgb(10, 18, 28),
-                22,
-                Color.rgb(38, 112, 148),
-                1
-        ));
-        b.setElevation(dp(context, 2));
+        b.setPadding(dp(context, 16), dp(context, 9), dp(context, 16), dp(context, 9));
+        b.setMinHeight(dp(context, 44));
+        b.setBackground(neonButtonBackground(context, false));
+        b.setElevation(dp(context, 4));
         b.setStateListAnimator(null);
         return b;
     }
@@ -133,6 +124,35 @@ public final class PremiumUi {
         ));
         e.setElevation(dp(context, 2));
         return e;
+    }
+
+    private static RippleDrawable neonButtonBackground(Context context, boolean primary) {
+        int[] colors = primary
+                ? new int[]{
+                        Color.rgb(5, 74, 122),
+                        Color.rgb(13, 151, 214),
+                        Color.rgb(47, 205, 255)
+                }
+                : new int[]{
+                        Color.rgb(10, 18, 30),
+                        Color.rgb(14, 42, 62),
+                        Color.rgb(10, 24, 38)
+                };
+
+        GradientDrawable shape = new GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                colors
+        );
+        shape.setCornerRadius(dp(context, primary ? 26 : 22));
+        shape.setStroke(
+                dp(context, 1),
+                primary ? Color.rgb(104, 226, 255) : Color.rgb(48, 141, 184)
+        );
+
+        ColorStateList ripple = ColorStateList.valueOf(
+                primary ? Color.argb(95, 255, 255, 255) : Color.argb(75, 86, 210, 255)
+        );
+        return new RippleDrawable(ripple, shape, null);
     }
 
     public static GradientDrawable card(Context context) {
