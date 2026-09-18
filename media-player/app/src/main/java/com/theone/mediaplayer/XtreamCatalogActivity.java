@@ -14,6 +14,9 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -23,6 +26,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
 import java.util.ArrayList;
@@ -275,26 +279,52 @@ public class XtreamCatalogActivity extends Activity {
 
         addSearchAgainBox();
 
-        if (matches.isEmpty() && "movie".equals(mode)) {
-            TextView notFound = text(
-                    "Niet gevonden in je Xtream-bibliotheek. Je kunt dezelfde titel op YouTube zoeken.",
-                    15,
-                    MUTED,
-                    false
-            );
-            notFound.setPadding(0, dp(8), 0, dp(8));
-            content.addView(notFound);
-
-            Button youtube = button("Zoek op YouTube in The One");
-            youtube.setOnClickListener(v -> openYouTubeSearch(query));
-            content.addView(youtube);
-
-            // De gebruiker heeft expliciet gevraagd om bij ontbrekende films door te zoeken op YouTube.
-            openYouTubeSearch(query);
-            return;
-        }
+        TextView xtreamLabel = text("XTREAM", 16, BLUE, true);
+        xtreamLabel.setPadding(0, dp(4), 0, dp(8));
+        content.addView(xtreamLabel);
 
         renderCards(matches, 250);
+
+        addYouTubeResults(query);
+    }
+
+    private void addYouTubeResults(String query) {
+        TextView ytLabel = text("YT • YouTube", 20, Color.WHITE, true);
+        ytLabel.setPadding(0, dp(18), 0, dp(8));
+        content.addView(ytLabel);
+
+        TextView ytHint = text(
+                "YouTube-resultaten voor dezelfde zoektekst. YT = YouTube.",
+                13,
+                MUTED,
+                false
+        );
+        ytHint.setPadding(0, 0, 0, dp(8));
+        content.addView(ytHint);
+
+        WebView youtubeList = new WebView(this);
+        WebSettings settings = youtubeList.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setLoadsImagesAutomatically(true);
+        settings.setMediaPlaybackRequiresUserGesture(true);
+        settings.setUserAgentString(settings.getUserAgentString() + " TheOneMediaPlayer/1.3");
+        youtubeList.setBackgroundColor(BG);
+        youtubeList.setWebViewClient(new WebViewClient());
+
+        LinearLayout.LayoutParams webLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(720)
+        );
+        webLp.bottomMargin = dp(12);
+        content.addView(youtubeList, webLp);
+
+        try {
+            String encoded = URLEncoder.encode(query == null ? "" : query.trim(), "UTF-8");
+            youtubeList.loadUrl("https://m.youtube.com/results?search_query=" + encoded);
+        } catch (Throwable ignored) {
+            youtubeList.loadUrl("https://m.youtube.com/");
+        }
     }
 
     private void addSearchAgainBox() {
