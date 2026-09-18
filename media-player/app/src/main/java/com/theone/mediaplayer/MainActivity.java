@@ -102,8 +102,8 @@ public class MainActivity extends Activity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(BG);
-        root.setPadding(dp(18), dp(18), dp(18), dp(18));
+        root.setBackgroundColor(PremiumUi.BG);
+        root.setPadding(dp(18), dp(14), dp(18), dp(18));
 
         LinearLayout header = PremiumUi.brandHeader(this, "Player");
         root.addView(header, new LinearLayout.LayoutParams(
@@ -343,7 +343,7 @@ public class MainActivity extends Activity {
     private LinearLayout baseBox(String title, String subtitle) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(6), dp(12), dp(6), dp(18));
+        box.setPadding(dp(4), dp(16), dp(4), dp(22));
         box.addView(text(title, 32, Color.WHITE, true));
         TextView sub = text(subtitle, 17, MUTED, false);
         sub.setPadding(0, dp(8), 0, dp(22));
