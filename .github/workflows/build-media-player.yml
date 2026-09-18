@@ -13,12 +13,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      MEDIA_PLAYER_KEYSTORE_BASE64: ${{ secrets.MEDIA_PLAYER_KEYSTORE_BASE64 }}
-      MEDIA_PLAYER_KEYSTORE_PASSWORD: ${{ secrets.MEDIA_PLAYER_KEYSTORE_PASSWORD }}
-      MEDIA_PLAYER_KEY_ALIAS: ${{ secrets.MEDIA_PLAYER_KEY_ALIAS }}
-      MEDIA_PLAYER_KEY_PASSWORD: ${{ secrets.MEDIA_PLAYER_KEY_PASSWORD }}
-      MEDIA_PLAYER_KEYSTORE_PATH: ${{ github.workspace }}/media-player/the-one-media-player.jks
 
     steps:
       - name: Checkout code
@@ -46,46 +40,58 @@ jobs:
         with:
           gradle-version: '9.6.0'
 
-      - name: Build Media Player debug APK
+      - name: Restore permanent repository signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.android
+          if [ -z "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" ]; then
+            echo "ERROR: DEBUG_KEYSTORE_BASE64 is empty"
+            exit 1
+          fi
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > ~/.android/debug.keystore
+          chmod 600 ~/.android/debug.keystore
+          keytool -list -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android >/dev/null
+
+      - name: Build Media Player update APK
         run: gradle -p media-player clean assembleDebug --no-daemon
+
+      - name: Verify permanent signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER="$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner"
+          KEY_CERT=$(keytool -list -v \
+            -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey \
+            -storepass android \
+            | sed -n 's/^[[:space:]]*SHA256: //p' \
+            | head -1 \
+            | tr -d ':' \
+            | tr '[:upper:]' '[:lower:]')
+          APK_CERT=$("$APKSIGNER" verify --print-certs media-player/app/build/outputs/apk/debug/app-debug.apk \
+            | sed -n 's/.*certificate SHA-256 digest: //p' \
+            | head -1 \
+            | tr -d ':' \
+            | tr '[:upper:]' '[:lower:]')
+          echo "Keystore certificate: $KEY_CERT"
+          echo "APK certificate:      $APK_CERT"
+          test -n "$KEY_CERT"
+          test "$KEY_CERT" = "$APK_CERT"
+
+      - name: Prepare release APK
+        shell: bash
+        run: |
+          cp media-player/app/build/outputs/apk/debug/app-debug.apk \
+             media-player/app/build/outputs/apk/debug/The-One-Media-Player-v21.apk
 
       - name: Upload Media Player APK
         uses: actions/upload-artifact@v4
         with:
-          name: the-one-media-player-apk
-          path: media-player/app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Collect Android signing tools
-        shell: bash
-        run: |
-          mkdir -p android-signing-tools/lib
-          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" android-signing-tools/
-          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" android-signing-tools/
-          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" android-signing-tools/lib/
-
-      - name: Upload Android signing tools
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-signing-tools-36
-          path: android-signing-tools
-
-      - name: Prepare Media Player signing key
-        if: env.MEDIA_PLAYER_KEYSTORE_BASE64 != '' && env.MEDIA_PLAYER_KEYSTORE_PASSWORD != '' && env.MEDIA_PLAYER_KEY_ALIAS != '' && env.MEDIA_PLAYER_KEY_PASSWORD != ''
-        shell: bash
-        run: |
-          printf '%s' "$MEDIA_PLAYER_KEYSTORE_BASE64" | base64 --decode > "$MEDIA_PLAYER_KEYSTORE_PATH"
-          test -s "$MEDIA_PLAYER_KEYSTORE_PATH"
-
-      - name: Build signed Media Player update
-        if: env.MEDIA_PLAYER_KEYSTORE_BASE64 != '' && env.MEDIA_PLAYER_KEYSTORE_PASSWORD != '' && env.MEDIA_PLAYER_KEY_ALIAS != '' && env.MEDIA_PLAYER_KEY_PASSWORD != ''
-        shell: bash
-        run: |
-          gradle -p media-player assembleRelease --no-daemon
-          test -s media-player/app/build/outputs/apk/release/app-release.apk
-          cp media-player/app/build/outputs/apk/release/app-release.apk              media-player/app/build/outputs/apk/release/The-One-Media-Player-v21.apk
+          name: the-one-media-player-v21
+          path: media-player/app/build/outputs/apk/debug/The-One-Media-Player-v21.apk
 
       - name: Publish Media Player v2.1 update
-        if: env.MEDIA_PLAYER_KEYSTORE_BASE64 != '' && env.MEDIA_PLAYER_KEYSTORE_PASSWORD != '' && env.MEDIA_PLAYER_KEY_ALIAS != '' && env.MEDIA_PLAYER_KEY_PASSWORD != ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: media-player-v2100
@@ -98,7 +104,7 @@ jobs:
             - provider, year and rating on one clean line
             - premium neon buttons throughout the app
             - selectable subtitle tracks during playback
-          files: media-player/app/build/outputs/apk/release/The-One-Media-Player-v21.apk
+          files: media-player/app/build/outputs/apk/debug/The-One-Media-Player-v21.apk
           overwrite_files: true
 
       - name: Smoke-test Media Player on Android emulator
