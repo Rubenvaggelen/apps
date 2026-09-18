@@ -496,11 +496,18 @@ public class XtreamCatalogActivity extends Activity {
 
             LinearLayout info = new LinearLayout(this);
             info.setOrientation(LinearLayout.VERTICAL);
-            card.addView(info, new LinearLayout.LayoutParams(
-                    0,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    "live".equals(mode) ? 0f : 1f
-            ));
+            if ("live".equals(mode)) {
+                card.addView(info, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                ));
+            } else {
+                card.addView(info, new LinearLayout.LayoutParams(
+                        0,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        1f
+                ));
+            }
 
             info.addView(text(item.name, 19, Color.WHITE, true));
 
