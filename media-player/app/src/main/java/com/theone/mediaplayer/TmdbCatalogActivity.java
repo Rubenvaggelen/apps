@@ -787,12 +787,8 @@ public class TmdbCatalogActivity extends Activity {
     }
 
     private Button button(String label) {
-        Button b = new Button(this);
-        b.setText(label);
-        b.setAllCaps(false);
-        b.setTextColor(Color.WHITE);
+        Button b = PremiumUi.primaryButton(this, label);
         b.setFocusable(true);
-        b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(20, 92, 130)));
         return b;
     }
 
