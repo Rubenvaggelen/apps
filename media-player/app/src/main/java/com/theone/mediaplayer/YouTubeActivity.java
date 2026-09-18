@@ -42,19 +42,21 @@ public class YouTubeActivity extends Activity {
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setPadding(dp(12), dp(10), dp(12), dp(8));
+        header.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(18), dp(18), dp(18), dp(14));
 
         Button back = new Button(this);
         back.setText("←");
         back.setAllCaps(false);
         back.setTextColor(Color.WHITE);
+        back.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(20, 92, 130)));
         back.setOnClickListener(v -> goBack());
         header.addView(back);
 
         TextView title = new TextView(this);
-        title.setText("  THE ONE • YOUTUBE");
+        title.setText("  ◉  THE ONE   MEDIA PLAYER");
         title.setTextColor(BLUE);
-        title.setTextSize(20);
+        title.setTextSize(22);
         title.setTypeface(title.getTypeface(), android.graphics.Typeface.BOLD);
         header.addView(title, new LinearLayout.LayoutParams(
                 0,
@@ -74,7 +76,7 @@ public class YouTubeActivity extends Activity {
         settings.setBuiltInZoomControls(false);
         settings.setUserAgentString(settings.getUserAgentString() + " TheOneMediaPlayer/1.1");
 
-        webView.setBackgroundColor(Color.BLACK);
+        webView.setBackgroundColor(BG);
         webView.setWebViewClient(new WebViewClient());
 
         chromeClient = new WebChromeClient() {
