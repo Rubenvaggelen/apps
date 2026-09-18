@@ -14,6 +14,7 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
+// v19 updater + autoplay release
 public final class MediaPlayerUpdateChecker {
     private static final String RELEASES_URL =
             "https://api.github.com/repos/Rubenvaggelen/apps/releases?per_page=40";
