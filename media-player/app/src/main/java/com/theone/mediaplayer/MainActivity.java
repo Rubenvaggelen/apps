@@ -116,11 +116,9 @@ public class MainActivity extends Activity {
         LinearLayout nav = new LinearLayout(this);
         nav.setOrientation(LinearLayout.HORIZONTAL);
         nav.setPadding(0, dp(16), 0, dp(14));
-        addNavButton(nav, "Live TV", this::showLiveTv);
-        addNavButton(nav, "Films", () -> openCatalog("movie"));
-        addNavButton(nav, "Series", () -> openCatalog("tv"));
-        addNavButton(nav, "Ontdekken", () -> openCatalog("all"));
-        addNavButton(nav, "Test M3U", this::showDemoM3u);
+        addNavButton(nav, "Live TV", () -> openXtreamCatalog("live"));
+        addNavButton(nav, "Films", () -> openXtreamCatalog("movie"));
+        addNavButton(nav, "Series", () -> openXtreamCatalog("series"));
         addNavButton(nav, "Verder kijken", () -> showSection("Verder kijken", "Je kijkvoortgang verschijnt hier."));
         addNavButton(nav, "Favorieten", () -> showSection("Favorieten", "Je favoriete zenders, films en series verschijnen hier."));
         addNavButton(nav, "Instellingen", this::showSettings);
@@ -169,8 +167,13 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void openXtreamCatalog(String mode) {
+        Intent intent = new Intent(this, XtreamCatalogActivity.class);
+        intent.putExtra("mode", mode);
+        startActivity(intent);
+    }
+
     private void openCatalog(String mode) {
-        ensurePrivateSourceConfigured();
         Intent intent = new Intent(this, TmdbCatalogActivity.class);
         intent.putExtra("mode", mode);
         startActivity(intent);
