@@ -46,6 +46,7 @@ public class MainActivity extends Activity {
     private static final String SINTEL_MKV = "https://download.blender.org/durian/movies/Sintel.2010.720p.mkv";
     private static final String BBB_YOUTUBE = "https://www.youtube.com/watch?v=aqz-KE-bpKQ";
     private static final String NASA_YOUTUBE = "https://www.youtube.com/@NASA/live";
+    private static final String PRIVATE_SOURCE = "PRIVATE_SOURCE_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
 
     private static final String DEMO_M3U =
             "#EXTM3U\n" +
@@ -66,6 +67,9 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = getSharedPreferences("media_player", Context.MODE_PRIVATE);
+        if ((PRIVATE_SOURCE.startsWith("http://") || PRIVATE_SOURCE.startsWith("https://")) && !prefs.contains("m3u_url")) {
+            prefs.edit().putString("source_type", "M3U").putString("m3u_url", PRIVATE_SOURCE).apply();
+        }
         String playUrl = getIntent().getStringExtra("play_url");
         if (playUrl != null && (playUrl.startsWith("http://") || playUrl.startsWith("https://"))) {
             showPlayer(playUrl);
