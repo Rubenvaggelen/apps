@@ -34,12 +34,25 @@ jobs:
         with:
           gradle-version: '9.6.0'
 
+      - name: Restore permanent repository signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.android
+          if [ -z "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" ]; then
+            echo "ERROR: DEBUG_KEYSTORE_BASE64 is empty"
+            exit 1
+          fi
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > ~/.android/debug.keystore
+          chmod 600 ~/.android/debug.keystore
+          keytool -list -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android >/dev/null
+
       - name: Build APK
         run: gradle -p media-player assembleDebug --no-daemon
 
       - uses: actions/upload-artifact@v4
         with:
-          name: media-player-v12-fast
+          name: media-player-fast
           path: media-player/app/build/outputs/apk/debug/app-debug.apk
 
 # v18 premium build trigger
