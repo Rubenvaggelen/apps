@@ -67,14 +67,11 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = getSharedPreferences("media_player", Context.MODE_PRIVATE);
-        if ((PRIVATE_SOURCE.startsWith("http://") || PRIVATE_SOURCE.startsWith("https://")) && !prefs.contains("m3u_url")) {
-            prefs.edit().putString("source_type", "M3U").putString("m3u_url", PRIVATE_SOURCE).apply();
-        }
         String playUrl = getIntent().getStringExtra("play_url");
         if (playUrl != null && (playUrl.startsWith("http://") || playUrl.startsWith("https://"))) {
             showPlayer(playUrl);
         } else {
-            showShell("Live TV");
+            showShell("Home");
         }
     }
 
@@ -115,19 +112,41 @@ public class MainActivity extends Activity {
         setContentView(root);
         root.post(this::exitImmersiveFullscreen);
 
-        if ("Films".equals(section)) showFilms();
+        if ("Home".equals(section)) showHome();
+        else if ("Films".equals(section)) showFilms();
         else if ("Test M3U".equals(section)) showDemoM3u();
         else if ("Instellingen".equals(section)) showSettings();
         else showLiveTv();
     }
 
+    private void showHome() {
+        content.removeAllViews();
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout box = baseBox("Media Player", "Kies Live TV, Films of Series.");
+        addInfo(box, "Je privé bron wordt pas geladen nadat je een onderdeel opent.");
+        scroll.addView(box);
+        content.addView(scroll);
+    }
+
+    private void ensurePrivateSourceConfigured() {
+        if (prefs == null) return;
+        if (PRIVATE_SOURCE.startsWith("http://") || PRIVATE_SOURCE.startsWith("https://")) {
+            prefs.edit()
+                    .putString("source_type", "M3U")
+                    .putString("m3u_url", PRIVATE_SOURCE)
+                    .apply();
+        }
+    }
+
     private void openCatalog(String mode) {
+        ensurePrivateSourceConfigured();
         Intent intent = new Intent(this, TmdbCatalogActivity.class);
         intent.putExtra("mode", mode);
         startActivity(intent);
     }
 
     private void showLiveTv() {
+        ensurePrivateSourceConfigured();
         content.removeAllViews();
         ScrollView scroll = new ScrollView(this);
         LinearLayout box = baseBox("Live TV", "Je ingestelde bron wordt direct in The One Media Player geladen.");
@@ -211,7 +230,11 @@ public class MainActivity extends Activity {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
                 StringBuilder out = new StringBuilder();
                 String line;
-                while ((line = reader.readLine()) != null) out.append(line).append('\n');
+                int lineCount = 0;
+                while ((line = reader.readLine()) != null && lineCount < 1200) {
+                    out.append(line).append('\n');
+                    lineCount++;
+                }
                 if (code < 200 || code >= 300) throw new IllegalStateException("HTTP " + code);
                 return out.toString();
             }
@@ -517,7 +540,7 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if (playerFullscreen) showShell("Live TV");
+        if (playerFullscreen) showShell("Home");
         else super.onBackPressed();
     }
 
