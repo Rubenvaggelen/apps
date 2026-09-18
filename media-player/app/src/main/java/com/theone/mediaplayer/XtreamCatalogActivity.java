@@ -1,6 +1,8 @@
 package com.theone.mediaplayer;
 
 import android.app.Activity;
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -402,11 +404,22 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private String readPrivateYouTubeKey() {
+        SharedPreferences prefs = getSharedPreferences("media_player", Context.MODE_PRIVATE);
+        String saved = prefs.getString("youtube_api_key", "").trim();
+        if (!saved.isEmpty() && !saved.startsWith("PRIVATE_")) {
+            return saved;
+        }
+
         try (InputStream in = getAssets().open("private_youtube_key.txt");
              BufferedReader reader = new BufferedReader(
                      new InputStreamReader(in, StandardCharsets.UTF_8))) {
             String line = reader.readLine();
-            return line == null ? "" : line.trim();
+            String bundled = line == null ? "" : line.trim();
+
+            if (!bundled.isEmpty() && !bundled.startsWith("PRIVATE_")) {
+                prefs.edit().putString("youtube_api_key", bundled).apply();
+            }
+            return bundled;
         } catch (Throwable ignored) {
             return "";
         }
@@ -836,6 +849,7 @@ public class XtreamCatalogActivity extends Activity {
                     }
                 }
 
+                episodes.sort((a, b) -> compareEpisodeNames(a.name, b.name));
                 runOnUiThread(() -> renderEpisodes(series, episodes));
             } catch (Throwable e) {
                 runOnUiThread(() -> showMessage("Afleveringen konden niet worden geladen."));
@@ -859,19 +873,33 @@ public class XtreamCatalogActivity extends Activity {
             return;
         }
 
-        for (XtreamItem ep : episodes) {
+        for (int index = 0; index < episodes.size(); index++) {
+            XtreamItem ep = episodes.get(index);
+            final int startIndex = index;
+
             LinearLayout card = new LinearLayout(this);
             card.setOrientation(LinearLayout.VERTICAL);
-            card.setBackgroundColor(PANEL);
+            card.setBackground(PremiumUi.card(this));
+            card.setElevation(dp(3));
             card.setPadding(dp(16), dp(14), dp(16), dp(14));
 
             card.addView(text(ep.name, 18, Color.WHITE, true));
 
             Button play = button("▶ Afspelen");
             play.setOnClickListener(v -> {
-                String url = config.stream("series", ep.id, ep.extension);
+                ArrayList<String> queue = new ArrayList<>();
+
+                for (int i = startIndex; i < episodes.size(); i++) {
+                    XtreamItem queuedEpisode = episodes.get(i);
+                    queue.add(config.stream(
+                            "series",
+                            queuedEpisode.id,
+                            queuedEpisode.extension
+                    ));
+                }
+
                 Intent intent = new Intent(this, MainActivity.class);
-                intent.putExtra("play_url", url);
+                intent.putStringArrayListExtra("play_queue", queue);
                 startActivity(intent);
             });
             card.addView(play);
@@ -883,6 +911,42 @@ public class XtreamCatalogActivity extends Activity {
             lp.bottomMargin = dp(9);
             content.addView(card, lp);
         }
+    }
+
+    private int compareEpisodeNames(String left, String right) {
+        int[] a = episodeKey(left);
+        int[] b = episodeKey(right);
+
+        if (a[0] != b[0]) return Integer.compare(a[0], b[0]);
+        if (a[1] != b[1]) return Integer.compare(a[1], b[1]);
+
+        String l = left == null ? "" : left;
+        String r = right == null ? "" : right;
+        return l.compareToIgnoreCase(r);
+    }
+
+    private int[] episodeKey(String label) {
+        int season = 0;
+        int episode = 0;
+        String value = label == null ? "" : label;
+
+        try {
+            int s = value.indexOf('S');
+            int e = value.indexOf(" E");
+            if (s >= 0 && e > s) {
+                season = Integer.parseInt(value.substring(s + 1, e).trim());
+            }
+
+            if (e >= 0) {
+                int startEpisode = e + 2;
+                int endEpisode = value.indexOf(' ', startEpisode);
+                if (endEpisode < 0) endEpisode = value.length();
+                episode = Integer.parseInt(value.substring(startEpisode, endEpisode).trim());
+            }
+        } catch (Throwable ignored) {
+        }
+
+        return new int[]{season, episode};
     }
 
     private void openYouTubeSearch(String query) {
