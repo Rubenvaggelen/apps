@@ -68,11 +68,17 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         try {
             prefs = getSharedPreferences("media_player", Context.MODE_PRIVATE);
+
+            ArrayList<String> playQueue = getIntent().getStringArrayListExtra("play_queue");
             String playUrl = getIntent().getStringExtra("play_url");
-            if (playUrl != null && (playUrl.startsWith("http://") || playUrl.startsWith("https://"))) {
+
+            if (playQueue != null && !playQueue.isEmpty()) {
+                showPlayerQueue(playQueue);
+            } else if (playUrl != null && (playUrl.startsWith("http://") || playUrl.startsWith("https://"))) {
                 showPlayer(playUrl);
             } else {
                 showShell("Home");
+                MediaPlayerUpdateChecker.checkForUpdate(this);
             }
         } catch (Throwable startupError) {
             showSafeStartupScreen(startupError);
@@ -512,6 +518,12 @@ public class MainActivity extends Activity {
     }
 
     private void showPlayer(String url) {
+        ArrayList<String> single = new ArrayList<>();
+        single.add(url);
+        showPlayerQueue(single);
+    }
+
+    private void showPlayerQueue(List<String> urls) {
         releasePlayer();
         playerFullscreen = true;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -525,11 +537,31 @@ public class MainActivity extends Activity {
         activePlayerView.setUseController(true);
         activePlayerView.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT);
 
-        player.setMediaItem(MediaItem.fromUri(url));
+        ArrayList<MediaItem> items = new ArrayList<>();
+        for (String url : urls) {
+            if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
+                items.add(MediaItem.fromUri(url));
+            }
+        }
+
+        if (items.isEmpty()) {
+            showShell("Home");
+            return;
+        }
+
+        // ExoPlayer gaat automatisch door naar het volgende MediaItem.
+        // Bij handmatig teruggaan wordt de player vrijgegeven en stopt de queue.
+        player.setMediaItems(items);
         player.prepare();
         player.play();
 
-        root.addView(activePlayerView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        root.addView(
+                activePlayerView,
+                new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                )
+        );
         setContentView(root);
         root.post(this::enterImmersiveFullscreen);
     }
