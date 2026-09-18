@@ -22,6 +22,7 @@ public class YouTubeActivity extends Activity {
     private static final int BLUE = Color.rgb(32, 184, 255);
 
     private WebView webView;
+    private WebChromeClient chromeClient;
     private FrameLayout root;
     private FrameLayout fullscreenHolder;
     private View fullscreenView;
@@ -76,7 +77,7 @@ public class YouTubeActivity extends Activity {
         webView.setBackgroundColor(Color.BLACK);
         webView.setWebViewClient(new WebViewClient());
 
-        webView.setWebChromeClient(new WebChromeClient() {
+        chromeClient = new WebChromeClient() {
             @Override
             public void onShowCustomView(View view, CustomViewCallback callback) {
                 if (fullscreenView != null) {
@@ -113,7 +114,8 @@ public class YouTubeActivity extends Activity {
             public void onHideCustomView() {
                 exitVideoFullscreen(shell);
             }
-        });
+        };
+        webView.setWebChromeClient(chromeClient);
 
         shell.addView(webView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -141,8 +143,8 @@ public class YouTubeActivity extends Activity {
 
     private void goBack() {
         if (fullscreenView != null) {
-            if (webView != null) {
-                webView.getWebChromeClient().onHideCustomView();
+            if (chromeClient != null) {
+                chromeClient.onHideCustomView();
             }
             return;
         }
