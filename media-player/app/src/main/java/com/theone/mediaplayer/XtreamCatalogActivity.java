@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.ViewGroup;
@@ -23,6 +24,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
 import java.util.ArrayList;
@@ -274,6 +276,25 @@ public class XtreamCatalogActivity extends Activity {
         content.addView(count);
 
         addSearchAgainBox();
+
+        if (matches.isEmpty() && "movie".equals(mode)) {
+            TextView notFound = text(
+                    "Niet gevonden in je Xtream-bibliotheek. Je kunt dezelfde titel op YouTube zoeken.",
+                    15,
+                    MUTED,
+                    false
+            );
+            notFound.setPadding(0, dp(8), 0, dp(8));
+            content.addView(notFound);
+
+            Button youtube = button("Zoek op YouTube");
+            youtube.setOnClickListener(v -> openYouTubeSearch(query));
+            content.addView(youtube);
+
+            // De gebruiker heeft expliciet gevraagd om bij ontbrekende films door te zoeken op YouTube.
+            openYouTubeSearch(query);
+            return;
+        }
 
         renderCards(matches, 250);
     }
@@ -678,6 +699,22 @@ public class XtreamCatalogActivity extends Activity {
             );
             lp.bottomMargin = dp(9);
             content.addView(card, lp);
+        }
+    }
+
+    private void openYouTubeSearch(String query) {
+        try {
+            String encoded = URLEncoder.encode(query == null ? "" : query.trim(), "UTF-8");
+            Uri uri = Uri.parse("https://www.youtube.com/results?search_query=" + encoded);
+            Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+            try {
+                intent.setPackage("com.google.android.youtube");
+                startActivity(intent);
+            } catch (Throwable noApp) {
+                intent.setPackage(null);
+                startActivity(intent);
+            }
+        } catch (Throwable ignored) {
         }
     }
 
