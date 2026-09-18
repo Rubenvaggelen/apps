@@ -71,16 +71,21 @@ public class XtreamCatalogActivity extends Activity {
         root.setPadding(dp(18), dp(18), dp(18), dp(28));
         scroll.addView(root);
 
-        LinearLayout header = new LinearLayout(this);
-        header.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout top = new LinearLayout(this);
+        top.setOrientation(LinearLayout.VERTICAL);
 
-        Button back = button("←");
+        LinearLayout header = PremiumUi.brandHeader(this, heading());
+        top.addView(header);
+
+        Button back = PremiumUi.chipButton(this, "←  Terug");
         back.setOnClickListener(v -> finish());
-        header.addView(back);
-
-        TextView title = text("  " + heading(), 27, Color.WHITE, true);
-        header.addView(title);
-        root.addView(header);
+        LinearLayout.LayoutParams backLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        backLp.topMargin = dp(8);
+        top.addView(back, backLp);
+        root.addView(top);
 
         TextView sub = text(
                 "Rechtstreeks uit jouw privé Xtream-bron.",
@@ -149,7 +154,7 @@ public class XtreamCatalogActivity extends Activity {
         }
 
         for (Category category : categories) {
-            Button b = button(category.name);
+            Button b = PremiumUi.chipButton(this, category.name);
             b.setOnClickListener(v -> loadItems(category));
 
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -171,13 +176,7 @@ public class XtreamCatalogActivity extends Activity {
         title.setPadding(0, 0, 0, dp(8));
         content.addView(title);
 
-        EditText search = new EditText(this);
-        search.setHint("Typ een titel…");
-        search.setHintTextColor(MUTED);
-        search.setTextColor(Color.WHITE);
-        search.setSingleLine(true);
-        search.setBackgroundColor(PANEL);
-        search.setPadding(dp(14), dp(12), dp(14), dp(12));
+        EditText search = PremiumUi.searchField(this, "Typ een titel…");
         content.addView(search);
 
         Button find = button("Zoeken in volledige bibliotheek");
@@ -452,8 +451,15 @@ public class XtreamCatalogActivity extends Activity {
                     1f
             ));
 
-            TextView badge = text("YT", 13, BLUE, true);
-            info.addView(badge);
+            TextView badge = text("YT", 12, Color.WHITE, true);
+            badge.setBackground(PremiumUi.badge(this));
+            badge.setPadding(dp(9), dp(3), dp(9), dp(3));
+            LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            );
+            badgeLp.bottomMargin = dp(6);
+            info.addView(badge, badgeLp);
             info.addView(text(item.title, 17, Color.WHITE, true));
 
             if (!item.channel.isEmpty()) {
@@ -485,13 +491,7 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private void addSearchAgainBox() {
-        EditText search = new EditText(this);
-        search.setHint("Nieuwe zoekopdracht…");
-        search.setHintTextColor(MUTED);
-        search.setTextColor(Color.WHITE);
-        search.setSingleLine(true);
-        search.setBackgroundColor(PANEL);
-        search.setPadding(dp(14), dp(12), dp(14), dp(12));
+        EditText search = PremiumUi.searchField(this, "Nieuwe zoekopdracht…");
         content.addView(search);
 
         Button find = button("Opnieuw zoeken");
@@ -584,7 +584,9 @@ public class XtreamCatalogActivity extends Activity {
                 ext,
                 o.optString("rating", ""),
                 o.optString("stream_icon", ""),
-                firstNonEmpty(o.optString("year", ""), o.optString("added", ""), "")
+                "live".equals(mode)
+                        ? ""
+                        : firstNonEmpty(o.optString("year", ""), o.optString("added", ""), "")
         );
     }
 
@@ -626,13 +628,7 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private void addLiveCategorySearch(Category category) {
-        EditText search = new EditText(this);
-        search.setHint("Zoeken in " + category.name);
-        search.setHintTextColor(MUTED);
-        search.setTextColor(Color.WHITE);
-        search.setSingleLine(true);
-        search.setBackgroundColor(PANEL);
-        search.setPadding(dp(14), dp(12), dp(14), dp(12));
+        EditText search = PremiumUi.searchField(this, "Zoeken in " + category.name);
         content.addView(search);
 
         Button searchButton = button("Zoeken");
@@ -946,14 +942,7 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private Button button(String label) {
-        Button b = new Button(this);
-        b.setText(label);
-        b.setTextColor(Color.WHITE);
-        b.setAllCaps(false);
-        b.setBackgroundTintList(
-                android.content.res.ColorStateList.valueOf(Color.rgb(20, 92, 130))
-        );
-        return b;
+        return PremiumUi.primaryButton(this, label);
     }
 
     private TextView text(String value, int sp, int color, boolean bold) {
