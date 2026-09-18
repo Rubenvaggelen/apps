@@ -12,6 +12,9 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.TheOneMediaPlayer">
         <activity
+            android:name=".YouTubeActivity"
+            android:exported="false" />
+        <activity
             android:name=".XtreamCatalogActivity"
             android:exported="false" />
         <activity
