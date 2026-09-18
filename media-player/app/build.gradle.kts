@@ -12,7 +12,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.theone.mediaplayer.private"
+        applicationId = "com.theone.mediaplayer.testapp"
         minSdk = 23
         targetSdk = 36
         versionCode = 6
