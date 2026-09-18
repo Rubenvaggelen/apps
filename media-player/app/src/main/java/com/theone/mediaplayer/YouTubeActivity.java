@@ -144,9 +144,28 @@ public class YouTubeActivity extends Activity {
         }
 
         if (!videoId.isEmpty()) {
-            String embed = "https://www.youtube.com/embed/" + videoId
-                    + "?autoplay=1&playsinline=1&rel=0&controls=1";
-            webView.loadUrl(embed);
+            String safeVideoId = videoId.replaceAll("[^A-Za-z0-9_-]", "");
+            String playerHtml =
+                    "<!doctype html><html><head>"
+                            + "<meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'>"
+                            + "<style>html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden;}"
+                            + "iframe{position:absolute;inset:0;width:100%;height:100%;border:0;}</style>"
+                            + "</head><body>"
+                            + "<iframe src='https://www.youtube.com/embed/" + safeVideoId
+                            + "?autoplay=1&playsinline=1&rel=0&controls=1&enablejsapi=1"
+                            + "&origin=https%3A%2F%2Fapp.theone.local'"
+                            + " allow='autoplay; encrypted-media; picture-in-picture; fullscreen'"
+                            + " referrerpolicy='strict-origin-when-cross-origin'"
+                            + " allowfullscreen></iframe>"
+                            + "</body></html>";
+
+            webView.loadDataWithBaseURL(
+                    "https://app.theone.local/",
+                    playerHtml,
+                    "text/html",
+                    "UTF-8",
+                    null
+            );
         } else {
             String query = getIntent().getStringExtra("query");
             if (query == null) query = "";
