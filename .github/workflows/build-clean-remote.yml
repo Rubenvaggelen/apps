@@ -5,6 +5,7 @@ on:
     branches: [ main ]
     paths:
       - ".github/workflows/build-clean-remote.yml"
+      - ".github/assets/the_one_remote_logo.webp.b64"
   workflow_dispatch: {}
 
 permissions:
@@ -64,8 +65,9 @@ jobs:
           cd rustdesk-src
 
           mkdir -p flutter/android/app/src/main/res/drawable-nodpi
-          cp ../app/src/main/res/drawable-nodpi/the_one_logo.png \
-             flutter/android/app/src/main/res/drawable-nodpi/the_one_logo.png
+          base64 -d ../.github/assets/the_one_remote_logo.webp.b64 \
+            > flutter/android/app/src/main/res/drawable-nodpi/the_one_logo.webp
+          rm -f flutter/android/app/src/main/res/drawable-nodpi/the_one_logo.png
 
           python3 - <<'PY'
           from pathlib import Path
