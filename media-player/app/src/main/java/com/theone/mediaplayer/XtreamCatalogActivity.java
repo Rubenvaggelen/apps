@@ -15,6 +15,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.webkit.WebSettings;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
@@ -310,7 +311,32 @@ public class XtreamCatalogActivity extends Activity {
         settings.setMediaPlaybackRequiresUserGesture(true);
         settings.setUserAgentString(settings.getUserAgentString() + " TheOneMediaPlayer/1.3");
         youtubeList.setBackgroundColor(BG);
-        youtubeList.setWebViewClient(new WebViewClient());
+        youtubeList.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                String url = request.getUrl() == null ? "" : request.getUrl().toString();
+                if (isYouTubeVideoUrl(url)) {
+                    openYouTubeVideo(url);
+                    return true;
+                }
+                return false;
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                String css = "ytm-mobile-topbar-renderer,ytm-pivot-bar-renderer,"
+                        + "ytm-promoted-sparkles-web-renderer,ytm-companion-ad-renderer,"
+                        + "ytm-reel-shelf-renderer,ytm-search-filter-group-renderer,"
+                        + "ytm-mealbar-promo-renderer{display:none!important;}"
+                        + "body,html{background:#05070b!important;}"
+                        + "ytm-item-section-renderer{background:#05070b!important;}";
+                String js = "(function(){var s=document.createElement('style');"
+                        + "s.innerHTML=" + JSONObject.quote(css) + ";"
+                        + "document.head.appendChild(s);})();";
+                view.evaluateJavascript(js, null);
+            }
+        });
 
         LinearLayout.LayoutParams webLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -727,6 +753,23 @@ public class XtreamCatalogActivity extends Activity {
             );
             lp.bottomMargin = dp(9);
             content.addView(card, lp);
+        }
+    }
+
+    private boolean isYouTubeVideoUrl(String url) {
+        if (url == null) return false;
+        return url.contains("youtube.com/watch")
+                || url.contains("m.youtube.com/watch")
+                || url.contains("youtu.be/")
+                || url.contains("youtube.com/shorts/");
+    }
+
+    private void openYouTubeVideo(String url) {
+        try {
+            Intent intent = new Intent(this, YouTubeActivity.class);
+            intent.putExtra("video_url", url == null ? "" : url);
+            startActivity(intent);
+        } catch (Throwable ignored) {
         }
     }
 
