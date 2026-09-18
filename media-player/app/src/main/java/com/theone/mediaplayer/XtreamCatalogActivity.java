@@ -64,11 +64,11 @@ public class XtreamCatalogActivity extends Activity {
 
     private void renderShell() {
         ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(BG);
+        scroll.setBackgroundColor(PremiumUi.BG);
 
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(18), dp(18), dp(18), dp(28));
+        root.setPadding(dp(18), dp(14), dp(18), dp(28));
         scroll.addView(root);
 
         LinearLayout top = new LinearLayout(this);
@@ -432,12 +432,13 @@ public class XtreamCatalogActivity extends Activity {
         for (YouTubeItem item : results) {
             LinearLayout card = new LinearLayout(this);
             card.setOrientation(LinearLayout.HORIZONTAL);
-            card.setBackgroundColor(PANEL);
+            card.setBackground(PremiumUi.card(this));
+            card.setElevation(dp(3));
             card.setPadding(dp(12), dp(12), dp(12), dp(12));
 
             ImageView thumb = new ImageView(this);
             thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            thumb.setBackgroundColor(Color.rgb(25, 31, 42));
+            thumb.setBackgroundColor(Color.rgb(11, 18, 28));
             LinearLayout.LayoutParams imageLp = new LinearLayout.LayoutParams(dp(150), dp(90));
             imageLp.rightMargin = dp(12);
             card.addView(thumb, imageLp);
@@ -678,14 +679,15 @@ public class XtreamCatalogActivity extends Activity {
 
             LinearLayout card = new LinearLayout(this);
             card.setOrientation("live".equals(mode) ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
-            card.setBackgroundColor(PANEL);
+            card.setBackground(PremiumUi.card(this));
+            card.setElevation(dp(3));
             card.setPadding(dp(14), dp(14), dp(14), dp(14));
 
             if (!"live".equals(mode)) {
                 ImageView poster = new ImageView(this);
                 poster.setAdjustViewBounds(true);
                 poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                poster.setBackgroundColor(Color.rgb(25, 31, 42));
+                poster.setBackgroundColor(Color.rgb(11, 18, 28));
 
                 LinearLayout.LayoutParams posterLp = new LinearLayout.LayoutParams(dp(96), dp(144));
                 posterLp.rightMargin = dp(14);
@@ -714,7 +716,7 @@ public class XtreamCatalogActivity extends Activity {
             info.addView(text(item.name, 19, Color.WHITE, true));
 
             String meta = "";
-            if (!item.year.isEmpty()) meta = item.year;
+            if (!"live".equals(mode) && !item.year.isEmpty()) meta = item.year;
             if (!item.rating.isEmpty()) {
                 meta += (meta.isEmpty() ? "" : " • ") + "★ " + item.rating;
             }
