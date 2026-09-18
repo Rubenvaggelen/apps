@@ -49,13 +49,15 @@ jobs:
             adb logcat -c
             adb install -r media-player/app/build/outputs/apk/debug/app-debug.apk
             adb shell am start -W -n com.theone.mediaplayer/com.theone.mediaplayer.MainActivity
-            sleep 4
+            sleep 2
+            adb shell am start -W -n com.theone.mediaplayer/com.theone.mediaplayer.XtreamCatalogActivity --es mode live
+            sleep 1
+            adb shell am start -W -n com.theone.mediaplayer/com.theone.mediaplayer.XtreamCatalogActivity --es mode movie
+            sleep 1
+            adb shell am start -W -n com.theone.mediaplayer/com.theone.mediaplayer.XtreamCatalogActivity --es mode series
+            sleep 2
             adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | tee /tmp/activity.txt
             adb logcat -d > /tmp/logcat.txt
-            if grep -q 'FATAL EXCEPTION' /tmp/logcat.txt; then
-              echo 'FATAL EXCEPTION detected'
-              grep -A 40 -B 5 'FATAL EXCEPTION' /tmp/logcat.txt
-              exit 1
-            fi
+            grep -q 'FATAL EXCEPTION' /tmp/logcat.txt && exit 1 || true
             grep -q 'com.theone.mediaplayer' /tmp/activity.txt
-            echo 'MEDIA_PLAYER_SMOKE_TEST_OK'
+            echo 'MEDIA_PLAYER_XTREAM_SMOKE_TEST_OK'
