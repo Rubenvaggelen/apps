@@ -1,0 +1,300 @@
+name: Build Clean The One Remote
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/build-clean-remote.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: "3.24.5"
+  RUST_VERSION: "1.75"
+  CARGO_NDK_VERSION: "3.1.2"
+  NDK_VERSION: "r28c"
+  VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout The One assets
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: true
+          swap-storage: false
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake curl gcc-multilib git g++ g++-multilib \
+            libayatana-appindicator3-dev libasound2-dev libc6-dev libclang-dev \
+            libunwind-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            libgtk-3-dev libpam0g-dev libpulse-dev libva-dev libxcb-randr0-dev \
+            libxcb-shape0-dev libxcb-xfixes0-dev libxdo-dev libxfixes-dev \
+            llvm-dev nasm ninja-build openjdk-17-jdk-headless pkg-config tree wget
+
+      - name: Clone official RustDesk 1.4.9 source
+        shell: bash
+        run: |
+          git clone --depth 1 --branch 1.4.9 --recurse-submodules \
+            https://github.com/rustdesk/rustdesk.git rustdesk-src
+          cd rustdesk-src
+          git submodule status
+
+      - name: Apply The One Remote source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd rustdesk-src
+
+          mkdir -p flutter/android/app/src/main/res/drawable-nodpi
+          cp ../app/src/main/res/drawable-nodpi/the_one_logo.png \
+             flutter/android/app/src/main/res/drawable-nodpi/the_one_logo.png
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import xml.etree.ElementTree as ET
+
+          # 1. Android app identity: clean package, The One name/logo.
+          gradle = Path("flutter/android/app/build.gradle")
+          s = gradle.read_text()
+          s = s.replace('applicationId "com.carriez.flutter_hbb"', 'applicationId "com.theone.remote"')
+          gradle.write_text(s)
+
+          strings = Path("flutter/android/app/src/main/res/values/strings.xml")
+          s = strings.read_text()
+          s = s.replace('<string name="app_name">RustDesk</string>',
+                        '<string name="app_name">The One Remote</string>')
+          strings.write_text(s)
+
+          manifest = Path("flutter/android/app/src/main/AndroidManifest.xml")
+          ANDROID = "{http://schemas.android.com/apk/res/android}"
+          ET.register_namespace("android", "http://schemas.android.com/apk/res/android")
+          tree = ET.parse(manifest)
+          root = tree.getroot()
+          app = root.find("application")
+          if app is None:
+              raise SystemExit("application node missing")
+
+          app.set(ANDROID + "label", "The One Remote")
+          app.set(ANDROID + "icon", "@drawable/the_one_logo")
+          app.set(ANDROID + "roundIcon", "@drawable/the_one_logo")
+
+          # This phone is controller-only. Remove Android host/remote-control services.
+          remove_components = {
+              ".BootReceiver",
+              ".InputService",
+              ".MainService",
+              ".FloatingWindowService",
+              "com.carriez.flutter_hbb.BootReceiver",
+              "com.carriez.flutter_hbb.InputService",
+              "com.carriez.flutter_hbb.MainService",
+              "com.carriez.flutter_hbb.FloatingWindowService",
+          }
+          for tag in ("receiver", "service"):
+              for node in list(app.findall(tag)):
+                  if node.get(ANDROID + "name", "") in remove_components:
+                      app.remove(node)
+
+          # Remove permissions only needed when this Android phone itself is remotely controlled.
+          host_permissions = {
+              "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+              "android.permission.FOREGROUND_SERVICE",
+              "android.permission.RECORD_AUDIO",
+              "android.permission.RECEIVE_BOOT_COMPLETED",
+              "android.permission.SYSTEM_ALERT_WINDOW",
+          }
+          for node in list(root.findall("uses-permission")):
+              if node.get(ANDROID + "name", "") in host_permissions:
+                  root.remove(node)
+
+          tree.write(manifest, encoding="utf-8", xml_declaration=True)
+
+          # 2. Rust-side app identity and hard outgoing-only mode.
+          cfg = Path("libs/hbb_common/src/config.rs")
+          s = cfg.read_text()
+          s = s.replace(
+              'pub static ref APP_NAME: RwLock<String> = RwLock::new("RustDesk".to_owned());',
+              'pub static ref APP_NAME: RwLock<String> = RwLock::new("The One Remote".to_owned());'
+          )
+          s2, n = re.subn(
+              r'pub fn is_outgoing_only\(\) -> bool \{.*?\n\}',
+              'pub fn is_outgoing_only() -> bool {\n    true\n}',
+              s,
+              count=1,
+              flags=re.S,
+          )
+          if n != 1:
+              raise SystemExit("Could not force outgoing-only mode")
+          cfg.write_text(s2)
+
+          # 3. Make the Surface ID a built-in default.
+          cp = Path("flutter/lib/mobile/pages/connection_page.dart")
+          s = cp.read_text()
+          needle = """  void initState() {
+              super.initState();
+              _allPeersLoader.init(setState);"""
+          replacement = """  void initState() {
+              super.initState();
+              _idController.id = '98295805';
+              _idEditingController.text = '98295805';
+              _idEmpty.value = false;
+              _allPeersLoader.init(setState);"""
+          if needle not in s:
+              raise SystemExit("ConnectionPage initState anchor not found")
+          s = s.replace(needle, replacement, 1)
+          cp.write_text(s)
+          PY
+
+          echo "Patched package:"
+          grep -n 'applicationId' flutter/android/app/build.gradle
+          echo "Patched ID:"
+          grep -n "98295805" flutter/lib/mobile/pages/connection_page.dart
+          echo "Outgoing-only:"
+          grep -n -A3 "pub fn is_outgoing_only" libs/hbb_common/src/config.rs | head
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Patch Flutter 3.24.5
+        shell: bash
+        run: |
+          cd "$(dirname "$(dirname "$(which flutter)")")"
+          git apply "${{ github.workspace }}/rustdesk-src/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: ''
+
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: ${{ env.NDK_VERSION }}
+          add-to-path: true
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: aarch64-linux-android
+          components: rustfmt
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rustdesk-src
+          prefix-key: the-one-remote-arm64
+
+      - name: Install Rust build tools
+        shell: bash
+        run: |
+          cargo install cargo-ndk --version "${{ env.CARGO_NDK_VERSION }}" --locked
+          cargo install cargo-expand --version 1.0.95 --locked
+          cargo install flutter_rust_bridge_codegen --version 1.80.1 --features uuid --locked
+
+      - name: Generate Flutter-Rust bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd rustdesk-src
+          pushd flutter
+          flutter pub get
+          popd
+          flutter_rust_bridge_codegen \
+            --rust-input ./src/flutter_ffi.rs \
+            --dart-output ./flutter/lib/generated_bridge.dart \
+            --c-output ./flutter/macos/Runner/bridge_generated.h
+          cp ./flutter/macos/Runner/bridge_generated.h ./flutter/ios/Runner/bridge_generated.h
+
+      - name: Set up vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: /opt/artifacts/vcpkg
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: false
+
+      - name: Build Android native dependencies
+        shell: bash
+        working-directory: rustdesk-src
+        run: |
+          ./flutter/build_android_deps.sh arm64-v8a
+
+      - name: Build RustDesk native library
+        shell: bash
+        working-directory: rustdesk-src
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          rustup target add aarch64-linux-android
+          ./flutter/ndk_arm64.sh
+          test -s ./target/aarch64-linux-android/release/liblibrustdesk.so
+          mkdir -p ./flutter/android/app/src/main/jniLibs/arm64-v8a
+          cp ./target/aarch64-linux-android/release/liblibrustdesk.so \
+             ./flutter/android/app/src/main/jniLibs/arm64-v8a/librustdesk.so
+          cp "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" \
+             ./flutter/android/app/src/main/jniLibs/arm64-v8a/
+
+      - name: Restore fixed The One signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.android
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > ~/.android/debug.keystore
+          chmod 600 ~/.android/debug.keystore
+          keytool -list -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey -storepass android >/dev/null
+
+      - name: Build clean The One Remote APK from source
+        shell: bash
+        working-directory: rustdesk-src
+        env:
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+        run: |
+          set -euo pipefail
+          export PATH=/usr/lib/jvm/java-17-openjdk-amd64/bin:$PATH
+          sed -i "s/org.gradle.jvmargs=-Xmx1024M/org.gradle.jvmargs=-Xmx2g/g" ./flutter/android/gradle.properties
+          sed -i "s/signingConfigs.release/signingConfigs.debug/g" ./flutter/android/app/build.gradle
+          pushd flutter
+          flutter build apk --release --target-platform android-arm64 --split-per-abi
+          popd
+          cp flutter/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
+             ../The-One-Remote-Clean.apk
+
+      - name: Verify APK signature and package
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs The-One-Remote-Clean.apk
+          "$BUILD_TOOLS/aapt" dump badging The-One-Remote-Clean.apk | head -n 8
+
+      - name: Upload clean APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: the-one-remote-clean-apk
+          path: The-One-Remote-Clean.apk
+          if-no-files-found: error
