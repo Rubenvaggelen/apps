@@ -12,6 +12,7 @@ import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -517,6 +518,7 @@ public class MainActivity extends Activity {
     private void showPlayer(String url) {
         releasePlayer();
         playerFullscreen = true;
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
@@ -610,6 +612,7 @@ public class MainActivity extends Activity {
     }
 
     private void releasePlayer() {
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (activePlayerView != null) {
             activePlayerView.setPlayer(null);
             activePlayerView = null;
