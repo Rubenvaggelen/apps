@@ -69,28 +69,6 @@ jobs:
           name: android-signing-tools-36
           path: android-signing-tools
 
-      - name: Smoke-test Media Player on Android emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          profile: pixel_6
-          disable-animations: true
-          script: |
-            adb logcat -c
-            adb install -r media-player/app/build/outputs/apk/debug/app-debug.apk
-            adb shell am start -W -n com.theone.mediaplayer/com.theone.mediaplayer.MainActivity
-            sleep 4
-            adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | tee /tmp/activity.txt
-            adb logcat -d > /tmp/logcat.txt
-            if grep -q 'FATAL EXCEPTION' /tmp/logcat.txt; then
-              grep -A 40 -B 5 'FATAL EXCEPTION' /tmp/logcat.txt
-              exit 1
-            fi
-            grep -q 'com.theone.mediaplayer' /tmp/activity.txt
-            echo 'MEDIA_PLAYER_SMOKE_TEST_OK'
-
-
       - name: Prepare Media Player signing key
         if: env.MEDIA_PLAYER_KEYSTORE_BASE64 != '' && env.MEDIA_PLAYER_KEYSTORE_PASSWORD != '' && env.MEDIA_PLAYER_KEY_ALIAS != '' && env.MEDIA_PLAYER_KEY_PASSWORD != ''
         shell: bash
@@ -122,3 +100,25 @@ jobs:
             - selectable subtitle tracks during playback
           files: media-player/app/build/outputs/apk/release/The-One-Media-Player-v21.apk
           overwrite_files: true
+
+      - name: Smoke-test Media Player on Android emulator
+        timeout-minutes: 8
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            adb logcat -c
+            adb install -r media-player/app/build/outputs/apk/debug/app-debug.apk
+            adb shell am start -W -n com.theone.mediaplayer/com.theone.mediaplayer.MainActivity
+            sleep 4
+            adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | tee /tmp/activity.txt
+            adb logcat -d > /tmp/logcat.txt
+            if grep -q 'FATAL EXCEPTION' /tmp/logcat.txt; then
+              grep -A 40 -B 5 'FATAL EXCEPTION' /tmp/logcat.txt
+              exit 1
+            fi
+            grep -q 'com.theone.mediaplayer' /tmp/activity.txt
+            echo 'MEDIA_PLAYER_SMOKE_TEST_OK'
