@@ -2,12 +2,17 @@ package com.theone.mediaplayer;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.widget.ImageView;
+import android.graphics.BitmapFactory;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
+import android.content.res.ColorStateList;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -17,6 +22,9 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 // v18 premium prototype
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 public final class PremiumUi {
     public static final int BG = Color.rgb(4, 7, 12);
     public static final int PANEL = Color.rgb(12, 18, 28);
@@ -32,15 +40,18 @@ public final class PremiumUi {
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(0, dp(context, 2), 0, dp(context, 8));
 
-        BrandMarkView mark = new BrandMarkView(context);
-        row.addView(mark, new LinearLayout.LayoutParams(dp(context, 52), dp(context, 52)));
+        ImageView mark = new ImageView(context);
+        mark.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        mark.setAdjustViewBounds(true);
+        row.addView(mark, new LinearLayout.LayoutParams(dp(context, 58), dp(context, 58)));
+        loadMainTheOneLogo(mark);
 
         LinearLayout titles = new LinearLayout(context);
         titles.setOrientation(LinearLayout.VERTICAL);
         titles.setPadding(dp(context, 12), 0, 0, 0);
 
         TextView brand = new TextView(context);
-        brand.setText("THE ONE  MEDIA");
+        brand.setText("THE ONE");
         brand.setTextColor(BLUE_SOFT);
         brand.setTextSize(12);
         brand.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
@@ -48,7 +59,7 @@ public final class PremiumUi {
         titles.addView(brand);
 
         TextView product = new TextView(context);
-        product.setText(section == null || section.isEmpty() ? "PLAYER" : section.toUpperCase());
+        product.setText(section == null || section.isEmpty() ? "MEDIA PLAYER" : "MEDIA PLAYER • " + section.toUpperCase());
         product.setTextColor(Color.WHITE);
         product.setTextSize(22);
         product.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
@@ -68,19 +79,13 @@ public final class PremiumUi {
         b.setTextColor(Color.WHITE);
         b.setTextSize(16);
         b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        b.setLetterSpacing(0.025f);
         b.setAllCaps(false);
         b.setGravity(Gravity.CENTER);
-        b.setPadding(dp(context, 18), dp(context, 11), dp(context, 18), dp(context, 11));
-        b.setMinHeight(dp(context, 50));
-        b.setBackground(gradient(
-                context,
-                Color.rgb(11, 88, 132),
-                Color.rgb(24, 166, 218),
-                24,
-                Color.rgb(76, 211, 255),
-                1
-        ));
-        b.setElevation(dp(context, 5));
+        b.setPadding(dp(context, 20), dp(context, 12), dp(context, 20), dp(context, 12));
+        b.setMinHeight(dp(context, 52));
+        b.setBackground(neonButtonBackground(context, true));
+        b.setElevation(dp(context, 8));
         b.setStateListAnimator(null);
         return b;
     }
@@ -90,18 +95,13 @@ public final class PremiumUi {
         b.setText(label);
         b.setTextColor(Color.WHITE);
         b.setTextSize(14);
+        b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        b.setLetterSpacing(0.015f);
         b.setAllCaps(false);
-        b.setPadding(dp(context, 16), dp(context, 8), dp(context, 16), dp(context, 8));
-        b.setMinHeight(dp(context, 42));
-        b.setBackground(gradient(
-                context,
-                Color.rgb(16, 27, 41),
-                Color.rgb(10, 18, 28),
-                22,
-                Color.rgb(38, 112, 148),
-                1
-        ));
-        b.setElevation(dp(context, 2));
+        b.setPadding(dp(context, 16), dp(context, 9), dp(context, 16), dp(context, 9));
+        b.setMinHeight(dp(context, 44));
+        b.setBackground(neonButtonBackground(context, false));
+        b.setElevation(dp(context, 4));
         b.setStateListAnimator(null);
         return b;
     }
@@ -124,6 +124,35 @@ public final class PremiumUi {
         ));
         e.setElevation(dp(context, 2));
         return e;
+    }
+
+    private static RippleDrawable neonButtonBackground(Context context, boolean primary) {
+        int[] colors = primary
+                ? new int[]{
+                        Color.rgb(5, 74, 122),
+                        Color.rgb(13, 151, 214),
+                        Color.rgb(47, 205, 255)
+                }
+                : new int[]{
+                        Color.rgb(10, 18, 30),
+                        Color.rgb(14, 42, 62),
+                        Color.rgb(10, 24, 38)
+                };
+
+        GradientDrawable shape = new GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                colors
+        );
+        shape.setCornerRadius(dp(context, primary ? 26 : 22));
+        shape.setStroke(
+                dp(context, 1),
+                primary ? Color.rgb(104, 226, 255) : Color.rgb(48, 141, 184)
+        );
+
+        ColorStateList ripple = ColorStateList.valueOf(
+                primary ? Color.argb(95, 255, 255, 255) : Color.argb(75, 86, 210, 255)
+        );
+        return new RippleDrawable(ripple, shape, null);
     }
 
     public static GradientDrawable card(Context context) {
@@ -160,6 +189,34 @@ public final class PremiumUi {
         d.setCornerRadius(dp(context, radiusDp));
         d.setStroke(dp(context, strokeDp), stroke);
         return d;
+    }
+
+    private static final String MAIN_THE_ONE_LOGO_URL =
+            "https://raw.githubusercontent.com/Rubenvaggelen/apps/main/app/src/main/res/drawable-nodpi/the_one_logo.png";
+
+    private static void loadMainTheOneLogo(ImageView view) {
+        // Fallback blijft The One-achtig als internet even niet beschikbaar is.
+        view.setBackgroundColor(Color.TRANSPARENT);
+
+        new Thread(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) new URL(MAIN_THE_ONE_LOGO_URL).openConnection();
+                connection.setConnectTimeout(8000);
+                connection.setReadTimeout(12000);
+                connection.setRequestProperty("User-Agent", "TheOneMediaPlayer/2.0");
+
+                try (InputStream input = connection.getInputStream()) {
+                    Bitmap bitmap = BitmapFactory.decodeStream(input);
+                    if (bitmap != null) {
+                        view.post(() -> view.setImageBitmap(bitmap));
+                    }
+                }
+            } catch (Throwable ignored) {
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        }).start();
     }
 
     public static int dp(Context context, int value) {
