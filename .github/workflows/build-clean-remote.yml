@@ -183,7 +183,12 @@ jobs:
         shell: bash
         run: |
           cd "$(dirname "$(dirname "$(which flutter)")")"
-          git apply "${{ github.workspace }}/rustdesk-src/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff"
+          PATCH="${{ github.workspace }}/rustdesk-src/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff"
+          if git apply --check "$PATCH" 2>/dev/null; then
+            git apply "$PATCH"
+          else
+            echo "Flutter patch already present or not required; continuing."
+          fi
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
