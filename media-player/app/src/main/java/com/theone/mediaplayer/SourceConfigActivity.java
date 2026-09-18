@@ -159,6 +159,31 @@ public class SourceConfigActivity extends Activity {
             fields.addView(save);
         }
 
+        TextView catalogTitle = text("Film- & seriecatalogus", 20, BLUE, true);
+        LinearLayout.LayoutParams catalogTitleLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        catalogTitleLp.topMargin = dp(20);
+        fields.addView(catalogTitle, catalogTitleLp);
+
+        EditText tmdb = input(
+                "TMDB API Read Access Token",
+                prefs.getString("tmdb_token", ""),
+                true
+        );
+        fields.addView(tmdb);
+        fields.addView(spacer());
+        fields.addView(info(
+                "De catalogus gebruikt TMDB voor films, series, posters, seizoenen en afleveringen. "
+                        + "De token wordt alleen lokaal in deze app opgeslagen en niet in GitHub gezet. "
+                        + "This product uses the TMDB API but is not endorsed or certified by TMDB."
+        ));
+
+        Button saveTmdb = button("TMDB-token opslaan");
+        saveTmdb.setOnClickListener(v -> {
+            prefs.edit().putString("tmdb_token", tmdb.getText().toString().trim()).apply();
+            Toast.makeText(this, "TMDB-token opgeslagen", Toast.LENGTH_SHORT).show();
+        });
+        fields.addView(saveTmdb);
+
         Button close = button("← Terug naar Media Player");
         LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         closeLp.topMargin = dp(18);
