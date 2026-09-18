@@ -1,0 +1,196 @@
+name: Build Native The One Remote
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/build-native-remote.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout The One branding
+        uses: actions/checkout@v4
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Download RustDesk Android client
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 4 \
+            -o rustdesk.apk \
+            https://github.com/rustdesk/rustdesk/releases/download/1.4.9/rustdesk-1.4.9-universal-signed.apk
+          test -s rustdesk.apk
+
+      - name: Download Apktool
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! curl -L --fail --retry 3 -o apktool.jar \
+            https://github.com/iBotPeaches/Apktool/releases/download/v3.0.3/apktool_3.0.3.jar; then
+            curl -L --fail --retry 3 -o apktool.jar \
+              https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_3.0.3.jar
+          fi
+          java -jar apktool.jar --version
+
+      - name: Decode RustDesk APK
+        run: java -jar apktool.jar d -f rustdesk.apk -o native-remote
+
+      - name: Apply The One Remote branding and one-tap Surface launcher
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p native-remote/res/drawable-nodpi
+          cp app/src/main/res/drawable-nodpi/the_one_logo.png \
+             native-remote/res/drawable-nodpi/the_one_logo.png
+
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          path = Path("native-remote/AndroidManifest.xml")
+          ET.register_namespace("android", "http://schemas.android.com/apk/res/android")
+          tree = ET.parse(path)
+          root = tree.getroot()
+          android = "{http://schemas.android.com/apk/res/android}"
+
+          app = root.find("application")
+          if app is None:
+              raise SystemExit("No application node found")
+
+          app.set(android + "label", "The One Remote")
+          app.set(android + "icon", "@drawable/the_one_logo")
+          app.set(android + "roundIcon", "@drawable/the_one_logo")
+
+          main = None
+          for activity in app.findall("activity"):
+              name = activity.get(android + "name", "")
+              if name in (".MainActivity", "com.carriez.flutter_hbb.MainActivity"):
+                  main = activity
+                  break
+          if main is None:
+              raise SystemExit("RustDesk MainActivity not found")
+
+          # Remove only the normal launcher filter from RustDesk MainActivity.
+          # Keep its rustdesk:// deep-link filter, which our launcher uses.
+          for filt in list(main.findall("intent-filter")):
+              actions = {a.get(android + "name") for a in filt.findall("action")}
+              cats = {c.get(android + "name") for c in filt.findall("category")}
+              if ("android.intent.action.MAIN" in actions and
+                  "android.intent.category.LAUNCHER" in cats):
+                  main.remove(filt)
+
+          launcher = ET.Element("activity")
+          launcher.set(android + "name", "com.theone.remote.LauncherActivity")
+          launcher.set(android + "exported", "true")
+          launcher.set(android + "theme", "@style/LaunchTheme")
+
+          filt = ET.SubElement(launcher, "intent-filter")
+          action = ET.SubElement(filt, "action")
+          action.set(android + "name", "android.intent.action.MAIN")
+          cat = ET.SubElement(filt, "category")
+          cat.set(android + "name", "android.intent.category.LAUNCHER")
+
+          app.insert(0, launcher)
+          tree.write(path, encoding="utf-8", xml_declaration=True)
+          PY
+
+          max=1
+          for d in native-remote/smali_classes*; do
+            [ -d "$d" ] || continue
+            n="${d##*smali_classes}"
+            [[ "$n" =~ ^[0-9]+$ ]] || continue
+            (( n > max )) && max=$n
+          done
+          next=$((max + 1))
+          smali_dir="native-remote/smali_classes${next}/com/theone/remote"
+          mkdir -p "$smali_dir"
+
+          cat > "$smali_dir/LauncherActivity.smali" <<'SMALI'
+          .class public Lcom/theone/remote/LauncherActivity;
+          .super Landroid/app/Activity;
+          .source "LauncherActivity.java"
+
+          .method public constructor <init>()V
+              .locals 0
+              invoke-direct {p0}, Landroid/app/Activity;-><init>()V
+              return-void
+          .end method
+
+          .method protected onCreate(Landroid/os/Bundle;)V
+              .locals 3
+
+              invoke-super {p0, p1}, Landroid/app/Activity;->onCreate(Landroid/os/Bundle;)V
+
+              new-instance v0, Landroid/content/Intent;
+              const-string v1, "android.intent.action.VIEW"
+              const-string v2, "rustdesk://connection/98295805"
+              invoke-static {v2}, Landroid/net/Uri;->parse(Ljava/lang/String;)Landroid/net/Uri;
+              move-result-object v2
+              invoke-direct {v0, v1, v2}, Landroid/content/Intent;-><init>(Ljava/lang/String;Landroid/net/Uri;)V
+
+              const-string v1, "com.carriez.flutter_hbb"
+              invoke-virtual {v0, v1}, Landroid/content/Intent;->setPackage(Ljava/lang/String;)Landroid/content/Intent;
+              move-result-object v0
+
+              const/high16 v1, 0x10000000
+              invoke-virtual {v0, v1}, Landroid/content/Intent;->addFlags(I)Landroid/content/Intent;
+              move-result-object v0
+
+              invoke-virtual {p0, v0}, Landroid/app/Activity;->startActivity(Landroid/content/Intent;)V
+              invoke-virtual {p0}, Landroid/app/Activity;->finish()V
+              return-void
+          .end method
+          SMALI
+
+      - name: Rebuild native APK
+        run: java -jar apktool.jar b native-remote -o the-one-remote-unsigned.apk
+
+      - name: Restore fixed signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.android
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > ~/.android/debug.keystore
+          chmod 600 ~/.android/debug.keystore
+          keytool -list -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey -storepass android >/dev/null
+
+      - name: Align and sign APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/zipalign" -f 4 \
+            the-one-remote-unsigned.apk The-One-Remote-Native-aligned.apk
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks ~/.android/debug.keystore \
+            --ks-key-alias androiddebugkey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --out The-One-Remote-Native.apk \
+            The-One-Remote-Native-aligned.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs The-One-Remote-Native.apk
+
+      - name: Upload The One Remote native APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: the-one-remote-native-apk
+          path: The-One-Remote-Native.apk
+          if-no-files-found: error
