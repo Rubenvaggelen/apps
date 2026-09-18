@@ -46,7 +46,6 @@ public class MainActivity extends Activity {
     private static final String SINTEL_MKV = "https://download.blender.org/durian/movies/Sintel.2010.720p.mkv";
     private static final String BBB_YOUTUBE = "https://www.youtube.com/watch?v=aqz-KE-bpKQ";
     private static final String NASA_YOUTUBE = "https://www.youtube.com/@NASA/live";
-    private static final String PRIVATE_SOURCE = "PRIVATE_SOURCE_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
 
     private static final String DEMO_M3U =
             "#EXTM3U\n" +
@@ -66,13 +65,34 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        prefs = getSharedPreferences("media_player", Context.MODE_PRIVATE);
-        String playUrl = getIntent().getStringExtra("play_url");
-        if (playUrl != null && (playUrl.startsWith("http://") || playUrl.startsWith("https://"))) {
-            showPlayer(playUrl);
-        } else {
-            showShell("Home");
+        try {
+            prefs = getSharedPreferences("media_player", Context.MODE_PRIVATE);
+            String playUrl = getIntent().getStringExtra("play_url");
+            if (playUrl != null && (playUrl.startsWith("http://") || playUrl.startsWith("https://"))) {
+                showPlayer(playUrl);
+            } else {
+                showShell("Home");
+            }
+        } catch (Throwable startupError) {
+            showSafeStartupScreen(startupError);
         }
+    }
+
+    private void showSafeStartupScreen(Throwable error) {
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(BG);
+        root.setPadding(dp(24), dp(24), dp(24), dp(24));
+        root.addView(text("THE ONE MEDIA PLAYER", 26, Color.WHITE, true));
+        TextView message = text(
+                "De app is gestart in veilige modus. Fout: " + error.getClass().getSimpleName(),
+                16,
+                MUTED,
+                false
+        );
+        message.setPadding(0, dp(18), 0, 0);
+        root.addView(message);
+        setContentView(root);
     }
 
     private void showShell(String section) {
@@ -130,11 +150,22 @@ public class MainActivity extends Activity {
 
     private void ensurePrivateSourceConfigured() {
         if (prefs == null) return;
-        if (PRIVATE_SOURCE.startsWith("http://") || PRIVATE_SOURCE.startsWith("https://")) {
+        String source = readPrivateSourceAsset();
+        if (source.startsWith("http://") || source.startsWith("https://")) {
             prefs.edit()
                     .putString("source_type", "M3U")
-                    .putString("m3u_url", PRIVATE_SOURCE)
+                    .putString("m3u_url", source)
                     .apply();
+        }
+    }
+
+    private String readPrivateSourceAsset() {
+        try (InputStream in = getAssets().open("private_source.txt");
+             BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+            String line = reader.readLine();
+            return line == null ? "" : line.trim();
+        } catch (Throwable ignored) {
+            return "";
         }
     }
 
