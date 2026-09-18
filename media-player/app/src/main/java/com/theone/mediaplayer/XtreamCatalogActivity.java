@@ -318,10 +318,17 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private List<YouTubeItem> searchYouTube(String query) throws Exception {
+        String apiKey = readPrivateYouTubeKey();
+        if (apiKey.isEmpty() || apiKey.startsWith("PRIVATE_")) {
+            throw new IllegalStateException("YouTube API key ontbreekt");
+        }
+
         String encoded = URLEncoder.encode(query == null ? "" : query.trim(), "UTF-8");
         URL url = new URL(
-                "https://www.youtube.com/results?search_query=" + encoded
-                        + "&hl=nl&gl=NL&sp=EgIQAQ%253D%253D"
+                "https://www.googleapis.com/youtube/v3/search"
+                        + "?part=snippet&type=video&maxResults=20"
+                        + "&q=" + encoded
+                        + "&key=" + URLEncoder.encode(apiKey, "UTF-8")
         );
 
         HttpURLConnection conn = null;
@@ -329,140 +336,81 @@ public class XtreamCatalogActivity extends Activity {
             conn = (HttpURLConnection) url.openConnection();
             conn.setConnectTimeout(15000);
             conn.setReadTimeout(20000);
-            conn.setRequestProperty(
-                    "User-Agent",
-                    "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 "
-                            + "(KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36"
-            );
-            conn.setRequestProperty("Accept-Language", "nl-NL,nl;q=0.9,en;q=0.8");
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("User-Agent", "TheOneMediaPlayer/1.7");
 
             int code = conn.getResponseCode();
-            if (code < 200 || code >= 300) throw new IllegalStateException("HTTP " + code);
+            InputStream stream = code >= 200 && code < 300
+                    ? conn.getInputStream()
+                    : conn.getErrorStream();
 
-            StringBuilder html = new StringBuilder();
+            if (stream == null) throw new IllegalStateException("HTTP " + code);
+
+            StringBuilder body = new StringBuilder();
             try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                    new InputStreamReader(stream, StandardCharsets.UTF_8))) {
                 String line;
-                while ((line = reader.readLine()) != null) html.append(line).append('\n');
+                while ((line = reader.readLine()) != null) body.append(line).append('\n');
             }
 
-            String source = html.toString();
-            int marker = source.indexOf("var ytInitialData = ");
-            if (marker < 0) marker = source.indexOf("\"ytInitialData\":");
-            if (marker < 0) throw new IllegalStateException("ytInitialData ontbreekt");
+            JSONObject root = new JSONObject(body.toString());
+            if (code < 200 || code >= 300 || root.has("error")) {
+                String message = root.optJSONObject("error") == null
+                        ? "HTTP " + code
+                        : root.optJSONObject("error").optString("message", "YouTube API fout");
+                throw new IllegalStateException(message);
+            }
 
-            int brace = source.indexOf('{', marker);
-            if (brace < 0) throw new IllegalStateException("YouTube JSON ontbreekt");
-
-            String jsonText = extractBalancedJson(source, brace);
-            JSONObject root = new JSONObject(jsonText);
-
+            JSONArray items = root.optJSONArray("items");
             List<YouTubeItem> out = new ArrayList<>();
-            collectYouTubeVideos(root, out, 24);
+            if (items == null) return out;
+
+            for (int i = 0; i < items.length(); i++) {
+                JSONObject item = items.optJSONObject(i);
+                if (item == null) continue;
+
+                JSONObject id = item.optJSONObject("id");
+                JSONObject snippet = item.optJSONObject("snippet");
+                if (id == null || snippet == null) continue;
+
+                String videoId = id.optString("videoId", "");
+                if (videoId.isEmpty()) continue;
+
+                String title = htmlUnescape(snippet.optString("title", "YouTube-video"));
+                String channel = htmlUnescape(snippet.optString("channelTitle", ""));
+
+                String thumbnail = "";
+                JSONObject thumbs = snippet.optJSONObject("thumbnails");
+                if (thumbs != null) {
+                    JSONObject medium = thumbs.optJSONObject("medium");
+                    JSONObject high = thumbs.optJSONObject("high");
+                    JSONObject def = thumbs.optJSONObject("default");
+                    if (medium != null) thumbnail = medium.optString("url", "");
+                    if (thumbnail.isEmpty() && high != null) thumbnail = high.optString("url", "");
+                    if (thumbnail.isEmpty() && def != null) thumbnail = def.optString("url", "");
+                }
+                if (thumbnail.isEmpty()) {
+                    thumbnail = "https://i.ytimg.com/vi/" + videoId + "/hqdefault.jpg";
+                }
+
+                out.add(new YouTubeItem(videoId, title, channel, thumbnail));
+            }
+
             return out;
         } finally {
             if (conn != null) conn.disconnect();
         }
     }
 
-    private String extractBalancedJson(String text, int start) {
-        int depth = 0;
-        boolean inString = false;
-        boolean escaped = false;
-
-        for (int i = start; i < text.length(); i++) {
-            char ch = text.charAt(i);
-
-            if (inString) {
-                if (escaped) {
-                    escaped = false;
-                } else if (ch == '\\') {
-                    escaped = true;
-                } else if (ch == '"') {
-                    inString = false;
-                }
-                continue;
-            }
-
-            if (ch == '"') {
-                inString = true;
-                continue;
-            }
-
-            if (ch == '{') depth++;
-            else if (ch == '}') {
-                depth--;
-                if (depth == 0) return text.substring(start, i + 1);
-            }
+    private String readPrivateYouTubeKey() {
+        try (InputStream in = getAssets().open("private_youtube_key.txt");
+             BufferedReader reader = new BufferedReader(
+                     new InputStreamReader(in, StandardCharsets.UTF_8))) {
+            String line = reader.readLine();
+            return line == null ? "" : line.trim();
+        } catch (Throwable ignored) {
+            return "";
         }
-
-        throw new IllegalStateException("Onvolledige YouTube JSON");
-    }
-
-    private void collectYouTubeVideos(Object node, List<YouTubeItem> out, int limit) {
-        if (node == null || out.size() >= limit) return;
-
-        if (node instanceof JSONObject) {
-            JSONObject object = (JSONObject) node;
-
-            JSONObject renderer = object.optJSONObject("videoRenderer");
-            if (renderer != null) {
-                String id = renderer.optString("videoId", "");
-                if (!id.isEmpty()) {
-                    String title = jsonText(renderer.optJSONObject("title"));
-                    String channel = jsonText(renderer.optJSONObject("ownerText"));
-                    if (channel.isEmpty()) channel = jsonText(renderer.optJSONObject("shortBylineText"));
-
-                    boolean duplicate = false;
-                    for (YouTubeItem existing : out) {
-                        if (existing.videoId.equals(id)) {
-                            duplicate = true;
-                            break;
-                        }
-                    }
-
-                    if (!duplicate) {
-                        out.add(new YouTubeItem(
-                                id,
-                                title.isEmpty() ? "YouTube-video" : title,
-                                channel,
-                                "https://i.ytimg.com/vi/" + id + "/hqdefault.jpg"
-                        ));
-                    }
-                }
-            }
-
-            JSONArray names = object.names();
-            if (names == null) return;
-            for (int i = 0; i < names.length() && out.size() < limit; i++) {
-                String key = names.optString(i, "");
-                collectYouTubeVideos(object.opt(key), out, limit);
-            }
-        } else if (node instanceof JSONArray) {
-            JSONArray array = (JSONArray) node;
-            for (int i = 0; i < array.length() && out.size() < limit; i++) {
-                collectYouTubeVideos(array.opt(i), out, limit);
-            }
-        }
-    }
-
-    private String jsonText(JSONObject textObject) {
-        if (textObject == null) return "";
-
-        String simple = textObject.optString("simpleText", "");
-        if (!simple.isEmpty()) return htmlUnescape(simple);
-
-        JSONArray runs = textObject.optJSONArray("runs");
-        if (runs == null) return "";
-
-        StringBuilder value = new StringBuilder();
-        for (int i = 0; i < runs.length(); i++) {
-            JSONObject run = runs.optJSONObject(i);
-            if (run == null) continue;
-            if (value.length() > 0) value.append(' ');
-            value.append(run.optString("text", ""));
-        }
-        return htmlUnescape(value.toString().trim());
     }
 
     private String htmlUnescape(String value) {
