@@ -14,10 +14,6 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
-import android.webkit.WebSettings;
-import android.webkit.WebResourceRequest;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -295,7 +291,7 @@ public class XtreamCatalogActivity extends Activity {
         content.addView(ytLabel);
 
         TextView ytHint = text(
-                "YouTube-resultaten voor dezelfde zoektekst. YT = YouTube.",
+                "YouTube-resultaten in The One. YT = YouTube.",
                 13,
                 MUTED,
                 false
@@ -303,53 +299,240 @@ public class XtreamCatalogActivity extends Activity {
         ytHint.setPadding(0, 0, 0, dp(8));
         content.addView(ytHint);
 
-        WebView youtubeList = new WebView(this);
-        WebSettings settings = youtubeList.getSettings();
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setLoadsImagesAutomatically(true);
-        settings.setMediaPlaybackRequiresUserGesture(true);
-        settings.setUserAgentString(settings.getUserAgentString() + " TheOneMediaPlayer/1.3");
-        youtubeList.setBackgroundColor(BG);
-        youtubeList.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                String url = request.getUrl() == null ? "" : request.getUrl().toString();
-                if (isYouTubeVideoUrl(url)) {
-                    openYouTubeVideo(url);
-                    return true;
-                }
-                return false;
-            }
+        LinearLayout holder = new LinearLayout(this);
+        holder.setOrientation(LinearLayout.VERTICAL);
+        holder.addView(text("YT-resultaten laden…", 15, MUTED, false));
+        content.addView(holder);
 
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                String css = "ytm-mobile-topbar-renderer,ytm-pivot-bar-renderer,"
-                        + "ytm-promoted-sparkles-web-renderer,ytm-companion-ad-renderer,"
-                        + "ytm-reel-shelf-renderer,ytm-search-filter-group-renderer,"
-                        + "ytm-mealbar-promo-renderer{display:none!important;}"
-                        + "body,html{background:#05070b!important;}"
-                        + "ytm-item-section-renderer{background:#05070b!important;}";
-                String js = "(function(){var s=document.createElement('style');"
-                        + "s.innerHTML=" + JSONObject.quote(css) + ";"
-                        + "document.head.appendChild(s);})();";
-                view.evaluateJavascript(js, null);
+        new Thread(() -> {
+            try {
+                List<YouTubeItem> results = searchYouTube(query);
+                runOnUiThread(() -> renderYouTubeResults(holder, results));
+            } catch (Throwable e) {
+                runOnUiThread(() -> {
+                    holder.removeAllViews();
+                    holder.addView(text("YT-resultaten konden niet worden geladen.", 15, MUTED, false));
+                });
             }
-        });
+        }).start();
+    }
 
-        LinearLayout.LayoutParams webLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(720)
+    private List<YouTubeItem> searchYouTube(String query) throws Exception {
+        String encoded = URLEncoder.encode(query == null ? "" : query.trim(), "UTF-8");
+        URL url = new URL(
+                "https://www.youtube.com/results?search_query=" + encoded
+                        + "&hl=nl&gl=NL&sp=EgIQAQ%253D%253D"
         );
-        webLp.bottomMargin = dp(12);
-        content.addView(youtubeList, webLp);
 
+        HttpURLConnection conn = null;
         try {
-            String encoded = URLEncoder.encode(query == null ? "" : query.trim(), "UTF-8");
-            youtubeList.loadUrl("https://m.youtube.com/results?search_query=" + encoded);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(20000);
+            conn.setRequestProperty(
+                    "User-Agent",
+                    "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 "
+                            + "(KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36"
+            );
+            conn.setRequestProperty("Accept-Language", "nl-NL,nl;q=0.9,en;q=0.8");
+
+            int code = conn.getResponseCode();
+            if (code < 200 || code >= 300) throw new IllegalStateException("HTTP " + code);
+
+            StringBuilder html = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) html.append(line).append('\n');
+            }
+
+            String source = html.toString();
+            int marker = source.indexOf("var ytInitialData = ");
+            if (marker < 0) marker = source.indexOf("\"ytInitialData\":");
+            if (marker < 0) throw new IllegalStateException("ytInitialData ontbreekt");
+
+            int brace = source.indexOf('{', marker);
+            if (brace < 0) throw new IllegalStateException("YouTube JSON ontbreekt");
+
+            String jsonText = extractBalancedJson(source, brace);
+            JSONObject root = new JSONObject(jsonText);
+
+            List<YouTubeItem> out = new ArrayList<>();
+            collectYouTubeVideos(root, out, 24);
+            return out;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private String extractBalancedJson(String text, int start) {
+        int depth = 0;
+        boolean inString = false;
+        boolean escaped = false;
+
+        for (int i = start; i < text.length(); i++) {
+            char ch = text.charAt(i);
+
+            if (inString) {
+                if (escaped) {
+                    escaped = false;
+                } else if (ch == '\\') {
+                    escaped = true;
+                } else if (ch == '"') {
+                    inString = false;
+                }
+                continue;
+            }
+
+            if (ch == '"') {
+                inString = true;
+                continue;
+            }
+
+            if (ch == '{') depth++;
+            else if (ch == '}') {
+                depth--;
+                if (depth == 0) return text.substring(start, i + 1);
+            }
+        }
+
+        throw new IllegalStateException("Onvolledige YouTube JSON");
+    }
+
+    private void collectYouTubeVideos(Object node, List<YouTubeItem> out, int limit) {
+        if (node == null || out.size() >= limit) return;
+
+        if (node instanceof JSONObject) {
+            JSONObject object = (JSONObject) node;
+
+            JSONObject renderer = object.optJSONObject("videoRenderer");
+            if (renderer != null) {
+                String id = renderer.optString("videoId", "");
+                if (!id.isEmpty()) {
+                    String title = jsonText(renderer.optJSONObject("title"));
+                    String channel = jsonText(renderer.optJSONObject("ownerText"));
+                    if (channel.isEmpty()) channel = jsonText(renderer.optJSONObject("shortBylineText"));
+
+                    boolean duplicate = false;
+                    for (YouTubeItem existing : out) {
+                        if (existing.videoId.equals(id)) {
+                            duplicate = true;
+                            break;
+                        }
+                    }
+
+                    if (!duplicate) {
+                        out.add(new YouTubeItem(
+                                id,
+                                title.isEmpty() ? "YouTube-video" : title,
+                                channel,
+                                "https://i.ytimg.com/vi/" + id + "/hqdefault.jpg"
+                        ));
+                    }
+                }
+            }
+
+            JSONArray names = object.names();
+            if (names == null) return;
+            for (int i = 0; i < names.length() && out.size() < limit; i++) {
+                String key = names.optString(i, "");
+                collectYouTubeVideos(object.opt(key), out, limit);
+            }
+        } else if (node instanceof JSONArray) {
+            JSONArray array = (JSONArray) node;
+            for (int i = 0; i < array.length() && out.size() < limit; i++) {
+                collectYouTubeVideos(array.opt(i), out, limit);
+            }
+        }
+    }
+
+    private String jsonText(JSONObject textObject) {
+        if (textObject == null) return "";
+
+        String simple = textObject.optString("simpleText", "");
+        if (!simple.isEmpty()) return htmlUnescape(simple);
+
+        JSONArray runs = textObject.optJSONArray("runs");
+        if (runs == null) return "";
+
+        StringBuilder value = new StringBuilder();
+        for (int i = 0; i < runs.length(); i++) {
+            JSONObject run = runs.optJSONObject(i);
+            if (run == null) continue;
+            if (value.length() > 0) value.append(' ');
+            value.append(run.optString("text", ""));
+        }
+        return htmlUnescape(value.toString().trim());
+    }
+
+    private String htmlUnescape(String value) {
+        return value == null ? "" : value
+                .replace("&amp;", "&")
+                .replace("&#39;", "'")
+                .replace("&quot;", "\"")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">");
+    }
+
+    private void renderYouTubeResults(LinearLayout holder, List<YouTubeItem> results) {
+        holder.removeAllViews();
+
+        if (results.isEmpty()) {
+            holder.addView(text("Geen YT-resultaten gevonden.", 15, MUTED, false));
+            return;
+        }
+
+        for (YouTubeItem item : results) {
+            LinearLayout card = new LinearLayout(this);
+            card.setOrientation(LinearLayout.HORIZONTAL);
+            card.setBackgroundColor(PANEL);
+            card.setPadding(dp(12), dp(12), dp(12), dp(12));
+
+            ImageView thumb = new ImageView(this);
+            thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            thumb.setBackgroundColor(Color.rgb(25, 31, 42));
+            LinearLayout.LayoutParams imageLp = new LinearLayout.LayoutParams(dp(150), dp(90));
+            imageLp.rightMargin = dp(12);
+            card.addView(thumb, imageLp);
+            loadImage(thumb, item.thumbnailUrl);
+
+            LinearLayout info = new LinearLayout(this);
+            info.setOrientation(LinearLayout.VERTICAL);
+            card.addView(info, new LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    1f
+            ));
+
+            TextView badge = text("YT", 13, BLUE, true);
+            info.addView(badge);
+            info.addView(text(item.title, 17, Color.WHITE, true));
+
+            if (!item.channel.isEmpty()) {
+                TextView channel = text(item.channel, 13, MUTED, false);
+                channel.setPadding(0, dp(3), 0, dp(6));
+                info.addView(channel);
+            }
+
+            Button play = button("▶ Afspelen");
+            play.setOnClickListener(v -> openYouTubeVideoId(item.videoId));
+            info.addView(play);
+
+            LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            );
+            cardLp.bottomMargin = dp(9);
+            holder.addView(card, cardLp);
+        }
+    }
+
+    private void openYouTubeVideoId(String videoId) {
+        try {
+            Intent intent = new Intent(this, YouTubeActivity.class);
+            intent.putExtra("video_id", videoId == null ? "" : videoId.trim());
+            startActivity(intent);
         } catch (Throwable ignored) {
-            youtubeList.loadUrl("https://m.youtube.com/");
         }
     }
 
@@ -756,23 +939,6 @@ public class XtreamCatalogActivity extends Activity {
         }
     }
 
-    private boolean isYouTubeVideoUrl(String url) {
-        if (url == null) return false;
-        return url.contains("youtube.com/watch")
-                || url.contains("m.youtube.com/watch")
-                || url.contains("youtu.be/")
-                || url.contains("youtube.com/shorts/");
-    }
-
-    private void openYouTubeVideo(String url) {
-        try {
-            Intent intent = new Intent(this, YouTubeActivity.class);
-            intent.putExtra("video_url", url == null ? "" : url);
-            startActivity(intent);
-        } catch (Throwable ignored) {
-        }
-    }
-
     private void openYouTubeSearch(String query) {
         try {
             Intent intent = new Intent(this, YouTubeActivity.class);
@@ -871,6 +1037,20 @@ public class XtreamCatalogActivity extends Activity {
         Category(String id, String name) {
             this.id = id;
             this.name = name;
+        }
+    }
+
+    private static class YouTubeItem {
+        final String videoId;
+        final String title;
+        final String channel;
+        final String thumbnailUrl;
+
+        YouTubeItem(String videoId, String title, String channel, String thumbnailUrl) {
+            this.videoId = videoId;
+            this.title = title == null ? "" : title;
+            this.channel = channel == null ? "" : channel;
+            this.thumbnailUrl = thumbnailUrl == null ? "" : thumbnailUrl;
         }
     }
 
