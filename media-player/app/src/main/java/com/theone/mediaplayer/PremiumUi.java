@@ -16,6 +16,7 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+// v18 premium prototype
 public final class PremiumUi {
     public static final int BG = Color.rgb(4, 7, 12);
     public static final int PANEL = Color.rgb(12, 18, 28);
