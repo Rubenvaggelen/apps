@@ -8,6 +8,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -28,7 +29,9 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
@@ -474,7 +477,10 @@ public class XtreamCatalogActivity extends Activity {
             );
             badgeLp.bottomMargin = dp(6);
             info.addView(badge, badgeLp);
-            info.addView(text(item.title, 17, Color.WHITE, true));
+            TextView ytTitle = text(item.title, 17, Color.WHITE, true);
+            ytTitle.setMaxLines(2);
+            ytTitle.setEllipsize(TextUtils.TruncateAt.END);
+            info.addView(ytTitle);
 
             if (!item.channel.isEmpty()) {
                 TextView channel = text(item.channel, 13, MUTED, false);
@@ -582,7 +588,7 @@ public class XtreamCatalogActivity extends Activity {
                     "",
                     o.optString("rating", ""),
                     o.optString("cover", ""),
-                    firstNonEmpty(o.optString("releaseDate", ""), o.optString("year", ""), "")
+                    extractYear(o)
             );
         }
 
@@ -598,9 +604,7 @@ public class XtreamCatalogActivity extends Activity {
                 ext,
                 o.optString("rating", ""),
                 o.optString("stream_icon", ""),
-                "live".equals(mode)
-                        ? ""
-                        : firstNonEmpty(o.optString("year", ""), o.optString("added", ""), "")
+                "live".equals(mode) ? "" : extractYear(o)
         );
     }
 
@@ -609,6 +613,90 @@ public class XtreamCatalogActivity extends Activity {
             if (value != null && !value.trim().isEmpty()) return value.trim();
         }
         return "";
+    }
+
+    private String extractYear(JSONObject item) {
+        String[] candidates = new String[]{
+                item.optString("year", ""),
+                item.optString("releaseDate", ""),
+                item.optString("release_date", ""),
+                item.optString("added", "")
+        };
+
+        for (String candidate : candidates) {
+            String year = cleanYear(candidate);
+            if (!year.isEmpty()) return year;
+        }
+        return "";
+    }
+
+    private String cleanYear(String value) {
+        String v = value == null ? "" : value.trim();
+        if (v.matches("(19|20)\\d{2}")) return v;
+
+        if (v.length() >= 4) {
+            String firstFour = v.substring(0, 4);
+            if (firstFour.matches("(19|20)\\d{2}")) return firstFour;
+        }
+
+        if (v.matches("\\d{10,13}")) {
+            try {
+                long timestamp = Long.parseLong(v);
+                if (v.length() <= 10) timestamp *= 1000L;
+                return new SimpleDateFormat("yyyy", Locale.US).format(new Date(timestamp));
+            } catch (Throwable ignored) {
+            }
+        }
+        return "";
+    }
+
+    private String cleanRating(String raw) {
+        String v = raw == null ? "" : raw.trim().replace(",", ".");
+        if (v.isEmpty()) return "";
+        try {
+            double rating = Double.parseDouble(v);
+            if (rating <= 0.0) return "";
+            return String.format(Locale.US, "%.1f", rating);
+        } catch (Throwable ignored) {
+            return v.length() > 5 ? "" : v;
+        }
+    }
+
+    private String providerFor(String rawTitle) {
+        String value = rawTitle == null ? "" : rawTitle.trim().toUpperCase(Locale.ROOT);
+        if (startsWithAny(value, "D+ -", "D+ |", "D+:", "[D+]", "DISNEY+ -", "DISNEY PLUS -")) return "Disney+";
+        if (startsWithAny(value, "NF -", "NF |", "[NF]", "NETFLIX -", "NETFLIX |")) return "Netflix";
+        if (startsWithAny(value, "AP -", "APV -", "PRIME -", "AMAZON -", "AMAZON PRIME -")) return "Prime Video";
+        if (startsWithAny(value, "HBO -", "MAX -", "HBO MAX -")) return "Max";
+        if (startsWithAny(value, "ATV+ -", "APPLE TV+ -", "APPLE TV -")) return "Apple TV+";
+        if (startsWithAny(value, "P+ -", "PARAMOUNT+ -", "PARAMOUNT -")) return "Paramount+";
+        return "Xtream";
+    }
+
+    private String displayTitle(String rawTitle) {
+        String title = rawTitle == null ? "" : rawTitle.trim();
+        String upper = title.toUpperCase(Locale.ROOT);
+        String[] prefixes = new String[]{
+                "D+ -", "D+ |", "D+:", "[D+]", "DISNEY+ -", "DISNEY PLUS -",
+                "NF -", "NF |", "[NF]", "NETFLIX -", "NETFLIX |",
+                "AP -", "APV -", "PRIME -", "AMAZON -", "AMAZON PRIME -",
+                "HBO -", "MAX -", "HBO MAX -",
+                "ATV+ -", "APPLE TV+ -", "APPLE TV -",
+                "P+ -", "PARAMOUNT+ -", "PARAMOUNT -"
+        };
+        for (String prefix : prefixes) {
+            if (upper.startsWith(prefix)) {
+                return title.substring(prefix.length()).trim();
+            }
+        }
+        return title;
+    }
+
+    private boolean startsWithAny(String value, String... prefixes) {
+        for (String prefix : prefixes) {
+            if (value.startsWith(prefix)) return true;
+        }
+        return false;
     }
 
     private void renderItems(Category category, List<XtreamItem> items) {
@@ -693,8 +781,8 @@ public class XtreamCatalogActivity extends Activity {
             LinearLayout card = new LinearLayout(this);
             card.setOrientation("live".equals(mode) ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
             card.setBackground(PremiumUi.card(this));
-            card.setElevation(dp(3));
-            card.setPadding(dp(14), dp(14), dp(14), dp(14));
+            card.setElevation(dp(4));
+            card.setPadding(dp(12), dp(12), dp(12), dp(12));
 
             if (!"live".equals(mode)) {
                 ImageView poster = new ImageView(this);
@@ -702,8 +790,8 @@ public class XtreamCatalogActivity extends Activity {
                 poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 poster.setBackgroundColor(Color.rgb(11, 18, 28));
 
-                LinearLayout.LayoutParams posterLp = new LinearLayout.LayoutParams(dp(96), dp(144));
-                posterLp.rightMargin = dp(14);
+                LinearLayout.LayoutParams posterLp = new LinearLayout.LayoutParams(dp(88), dp(132));
+                posterLp.rightMargin = dp(12);
                 card.addView(poster, posterLp);
 
                 if (item.imageUrl != null && item.imageUrl.startsWith("http")) {
@@ -726,32 +814,56 @@ public class XtreamCatalogActivity extends Activity {
                 ));
             }
 
-            info.addView(text(item.name, 19, Color.WHITE, true));
+            TextView title = text(
+                    "live".equals(mode) ? item.name : displayTitle(item.name),
+                    "live".equals(mode) ? 19 : 18,
+                    Color.WHITE,
+                    true
+            );
+            title.setMaxLines(2);
+            title.setEllipsize(TextUtils.TruncateAt.END);
+            title.setLineSpacing(0f, 0.96f);
+            info.addView(title);
 
-            String meta = "";
-            if (!"live".equals(mode) && !item.year.isEmpty()) meta = item.year;
-            if (!item.rating.isEmpty()) {
-                meta += (meta.isEmpty() ? "" : " • ") + "★ " + item.rating;
-            }
+            if (!"live".equals(mode)) {
+                StringBuilder meta = new StringBuilder(providerFor(item.name));
+                if (!item.year.isEmpty()) meta.append(" • ").append(item.year);
 
-            if (!meta.isEmpty()) {
-                TextView metaView = text(meta, 14, BLUE, false);
-                metaView.setPadding(0, dp(4), 0, dp(8));
+                String rating = cleanRating(item.rating);
+                if (!rating.isEmpty()) meta.append(" • ⭐ ").append(rating);
+
+                TextView metaView = text(meta.toString(), 13, BLUE, false);
+                metaView.setSingleLine(true);
+                metaView.setEllipsize(TextUtils.TruncateAt.END);
+                metaView.setPadding(0, dp(4), 0, dp(7));
                 info.addView(metaView);
+            } else {
+                String rating = cleanRating(item.rating);
+                if (!rating.isEmpty()) {
+                    TextView metaView = text("⭐ " + rating, 13, BLUE, false);
+                    metaView.setPadding(0, dp(4), 0, dp(7));
+                    info.addView(metaView);
+                }
             }
 
-            Button open = button("series".equals(mode) ? "Afleveringen" : "▶ Afspelen");
+            Button open = button("series".equals(mode) ? "Afleveringen" : "▶  Afspelen");
             open.setOnClickListener(v -> {
                 if ("series".equals(mode)) loadSeriesEpisodes(item);
                 else play(item);
             });
-            info.addView(open);
+
+            LinearLayout.LayoutParams openLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            );
+            openLp.topMargin = dp(3);
+            info.addView(open, openLp);
 
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
             );
-            lp.bottomMargin = dp(10);
+            lp.bottomMargin = dp(9);
             content.addView(card, lp);
         }
 
