@@ -105,12 +105,11 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(BG);
         root.setPadding(dp(18), dp(18), dp(18), dp(18));
 
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        header.addView(text("◉  THE ONE", 24, BLUE, true));
-        header.addView(text("   MEDIA PLAYER", 20, Color.WHITE, true));
-        root.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout header = PremiumUi.brandHeader(this, "Player");
+        root.addView(header, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
 
         HorizontalScrollView navScroll = new HorizontalScrollView(this);
         navScroll.setHorizontalScrollBarEnabled(false);
@@ -378,7 +377,8 @@ public class MainActivity extends Activity {
 
     private void addStaticCard(LinearLayout box, String label) {
         TextView tile = text(label, 20, Color.WHITE, true);
-        tile.setBackgroundColor(PANEL);
+        tile.setBackground(PremiumUi.card(this));
+        tile.setElevation(dp(4));
         tile.setPadding(dp(20), dp(22), dp(20), dp(22));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.bottomMargin = dp(12);
@@ -388,7 +388,8 @@ public class MainActivity extends Activity {
     private LinearLayout cardContainer() {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackgroundColor(PANEL);
+        card.setBackground(PremiumUi.card(this));
+        card.setElevation(dp(5));
         card.setPadding(dp(18), dp(16), dp(18), dp(16));
         return card;
     }
@@ -418,15 +419,9 @@ public class MainActivity extends Activity {
         sourceInfo.setPadding(0, dp(8), 0, dp(18));
         box.addView(sourceInfo);
 
-        EditText url = new EditText(this);
-        url.setTextColor(Color.WHITE);
-        url.setHintTextColor(MUTED);
-        url.setHint("Losse test-stream URL");
-        url.setSingleLine(true);
+        EditText url = PremiumUi.searchField(this, "Losse test-stream URL");
         url.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         url.setText(prefs.getString("source_url", ""));
-        url.setPadding(dp(14), dp(14), dp(14), dp(14));
-        url.setBackgroundColor(PANEL);
         box.addView(url, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         LinearLayout actions = new LinearLayout(this);
@@ -464,7 +459,8 @@ public class MainActivity extends Activity {
                 Color.WHITE,
                 false
         );
-        multi.setBackgroundColor(PANEL);
+        multi.setBackground(PremiumUi.card(this));
+        multi.setElevation(dp(4));
         multi.setPadding(dp(18), dp(18), dp(18), dp(18));
         LinearLayout.LayoutParams multiLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         multiLp.topMargin = dp(18);
@@ -581,7 +577,7 @@ public class MainActivity extends Activity {
     }
 
     private void addNavButton(LinearLayout parent, String label, Runnable action) {
-        Button b = button(label);
+        Button b = PremiumUi.chipButton(this, label);
         b.setOnClickListener(v -> action.run());
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.rightMargin = dp(8);
@@ -589,12 +585,8 @@ public class MainActivity extends Activity {
     }
 
     private Button button(String label) {
-        Button b = new Button(this);
-        b.setText(label);
-        b.setTextColor(Color.WHITE);
-        b.setAllCaps(false);
+        Button b = PremiumUi.primaryButton(this, label);
         b.setFocusable(true);
-        b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(20, 92, 130)));
         return b;
     }
 
