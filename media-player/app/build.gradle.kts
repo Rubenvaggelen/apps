@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2203
-        versionName = "2.2.3-phone-cast"
+        versionCode = 2204
+        versionName = "2.2.4-google-cast"
     }
 
     signingConfigs {
@@ -55,4 +55,5 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.11.0")
     implementation("androidx.media3:media3-exoplayer-dash:1.11.0")
     implementation("androidx.media3:media3-ui:1.11.0")
+    implementation("com.google.android.gms:play-services-cast-framework:22.1.0")
 }
