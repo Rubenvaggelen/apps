@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "TheOneMediaPlayer"
 include(":app")
+include(":tvapp")
