@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2304
-        versionName = "2.3.4-stable-category-reload"
+        versionCode = 2305
+        versionName = "2.3.5-series-subfolders-fix"
     }
 
     signingConfigs {

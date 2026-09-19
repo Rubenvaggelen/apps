@@ -53,6 +53,8 @@ public class XtreamCatalogActivity extends Activity {
     private boolean globalLoaded = false;
     private final List<Category> categoryCache = new ArrayList<>();
     private volatile boolean categoriesLoading = false;
+    private final java.util.Map<String, List<XtreamItem>> categoryItemCache = new java.util.HashMap<>();
+    private final java.util.Map<String, List<XtreamItem>> seriesEpisodeCache = new java.util.HashMap<>();
     private final ExecutorService imagePool = Executors.newFixedThreadPool(4);
 
     @Override
@@ -655,7 +657,16 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private void loadItems(Category category) {
-        showLoading(category.name + " laden…");
+        List<XtreamItem> cached = categoryItemCache.get(category.id);
+        List<XtreamItem> fallback = cached == null
+                ? new ArrayList<>()
+                : new ArrayList<>(cached);
+
+        if (!fallback.isEmpty()) {
+            renderItems(category, fallback);
+        } else {
+            showLoading(category.name + " laden…");
+        }
 
         String action;
         if ("live".equals(mode)) action = "get_live_streams";
@@ -663,28 +674,87 @@ public class XtreamCatalogActivity extends Activity {
         else action = "get_series";
 
         new Thread(() -> {
-            try {
-                JSONArray arr = new JSONArray(get(config.api(action, "category_id", category.id)));
-                List<XtreamItem> items = new ArrayList<>();
+            List<XtreamItem> fresh = new ArrayList<>();
 
-                for (int i = 0; i < arr.length(); i++) {
-                    JSONObject o = arr.optJSONObject(i);
-                    if (o == null) continue;
-
-                    XtreamItem item = parseItem(o);
-                    if (item != null) items.add(item);
+            for (int attempt = 0; attempt < 2 && fresh.isEmpty(); attempt++) {
+                try {
+                    JSONArray arr = new JSONArray(
+                            get(config.api(action, "category_id", category.id))
+                    );
+                    fresh = parseItems(arr);
+                } catch (Throwable ignored) {
                 }
 
-                runOnUiThread(() -> renderItems(category, items));
-            } catch (Throwable e) {
-                runOnUiThread(() -> showMessage("Deze categorie kon niet worden geladen."));
+                if (fresh.isEmpty() && attempt == 0) {
+                    try {
+                        Thread.sleep(450);
+                    } catch (InterruptedException ignored) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
             }
+
+            List<XtreamItem> result = new ArrayList<>(fresh);
+            runOnUiThread(() -> {
+                if (!result.isEmpty()) {
+                    categoryItemCache.put(category.id, new ArrayList<>(result));
+                    renderItems(category, result);
+                    return;
+                }
+
+                if (!fallback.isEmpty()) {
+                    renderItems(category, fallback);
+                    return;
+                }
+
+                showItemsRetry(category);
+            });
         }).start();
+    }
+
+    private List<XtreamItem> parseItems(JSONArray arr) {
+        List<XtreamItem> items = new ArrayList<>();
+        if (arr == null) return items;
+
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject o = arr.optJSONObject(i);
+            if (o == null) continue;
+
+            XtreamItem item = parseItem(o);
+            if (item != null) items.add(item);
+        }
+
+        return items;
+    }
+
+    private void showItemsRetry(Category category) {
+        content.removeAllViews();
+
+        Button back = button("← Categorieën");
+        back.setOnClickListener(v -> loadCategories());
+        content.addView(back);
+
+        TextView message = text(
+                "Deze map gaf tijdelijk geen resultaten.",
+                17,
+                Color.WHITE,
+                false
+        );
+        message.setPadding(0, dp(14), 0, dp(12));
+        content.addView(message);
+
+        Button retry = button("Opnieuw laden");
+        retry.setOnClickListener(v -> loadItems(category));
+        content.addView(retry);
     }
 
     private XtreamItem parseItem(JSONObject o) {
         if ("series".equals(mode)) {
-            String id = o.optString("series_id", "");
+            String id = firstNonEmpty(
+                    o.optString("series_id", ""),
+                    o.optString("id", ""),
+                    o.optString("stream_id", "")
+            );
             if (id.isEmpty()) return null;
 
             return new XtreamItem(
@@ -692,7 +762,12 @@ public class XtreamCatalogActivity extends Activity {
                     firstNonEmpty(o.optString("name", ""), o.optString("title", ""), "Serie"),
                     "",
                     o.optString("rating", ""),
-                    o.optString("cover", ""),
+                    firstNonEmpty(
+                            o.optString("cover", ""),
+                            o.optString("cover_big", ""),
+                            o.optString("stream_icon", ""),
+                            o.optString("poster", "")
+                    ),
                     extractYear(o)
             );
         }
@@ -1012,64 +1087,152 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private void loadSeriesEpisodes(XtreamItem series) {
-        showLoading(series.name + " laden…");
+        List<XtreamItem> cached = seriesEpisodeCache.get(series.id);
+        List<XtreamItem> fallback = cached == null
+                ? new ArrayList<>()
+                : new ArrayList<>(cached);
+
+        if (!fallback.isEmpty()) {
+            renderEpisodes(series, fallback);
+        } else {
+            showLoading(series.name + " laden…");
+        }
 
         new Thread(() -> {
-            try {
-                JSONObject data = new JSONObject(
-                        get(config.api("get_series_info", "series_id", series.id))
-                );
+            List<XtreamItem> episodes = new ArrayList<>();
 
-                JSONObject episodesObj = data.optJSONObject("episodes");
-                List<XtreamItem> episodes = new ArrayList<>();
-
-                if (episodesObj != null) {
-                    JSONArray seasonNames = episodesObj.names();
-
-                    if (seasonNames != null) {
-                        for (int s = 0; s < seasonNames.length(); s++) {
-                            String season = seasonNames.optString(s, "");
-                            JSONArray eps = episodesObj.optJSONArray(season);
-                            if (eps == null) continue;
-
-                            for (int i = 0; i < eps.length(); i++) {
-                                JSONObject ep = eps.optJSONObject(i);
-                                if (ep == null) continue;
-
-                                String id = ep.optString("id", ep.optString("stream_id", ""));
-                                if (id.isEmpty()) continue;
-
-                                String title = firstNonEmpty(
-                                        ep.optString("title", ""),
-                                        ep.optString("name", ""),
-                                        "Aflevering"
-                                );
-                                String epNum = ep.optString("episode_num", "");
-                                String label = "S" + season
-                                        + (epNum.isEmpty() ? "" : " E" + epNum)
-                                        + " • " + title;
-
-                                String ext = ep.optString("container_extension", "mp4");
-
-                                episodes.add(new XtreamItem(
-                                        id,
-                                        label,
-                                        ext,
-                                        "",
-                                        "",
-                                        ""
-                                ));
-                            }
-                        }
-                    }
+            for (int attempt = 0; attempt < 2 && episodes.isEmpty(); attempt++) {
+                try {
+                    String raw = get(config.api("get_series_info", "series_id", series.id));
+                    Object data = new org.json.JSONTokener(raw).nextValue();
+                    collectEpisodes(data, "", episodes);
+                } catch (Throwable ignored) {
                 }
 
-                episodes.sort((a, b) -> compareEpisodeNames(a.name, b.name));
-                runOnUiThread(() -> renderEpisodes(series, episodes));
-            } catch (Throwable e) {
-                runOnUiThread(() -> showMessage("Afleveringen konden niet worden geladen."));
+                if (episodes.isEmpty() && attempt == 0) {
+                    try {
+                        Thread.sleep(450);
+                    } catch (InterruptedException ignored) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
             }
+
+            episodes.sort((a, b) -> compareEpisodeNames(a.name, b.name));
+            List<XtreamItem> result = new ArrayList<>(episodes);
+
+            runOnUiThread(() -> {
+                if (!result.isEmpty()) {
+                    seriesEpisodeCache.put(series.id, new ArrayList<>(result));
+                    renderEpisodes(series, result);
+                    return;
+                }
+
+                if (!fallback.isEmpty()) {
+                    renderEpisodes(series, fallback);
+                    return;
+                }
+
+                renderEpisodes(series, result);
+            });
         }).start();
+    }
+
+    private void collectEpisodes(Object node, String seasonHint, List<XtreamItem> out) {
+        if (node == null || node == JSONObject.NULL) return;
+
+        if (node instanceof JSONArray) {
+            JSONArray arr = (JSONArray) node;
+            for (int i = 0; i < arr.length(); i++) {
+                collectEpisodes(arr.opt(i), seasonHint, out);
+            }
+            return;
+        }
+
+        if (!(node instanceof JSONObject)) return;
+
+        JSONObject ep = (JSONObject) node;
+        String id = firstNonEmpty(
+                ep.optString("id", ""),
+                ep.optString("stream_id", ""),
+                ep.optString("episode_id", "")
+        );
+
+        boolean looksLikeEpisode = !id.isEmpty()
+                && (ep.has("episode_num")
+                || ep.has("episode")
+                || ep.has("episode_number")
+                || ep.has("container_extension")
+                || ep.has("title"));
+
+        if (looksLikeEpisode) {
+            String season = firstNonEmpty(
+                    ep.optString("season", ""),
+                    ep.optString("season_number", ""),
+                    ep.optString("season_num", ""),
+                    seasonHint,
+                    "0"
+            );
+            String episodeNumber = firstNonEmpty(
+                    ep.optString("episode_num", ""),
+                    ep.optString("episode", ""),
+                    ep.optString("episode_number", ""),
+                    ep.optString("num", "")
+            );
+            String title = firstNonEmpty(
+                    ep.optString("title", ""),
+                    ep.optString("name", ""),
+                    episodeNumber.isEmpty() ? "Aflevering" : "Aflevering " + episodeNumber
+            );
+            String extension = firstNonEmpty(
+                    ep.optString("container_extension", ""),
+                    ep.optString("extension", ""),
+                    "mp4"
+            );
+
+            for (XtreamItem existing : out) {
+                if (existing.id.equals(id)) return;
+            }
+
+            String label = "S" + season
+                    + (episodeNumber.isEmpty() ? "" : " E" + episodeNumber)
+                    + " • " + title;
+
+            out.add(new XtreamItem(
+                    id,
+                    label,
+                    extension,
+                    "",
+                    firstNonEmpty(
+                            ep.optString("movie_image", ""),
+                            ep.optString("cover", ""),
+                            ep.optString("stream_icon", "")
+                    ),
+                    ""
+            ));
+            return;
+        }
+
+        java.util.Iterator<String> keys = ep.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            String nextSeason = seasonFromKey(key, seasonHint);
+            collectEpisodes(ep.opt(key), nextSeason, out);
+        }
+    }
+
+    private String seasonFromKey(String key, String fallback) {
+        if (key == null) return fallback == null ? "" : fallback;
+
+        String trimmed = key.trim();
+        if (trimmed.matches("\\d+")) return trimmed;
+
+        String digits = trimmed.replaceAll("[^0-9]", "");
+        if (trimmed.toLowerCase(Locale.ROOT).contains("season") && !digits.isEmpty()) {
+            return digits;
+        }
+
+        return fallback == null ? "" : fallback;
     }
 
     private void renderEpisodes(XtreamItem series, List<XtreamItem> episodes) {
