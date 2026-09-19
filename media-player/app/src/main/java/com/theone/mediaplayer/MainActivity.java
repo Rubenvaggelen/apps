@@ -1136,6 +1136,10 @@ public class MainActivity extends Activity {
         setContentView(root);
         root.post(this::enterImmersiveFullscreen);
 
+        // Overlays die samen met de Media3-bediening automatisch verdwijnen.
+        // De lijst blijft mutabel zodat ook The One TV later kan worden toegevoegd.
+        final ArrayList<View> autoHidePlayerButtons = new ArrayList<>();
+
         try {
             Button subtitles = PremiumUi.chipButton(this, "CC  Ondertiteling");
             subtitles.setOnClickListener(v -> showSubtitleSelector());
@@ -1147,6 +1151,7 @@ public class MainActivity extends Activity {
             subtitleLp.topMargin = dp(14);
             subtitleLp.rightMargin = dp(14);
             root.addView(subtitles, subtitleLp);
+            autoHidePlayerButtons.add(subtitles);
 
             boolean movieOrSeries = false;
             for (String url : urls) {
@@ -1163,13 +1168,21 @@ public class MainActivity extends Activity {
                 activePlayerView.setControllerVisibilityListener(
                         (androidx.media3.ui.PlayerView.ControllerVisibilityListener) visibility -> {
                     if (visibility == View.GONE) {
-                        subtitles.setVisibility(View.GONE);
+                        for (View overlay : autoHidePlayerButtons) {
+                            overlay.setVisibility(View.GONE);
+                        }
                         firstPlaybackControls[0] = false;
                     } else if (!firstPlaybackControls[0]) {
-                        subtitles.setVisibility(View.VISIBLE);
+                        for (View overlay : autoHidePlayerButtons) {
+                            overlay.setVisibility(View.VISIBLE);
+                        }
                     }
                 });
-                subtitles.postDelayed(() -> subtitles.setVisibility(View.GONE), 1800);
+                subtitles.postDelayed(() -> {
+                    for (View overlay : autoHidePlayerButtons) {
+                        overlay.setVisibility(View.GONE);
+                    }
+                }, 1800);
             }
         } catch (Throwable subtitleUiError) {
             Log.w("TheOneMediaPlayer", "Subtitle controls unavailable; playback continues", subtitleUiError);
@@ -1205,6 +1218,7 @@ public class MainActivity extends Activity {
                     castLp.topMargin = dp(70);
                     castLp.leftMargin = dp(14);
                     root.addView(cast, castLp);
+                    autoHidePlayerButtons.add(cast);
                 }
             } catch (Throwable castUiError) {
                 Log.w("TheOneMediaPlayer", "Cast controls unavailable; playback continues", castUiError);
