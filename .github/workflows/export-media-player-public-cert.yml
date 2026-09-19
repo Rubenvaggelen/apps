@@ -1,0 +1,46 @@
+name: Export Media Player Public Cert
+
+on:
+  push:
+    branches: [ media-player-v19-requested-only ]
+    paths:
+      - '.github/workflows/export-media-player-public-cert.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    env:
+      MEDIA_PLAYER_KEYSTORE_PATH: ${{ github.workspace }}/media-player-fixed.keystore
+      MEDIA_PLAYER_KEYSTORE_PASSWORD: ${{ secrets.MEDIA_PLAYER_KEYSTORE_PASSWORD }}
+      MEDIA_PLAYER_KEY_ALIAS: ${{ secrets.MEDIA_PLAYER_KEY_ALIAS }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Restore signing keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${{ secrets.MEDIA_PLAYER_KEYSTORE_BASE64 }}"
+          echo "${{ secrets.MEDIA_PLAYER_KEYSTORE_BASE64 }}" | base64 -d > "$MEDIA_PLAYER_KEYSTORE_PATH"
+          chmod 600 "$MEDIA_PLAYER_KEYSTORE_PATH"
+
+      - name: Export public signing certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool -exportcert -rfc             -keystore "$MEDIA_PLAYER_KEYSTORE_PATH"             -storepass "$MEDIA_PLAYER_KEYSTORE_PASSWORD"             -alias "$MEDIA_PLAYER_KEY_ALIAS"             -file media-player-signing-cert.pem
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: media-player-public-cert
+          path: media-player-signing-cert.pem
