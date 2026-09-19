@@ -89,6 +89,7 @@ public final class PremiumUi {
         b.setBackground(neonButtonBackground(context, false));
         b.setElevation(dp(context, 5));
         b.setStateListAnimator(null);
+        applyRemoteFocusStyle(context, b);
         return b;
     }
 
@@ -105,7 +106,22 @@ public final class PremiumUi {
         b.setBackground(neonButtonBackground(context, false));
         b.setElevation(dp(context, 4));
         b.setStateListAnimator(null);
+        applyRemoteFocusStyle(context, b);
         return b;
+    }
+
+    private static void applyRemoteFocusStyle(Context context, Button button) {
+        button.setFocusable(true);
+        button.setFocusableInTouchMode(false);
+        button.setOnFocusChangeListener((view, hasFocus) -> {
+            button.setBackground(neonButtonBackground(context, hasFocus));
+            button.setElevation(dp(context, hasFocus ? 10 : 4));
+            button.animate()
+                    .scaleX(hasFocus ? 1.035f : 1f)
+                    .scaleY(hasFocus ? 1.035f : 1f)
+                    .setDuration(120)
+                    .start();
+        });
     }
 
     public static EditText searchField(Context context, String hint) {
