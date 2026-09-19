@@ -902,6 +902,7 @@ public class XtreamCatalogActivity extends Activity {
         String url = config.stream(mode, item.id, item.extension);
         Intent intent = new Intent(this, MainActivity.class);
         intent.putExtra("play_url", url);
+        intent.putExtra("play_kind", mode);
         startActivity(intent);
     }
 
@@ -1009,6 +1010,7 @@ public class XtreamCatalogActivity extends Activity {
 
                 Intent intent = new Intent(this, MainActivity.class);
                 intent.putStringArrayListExtra("play_queue", queue);
+                intent.putExtra("play_kind", "series");
                 startActivity(intent);
             });
             card.addView(play);
