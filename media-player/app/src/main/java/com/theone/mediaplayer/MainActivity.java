@@ -590,7 +590,8 @@ public class MainActivity extends Activity {
 
         if (movieOrSeries) {
             final boolean[] firstPlaybackControls = {true};
-            activePlayerView.setControllerVisibilityListener(visibility -> {
+            activePlayerView.setControllerVisibilityListener(
+                    (androidx.media3.ui.PlayerView.ControllerVisibilityListener) visibility -> {
                 if (visibility == View.GONE) {
                     subtitles.setVisibility(View.GONE);
                     firstPlaybackControls[0] = false;
