@@ -756,19 +756,49 @@ public class MainActivity extends Activity {
                     (androidx.media3.ui.PlayerView.ControllerVisibilityListener) visibility -> {
                 if (visibility == View.GONE) {
                     subtitles.setVisibility(View.GONE);
+                    setCastControlsVisibility(activePlayerView, View.GONE);
                     firstPlaybackControls[0] = false;
                 } else if (!firstPlaybackControls[0]) {
                     subtitles.setVisibility(View.VISIBLE);
+                    setCastControlsVisibility(activePlayerView, View.VISIBLE);
                 }
             });
 
             // Tijdens het starten kort beschikbaar; zodra de film/serie speelt verdwijnt CC.
             // Tik op de speler om de bediening (en CC) later weer te tonen.
-            subtitles.postDelayed(() -> subtitles.setVisibility(View.GONE), 1800);
+            subtitles.postDelayed(() -> {
+                subtitles.setVisibility(View.GONE);
+                setCastControlsVisibility(activePlayerView, View.GONE);
+            }, 1800);
         }
 
         setContentView(root);
         root.post(this::enterImmersiveFullscreen);
+    }
+
+    private void setCastControlsVisibility(View view, int visibility) {
+        if (view == null) return;
+        boolean castControl = false;
+        int id = view.getId();
+        if (id != View.NO_ID) {
+            try {
+                String name = getResources().getResourceEntryName(id).toLowerCase();
+                castControl = name.contains("cast") || name.contains("media_route");
+            } catch (Exception ignored) {
+            }
+        }
+        CharSequence description = view.getContentDescription();
+        if (description != null) {
+            String d = description.toString().toLowerCase();
+            castControl = castControl || d.contains("cast") || d.contains("stream") || d.contains("play on tv");
+        }
+        if (castControl) view.setVisibility(visibility);
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                setCastControlsVisibility(group.getChildAt(i), visibility);
+            }
+        }
     }
 
     private void showSubtitleSelector() {

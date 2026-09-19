@@ -10,8 +10,8 @@ android {
         applicationId = "com.theone.mediaplayer.stream"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1001
-        versionName = "1.0.1-stream"
+        versionCode = 1002
+        versionName = "1.0.2-stream"
     }
 
     buildTypes {
@@ -24,6 +24,7 @@ android {
         getByName("main") {
             java.srcDirs("../app/src/main/java")
             res.srcDirs("../app/src/main/res")
+            assets.srcDirs("../app/src/main/assets")
             manifest.srcFile("src/main/AndroidManifest.xml")
         }
     }
