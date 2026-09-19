@@ -1251,8 +1251,13 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if (playerFullscreen) showShell("Home");
-        else super.onBackPressed();
+        if (playerFullscreen && isTvBuild()) {
+            finish();
+        } else if (playerFullscreen) {
+            showShell("Home");
+        } else {
+            super.onBackPressed();
+        }
     }
 
     private void addNavButton(LinearLayout parent, String label, Runnable action) {
