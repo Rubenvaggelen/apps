@@ -11,7 +11,7 @@ android {
         minSdk = 23
         targetSdk = 36
         versionCode = 1002
-        versionName = "1.0.2-tv-home-fix"
+        versionName = "1.0.2-tv-startup-fix"
     }
 
     buildTypes {
