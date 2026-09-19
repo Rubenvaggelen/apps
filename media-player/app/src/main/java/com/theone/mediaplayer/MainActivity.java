@@ -163,6 +163,14 @@ public class MainActivity extends Activity {
         }
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (!isTvBuild()) {
+            MediaPlayerUpdateChecker.resumePendingUpdate(this);
+        }
+    }
+
     private void initGoogleCast() {
         try {
             googleCastContext = CastContext.getSharedInstance(this);
