@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2302
-        versionName = "2.3.2-hide-stream-during-playback"
+        versionCode = 2303
+        versionName = "2.3.3-restore-private-source"
     }
 
     signingConfigs {
