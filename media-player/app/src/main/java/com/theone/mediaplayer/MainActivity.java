@@ -30,6 +30,17 @@ import androidx.media3.common.TrackSelectionOverride;
 import androidx.media3.common.Tracks;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
+import androidx.mediarouter.app.MediaRouteButton;
+
+import com.google.android.gms.cast.MediaInfo;
+import com.google.android.gms.cast.MediaMetadata;
+import com.google.android.gms.cast.framework.CastButtonFactory;
+import com.google.android.gms.cast.framework.CastContext;
+import com.google.android.gms.cast.framework.CastSession;
+import com.google.android.gms.cast.framework.Session;
+import com.google.android.gms.cast.framework.SessionManagerListener;
+import com.google.android.gms.cast.framework.media.RemoteMediaClient;
+import com.google.android.gms.cast.MediaLoadRequestData;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -75,12 +86,46 @@ public class MainActivity extends Activity {
     private Uri selectedCastUri;
     private TextView castStatus;
 
+    private CastContext googleCastContext;
+    private CastSession googleCastSession;
+    private MediaRouteButton googleCastButton;
+    private String pendingGoogleCastUrl;
+    private String pendingGoogleCastTitle;
+    private boolean pendingLocalGoogleCast;
+
+    private final SessionManagerListener<CastSession> googleCastSessionListener =
+            new SessionManagerListener<CastSession>() {
+                @Override public void onSessionStarting(CastSession session) {}
+                @Override public void onSessionStarted(CastSession session, String sessionId) {
+                    googleCastSession = session;
+                    handleGoogleCastConnected();
+                }
+                @Override public void onSessionStartFailed(CastSession session, int error) {
+                    pendingGoogleCastUrl = null;
+                    pendingLocalGoogleCast = false;
+                }
+                @Override public void onSessionEnding(CastSession session) {}
+                @Override public void onSessionEnded(CastSession session, int error) {
+                    googleCastSession = null;
+                }
+                @Override public void onSessionResuming(CastSession session, String sessionId) {}
+                @Override public void onSessionResumed(CastSession session, boolean wasSuspended) {
+                    googleCastSession = session;
+                    handleGoogleCastConnected();
+                }
+                @Override public void onSessionResumeFailed(CastSession session, int error) {
+                    googleCastSession = null;
+                }
+                @Override public void onSessionSuspended(CastSession session, int reason) {}
+            };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         try {
             prefs = getSharedPreferences("media_player", Context.MODE_PRIVATE);
             if (isTvBuild()) startTvCastReceiver();
+            else initGoogleCast();
 
             ArrayList<String> playQueue = getIntent().getStringArrayListExtra("play_queue");
             String playUrl = getIntent().getStringExtra("play_url");
@@ -98,6 +143,181 @@ public class MainActivity extends Activity {
         } catch (Throwable startupError) {
             showSafeStartupScreen(startupError);
         }
+    }
+
+    private void initGoogleCast() {
+        try {
+            googleCastContext = CastContext.getSharedInstance(this);
+            googleCastContext.getSessionManager().addSessionManagerListener(
+                    googleCastSessionListener,
+                    CastSession.class
+            );
+            Session current = googleCastContext.getSessionManager().getCurrentSession();
+            if (current instanceof CastSession) {
+                googleCastSession = (CastSession) current;
+            }
+        } catch (Throwable ignored) {
+            googleCastContext = null;
+            googleCastSession = null;
+        }
+    }
+
+    private MediaRouteButton createGoogleCastButton() {
+        MediaRouteButton route = new MediaRouteButton(this);
+        route.setContentDescription("Chromecast / Google Cast");
+        route.setFocusable(true);
+        route.setBackground(PremiumUi.card(this));
+        route.setPadding(dp(10), dp(8), dp(10), dp(8));
+        route.setMinimumWidth(dp(52));
+        route.setMinimumHeight(dp(46));
+        try {
+            CastButtonFactory.setUpMediaRouteButton(this, route);
+        } catch (Throwable ignored) {
+        }
+        googleCastButton = route;
+        return route;
+    }
+
+    private void requestGoogleCast(String url, String title) {
+        if (isTvBuild()) return;
+        pendingGoogleCastUrl = url;
+        pendingGoogleCastTitle = title == null || title.trim().isEmpty()
+                ? "The One Media Player"
+                : title.trim();
+        pendingLocalGoogleCast = false;
+
+        if (googleCastSession != null && googleCastSession.isConnected()) {
+            handleGoogleCastConnected();
+            return;
+        }
+
+        if (googleCastButton != null) {
+            googleCastButton.performClick();
+        } else {
+            Toast.makeText(this, "Open eerst de Chromecast-knop.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void requestLocalGoogleCast() {
+        if (isTvBuild()) return;
+        if (selectedCastUri == null) {
+            choosePhoneMedia();
+            return;
+        }
+        pendingLocalGoogleCast = true;
+        pendingGoogleCastUrl = null;
+
+        if (googleCastSession != null && googleCastSession.isConnected()) {
+            handleGoogleCastConnected();
+            return;
+        }
+
+        if (googleCastButton != null) {
+            googleCastButton.performClick();
+        } else {
+            Toast.makeText(this, "Open eerst de Chromecast-knop.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void handleGoogleCastConnected() {
+        if (googleCastSession == null || !googleCastSession.isConnected()) return;
+
+        if (pendingLocalGoogleCast && selectedCastUri != null) {
+            pendingLocalGoogleCast = false;
+            castSelectedPhoneMediaToGoogle();
+            return;
+        }
+
+        if (pendingGoogleCastUrl != null) {
+            String url = pendingGoogleCastUrl;
+            String title = pendingGoogleCastTitle;
+            pendingGoogleCastUrl = null;
+            pendingGoogleCastTitle = null;
+            loadGoogleCastMedia(url, title, null);
+        }
+    }
+
+    private void castSelectedPhoneMediaToGoogle() {
+        try {
+            if (googleCastSession == null || googleCastSession.getCastDevice() == null) return;
+            if (phoneMediaServer != null) phoneMediaServer.stop();
+
+            phoneMediaServer = new TheOneCast.PhoneMediaServer(this, selectedCastUri);
+            phoneMediaServer.start();
+
+            java.net.InetAddress remote = googleCastSession.getCastDevice().getInetAddress();
+            String url = phoneMediaServer.urlFor(remote);
+            if (url == null) {
+                Toast.makeText(this, "Kon lokaal telefoonadres niet bepalen.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            String title = TheOneCast.displayName(this, selectedCastUri);
+            String type = getContentResolver().getType(selectedCastUri);
+            loadGoogleCastMedia(url, title, type);
+        } catch (Throwable e) {
+            Toast.makeText(this, "Streamen naar Chromecast lukte niet.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void loadGoogleCastMedia(String url, String title, String mimeOverride) {
+        try {
+            if (googleCastSession == null || !googleCastSession.isConnected()) return;
+            RemoteMediaClient remote = googleCastSession.getRemoteMediaClient();
+            if (remote == null) return;
+
+            MediaMetadata metadata = new MediaMetadata(MediaMetadata.MEDIA_TYPE_MOVIE);
+            metadata.putString(MediaMetadata.KEY_TITLE,
+                    title == null || title.trim().isEmpty() ? "The One Media Player" : title.trim());
+
+            String mime = mimeOverride == null || mimeOverride.trim().isEmpty()
+                    ? guessCastMimeType(url)
+                    : mimeOverride;
+
+            int streamType = isLikelyLiveStream(url)
+                    ? MediaInfo.STREAM_TYPE_LIVE
+                    : MediaInfo.STREAM_TYPE_BUFFERED;
+
+            MediaInfo info = new MediaInfo.Builder(url)
+                    .setStreamType(streamType)
+                    .setContentType(mime)
+                    .setMetadata(metadata)
+                    .build();
+
+            long position = player == null ? 0 : Math.max(0, player.getCurrentPosition());
+            MediaLoadRequestData request = new MediaLoadRequestData.Builder()
+                    .setMediaInfo(info)
+                    .setAutoplay(true)
+                    .setCurrentTime(position)
+                    .build();
+
+            remote.load(request);
+            if (player != null) player.pause();
+
+            String device = googleCastSession.getCastDevice() == null
+                    ? "Chromecast"
+                    : googleCastSession.getCastDevice().getFriendlyName();
+            Toast.makeText(this, "Afspelen op " + device, Toast.LENGTH_SHORT).show();
+        } catch (Throwable e) {
+            Toast.makeText(this, "Chromecast kon deze stream niet starten.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private String guessCastMimeType(String url) {
+        String lower = url == null ? "" : url.toLowerCase();
+        if (lower.contains(".m3u8")) return "application/x-mpegURL";
+        if (lower.contains(".mpd")) return "application/dash+xml";
+        if (lower.contains(".mp4") || lower.contains(".m4v")) return "video/mp4";
+        if (lower.contains(".mkv")) return "video/x-matroska";
+        if (lower.contains(".mp3")) return "audio/mpeg";
+        if (lower.contains(".aac")) return "audio/aac";
+        if (lower.contains(".ts") || lower.contains("/live/")) return "video/mp2t";
+        return "video/mp4";
+    }
+
+    private boolean isLikelyLiveStream(String url) {
+        String lower = url == null ? "" : url.toLowerCase();
+        return lower.contains("/live/") || lower.endsWith(".ts") || lower.contains("live=");
     }
 
     private void showSafeStartupScreen(Throwable error) {
@@ -142,7 +362,13 @@ public class MainActivity extends Activity {
         addNavButton(nav, "Series", () -> openXtreamCatalog("series"));
         addNavButton(nav, "Verder kijken", () -> showSection("Verder kijken", "Je kijkvoortgang verschijnt hier."));
         addNavButton(nav, "Favorieten", () -> showSection("Favorieten", "Je favoriete zenders, films en series verschijnen hier."));
-        if (!isTvBuild()) addNavButton(nav, "Stream naar TV", this::showCastPanel);
+        if (!isTvBuild()) {
+            addNavButton(nav, "Stream naar TV", this::showCastPanel);
+            MediaRouteButton castRoute = createGoogleCastButton();
+            LinearLayout.LayoutParams castRouteLp = new LinearLayout.LayoutParams(dp(54), dp(46));
+            castRouteLp.rightMargin = dp(8);
+            nav.addView(castRoute, castRouteLp);
+        }
         addNavButton(nav, "Instellingen", this::showSettings);
         navScroll.addView(nav);
         root.addView(navScroll);
@@ -178,9 +404,17 @@ public class MainActivity extends Activity {
             castCard.addView(ready);
             addCard(box, castCard);
         } else {
-            Button cast = button("📺 Stream naar Android TV");
+            Button cast = button("📺 Stream naar TV / Chromecast");
             cast.setOnClickListener(v -> showCastPanel());
             box.addView(cast);
+            TextView castInfo = text(
+                    "Ondersteunt The One Android TV én Google Cast-apparaten zoals Chromecast en Google TV.",
+                    14,
+                    MUTED,
+                    false
+            );
+            castInfo.setPadding(0, dp(8), 0, 0);
+            box.addView(castInfo);
         }
 
         scroll.addView(box);
@@ -216,9 +450,30 @@ public class MainActivity extends Activity {
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout box = baseBox("Stream naar TV", "Stuur video of muziek van je telefoon rechtstreeks naar The One Media Player op Android TV.");
-        addInfo(box, "Telefoon en Android TV moeten op hetzelfde wifi-netwerk zitten.");
+        addInfo(box, "Telefoon en TV moeten op hetzelfde wifi-netwerk zitten.");
 
-        castStatus = text("Nog geen TV verbonden.", 15, MUTED, false);
+        LinearLayout googleCard = cardContainer();
+        googleCard.addView(text("Google Cast", 20, Color.WHITE, true));
+        TextView googleInfo = text(
+                "Voor Chromecast, Google TV en andere Google Cast-apparaten. Kies eerst je apparaat met het Cast-icoon.",
+                14,
+                MUTED,
+                false
+        );
+        googleInfo.setPadding(0, dp(6), 0, dp(10));
+        googleCard.addView(googleInfo);
+
+        MediaRouteButton panelCastButton = createGoogleCastButton();
+        googleCard.addView(panelCastButton, new LinearLayout.LayoutParams(dp(64), dp(52)));
+
+        Button castLocalGoogle = button("Stream gekozen telefoonbestand naar Chromecast");
+        castLocalGoogle.setOnClickListener(v -> requestLocalGoogleCast());
+        googleCard.addView(castLocalGoogle);
+
+        addCard(box, googleCard);
+        addInfo(box, "The One Android TV blijft daarnaast rechtstreeks beschikbaar.");
+
+        castStatus = text("Nog geen The One TV verbonden.", 15, MUTED, false);
         castStatus.setPadding(0, 0, 0, dp(14));
         box.addView(castStatus);
 
@@ -804,14 +1059,29 @@ public class MainActivity extends Activity {
         if (!isTvBuild() && !urls.isEmpty()) {
             String castUrl = urls.get(0);
             if (castUrl != null && (castUrl.startsWith("http://") || castUrl.startsWith("https://"))) {
-                Button cast = PremiumUi.chipButton(this, "📺 TV");
+                MediaRouteButton googleRoute = createGoogleCastButton();
+                googleRoute.setOnClickListener(v -> {
+                    pendingGoogleCastUrl = castUrl;
+                    pendingGoogleCastTitle = "The One Media Player";
+                    pendingLocalGoogleCast = false;
+                });
+                FrameLayout.LayoutParams googleLp = new FrameLayout.LayoutParams(
+                        dp(56),
+                        dp(48),
+                        Gravity.TOP | Gravity.START
+                );
+                googleLp.topMargin = dp(14);
+                googleLp.leftMargin = dp(14);
+                root.addView(googleRoute, googleLp);
+
+                Button cast = PremiumUi.chipButton(this, "📺 The One TV");
                 cast.setOnClickListener(v -> castCurrentUrl(castUrl));
                 FrameLayout.LayoutParams castLp = new FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT,
                         Gravity.TOP | Gravity.START
                 );
-                castLp.topMargin = dp(14);
+                castLp.topMargin = dp(70);
                 castLp.leftMargin = dp(14);
                 root.addView(cast, castLp);
             }
@@ -1036,6 +1306,15 @@ public class MainActivity extends Activity {
         if (phoneMediaServer != null) {
             phoneMediaServer.stop();
             phoneMediaServer = null;
+        }
+        if (googleCastContext != null) {
+            try {
+                googleCastContext.getSessionManager().removeSessionManagerListener(
+                        googleCastSessionListener,
+                        CastSession.class
+                );
+            } catch (Throwable ignored) {
+            }
         }
         super.onDestroy();
     }
