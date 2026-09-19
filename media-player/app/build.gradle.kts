@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2312
-        versionName = "2.3.12-close-stream-connections"
+        versionCode = 2313
+        versionName = "2.3.13-restore-v2306-playback"
     }
 
     signingConfigs {
