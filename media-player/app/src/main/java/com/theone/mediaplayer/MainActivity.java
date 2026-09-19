@@ -578,6 +578,32 @@ public class MainActivity extends Activity {
         subtitleLp.rightMargin = dp(14);
         root.addView(subtitles, subtitleLp);
 
+        boolean movieOrSeries = false;
+        for (String url : urls) {
+            if (url == null) continue;
+            String lower = url.toLowerCase();
+            if (lower.contains("/movie/") || lower.contains("/series/")) {
+                movieOrSeries = true;
+                break;
+            }
+        }
+
+        if (movieOrSeries) {
+            final boolean[] firstPlaybackControls = {true};
+            activePlayerView.setControllerVisibilityListener(visibility -> {
+                if (visibility == View.GONE) {
+                    subtitles.setVisibility(View.GONE);
+                    firstPlaybackControls[0] = false;
+                } else if (!firstPlaybackControls[0]) {
+                    subtitles.setVisibility(View.VISIBLE);
+                }
+            });
+
+            // Tijdens het starten kort beschikbaar; zodra de film/serie speelt verdwijnt CC.
+            // Tik op de speler om de bediening (en CC) later weer te tonen.
+            subtitles.postDelayed(() -> subtitles.setVisibility(View.GONE), 1800);
+        }
+
         setContentView(root);
         root.post(this::enterImmersiveFullscreen);
     }
