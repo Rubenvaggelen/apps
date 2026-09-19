@@ -13,6 +13,11 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      MEDIA_PLAYER_KEYSTORE_PATH: ${{ github.workspace }}/media-player-fixed.keystore
+      MEDIA_PLAYER_KEYSTORE_PASSWORD: android
+      MEDIA_PLAYER_KEY_ALIAS: androiddebugkey
+      MEDIA_PLAYER_KEY_PASSWORD: android
 
     steps:
       - name: Checkout code
@@ -40,30 +45,37 @@ jobs:
         with:
           gradle-version: '9.6.0'
 
-      - name: Build Media Player debug APK
-        run: gradle -p media-player clean assembleDebug --no-daemon
-
-      - name: Upload Media Player APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: the-one-media-player-apk
-          path: media-player/app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Collect Android signing tools
+      - name: Restore permanent signing key
         shell: bash
         run: |
-          mkdir -p android-signing-tools/lib
-          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" android-signing-tools/
-          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" android-signing-tools/
-          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" android-signing-tools/lib/
+          set -euo pipefail
+          if [ -z "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" ]; then
+            echo "ERROR: signing key secret is empty"
+            exit 1
+          fi
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > "$MEDIA_PLAYER_KEYSTORE_PATH"
+          chmod 600 "$MEDIA_PLAYER_KEYSTORE_PATH"
+          keytool -list -keystore "$MEDIA_PLAYER_KEYSTORE_PATH" -alias androiddebugkey -storepass android >/dev/null
 
-      - name: Upload Android signing tools
+      - name: Build signed V19-based APK
+        run: gradle -p media-player clean assembleRelease --no-daemon
+
+      - name: Verify APK signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER="$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner"
+          "$APKSIGNER" verify --verbose --print-certs media-player/app/build/outputs/apk/release/app-release.apk
+          cp media-player/app/build/outputs/apk/release/app-release.apk media-player/app/build/outputs/apk/release/The-One-Media-Player-V19-Requested.apk
+
+      - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: android-signing-tools-36
-          path: android-signing-tools
+          name: the-one-media-player-v19-requested-signed
+          path: media-player/app/build/outputs/apk/release/The-One-Media-Player-V19-Requested.apk
 
       - name: Smoke-test Media Player on Android emulator
+        timeout-minutes: 8
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -72,7 +84,7 @@ jobs:
           disable-animations: true
           script: |
             adb logcat -c
-            adb install -r media-player/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r media-player/app/build/outputs/apk/release/app-release.apk
             adb shell am start -W -n com.theone.mediaplayer/com.theone.mediaplayer.MainActivity
             sleep 4
             adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | tee /tmp/activity.txt
