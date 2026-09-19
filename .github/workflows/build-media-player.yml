@@ -54,6 +54,22 @@ jobs:
           chmod 600 "$MEDIA_PLAYER_KEYSTORE_PATH"
           keytool -list -keystore "$MEDIA_PLAYER_KEYSTORE_PATH" -alias "$MEDIA_PLAYER_KEY_ALIAS" -storepass "$MEDIA_PLAYER_KEYSTORE_PASSWORD" >/dev/null
 
+      - name: Export public signing certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool -exportcert -rfc \
+            -keystore "$MEDIA_PLAYER_KEYSTORE_PATH" \
+            -storepass "$MEDIA_PLAYER_KEYSTORE_PASSWORD" \
+            -alias "$MEDIA_PLAYER_KEY_ALIAS" \
+            -file media-player-signing-cert.pem
+
+      - name: Upload public signing certificate
+        uses: actions/upload-artifact@v4
+        with:
+          name: media-player-public-cert
+          path: media-player-signing-cert.pem
+
       - name: Keep working YouTube configuration
         shell: bash
         run: |
