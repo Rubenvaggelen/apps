@@ -1153,36 +1153,35 @@ public class MainActivity extends Activity {
             root.addView(subtitles, subtitleLp);
             autoHidePlayerButtons.add(subtitles);
 
-            boolean movieOrSeries = false;
-            for (String url : urls) {
-                if (url == null) continue;
-                String lower = url.toLowerCase();
-                if (lower.contains("/movie/") || lower.contains("/series/")) {
-                    movieOrSeries = true;
-                    break;
+            String playKind = getIntent().getStringExtra("play_kind");
+            boolean movieOrSeries = "movie".equals(playKind) || "series".equals(playKind);
+
+            // Fallback voor oudere/openstaande intents zonder play_kind.
+            if (!movieOrSeries) {
+                for (String url : urls) {
+                    if (url == null) continue;
+                    String lower = url.toLowerCase();
+                    if (lower.contains("/movie/") || lower.contains("/series/")) {
+                        movieOrSeries = true;
+                        break;
+                    }
                 }
             }
 
             if (movieOrSeries) {
-                final boolean[] firstPlaybackControls = {true};
+                // Tijdens de film/serie zelf staat CC niet in beeld.
+                // Tik/OK toont de Media3-bediening én tijdelijk de CC-knop.
+                subtitles.setVisibility(View.GONE);
+                activePlayerView.setControllerAutoShow(false);
+                activePlayerView.hideController();
+
                 activePlayerView.setControllerVisibilityListener(
                         (androidx.media3.ui.PlayerView.ControllerVisibilityListener) visibility -> {
-                    if (visibility == View.GONE) {
-                        for (View overlay : autoHidePlayerButtons) {
-                            overlay.setVisibility(View.GONE);
-                        }
-                        firstPlaybackControls[0] = false;
-                    } else if (!firstPlaybackControls[0]) {
-                        for (View overlay : autoHidePlayerButtons) {
-                            overlay.setVisibility(View.VISIBLE);
-                        }
+                    boolean showControls = visibility == View.VISIBLE;
+                    for (View overlay : autoHidePlayerButtons) {
+                        overlay.setVisibility(showControls ? View.VISIBLE : View.GONE);
                     }
                 });
-                subtitles.postDelayed(() -> {
-                    for (View overlay : autoHidePlayerButtons) {
-                        overlay.setVisibility(View.GONE);
-                    }
-                }, 1800);
             }
         } catch (Throwable subtitleUiError) {
             Log.w("TheOneMediaPlayer", "Subtitle controls unavailable; playback continues", subtitleUiError);
