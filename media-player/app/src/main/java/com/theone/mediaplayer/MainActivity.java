@@ -1187,42 +1187,6 @@ public class MainActivity extends Activity {
             Log.w("TheOneMediaPlayer", "Subtitle controls unavailable; playback continues", subtitleUiError);
         }
 
-        if (!isTvBuild() && !urls.isEmpty()) {
-            try {
-                String castUrl = urls.get(0);
-                if (castUrl != null && (castUrl.startsWith("http://") || castUrl.startsWith("https://"))) {
-                    MediaRouteButton googleRoute = createGoogleCastButton();
-                    if (googleRoute != null) {
-                        pendingGoogleCastUrl = castUrl;
-                        pendingGoogleCastTitle = "The One Media Player";
-                        pendingLocalGoogleCast = false;
-
-                        FrameLayout.LayoutParams googleLp = new FrameLayout.LayoutParams(
-                                dp(56),
-                                dp(48),
-                                Gravity.TOP | Gravity.START
-                        );
-                        googleLp.topMargin = dp(14);
-                        googleLp.leftMargin = dp(14);
-                        root.addView(googleRoute, googleLp);
-                    }
-
-                    Button cast = PremiumUi.chipButton(this, "📺 The One TV");
-                    cast.setOnClickListener(v -> castCurrentUrl(castUrl));
-                    FrameLayout.LayoutParams castLp = new FrameLayout.LayoutParams(
-                            ViewGroup.LayoutParams.WRAP_CONTENT,
-                            ViewGroup.LayoutParams.WRAP_CONTENT,
-                            Gravity.TOP | Gravity.START
-                    );
-                    castLp.topMargin = dp(70);
-                    castLp.leftMargin = dp(14);
-                    root.addView(cast, castLp);
-                    autoHidePlayerButtons.add(cast);
-                }
-            } catch (Throwable castUiError) {
-                Log.w("TheOneMediaPlayer", "Cast controls unavailable; playback continues", castUiError);
-            }
-        }
     }
 
     private void showSubtitleSelector() {
