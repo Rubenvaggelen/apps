@@ -1087,19 +1087,22 @@ public class MainActivity extends Activity {
             String castUrl = urls.get(0);
             if (castUrl != null && (castUrl.startsWith("http://") || castUrl.startsWith("https://"))) {
                 MediaRouteButton googleRoute = createGoogleCastButton();
-                googleRoute.setOnClickListener(v -> {
+                if (googleRoute != null) {
+                    // CastButtonFactory beheert zelf de click listener van MediaRouteButton.
+                    // Zet alleen de media klaar; bij een geslaagde Cast-sessie wordt deze geladen.
                     pendingGoogleCastUrl = castUrl;
                     pendingGoogleCastTitle = "The One Media Player";
                     pendingLocalGoogleCast = false;
-                });
-                FrameLayout.LayoutParams googleLp = new FrameLayout.LayoutParams(
-                        dp(56),
-                        dp(48),
-                        Gravity.TOP | Gravity.START
-                );
-                googleLp.topMargin = dp(14);
-                googleLp.leftMargin = dp(14);
-                root.addView(googleRoute, googleLp);
+
+                    FrameLayout.LayoutParams googleLp = new FrameLayout.LayoutParams(
+                            dp(56),
+                            dp(48),
+                            Gravity.TOP | Gravity.START
+                    );
+                    googleLp.topMargin = dp(14);
+                    googleLp.leftMargin = dp(14);
+                    root.addView(googleRoute, googleLp);
+                }
 
                 Button cast = PremiumUi.chipButton(this, "📺 The One TV");
                 cast.setOnClickListener(v -> castCurrentUrl(castUrl));
