@@ -68,11 +68,19 @@ public class MainActivity extends Activity {
     private SharedPreferences prefs;
     private boolean playerFullscreen = false;
 
+    private static final int REQ_PICK_CAST_MEDIA = 7301;
+    private TheOneCast.Receiver castReceiver;
+    private TheOneCast.PhoneMediaServer phoneMediaServer;
+    private TheOneCast.TvDevice selectedTv;
+    private Uri selectedCastUri;
+    private TextView castStatus;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         try {
             prefs = getSharedPreferences("media_player", Context.MODE_PRIVATE);
+            if (isTvBuild()) startTvCastReceiver();
 
             ArrayList<String> playQueue = getIntent().getStringArrayListExtra("play_queue");
             String playUrl = getIntent().getStringExtra("play_url");
@@ -134,6 +142,7 @@ public class MainActivity extends Activity {
         addNavButton(nav, "Series", () -> openXtreamCatalog("series"));
         addNavButton(nav, "Verder kijken", () -> showSection("Verder kijken", "Je kijkvoortgang verschijnt hier."));
         addNavButton(nav, "Favorieten", () -> showSection("Favorieten", "Je favoriete zenders, films en series verschijnen hier."));
+        if (!isTvBuild()) addNavButton(nav, "Stream naar TV", this::showCastPanel);
         addNavButton(nav, "Instellingen", this::showSettings);
         navScroll.addView(nav);
         root.addView(navScroll);
@@ -155,8 +164,220 @@ public class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         LinearLayout box = baseBox("Media Player", "Kies Live TV, Films of Series.");
         addInfo(box, "Je privé bron wordt pas geladen nadat je een onderdeel opent.");
+
+        if (isTvBuild()) {
+            LinearLayout castCard = cardContainer();
+            castCard.addView(text("📺 Stream vanaf telefoon", 20, Color.WHITE, true));
+            TextView ready = text(
+                    "Klaar om media van The One Media Player op je telefoon te ontvangen. Zorg dat telefoon en TV op hetzelfde wifi-netwerk zitten.",
+                    15,
+                    MUTED,
+                    false
+            );
+            ready.setPadding(0, dp(8), 0, 0);
+            castCard.addView(ready);
+            addCard(box, castCard);
+        } else {
+            Button cast = button("📺 Stream naar Android TV");
+            cast.setOnClickListener(v -> showCastPanel());
+            box.addView(cast);
+        }
+
         scroll.addView(box);
         content.addView(scroll);
+    }
+
+    private boolean isTvBuild() {
+        return "com.theone.mediaplayer.tv".equals(getPackageName());
+    }
+
+    private void startTvCastReceiver() {
+        if (castReceiver != null) return;
+        castReceiver = new TheOneCast.Receiver(new TheOneCast.ReceiverListener() {
+            @Override
+            public void onPlay(String url, String title) {
+                runOnUiThread(() -> {
+                    Toast.makeText(MainActivity.this, "Stream ontvangen: " + title, Toast.LENGTH_SHORT).show();
+                    showPlayer(url);
+                });
+            }
+
+            @Override
+            public void onStop() {
+                runOnUiThread(() -> showShell("Home"));
+            }
+        });
+        castReceiver.start();
+    }
+
+    private void showCastPanel() {
+        if (isTvBuild()) return;
+        content.removeAllViews();
+
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout box = baseBox("Stream naar TV", "Stuur video of muziek van je telefoon rechtstreeks naar The One Media Player op Android TV.");
+        addInfo(box, "Telefoon en Android TV moeten op hetzelfde wifi-netwerk zitten.");
+
+        castStatus = text("Nog geen TV verbonden.", 15, MUTED, false);
+        castStatus.setPadding(0, 0, 0, dp(14));
+        box.addView(castStatus);
+
+        Button findTv = button("1. Zoek Android TV");
+        findTv.setOnClickListener(v -> discoverTv(true, null));
+        box.addView(findTv);
+
+        Button choose = button("2. Kies video of muziek op telefoon");
+        choose.setOnClickListener(v -> choosePhoneMedia());
+        LinearLayout.LayoutParams chooseLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        chooseLp.topMargin = dp(10);
+        box.addView(choose, chooseLp);
+
+        Button start = button("3. Start stream op TV");
+        start.setOnClickListener(v -> startSelectedPhoneMediaCast());
+        LinearLayout.LayoutParams startLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        startLp.topMargin = dp(10);
+        box.addView(start, startLp);
+
+        Button stop = button("Stop stream op TV");
+        stop.setOnClickListener(v -> stopTvCast());
+        LinearLayout.LayoutParams stopLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        stopLp.topMargin = dp(10);
+        box.addView(stop, stopLp);
+
+        scroll.addView(box);
+        content.addView(scroll);
+    }
+
+    private void choosePhoneMedia() {
+        Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        pick.addCategory(Intent.CATEGORY_OPENABLE);
+        pick.setType("*/*");
+        pick.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"video/*", "audio/*"});
+        startActivityForResult(pick, REQ_PICK_CAST_MEDIA);
+    }
+
+    private void discoverTv(boolean showFeedback, Runnable afterFound) {
+        if (castStatus != null) castStatus.setText("Android TV zoeken…");
+        TheOneCast.discover(devices -> runOnUiThread(() -> {
+            if (devices.isEmpty()) {
+                selectedTv = null;
+                if (castStatus != null) castStatus.setText("Geen The One Android TV gevonden. Open de TV-app en controleer wifi.");
+                if (showFeedback) Toast.makeText(this, "Geen Android TV gevonden", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            if (devices.size() == 1) {
+                selectedTv = devices.get(0);
+                updateCastStatus("Verbonden met " + selectedTv.name);
+                if (afterFound != null) afterFound.run();
+                return;
+            }
+
+            String[] labels = new String[devices.size()];
+            for (int i = 0; i < devices.size(); i++) labels[i] = devices.get(i).toString();
+            new AlertDialog.Builder(this)
+                    .setTitle("Kies Android TV")
+                    .setItems(labels, (dialog, which) -> {
+                        selectedTv = devices.get(which);
+                        updateCastStatus("Verbonden met " + selectedTv.name);
+                        if (afterFound != null) afterFound.run();
+                    })
+                    .setNegativeButton("Annuleren", null)
+                    .show();
+        }));
+    }
+
+    private void startSelectedPhoneMediaCast() {
+        if (selectedCastUri == null) {
+            choosePhoneMedia();
+            return;
+        }
+        if (selectedTv == null) {
+            discoverTv(false, this::startSelectedPhoneMediaCast);
+            return;
+        }
+
+        try {
+            if (phoneMediaServer != null) phoneMediaServer.stop();
+            phoneMediaServer = new TheOneCast.PhoneMediaServer(this, selectedCastUri);
+            phoneMediaServer.start();
+            String url = phoneMediaServer.urlFor(selectedTv);
+            if (url == null) {
+                updateCastStatus("Kon lokaal telefoonadres niet bepalen.");
+                return;
+            }
+
+            String title = TheOneCast.displayName(this, selectedCastUri);
+            updateCastStatus("Stream starten: " + title);
+            TheOneCast.sendPlay(selectedTv, url, title, (ok, message) ->
+                    runOnUiThread(() -> {
+                        updateCastStatus(message);
+                        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+                    })
+            );
+        } catch (Throwable e) {
+            updateCastStatus("Kon media niet delen vanaf telefoon.");
+        }
+    }
+
+    private void castCurrentUrl(String url) {
+        if (url == null || !(url.startsWith("http://") || url.startsWith("https://"))) return;
+        Runnable send = () -> TheOneCast.sendPlay(
+                selectedTv,
+                url,
+                "The One Media Player",
+                (ok, message) -> runOnUiThread(() ->
+                        Toast.makeText(this, message, Toast.LENGTH_SHORT).show())
+        );
+        if (selectedTv == null) discoverTv(false, send);
+        else send.run();
+    }
+
+    private void stopTvCast() {
+        if (selectedTv == null) {
+            discoverTv(false, this::stopTvCast);
+            return;
+        }
+        TheOneCast.sendStop(selectedTv, (ok, message) -> runOnUiThread(() -> {
+            updateCastStatus(message);
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+        }));
+        if (phoneMediaServer != null) {
+            phoneMediaServer.stop();
+            phoneMediaServer = null;
+        }
+    }
+
+    private void updateCastStatus(String value) {
+        if (castStatus != null) castStatus.setText(value);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQ_PICK_CAST_MEDIA || resultCode != RESULT_OK || data == null) return;
+        Uri uri = data.getData();
+        if (uri == null) return;
+
+        selectedCastUri = uri;
+        try {
+            int flags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            getContentResolver().takePersistableUriPermission(uri, flags & Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (Throwable ignored) {
+        }
+
+        String name = TheOneCast.displayName(this, uri);
+        updateCastStatus("Gekozen: " + name);
+        if (selectedTv != null) startSelectedPhoneMediaCast();
     }
 
     private void ensurePrivateSourceConfigured() {
@@ -580,6 +801,22 @@ public class MainActivity extends Activity {
         subtitleLp.rightMargin = dp(14);
         root.addView(subtitles, subtitleLp);
 
+        if (!isTvBuild() && !urls.isEmpty()) {
+            String castUrl = urls.get(0);
+            if (castUrl != null && (castUrl.startsWith("http://") || castUrl.startsWith("https://"))) {
+                Button cast = PremiumUi.chipButton(this, "📺 TV");
+                cast.setOnClickListener(v -> castCurrentUrl(castUrl));
+                FrameLayout.LayoutParams castLp = new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        Gravity.TOP | Gravity.START
+                );
+                castLp.topMargin = dp(14);
+                castLp.leftMargin = dp(14);
+                root.addView(cast, castLp);
+            }
+        }
+
         boolean movieOrSeries = false;
         for (String url : urls) {
             if (url == null) continue;
@@ -792,6 +1029,14 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         releasePlayer();
+        if (castReceiver != null) {
+            castReceiver.stop();
+            castReceiver = null;
+        }
+        if (phoneMediaServer != null) {
+            phoneMediaServer.stop();
+            phoneMediaServer = null;
+        }
         super.onDestroy();
     }
 
