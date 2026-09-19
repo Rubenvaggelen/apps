@@ -1,0 +1,3 @@
+The One phone APK build request
+Requested: 2026-09-19
+Purpose: trigger a fresh signed APK build from current main without changing app code.
