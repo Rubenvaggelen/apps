@@ -83,7 +83,9 @@ public class MainActivity extends Activity {
                 showPlayer(playUrl);
             } else {
                 showShell("Home");
-                MediaPlayerUpdateChecker.checkForUpdate(this);
+                if (!"com.theone.mediaplayer.tv".equals(getPackageName())) {
+                    MediaPlayerUpdateChecker.checkForUpdate(this);
+                }
             }
         } catch (Throwable startupError) {
             showSafeStartupScreen(startupError);
