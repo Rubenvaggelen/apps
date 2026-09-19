@@ -54,7 +54,7 @@ jobs:
           script: |
             adb logcat -c
             adb install -r media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
-            adb shell am start -W -n com.theone.mediaplayer.tv/com.theone.mediaplayer.MainActivity
+            adb shell am start -W -n com.theone.mediaplayer.tv/com.theone.mediaplayer.TvMainActivity
             sleep 6
             adb logcat -d -v brief > /tmp/tv-logcat.txt
             cat /tmp/tv-logcat.txt | grep -A 25 -B 5 -E 'TheOneMediaPlayer|FATAL EXCEPTION|IllegalArgumentException' || true
