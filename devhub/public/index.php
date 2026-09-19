@@ -30,7 +30,8 @@ $csrf = $_SESSION['csrf'];
     <div class="download-version" id="releaseVersion">Release laden…</div>
     <a class="download-link" id="appDownload" aria-disabled="true">↓ The One APK</a>
     <a class="download-link" id="carDownload" aria-disabled="true">↓ The One Car APK</a>
-    <div class="download-note" id="releaseNote">Automatische synchronisatie wordt gestart…</div>
+    <a class="download-link" id="tvDownload" href="downloads/The-One-Media-Player-Android-TV.apk">↓ Media Player Android TV APK</a>
+    <div class="download-note" id="releaseNote">Telefoon/Car volgen de nieuwste release. Android TV staat als aparte APK klaar.</div>
   </div>
   <div class="sidebar-footer"><div class="git-state"><span class="dot" id="gitDot"></span><span id="branch">main</span></div><div id="repoStatus" style="margin-top:7px">Git status laden…</div></div>
 </aside>
