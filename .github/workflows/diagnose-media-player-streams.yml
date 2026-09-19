@@ -30,13 +30,14 @@ jobs:
           keytool -importkeystore -srckeystore "$MEDIA_PLAYER_KEYSTORE_PATH" -srcstorepass android -srcalias androiddebugkey -destkeystore /tmp/signing.p12 -deststoretype PKCS12 -deststorepass changeit -destkeypass changeit -noprompt >/dev/null
           openssl pkcs12 -in /tmp/signing.p12 -passin pass:changeit -nodes -nocerts -out /tmp/private.pem >/dev/null 2>&1
           openssl pkeyutl -decrypt -inkey /tmp/private.pem -in /tmp/source.enc -out /tmp/source.json -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
-      - name: Probe VOD and series extensions
+      - name: Probe current Xtream account and source
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import json, urllib.request, urllib.parse, urllib.error
           from pathlib import Path
+
           src=json.loads(Path("/tmp/source.json").read_text())
           p=urllib.parse.urlsplit(src["m3u_url"])
           q=urllib.parse.parse_qs(p.query)
@@ -44,75 +45,66 @@ jobs:
           pw=(q.get("password") or [""])[0]
           server=f"{p.scheme}://{p.netloc}"
 
-          def api(action, **extra):
-              params={"username":user,"password":pw,"action":action}
-              params.update(extra)
-              return server+"/player_api.php?"+urllib.parse.urlencode(params)
+          def redact(value):
+              if value is None:
+                  return ""
+              value=str(value)
+              if user:
+                  value=value.replace(user,"<user>")
+              if pw:
+                  value=value.replace(pw,"<pass>")
+              return value[:300].replace("\n"," ")
 
-          def js(url):
-              req=urllib.request.Request(url,headers={"User-Agent":"TheOneMediaPlayer/0.9","Connection":"close"})
-              with urllib.request.urlopen(req,timeout=20) as r:
-                  return json.loads(r.read().decode("utf-8","replace"))
-
-          def status(url):
-              req=urllib.request.Request(url,headers={"User-Agent":"VLC/3.0.20 LibVLC/3.0.20","Range":"bytes=0-255","Connection":"close"})
+          def request(url, ua="TheOneMediaPlayer/0.9", read=700):
+              req=urllib.request.Request(url,headers={"User-Agent":ua,"Connection":"close"})
               try:
-                  with urllib.request.urlopen(req,timeout=12) as r:
-                      r.read(256)
-                      return r.status
+                  with urllib.request.urlopen(req,timeout=20) as r:
+                      body=r.read(read)
+                      return r.status, dict(r.headers), body
               except urllib.error.HTTPError as e:
-                  return e.code
-              except Exception:
-                  return -1
+                  try:
+                      body=e.read(read)
+                  except Exception:
+                      body=b""
+                  return e.code, dict(e.headers or {}), body
+              except Exception as e:
+                  return -1, {}, str(type(e).__name__+":"+str(e)).encode()
+
+          def show(label,url,ua="TheOneMediaPlayer/0.9"):
+              code,headers,body=request(url,ua)
+              print(label+"_status="+str(code))
+              print(label+"_content_type="+redact(headers.get("Content-Type","")))
+              print(label+"_body="+redact(body.decode("utf-8","replace")))
+              return code,headers,body
+
+          params={"username":user,"password":pw}
+          bare=server+"/player_api.php?"+urllib.parse.urlencode(params)
+          code,headers,body=show("player_api",bare)
 
           try:
-              req=urllib.request.Request(src["m3u_url"],headers={"User-Agent":"TheOneMediaPlayer/0.9","Connection":"close"})
-              with urllib.request.urlopen(req,timeout=20) as r:
-                  sample=r.read(512)
-                  print("m3u_status="+str(r.status))
-                  print("m3u_has_extm3u="+str(sample.startswith(b"#EXTM3U")))
-          except urllib.error.HTTPError as e:
-              print("m3u_status="+str(e.code))
-              print("m3u_has_extm3u=False")
+              data=json.loads(body.decode("utf-8","replace"))
+              ui=data.get("user_info") if isinstance(data,dict) else None
+              if isinstance(ui,dict):
+                  for key in ("auth","status","active_cons","max_connections","exp_date","is_trial"):
+                      if key in ui:
+                          print("user_info_"+key+"="+redact(ui.get(key)))
           except Exception:
-              print("m3u_status=-1")
-              print("m3u_has_extm3u=False")
+              pass
 
-          vc=js(api("get_vod_categories"))
-          vod=js(api("get_vod_streams",category_id=str(vc[0].get("category_id","")))) if vc else []
-          m=next((x for x in vod if str(x.get("stream_id",""))),None)
-          if m:
-              mid=str(m["stream_id"])
-              api_ext=str(m.get("container_extension") or "mp4").lstrip(".")
-              for ext in dict.fromkeys([api_ext,"ts","m3u8","mp4"]):
-                  u=server+"/movie/"+user+"/"+pw+"/"+mid+"."+ext
-                  print("movie_"+ext+"_status="+str(status(u)))
+          for action in ("get_live_categories","get_vod_categories","get_series_categories"):
+              url=bare+"&action="+urllib.parse.quote(action)
+              show(action,url)
 
-          sc=js(api("get_series_categories"))
-          shows=js(api("get_series",category_id=str(sc[0].get("category_id","")))) if sc else []
-          show=next((x for x in shows if str(x.get("series_id") or x.get("id") or "")),None)
-          def ep(node):
-              if isinstance(node,dict):
-                  eid=node.get("id") or node.get("stream_id") or node.get("episode_id")
-                  if eid and any(k in node for k in ("episode_num","episode","episode_number","container_extension","title")):
-                      return node
-                  for v in node.values():
-                      z=ep(v)
-                      if z:return z
-              elif isinstance(node,list):
-                  for v in node:
-                      z=ep(v)
-                      if z:return z
-              return None
-          if show:
-              info=js(api("get_series_info",series_id=str(show.get("series_id") or show.get("id"))))
-              e=ep(info)
-              if e:
-                  eid=str(e.get("id") or e.get("stream_id") or e.get("episode_id"))
-                  api_ext=str(e.get("container_extension") or e.get("extension") or "mp4").lstrip(".")
-                  for ext in dict.fromkeys([api_ext,"ts","m3u8","mp4"]):
-                      u=server+"/series/"+user+"/"+pw+"/"+eid+"."+ext
-                      print("series_"+ext+"_status="+str(status(u)))
+          show("m3u",src["m3u_url"])
+
+          # Also try the two common output variants without exposing credentials.
+          base_get=server+"/get.php?"+urllib.parse.urlencode({
+              "username":user,
+              "password":pw,
+              "type":"m3u_plus",
+          })
+          show("m3u_ts",base_get+"&output=ts")
+          show("m3u_m3u8",base_get+"&output=m3u8")
           PY
       - name: Cleanup
         if: always()
