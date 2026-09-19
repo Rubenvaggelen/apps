@@ -36,6 +36,16 @@ jobs:
         with:
           gradle-version: '9.6.0'
 
+      - name: Restore permanent TV signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.android
+          test -n "${{ secrets.DEBUG_KEYSTORE_BASE64 }}"
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > ~/.android/debug.keystore
+          chmod 600 ~/.android/debug.keystore
+          keytool -list -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android >/dev/null
+
       - name: Keep working YouTube configuration
         shell: bash
         run: |
