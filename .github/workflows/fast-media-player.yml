@@ -42,7 +42,7 @@ jobs:
           from pathlib import Path
           import re
           source = Path("the-one-update/app/build.gradle").read_text(encoding="utf-8")
-          m = re.search(r'YOUTUBE_API_KEY.*?\\?:\\s*\\'([^\\']+)\\'', source, re.S)
+          m = re.search(r"YOUTUBE_API_KEY.*?\\?:\\s*'([^']+)'", source, re.S)
           if not m:
               raise SystemExit("YouTube build configuration unavailable")
           Path("media-player/app/src/main/assets/private_youtube_key.txt").write_text(m.group(1), encoding="utf-8")
