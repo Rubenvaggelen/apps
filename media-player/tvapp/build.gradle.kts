@@ -10,8 +10,8 @@ android {
         applicationId = "com.theone.mediaplayer.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1003
-        versionName = "1.0.3-tv-stable"
+        versionCode = 1004
+        versionName = "1.0.4-tv-startup-fix"
     }
 
     buildTypes {
