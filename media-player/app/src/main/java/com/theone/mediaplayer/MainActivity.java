@@ -141,11 +141,11 @@ public class MainActivity extends Activity {
                 showPlayerQueue(playQueue);
             } else if (playUrl != null && (playUrl.startsWith("http://") || playUrl.startsWith("https://"))) {
                 showPlayer(playUrl);
+            } else if (isTvBuild()) {
+                showTvHome();
             } else {
                 showShell("Home");
-                if (!"com.theone.mediaplayer.tv".equals(getPackageName())) {
-                    MediaPlayerUpdateChecker.checkForUpdate(this);
-                }
+                MediaPlayerUpdateChecker.checkForUpdate(this);
             }
         } catch (Throwable startupError) {
             Log.e("TheOneMediaPlayer", "Startup failed", startupError);
@@ -394,6 +394,66 @@ public class MainActivity extends Activity {
         else if ("Test M3U".equals(section)) showDemoM3u();
         else if ("Instellingen".equals(section)) showSettings();
         else showLiveTv();
+    }
+
+    private void showTvHome() {
+        playerFullscreen = false;
+        releasePlayer();
+
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(PremiumUi.BG);
+        root.setPadding(dp(36), dp(28), dp(36), dp(28));
+
+        try {
+            root.addView(PremiumUi.brandHeader(this, "TV"));
+        } catch (Throwable ignored) {
+            root.addView(text("THE ONE MEDIA PLAYER • TV", 28, Color.WHITE, true));
+        }
+
+        TextView intro = text(
+                "Kies met de afstandsbediening wat je wilt kijken.",
+                18,
+                MUTED,
+                false
+        );
+        intro.setPadding(0, dp(22), 0, dp(18));
+        root.addView(intro);
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+
+        Button live = PremiumUi.primaryButton(this, "Live TV");
+        Button films = PremiumUi.primaryButton(this, "Films");
+        Button series = PremiumUi.primaryButton(this, "Series");
+
+        live.setOnClickListener(v -> openXtreamCatalog("live"));
+        films.setOnClickListener(v -> openXtreamCatalog("movie"));
+        series.setOnClickListener(v -> openXtreamCatalog("series"));
+
+        LinearLayout.LayoutParams item = new LinearLayout.LayoutParams(0, dp(70), 1f);
+        item.rightMargin = dp(14);
+        row.addView(live, item);
+
+        LinearLayout.LayoutParams item2 = new LinearLayout.LayoutParams(0, dp(70), 1f);
+        item2.rightMargin = dp(14);
+        row.addView(films, item2);
+
+        row.addView(series, new LinearLayout.LayoutParams(0, dp(70), 1f));
+        root.addView(row);
+
+        TextView castReady = text(
+                "Streamen vanaf je telefoon staat klaar zodra telefoon en TV op hetzelfde wifi-netwerk zitten.",
+                15,
+                BLUE,
+                false
+        );
+        castReady.setPadding(0, dp(24), 0, 0);
+        root.addView(castReady);
+
+        setContentView(root);
+        live.post(live::requestFocus);
+        root.post(this::exitImmersiveFullscreen);
     }
 
     private void showHome() {
