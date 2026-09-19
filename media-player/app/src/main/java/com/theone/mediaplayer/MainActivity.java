@@ -10,6 +10,7 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -141,6 +142,7 @@ public class MainActivity extends Activity {
                 }
             }
         } catch (Throwable startupError) {
+            Log.e("TheOneMediaPlayer", "Startup failed", startupError);
             showSafeStartupScreen(startupError);
         }
     }
@@ -327,7 +329,9 @@ public class MainActivity extends Activity {
         root.setPadding(dp(24), dp(24), dp(24), dp(24));
         root.addView(text("THE ONE MEDIA PLAYER", 26, Color.WHITE, true));
         TextView message = text(
-                "De app is gestart in veilige modus. Fout: " + error.getClass().getSimpleName(),
+                "De app is gestart in veilige modus. Fout: "
+                        + error.getClass().getSimpleName()
+                        + (error.getMessage() == null ? "" : "\n" + error.getMessage()),
                 16,
                 MUTED,
                 false
