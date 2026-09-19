@@ -1205,22 +1205,27 @@ public class MainActivity extends Activity {
             root.addView(subtitles, subtitleLp);
             autoHidePlayerButtons.add(subtitles);
 
-            boolean movieOrSeries = "movie".equals(playKind) || "series".equals(playKind);
+            boolean autoHideSubtitleButton =
+                    "movie".equals(playKind)
+                            || "series".equals(playKind)
+                            || "live".equals(playKind);
 
             // Fallback voor oudere/openstaande intents zonder play_kind.
-            if (!movieOrSeries) {
+            if (!autoHideSubtitleButton) {
                 for (String url : urls) {
                     if (url == null) continue;
                     String lower = url.toLowerCase();
-                    if (lower.contains("/movie/") || lower.contains("/series/")) {
-                        movieOrSeries = true;
+                    if (lower.contains("/movie/")
+                            || lower.contains("/series/")
+                            || lower.contains("/live/")) {
+                        autoHideSubtitleButton = true;
                         break;
                     }
                 }
             }
 
-            if (movieOrSeries) {
-                // Tijdens de film/serie zelf staat CC niet in beeld.
+            if (autoHideSubtitleButton) {
+                // Tijdens film, serie en live-tv staat CC niet permanent in beeld.
                 // Tik/OK toont de Media3-bediening én tijdelijk de CC-knop.
                 subtitles.setVisibility(View.GONE);
                 activePlayerView.setControllerAutoShow(false);

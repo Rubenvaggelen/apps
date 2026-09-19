@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2316
-        versionName = "2.3.16-stream-handoff-retry"
+        versionCode = 2317
+        versionName = "2.3.17-live-subtitle-autohide"
     }
 
     signingConfigs {
