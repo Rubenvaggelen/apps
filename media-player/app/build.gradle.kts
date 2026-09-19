@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2204
-        versionName = "2.2.4-tv-button-autohide"
+        versionCode = 2202
+        versionName = "2.2.2-cc-autohide"
     }
 
     signingConfigs {
