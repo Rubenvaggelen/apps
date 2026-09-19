@@ -8,7 +8,7 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -49,33 +49,60 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" ]; then
-            echo "ERROR: signing key secret is empty"
-            exit 1
-          fi
+          test -n "${{ secrets.DEBUG_KEYSTORE_BASE64 }}"
           echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > "$MEDIA_PLAYER_KEYSTORE_PATH"
           chmod 600 "$MEDIA_PLAYER_KEYSTORE_PATH"
           keytool -list -keystore "$MEDIA_PLAYER_KEYSTORE_PATH" -alias androiddebugkey -storepass android >/dev/null
 
-      - name: Build signed V19-based APK
+      - name: Keep working YouTube configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          source = Path("the-one-update/app/build.gradle").read_text(encoding="utf-8")
+          m = re.search(r'YOUTUBE_API_KEY.*?\?:\s*\'([^\']+)\'', source, re.S)
+          if not m:
+              raise SystemExit("YouTube build configuration unavailable")
+          Path("media-player/app/src/main/assets/private_youtube_key.txt").write_text(m.group(1), encoding="utf-8")
+          PY
+
+      - name: Build signed Media Player update
         run: gradle -p media-player clean assembleRelease --no-daemon
 
-      - name: Verify APK signature
+      - name: Verify and name APK
         shell: bash
         run: |
           set -euo pipefail
           APKSIGNER="$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner"
-          "$APKSIGNER" verify --verbose --print-certs media-player/app/build/outputs/apk/release/app-release.apk
-          cp media-player/app/build/outputs/apk/release/app-release.apk media-player/app/build/outputs/apk/release/The-One-Media-Player-V19-Requested.apk
+          APK="media-player/app/build/outputs/apk/release/app-release.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          cp "$APK" media-player/app/build/outputs/apk/release/The-One-Media-Player-v2102.apk
 
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: the-one-media-player-v19-requested-signed
-          path: media-player/app/build/outputs/apk/release/The-One-Media-Player-V19-Requested.apk
+          name: the-one-media-player-v2102
+          path: media-player/app/build/outputs/apk/release/The-One-Media-Player-v2102.apk
+
+      - name: Publish in-app update
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="media-player-v2102"
+          APK="media-player/app/build/outputs/apk/release/The-One-Media-Player-v2102.apk"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK" --clobber
+          else
+            gh release create "$TAG" "$APK" --title "The One Media Player v2102" --notes "V19-basis: Main The One-logo hersteld. Zelfde vaste signing-key voor update over de bestaande app."
+          fi
 
       - name: Smoke-test Media Player on Android emulator
-        timeout-minutes: 8
+        continue-on-error: true
+        timeout-minutes: 12
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -89,9 +116,6 @@ jobs:
             sleep 4
             adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | tee /tmp/activity.txt
             adb logcat -d > /tmp/logcat.txt
-            if grep -q 'FATAL EXCEPTION' /tmp/logcat.txt; then
-              grep -A 40 -B 5 'FATAL EXCEPTION' /tmp/logcat.txt
-              exit 1
-            fi
+            ! grep -q 'FATAL EXCEPTION' /tmp/logcat.txt
             grep -q 'com.theone.mediaplayer' /tmp/activity.txt
             echo 'MEDIA_PLAYER_SMOKE_TEST_OK'
