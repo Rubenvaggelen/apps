@@ -1059,8 +1059,6 @@ public class MainActivity extends Activity {
             return;
         }
 
-        // ExoPlayer gaat automatisch door naar het volgende MediaItem.
-        // Bij handmatig teruggaan wordt de player vrijgegeven en stopt de queue.
         player.setMediaItems(items);
         player.prepare();
         player.play();
@@ -1072,80 +1070,86 @@ public class MainActivity extends Activity {
                         ViewGroup.LayoutParams.MATCH_PARENT
                 )
         );
-        Button subtitles = PremiumUi.chipButton(this, "CC  Ondertiteling");
-        subtitles.setOnClickListener(v -> showSubtitleSelector());
-        FrameLayout.LayoutParams subtitleLp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP | Gravity.END
-        );
-        subtitleLp.topMargin = dp(14);
-        subtitleLp.rightMargin = dp(14);
-        root.addView(subtitles, subtitleLp);
 
-        if (!isTvBuild() && !urls.isEmpty()) {
-            String castUrl = urls.get(0);
-            if (castUrl != null && (castUrl.startsWith("http://") || castUrl.startsWith("https://"))) {
-                MediaRouteButton googleRoute = createGoogleCastButton();
-                if (googleRoute != null) {
-                    // CastButtonFactory beheert zelf de click listener van MediaRouteButton.
-                    // Zet alleen de media klaar; bij een geslaagde Cast-sessie wordt deze geladen.
-                    pendingGoogleCastUrl = castUrl;
-                    pendingGoogleCastTitle = "The One Media Player";
-                    pendingLocalGoogleCast = false;
-
-                    FrameLayout.LayoutParams googleLp = new FrameLayout.LayoutParams(
-                            dp(56),
-                            dp(48),
-                            Gravity.TOP | Gravity.START
-                    );
-                    googleLp.topMargin = dp(14);
-                    googleLp.leftMargin = dp(14);
-                    root.addView(googleRoute, googleLp);
-                }
-
-                Button cast = PremiumUi.chipButton(this, "📺 The One TV");
-                cast.setOnClickListener(v -> castCurrentUrl(castUrl));
-                FrameLayout.LayoutParams castLp = new FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        Gravity.TOP | Gravity.START
-                );
-                castLp.topMargin = dp(70);
-                castLp.leftMargin = dp(14);
-                root.addView(cast, castLp);
-            }
-        }
-
-        boolean movieOrSeries = false;
-        for (String url : urls) {
-            if (url == null) continue;
-            String lower = url.toLowerCase();
-            if (lower.contains("/movie/") || lower.contains("/series/")) {
-                movieOrSeries = true;
-                break;
-            }
-        }
-
-        if (movieOrSeries) {
-            final boolean[] firstPlaybackControls = {true};
-            activePlayerView.setControllerVisibilityListener(
-                    (androidx.media3.ui.PlayerView.ControllerVisibilityListener) visibility -> {
-                if (visibility == View.GONE) {
-                    subtitles.setVisibility(View.GONE);
-                    firstPlaybackControls[0] = false;
-                } else if (!firstPlaybackControls[0]) {
-                    subtitles.setVisibility(View.VISIBLE);
-                }
-            });
-
-            // Tijdens het starten kort beschikbaar; zodra de film/serie speelt verdwijnt CC.
-            // Tik op de speler om de bediening (en CC) later weer te tonen.
-            subtitles.postDelayed(() -> subtitles.setVisibility(View.GONE), 1800);
-        }
-
+        // Zet eerst de werkende videospeler op het scherm. Extra bediening mag
+        // nooit meer de film/serie vervangen door het veilige-modusscherm.
         setContentView(root);
         root.post(this::enterImmersiveFullscreen);
+
+        try {
+            Button subtitles = PremiumUi.chipButton(this, "CC  Ondertiteling");
+            subtitles.setOnClickListener(v -> showSubtitleSelector());
+            FrameLayout.LayoutParams subtitleLp = new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP | Gravity.END
+            );
+            subtitleLp.topMargin = dp(14);
+            subtitleLp.rightMargin = dp(14);
+            root.addView(subtitles, subtitleLp);
+
+            boolean movieOrSeries = false;
+            for (String url : urls) {
+                if (url == null) continue;
+                String lower = url.toLowerCase();
+                if (lower.contains("/movie/") || lower.contains("/series/")) {
+                    movieOrSeries = true;
+                    break;
+                }
+            }
+
+            if (movieOrSeries) {
+                final boolean[] firstPlaybackControls = {true};
+                activePlayerView.setControllerVisibilityListener(
+                        (androidx.media3.ui.PlayerView.ControllerVisibilityListener) visibility -> {
+                    if (visibility == View.GONE) {
+                        subtitles.setVisibility(View.GONE);
+                        firstPlaybackControls[0] = false;
+                    } else if (!firstPlaybackControls[0]) {
+                        subtitles.setVisibility(View.VISIBLE);
+                    }
+                });
+                subtitles.postDelayed(() -> subtitles.setVisibility(View.GONE), 1800);
+            }
+        } catch (Throwable subtitleUiError) {
+            Log.w("TheOneMediaPlayer", "Subtitle controls unavailable; playback continues", subtitleUiError);
+        }
+
+        if (!isTvBuild() && !urls.isEmpty()) {
+            try {
+                String castUrl = urls.get(0);
+                if (castUrl != null && (castUrl.startsWith("http://") || castUrl.startsWith("https://"))) {
+                    MediaRouteButton googleRoute = createGoogleCastButton();
+                    if (googleRoute != null) {
+                        pendingGoogleCastUrl = castUrl;
+                        pendingGoogleCastTitle = "The One Media Player";
+                        pendingLocalGoogleCast = false;
+
+                        FrameLayout.LayoutParams googleLp = new FrameLayout.LayoutParams(
+                                dp(56),
+                                dp(48),
+                                Gravity.TOP | Gravity.START
+                        );
+                        googleLp.topMargin = dp(14);
+                        googleLp.leftMargin = dp(14);
+                        root.addView(googleRoute, googleLp);
+                    }
+
+                    Button cast = PremiumUi.chipButton(this, "📺 The One TV");
+                    cast.setOnClickListener(v -> castCurrentUrl(castUrl));
+                    FrameLayout.LayoutParams castLp = new FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            Gravity.TOP | Gravity.START
+                    );
+                    castLp.topMargin = dp(70);
+                    castLp.leftMargin = dp(14);
+                    root.addView(cast, castLp);
+                }
+            } catch (Throwable castUiError) {
+                Log.w("TheOneMediaPlayer", "Cast controls unavailable; playback continues", castUiError);
+            }
+        }
     }
 
     private void showSubtitleSelector() {
