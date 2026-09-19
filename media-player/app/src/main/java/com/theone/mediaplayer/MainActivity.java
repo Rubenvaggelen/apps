@@ -1318,10 +1318,9 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if (playerFullscreen && isTvBuild()) {
+        if (playerFullscreen) {
+            releasePlayer();
             finish();
-        } else if (playerFullscreen) {
-            showShell("Home");
         } else {
             super.onBackPressed();
         }
@@ -1361,6 +1360,12 @@ public class MainActivity extends Activity {
             activePlayerView = null;
         }
         if (player != null) {
+            try {
+                player.setPlayWhenReady(false);
+                player.stop();
+                player.clearMediaItems();
+            } catch (Throwable ignored) {
+            }
             player.release();
             player = null;
         }

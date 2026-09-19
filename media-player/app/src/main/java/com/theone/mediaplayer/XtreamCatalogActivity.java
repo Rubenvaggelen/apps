@@ -1093,7 +1093,7 @@ public class XtreamCatalogActivity extends Activity {
             int lastActive = -1;
             int lastMax = -1;
 
-            for (int attempt = 0; attempt < 24; attempt++) {
+            for (int attempt = 0; attempt < 90; attempt++) {
                 try {
                     JSONObject root = new JSONObject(get(config.account()));
                     JSONObject userInfo = root.optJSONObject("user_info");
@@ -1114,8 +1114,8 @@ public class XtreamCatalogActivity extends Activity {
                     final int active = lastActive;
                     final int max = lastMax;
                     runOnUiThread(() -> showLoading(
-                            "Streamlijn bezet (" + active + "/" + max + "). "
-                                    + "The One wacht automatisch tot hij vrij is…"
+                            "Streamlijn nog bezet (" + active + "/" + max + "). "
+                                    + "Vorige stream wordt afgesloten; The One controleert elke seconde…"
                     ));
                 } catch (Throwable ignored) {
                     // Als alleen de statuscontrole tijdelijk faalt, blokkeer afspelen niet.
@@ -1124,7 +1124,7 @@ public class XtreamCatalogActivity extends Activity {
                 }
 
                 try {
-                    Thread.sleep(5000L);
+                    Thread.sleep(1000L);
                 } catch (InterruptedException ignored) {
                     Thread.currentThread().interrupt();
                     return;
