@@ -1198,16 +1198,25 @@ public class XtreamCatalogActivity extends Activity {
                     + (episodeNumber.isEmpty() ? "" : " E" + episodeNumber)
                     + " • " + title;
 
+            JSONObject info = ep.optJSONObject("info");
+            String episodeImage = firstNonEmpty(
+                    ep.optString("movie_image", ""),
+                    ep.optString("cover", ""),
+                    ep.optString("cover_big", ""),
+                    ep.optString("stream_icon", ""),
+                    ep.optString("poster", ""),
+                    info == null ? "" : info.optString("movie_image", ""),
+                    info == null ? "" : info.optString("cover", ""),
+                    info == null ? "" : info.optString("cover_big", ""),
+                    info == null ? "" : info.optString("stream_icon", "")
+            );
+
             out.add(new XtreamItem(
                     id,
                     label,
                     extension,
                     "",
-                    firstNonEmpty(
-                            ep.optString("movie_image", ""),
-                            ep.optString("cover", ""),
-                            ep.optString("stream_icon", "")
-                    ),
+                    episodeImage,
                     ""
             ));
             return;
@@ -1256,12 +1265,41 @@ public class XtreamCatalogActivity extends Activity {
             final int startIndex = index;
 
             LinearLayout card = new LinearLayout(this);
-            card.setOrientation(LinearLayout.VERTICAL);
+            card.setOrientation(LinearLayout.HORIZONTAL);
+            card.setGravity(Gravity.CENTER_VERTICAL);
             card.setBackground(PremiumUi.card(this));
             card.setElevation(dp(3));
-            card.setPadding(dp(16), dp(14), dp(16), dp(14));
+            card.setPadding(dp(12), dp(12), dp(12), dp(12));
 
-            card.addView(text(ep.name, 18, Color.WHITE, true));
+            ImageView thumbnail = new ImageView(this);
+            thumbnail.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            thumbnail.setAdjustViewBounds(false);
+            thumbnail.setBackgroundColor(Color.rgb(11, 18, 28));
+
+            LinearLayout.LayoutParams thumbLp = new LinearLayout.LayoutParams(
+                    dp(132),
+                    dp(78)
+            );
+            thumbLp.rightMargin = dp(12);
+            card.addView(thumbnail, thumbLp);
+
+            String thumbnailUrl = firstNonEmpty(ep.imageUrl, series.imageUrl);
+            if (thumbnailUrl.startsWith("http")) {
+                loadImage(thumbnail, thumbnailUrl);
+            }
+
+            LinearLayout info = new LinearLayout(this);
+            info.setOrientation(LinearLayout.VERTICAL);
+            card.addView(info, new LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    1f
+            ));
+
+            TextView episodeTitle = text(ep.name, 18, Color.WHITE, true);
+            episodeTitle.setMaxLines(3);
+            episodeTitle.setEllipsize(TextUtils.TruncateAt.END);
+            info.addView(episodeTitle);
 
             Button play = button("▶ Afspelen");
             play.setOnClickListener(v -> {
@@ -1281,7 +1319,13 @@ public class XtreamCatalogActivity extends Activity {
                 intent.putExtra("play_kind", "series");
                 startActivity(intent);
             });
-            card.addView(play);
+
+            LinearLayout.LayoutParams playLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            );
+            playLp.topMargin = dp(8);
+            info.addView(play, playLp);
 
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
