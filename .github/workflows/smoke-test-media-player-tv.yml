@@ -1,0 +1,66 @@
+name: Smoke Test Android TV Media Player
+
+on:
+  push:
+    paths:
+      - 'media-player/app/**'
+      - 'media-player/tvapp/**'
+      - '.github/workflows/smoke-test-media-player-tv.yml'
+  workflow_dispatch: {}
+
+jobs:
+  tv-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Keep working YouTube configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          source = Path("the-one-update/app/build.gradle").read_text(encoding="utf-8")
+          tail = source.split("YOUTUBE_API_KEY", 1)[1]
+          m = re.search(r"\?:\s*'([^']+)'", tail)
+          if not m:
+              raise SystemExit("YouTube build configuration unavailable")
+          Path("media-player/app/src/main/assets/private_youtube_key.txt").write_text(m.group(1), encoding="utf-8")
+          PY
+
+      - name: Build TV APK
+        run: gradle -p media-player :tvapp:assembleDebug --no-daemon
+
+      - name: Run on Android TV emulator
+        timeout-minutes: 14
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: tv_1080p
+          disable-animations: true
+          script: |
+            adb logcat -c
+            adb install -r media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
+            adb shell am start -W -n com.theone.mediaplayer.tv/com.theone.mediaplayer.MainActivity
+            sleep 6
+            adb logcat -d -v brief > /tmp/tv-logcat.txt
+            cat /tmp/tv-logcat.txt | grep -A 25 -B 5 -E 'TheOneMediaPlayer|FATAL EXCEPTION|IllegalArgumentException' || true
+            if grep -q 'Startup failed' /tmp/tv-logcat.txt; then
+              echo 'TV_STARTUP_FAILED'
+              exit 1
+            fi
+            adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity'
+            echo 'TV_STARTUP_OK'
