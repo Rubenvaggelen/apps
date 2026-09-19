@@ -125,8 +125,14 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         try {
             prefs = getSharedPreferences("media_player", Context.MODE_PRIVATE);
-            if (isTvBuild()) startTvCastReceiver();
-            else initGoogleCast();
+            if (isTvBuild()) {
+                try {
+                    startTvCastReceiver();
+                } catch (Throwable castReceiverError) {
+                    Log.w("TheOneMediaPlayer", "TV cast receiver unavailable at startup", castReceiverError);
+                    castReceiver = null;
+                }
+            }
 
             ArrayList<String> playQueue = getIntent().getStringArrayListExtra("play_queue");
             String playUrl = getIntent().getStringExtra("play_url");
@@ -370,13 +376,9 @@ public class MainActivity extends Activity {
         addNavButton(nav, "Verder kijken", () -> showSection("Verder kijken", "Je kijkvoortgang verschijnt hier."));
         addNavButton(nav, "Favorieten", () -> showSection("Favorieten", "Je favoriete zenders, films en series verschijnen hier."));
         if (!isTvBuild()) {
+            // Google Cast wordt pas geladen wanneer de gebruiker deze functie opent.
+            // Zo kan een Cast-/Play Services-probleem de Media Player nooit meer bij startup blokkeren.
             addNavButton(nav, "Stream naar TV", this::showCastPanel);
-            MediaRouteButton castRoute = createGoogleCastButton();
-            if (castRoute != null) {
-                LinearLayout.LayoutParams castRouteLp = new LinearLayout.LayoutParams(dp(54), dp(46));
-                castRouteLp.rightMargin = dp(8);
-                nav.addView(castRoute, castRouteLp);
-            }
         }
         addNavButton(nav, "Instellingen", this::showSettings);
         navScroll.addView(nav);
@@ -455,6 +457,12 @@ public class MainActivity extends Activity {
 
     private void showCastPanel() {
         if (isTvBuild()) return;
+
+        // Lazy initialisatie: Cast is optioneel en mag de hoofdapp nooit laten crashen.
+        if (googleCastContext == null) {
+            initGoogleCast();
+        }
+
         content.removeAllViews();
 
         ScrollView scroll = new ScrollView(this);
