@@ -71,10 +71,13 @@ public final class XtreamConfig {
                 && !password.startsWith("PRIVATE_");
     }
 
-    public String api(String action) {
+    public String account() {
         return server + "/player_api.php?username=" + query(username)
-                + "&password=" + query(password)
-                + "&action=" + query(action);
+                + "&password=" + query(password);
+    }
+
+    public String api(String action) {
+        return account() + "&action=" + query(action);
     }
 
     public String api(String action, String key, String value) {

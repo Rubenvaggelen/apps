@@ -1369,7 +1369,9 @@ public class MainActivity extends Activity {
     @Override
     protected void onStop() {
         super.onStop();
-        if (player != null) player.pause();
+        if (player != null) {
+            releasePlayer();
+        }
     }
 
     @Override

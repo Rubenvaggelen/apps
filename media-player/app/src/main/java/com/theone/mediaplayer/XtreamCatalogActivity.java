@@ -1079,11 +1079,120 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private void play(XtreamItem item) {
-        String url = config.stream(mode, item.id, item.extension);
+        ArrayList<String> queue = new ArrayList<>();
+        queue.add(config.stream(mode, item.id, item.extension));
+        startPlaybackWhenLineFree(queue, mode);
+    }
+
+    private void startPlaybackWhenLineFree(ArrayList<String> queue, String kind) {
+        if (queue == null || queue.isEmpty()) return;
+
+        showLoading("Streamverbinding controleren…");
+
+        new Thread(() -> {
+            int lastActive = -1;
+            int lastMax = -1;
+
+            for (int attempt = 0; attempt < 24; attempt++) {
+                try {
+                    JSONObject root = new JSONObject(get(config.account()));
+                    JSONObject userInfo = root.optJSONObject("user_info");
+
+                    if (userInfo == null || userInfo.optInt("auth", 0) != 1) {
+                        runOnUiThread(() -> launchPlayback(queue, kind));
+                        return;
+                    }
+
+                    lastActive = parseConnectionCount(userInfo.opt("active_cons"));
+                    lastMax = parseConnectionCount(userInfo.opt("max_connections"));
+
+                    if (lastMax <= 0 || lastActive < lastMax) {
+                        runOnUiThread(() -> launchPlayback(queue, kind));
+                        return;
+                    }
+
+                    final int active = lastActive;
+                    final int max = lastMax;
+                    runOnUiThread(() -> showLoading(
+                            "Streamlijn bezet (" + active + "/" + max + "). "
+                                    + "The One wacht automatisch tot hij vrij is…"
+                    ));
+                } catch (Throwable ignored) {
+                    // Als alleen de statuscontrole tijdelijk faalt, blokkeer afspelen niet.
+                    runOnUiThread(() -> launchPlayback(queue, kind));
+                    return;
+                }
+
+                try {
+                    Thread.sleep(5000L);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+
+            final int active = lastActive;
+            final int max = lastMax;
+            runOnUiThread(() -> showConnectionBusy(active, max, queue, kind));
+        }).start();
+    }
+
+    private int parseConnectionCount(Object value) {
+        if (value == null || value == JSONObject.NULL) return -1;
+        try {
+            return Integer.parseInt(String.valueOf(value).trim());
+        } catch (Throwable ignored) {
+            return -1;
+        }
+    }
+
+    private void launchPlayback(ArrayList<String> queue, String kind) {
+        if (isFinishing() || queue == null || queue.isEmpty()) return;
+
         Intent intent = new Intent(this, MainActivity.class);
-        intent.putExtra("play_url", url);
-        intent.putExtra("play_kind", mode);
+        if (queue.size() == 1) {
+            intent.putExtra("play_url", queue.get(0));
+        } else {
+            intent.putStringArrayListExtra("play_queue", queue);
+        }
+        intent.putExtra("play_kind", kind);
         startActivity(intent);
+    }
+
+    private void showConnectionBusy(
+            int active,
+            int max,
+            ArrayList<String> queue,
+            String kind
+    ) {
+        content.removeAllViews();
+
+        String count = active >= 0 && max > 0
+                ? " (" + active + "/" + max + ")"
+                : "";
+
+        TextView message = text(
+                "De streamlijn is nog bezet" + count
+                        + ". The One kan pas starten zodra de bestaande stream is vrijgegeven.",
+                17,
+                Color.WHITE,
+                false
+        );
+        message.setPadding(0, dp(12), 0, dp(12));
+        content.addView(message);
+
+        Button retry = button("Automatisch opnieuw controleren");
+        retry.setOnClickListener(v -> startPlaybackWhenLineFree(queue, kind));
+        content.addView(retry);
+
+        Button back = PremiumUi.chipButton(this, "← Terug");
+        back.setOnClickListener(v -> loadCategories());
+        LinearLayout.LayoutParams backLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        backLp.topMargin = dp(8);
+        content.addView(back, backLp);
     }
 
     private void loadSeriesEpisodes(XtreamItem series) {
@@ -1314,10 +1423,7 @@ public class XtreamCatalogActivity extends Activity {
                     ));
                 }
 
-                Intent intent = new Intent(this, MainActivity.class);
-                intent.putStringArrayListExtra("play_queue", queue);
-                intent.putExtra("play_kind", "series");
-                startActivity(intent);
+                startPlaybackWhenLineFree(queue, "series");
             });
 
             LinearLayout.LayoutParams playLp = new LinearLayout.LayoutParams(
