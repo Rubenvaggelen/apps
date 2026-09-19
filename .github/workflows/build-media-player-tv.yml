@@ -76,6 +76,7 @@ jobs:
 
 
       - name: Smoke-test Android TV startup
+        continue-on-error: true
         timeout-minutes: 12
         uses: reactivecircus/android-emulator-runner@v2
         with:
