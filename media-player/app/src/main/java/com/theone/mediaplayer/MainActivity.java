@@ -165,19 +165,22 @@ public class MainActivity extends Activity {
     }
 
     private MediaRouteButton createGoogleCastButton() {
-        MediaRouteButton route = new MediaRouteButton(this);
-        route.setContentDescription("Chromecast / Google Cast");
-        route.setFocusable(true);
-        route.setBackground(PremiumUi.card(this));
-        route.setPadding(dp(10), dp(8), dp(10), dp(8));
-        route.setMinimumWidth(dp(52));
-        route.setMinimumHeight(dp(46));
         try {
+            MediaRouteButton route = new MediaRouteButton(this);
+            route.setContentDescription("Chromecast / Google Cast");
+            route.setFocusable(true);
+            route.setBackground(PremiumUi.card(this));
+            route.setPadding(dp(10), dp(8), dp(10), dp(8));
+            route.setMinimumWidth(dp(52));
+            route.setMinimumHeight(dp(46));
             CastButtonFactory.setUpMediaRouteButton(this, route);
-        } catch (Throwable ignored) {
+            googleCastButton = route;
+            return route;
+        } catch (Throwable castButtonError) {
+            Log.w("TheOneMediaPlayer", "Google Cast button unavailable", castButtonError);
+            googleCastButton = null;
+            return null;
         }
-        googleCastButton = route;
-        return route;
     }
 
     private void requestGoogleCast(String url, String title) {
@@ -369,9 +372,11 @@ public class MainActivity extends Activity {
         if (!isTvBuild()) {
             addNavButton(nav, "Stream naar TV", this::showCastPanel);
             MediaRouteButton castRoute = createGoogleCastButton();
-            LinearLayout.LayoutParams castRouteLp = new LinearLayout.LayoutParams(dp(54), dp(46));
-            castRouteLp.rightMargin = dp(8);
-            nav.addView(castRoute, castRouteLp);
+            if (castRoute != null) {
+                LinearLayout.LayoutParams castRouteLp = new LinearLayout.LayoutParams(dp(54), dp(46));
+                castRouteLp.rightMargin = dp(8);
+                nav.addView(castRoute, castRouteLp);
+            }
         }
         addNavButton(nav, "Instellingen", this::showSettings);
         navScroll.addView(nav);
@@ -468,7 +473,17 @@ public class MainActivity extends Activity {
         googleCard.addView(googleInfo);
 
         MediaRouteButton panelCastButton = createGoogleCastButton();
-        googleCard.addView(panelCastButton, new LinearLayout.LayoutParams(dp(64), dp(52)));
+        if (panelCastButton != null) {
+            googleCard.addView(panelCastButton, new LinearLayout.LayoutParams(dp(64), dp(52)));
+        } else {
+            TextView castFallback = text(
+                    "Google Cast-knop is op dit apparaat niet beschikbaar. The One Android TV-streaming blijft wel werken.",
+                    14,
+                    MUTED,
+                    false
+            );
+            googleCard.addView(castFallback);
+        }
 
         Button castLocalGoogle = button("Stream gekozen telefoonbestand naar Chromecast");
         castLocalGoogle.setOnClickListener(v -> requestLocalGoogleCast());
