@@ -1113,8 +1113,13 @@ public class MainActivity extends Activity {
 
         activePlayerView = new PlayerView(this);
 
+        java.util.HashMap<String, String> requestHeaders = new java.util.HashMap<>();
+        requestHeaders.put("Connection", "close");
+        requestHeaders.put("Keep-Alive", "timeout=5, max=1");
+
         DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
                 .setUserAgent("VLC/3.0.20 LibVLC/3.0.20")
+                .setDefaultRequestProperties(requestHeaders)
                 .setAllowCrossProtocolRedirects(true)
                 .setConnectTimeoutMs(15000)
                 .setReadTimeoutMs(30000);
@@ -1159,21 +1164,38 @@ public class MainActivity extends Activity {
                 int httpCode = findHttpStatus(error);
                 Log.e("TheOneMediaPlayer", "Playback failed HTTP=" + httpCode, error);
 
-                if (httpCode == 458 && playbackRetryCount < 2) {
+                if (httpCode == 458 && playbackRetryCount < 1) {
                     playbackRetryCount++;
+
+                    // 458 is vaak een nog actieve Xtream-verbinding.
+                    // Sluit de huidige request eerst volledig voordat we één keer opnieuw proberen.
+                    try {
+                        player.stop();
+                        player.clearMediaItems();
+                    } catch (Throwable ignored) {
+                    }
+
                     Toast.makeText(
                             MainActivity.this,
-                            "Stream opnieuw verbinden…",
+                            "Streamverbinding vrijmaken…",
                             Toast.LENGTH_SHORT
                     ).show();
 
                     if (activePlayerView != null) {
                         activePlayerView.postDelayed(
                                 MainActivity.this::playCurrentQueueItem,
-                                1200L * playbackRetryCount
+                                6000L
                         );
                     }
                     return;
+                }
+
+                try {
+                    if (player != null) {
+                        player.stop();
+                        player.clearMediaItems();
+                    }
+                } catch (Throwable ignored) {
                 }
 
                 showPlaybackError(httpCode);
@@ -1511,7 +1533,12 @@ public class MainActivity extends Activity {
     @Override
     protected void onStop() {
         super.onStop();
-        if (player != null) player.pause();
+
+        // Video mag geen Xtream-verbinding bezet houden wanneer deze Activity
+        // niet meer zichtbaar is. Dit voorkomt HTTP 458 bij opnieuw afspelen.
+        if (player != null) {
+            releasePlayer();
+        }
     }
 
     @Override
