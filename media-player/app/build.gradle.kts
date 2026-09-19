@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2103
-        versionName = "1.9.3-v19-cc-autohide"
+        versionCode = 2201
+        versionName = "2.2.1-the-one-buttons"
     }
 
     signingConfigs {
