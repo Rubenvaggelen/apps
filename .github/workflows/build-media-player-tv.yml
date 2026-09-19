@@ -73,17 +73,3 @@ jobs:
         with:
           name: the-one-media-player-tv
           path: media-player/tvapp/build/outputs/apk/debug/The-One-Media-Player-TV.apk
-
-      - name: Publish stable Android TV download
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          TAG="media-player-tv-latest"
-          APK="media-player/tvapp/build/outputs/apk/debug/The-One-Media-Player-TV.apk"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$APK" --clobber
-          else
-            gh release create "$TAG" "$APK" --title "The One Media Player • Android TV" --notes "Aparte Android TV APK van The One Media Player. Bediening met afstandsbediening en Android/Google TV launcher."
-          fi
