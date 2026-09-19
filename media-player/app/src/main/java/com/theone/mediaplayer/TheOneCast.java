@@ -236,8 +236,13 @@ public final class TheOneCast {
     }
 
     public static InetAddress localAddressFor(TvDevice tv) {
+        return localAddressFor(tv == null ? null : tv.address, tv == null ? COMMAND_PORT : tv.commandPort);
+    }
+
+    public static InetAddress localAddressFor(InetAddress remote, int port) {
+        if (remote == null) return null;
         try (DatagramSocket socket = new DatagramSocket()) {
-            socket.connect(tv.address, tv.commandPort);
+            socket.connect(remote, port <= 0 ? 8009 : port);
             InetAddress local = socket.getLocalAddress();
             if (local != null && !local.isAnyLocalAddress()) return local;
         } catch (Throwable ignored) {
@@ -272,8 +277,17 @@ public final class TheOneCast {
         }
 
         public String urlFor(TvDevice tv) {
+            if (tv == null) return null;
+            return urlFor(tv.address, tv.commandPort);
+        }
+
+        public String urlFor(InetAddress remote) {
+            return urlFor(remote, 8009);
+        }
+
+        public String urlFor(InetAddress remote, int remotePort) {
             if (server == null) return null;
-            InetAddress local = localAddressFor(tv);
+            InetAddress local = localAddressFor(remote, remotePort);
             if (local == null) return null;
             String host = local.getHostAddress();
             if (host.contains(":")) host = "[" + host + "]";
@@ -297,6 +311,7 @@ public final class TheOneCast {
                 String first = reader.readLine();
                 if (first == null) return;
                 boolean headOnly = first.startsWith("HEAD ");
+                boolean optionsOnly = first.startsWith("OPTIONS ");
                 String rangeHeader = null;
                 String line;
                 while ((line = reader.readLine()) != null && !line.isEmpty()) {
@@ -323,9 +338,17 @@ public final class TheOneCast {
                 long length = total > 0 ? (end - start + 1) : -1;
                 OutputStream out = socket.getOutputStream();
                 StringBuilder headers = new StringBuilder();
-                headers.append(partial ? "HTTP/1.1 206 Partial Content\r\n" : "HTTP/1.1 200 OK\r\n");
+                if (optionsOnly) {
+                    headers.append("HTTP/1.1 204 No Content\r\n");
+                } else {
+                    headers.append(partial ? "HTTP/1.1 206 Partial Content\r\n" : "HTTP/1.1 200 OK\r\n");
+                }
                 headers.append("Content-Type: ").append(contentType).append("\r\n");
                 headers.append("Accept-Ranges: bytes\r\n");
+                headers.append("Access-Control-Allow-Origin: *\r\n");
+                headers.append("Access-Control-Allow-Methods: GET, HEAD, OPTIONS\r\n");
+                headers.append("Access-Control-Allow-Headers: Range, Content-Type\r\n");
+                headers.append("Access-Control-Expose-Headers: Content-Length, Content-Range, Accept-Ranges\r\n");
                 if (length >= 0) headers.append("Content-Length: ").append(length).append("\r\n");
                 if (partial && total > 0) {
                     headers.append("Content-Range: bytes ").append(start).append("-").append(end).append("/").append(total).append("\r\n");
@@ -334,7 +357,7 @@ public final class TheOneCast {
                 out.write(headers.toString().getBytes(StandardCharsets.US_ASCII));
                 out.flush();
 
-                if (headOnly) return;
+                if (headOnly || optionsOnly) return;
 
                 try (InputStream in = context.getContentResolver().openInputStream(uri)) {
                     if (in == null) return;
