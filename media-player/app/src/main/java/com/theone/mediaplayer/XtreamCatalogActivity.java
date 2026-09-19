@@ -51,6 +51,8 @@ public class XtreamCatalogActivity extends Activity {
     private final List<XtreamItem> categoryItems = new ArrayList<>();
     private final List<XtreamItem> globalItems = new ArrayList<>();
     private boolean globalLoaded = false;
+    private final List<Category> categoryCache = new ArrayList<>();
+    private volatile boolean categoriesLoading = false;
     private final ExecutorService imagePool = Executors.newFixedThreadPool(4);
 
     @Override
@@ -115,31 +117,134 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private void loadCategories() {
-        showLoading("Categorieën laden…");
+        List<Category> available = categoryCache.isEmpty()
+                ? loadCachedCategories()
+                : new ArrayList<>(categoryCache);
+
+        if (!available.isEmpty()) {
+            categoryCache.clear();
+            categoryCache.addAll(available);
+            renderCategories(new ArrayList<>(categoryCache));
+        } else {
+            showLoading("Categorieën laden…");
+        }
+
+        if (categoriesLoading) return;
+        categoriesLoading = true;
 
         String action = "live".equals(mode)
                 ? "get_live_categories"
                 : ("movie".equals(mode) ? "get_vod_categories" : "get_series_categories");
 
         new Thread(() -> {
-            try {
-                JSONArray arr = new JSONArray(get(config.api(action)));
-                List<Category> categories = new ArrayList<>();
+            List<Category> fresh = new ArrayList<>();
 
-                for (int i = 0; i < arr.length(); i++) {
-                    JSONObject o = arr.optJSONObject(i);
-                    if (o == null) continue;
+            for (int attempt = 0; attempt < 2 && fresh.isEmpty(); attempt++) {
+                try {
+                    JSONArray arr = new JSONArray(get(config.api(action)));
 
-                    String id = o.optString("category_id", "");
-                    String name = o.optString("category_name", "Categorie");
-                    if (!id.isEmpty()) categories.add(new Category(id, name));
+                    for (int i = 0; i < arr.length(); i++) {
+                        JSONObject o = arr.optJSONObject(i);
+                        if (o == null) continue;
+
+                        String id = o.optString("category_id", "");
+                        String name = o.optString("category_name", "Categorie");
+                        if (!id.isEmpty()) fresh.add(new Category(id, name));
+                    }
+                } catch (Throwable ignored) {
                 }
 
-                runOnUiThread(() -> renderCategories(categories));
-            } catch (Throwable e) {
-                runOnUiThread(() -> showMessage("Categorieën konden niet worden geladen."));
+                if (fresh.isEmpty() && attempt == 0) {
+                    try {
+                        Thread.sleep(450);
+                    } catch (InterruptedException ignored) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
             }
+
+            List<Category> result = new ArrayList<>(fresh);
+            runOnUiThread(() -> {
+                categoriesLoading = false;
+
+                if (!result.isEmpty()) {
+                    categoryCache.clear();
+                    categoryCache.addAll(result);
+                    saveCachedCategories(result);
+                    renderCategories(new ArrayList<>(result));
+                    return;
+                }
+
+                if (!categoryCache.isEmpty()) {
+                    renderCategories(new ArrayList<>(categoryCache));
+                    return;
+                }
+
+                showCategoriesRetry();
+            });
         }).start();
+    }
+
+    private String categoryCacheKey() {
+        return "xtream_categories_" + mode;
+    }
+
+    private List<Category> loadCachedCategories() {
+        List<Category> out = new ArrayList<>();
+
+        try {
+            SharedPreferences prefs = getSharedPreferences("media_player", Context.MODE_PRIVATE);
+            String raw = prefs.getString(categoryCacheKey(), "");
+            if (raw == null || raw.trim().isEmpty()) return out;
+
+            JSONArray arr = new JSONArray(raw);
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject o = arr.optJSONObject(i);
+                if (o == null) continue;
+
+                String id = o.optString("id", "");
+                String name = o.optString("name", "Categorie");
+                if (!id.isEmpty()) out.add(new Category(id, name));
+            }
+        } catch (Throwable ignored) {
+        }
+
+        return out;
+    }
+
+    private void saveCachedCategories(List<Category> categories) {
+        try {
+            JSONArray arr = new JSONArray();
+            for (Category category : categories) {
+                JSONObject o = new JSONObject();
+                o.put("id", category.id);
+                o.put("name", category.name);
+                arr.put(o);
+            }
+
+            getSharedPreferences("media_player", Context.MODE_PRIVATE)
+                    .edit()
+                    .putString(categoryCacheKey(), arr.toString())
+                    .apply();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void showCategoriesRetry() {
+        content.removeAllViews();
+
+        TextView message = text(
+                "Categorieën konden niet worden geladen. Probeer opnieuw.",
+                17,
+                Color.WHITE,
+                false
+        );
+        message.setPadding(0, dp(12), 0, dp(12));
+        content.addView(message);
+
+        Button retry = button("Opnieuw laden");
+        retry.setOnClickListener(v -> loadCategories());
+        content.addView(retry);
     }
 
     private void renderCategories(List<Category> categories) {
@@ -1088,7 +1193,12 @@ public class XtreamCatalogActivity extends Activity {
             conn = (HttpURLConnection) new URL(urlValue).openConnection();
             conn.setConnectTimeout(15000);
             conn.setReadTimeout(30000);
+            conn.setUseCaches(false);
             conn.setRequestProperty("User-Agent", "TheOneMediaPlayer/0.9");
+            conn.setRequestProperty("Accept", "application/json");
+            conn.setRequestProperty("Cache-Control", "no-cache, no-store");
+            conn.setRequestProperty("Pragma", "no-cache");
+            conn.setRequestProperty("Connection", "close");
 
             int code = conn.getResponseCode();
             InputStream in = code >= 200 && code < 300
