@@ -9,6 +9,8 @@ import android.content.res.Configuration;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.InputType;
 import android.util.Log;
 import android.view.Gravity;
@@ -27,6 +29,8 @@ import android.widget.Toast;
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.Player;
 import androidx.media3.common.TrackSelectionOverride;
 import androidx.media3.common.Tracks;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -79,6 +83,9 @@ public class MainActivity extends Activity {
     private PlayerView activePlayerView;
     private SharedPreferences prefs;
     private boolean playerFullscreen = false;
+    private static final int MAX_PLAYBACK_RETRIES = 15;
+    private final Handler playbackRetryHandler = new Handler(Looper.getMainLooper());
+    private int playbackRetryCount = 0;
 
     private static final int REQ_PICK_CAST_MEDIA = 7301;
     private TheOneCast.Receiver castReceiver;
@@ -1119,6 +1126,51 @@ public class MainActivity extends Activity {
             return;
         }
 
+        String playKind = getIntent().getStringExtra("play_kind");
+        boolean retryXtreamPlayback =
+                "movie".equals(playKind)
+                        || "series".equals(playKind)
+                        || "live".equals(playKind);
+
+        playbackRetryCount = 0;
+        playbackRetryHandler.removeCallbacksAndMessages(null);
+
+        if (retryXtreamPlayback) {
+            player.addListener(new Player.Listener() {
+                @Override
+                public void onPlayerError(PlaybackException error) {
+                    if (player == null || playbackRetryCount >= MAX_PLAYBACK_RETRIES) return;
+
+                    playbackRetryCount++;
+                    long delayMs = playbackRetryCount <= 3 ? 700L : 1000L;
+                    Log.w(
+                            "TheOneMediaPlayer",
+                            "Xtream stream not ready yet; retry " + playbackRetryCount
+                                    + "/" + MAX_PLAYBACK_RETRIES,
+                            error
+                    );
+
+                    playbackRetryHandler.postDelayed(() -> {
+                        if (player == null) return;
+                        try {
+                            player.prepare();
+                            player.play();
+                        } catch (Throwable retryError) {
+                            Log.w("TheOneMediaPlayer", "Xtream retry failed", retryError);
+                        }
+                    }, delayMs);
+                }
+
+                @Override
+                public void onPlaybackStateChanged(int playbackState) {
+                    if (playbackState == Player.STATE_READY) {
+                        playbackRetryCount = 0;
+                        playbackRetryHandler.removeCallbacksAndMessages(null);
+                    }
+                }
+            });
+        }
+
         player.setMediaItems(items);
         player.prepare();
         player.play();
@@ -1153,7 +1205,6 @@ public class MainActivity extends Activity {
             root.addView(subtitles, subtitleLp);
             autoHidePlayerButtons.add(subtitles);
 
-            String playKind = getIntent().getStringExtra("play_kind");
             boolean movieOrSeries = "movie".equals(playKind) || "series".equals(playKind);
 
             // Fallback voor oudere/openstaande intents zonder play_kind.
@@ -1354,6 +1405,8 @@ public class MainActivity extends Activity {
     }
 
     private void releasePlayer() {
+        playbackRetryHandler.removeCallbacksAndMessages(null);
+        playbackRetryCount = 0;
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (activePlayerView != null) {
             activePlayerView.setPlayer(null);

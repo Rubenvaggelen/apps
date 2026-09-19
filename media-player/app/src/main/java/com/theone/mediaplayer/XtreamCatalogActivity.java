@@ -1087,54 +1087,16 @@ public class XtreamCatalogActivity extends Activity {
     private void startPlaybackWhenLineFree(ArrayList<String> queue, String kind) {
         if (queue == null || queue.isEmpty()) return;
 
-        showLoading("Streamverbinding controleren…");
-
-        new Thread(() -> {
-            int lastActive = -1;
-            int lastMax = -1;
-
-            for (int attempt = 0; attempt < 90; attempt++) {
-                try {
-                    JSONObject root = new JSONObject(get(config.account()));
-                    JSONObject userInfo = root.optJSONObject("user_info");
-
-                    if (userInfo == null || userInfo.optInt("auth", 0) != 1) {
-                        runOnUiThread(() -> launchPlayback(queue, kind));
-                        return;
-                    }
-
-                    lastActive = parseConnectionCount(userInfo.opt("active_cons"));
-                    lastMax = parseConnectionCount(userInfo.opt("max_connections"));
-
-                    if (lastMax <= 0 || lastActive < lastMax) {
-                        runOnUiThread(() -> launchPlayback(queue, kind));
-                        return;
-                    }
-
-                    final int active = lastActive;
-                    final int max = lastMax;
-                    runOnUiThread(() -> showLoading(
-                            "Streamlijn nog bezet (" + active + "/" + max + "). "
-                                    + "Vorige stream wordt afgesloten; The One controleert elke seconde…"
-                    ));
-                } catch (Throwable ignored) {
-                    // Als alleen de statuscontrole tijdelijk faalt, blokkeer afspelen niet.
-                    runOnUiThread(() -> launchPlayback(queue, kind));
-                    return;
-                }
-
-                try {
-                    Thread.sleep(1000L);
-                } catch (InterruptedException ignored) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
-            }
-
-            final int active = lastActive;
-            final int max = lastMax;
-            runOnUiThread(() -> showConnectionBusy(active, max, queue, kind));
-        }).start();
+        // active_cons on Xtream panels can stay at 1/1 for several seconds after
+        // the previous socket is already closed. Treating that value as a hard
+        // gate made the app get stuck on "Streamlijn nog bezet".
+        //
+        // Start the requested title immediately. MainActivity retries the real
+        // media connection briefly if the provider has not released the old
+        // session yet. That makes switching deterministic without trusting a
+        // stale account-status counter.
+        showLoading("Stream starten…");
+        launchPlayback(queue, kind);
     }
 
     private int parseConnectionCount(Object value) {

@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2315
-        versionName = "2.3.15-fast-stream-switch"
+        versionCode = 2316
+        versionName = "2.3.16-stream-handoff-retry"
     }
 
     signingConfigs {
