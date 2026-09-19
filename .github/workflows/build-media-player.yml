@@ -70,6 +70,74 @@ jobs:
           name: media-player-public-cert
           path: media-player-signing-cert.pem
 
+      - name: Restore encrypted private Xtream source
+        shell: bash
+        run: |
+          set -euo pipefail
+          ENC=".github/media-player-private-source.enc.b64"
+          test -s "$ENC"
+
+          base64 -d "$ENC" > /tmp/media-player-source.enc
+
+          keytool -importkeystore \
+            -srckeystore "$MEDIA_PLAYER_KEYSTORE_PATH" \
+            -srcstorepass "$MEDIA_PLAYER_KEYSTORE_PASSWORD" \
+            -srcalias "$MEDIA_PLAYER_KEY_ALIAS" \
+            -destkeystore /tmp/media-player-signing.p12 \
+            -deststoretype PKCS12 \
+            -deststorepass changeit \
+            -destkeypass changeit \
+            -noprompt >/dev/null
+
+          openssl pkcs12 \
+            -in /tmp/media-player-signing.p12 \
+            -passin pass:changeit \
+            -nodes -nocerts \
+            -out /tmp/media-player-private.pem >/dev/null 2>&1
+
+          openssl pkeyutl -decrypt \
+            -inkey /tmp/media-player-private.pem \
+            -in /tmp/media-player-source.enc \
+            -out /tmp/media-player-source.json \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256
+
+          python3 - <<'PY'
+          from pathlib import Path
+          from urllib.parse import urlsplit, parse_qs
+          import json
+
+          src = json.loads(Path("/tmp/media-player-source.json").read_text(encoding="utf-8"))
+          m3u = str(src.get("m3u_url", "")).strip()
+          parsed = urlsplit(m3u)
+          qs = parse_qs(parsed.query)
+          username = (qs.get("username") or [""])[0]
+          password = (qs.get("password") or [""])[0]
+          server = f"{parsed.scheme}://{parsed.netloc}"
+
+          if not (server.startswith("http") and username and password):
+              raise SystemExit("Encrypted private source is not a valid Xtream-style M3U URL")
+
+          out = Path("media-player/app/src/main/assets")
+          out.mkdir(parents=True, exist_ok=True)
+          (out / "private_xtream.json").write_text(
+              json.dumps(
+                  {"server": server, "username": username, "password": password},
+                  ensure_ascii=False,
+                  indent=2,
+              ) + "\n",
+              encoding="utf-8",
+          )
+          (out / "private_source.txt").write_text(m3u + "\n", encoding="utf-8")
+          print("Private Media Player source restored securely")
+          PY
+
+          rm -f \
+            /tmp/media-player-source.enc \
+            /tmp/media-player-source.json \
+            /tmp/media-player-signing.p12 \
+            /tmp/media-player-private.pem
+
       - name: Keep working YouTube configuration
         shell: bash
         run: |
