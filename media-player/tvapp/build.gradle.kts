@@ -40,4 +40,5 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.11.0")
     implementation("androidx.media3:media3-exoplayer-dash:1.11.0")
     implementation("androidx.media3:media3-ui:1.11.0")
+    implementation("com.google.android.gms:play-services-cast-framework:22.1.0")
 }
