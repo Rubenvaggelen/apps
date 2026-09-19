@@ -95,8 +95,8 @@ public class MainActivity extends Activity {
             } else if (playUrl != null && (playUrl.startsWith("http://") || playUrl.startsWith("https://"))) {
                 showPlayer(playUrl);
             } else {
-                showShell("Home");
-                if (!"com.theone.mediaplayer.tv".equals(getPackageName())) {
+                showShell(isStreamBuild() ? "Streamen" : "Home");
+                if ("com.theone.mediaplayer".equals(getPackageName())) {
                     MediaPlayerUpdateChecker.checkForUpdate(this);
                 }
             }
@@ -437,6 +437,10 @@ public class MainActivity extends Activity {
 
     private boolean isTvBuild() {
         return "com.theone.mediaplayer.tv".equals(getPackageName());
+    }
+
+    private boolean isStreamBuild() {
+        return "com.theone.mediaplayer.stream".equals(getPackageName());
     }
 
     private Uri incomingMediaUri(Intent intent) {
