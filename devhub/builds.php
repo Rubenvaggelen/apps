@@ -64,7 +64,7 @@ $buildReady = $latestTag !== '' && $tagCommit === $head;
 $recentTags = array_slice($tags, 0, 8);
 $appDownload = $latestTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releases/download/' . rawurlencode($latestTag) . '/app-debug.apk' : '';
 $carDownload = $latestTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releases/download/' . rawurlencode($latestTag) . '/carradio-debug.apk' : '';
-$tvDownload = 'downloads/The-One-Media-Player-Android-TV.apk';
+$tvDownload = 'https://github.com/Rubenvaggelen/apps/releases/download/media-player-tv-latest/The-One-Media-Player-TV.apk';
 ?>
 <!doctype html>
 <html lang="nl">
