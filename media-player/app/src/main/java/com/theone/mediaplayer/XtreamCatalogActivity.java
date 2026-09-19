@@ -141,7 +141,7 @@ public class XtreamCatalogActivity extends Activity {
         new Thread(() -> {
             List<Category> fresh = new ArrayList<>();
 
-            for (int attempt = 0; attempt < 4 && fresh.isEmpty(); attempt++) {
+            for (int attempt = 0; attempt < 2 && fresh.isEmpty(); attempt++) {
                 try {
                     JSONArray arr = new JSONArray(get(config.api(action)));
 
@@ -156,12 +156,11 @@ public class XtreamCatalogActivity extends Activity {
                 } catch (Throwable ignored) {
                 }
 
-                if (fresh.isEmpty() && attempt < 3) {
+                if (fresh.isEmpty() && attempt == 0) {
                     try {
-                        Thread.sleep(600L * (attempt + 1));
+                        Thread.sleep(450);
                     } catch (InterruptedException ignored) {
                         Thread.currentThread().interrupt();
-                        break;
                     }
                 }
             }
@@ -659,12 +658,6 @@ public class XtreamCatalogActivity extends Activity {
 
     private void loadItems(Category category) {
         List<XtreamItem> cached = categoryItemCache.get(category.id);
-        if (cached == null || cached.isEmpty()) {
-            cached = loadCachedItems(categoryItemsCacheKey(category.id));
-            if (!cached.isEmpty()) {
-                categoryItemCache.put(category.id, new ArrayList<>(cached));
-            }
-        }
         List<XtreamItem> fallback = cached == null
                 ? new ArrayList<>()
                 : new ArrayList<>(cached);
@@ -683,7 +676,7 @@ public class XtreamCatalogActivity extends Activity {
         new Thread(() -> {
             List<XtreamItem> fresh = new ArrayList<>();
 
-            for (int attempt = 0; attempt < 4 && fresh.isEmpty(); attempt++) {
+            for (int attempt = 0; attempt < 2 && fresh.isEmpty(); attempt++) {
                 try {
                     JSONArray arr = new JSONArray(
                             get(config.api(action, "category_id", category.id))
@@ -692,12 +685,11 @@ public class XtreamCatalogActivity extends Activity {
                 } catch (Throwable ignored) {
                 }
 
-                if (fresh.isEmpty() && attempt < 3) {
+                if (fresh.isEmpty() && attempt == 0) {
                     try {
-                        Thread.sleep(600L * (attempt + 1));
+                        Thread.sleep(450);
                     } catch (InterruptedException ignored) {
                         Thread.currentThread().interrupt();
-                        break;
                     }
                 }
             }
@@ -706,7 +698,6 @@ public class XtreamCatalogActivity extends Activity {
             runOnUiThread(() -> {
                 if (!result.isEmpty()) {
                     categoryItemCache.put(category.id, new ArrayList<>(result));
-                    saveCachedItems(categoryItemsCacheKey(category.id), result);
                     renderItems(category, result);
                     return;
                 }
@@ -755,66 +746,6 @@ public class XtreamCatalogActivity extends Activity {
         Button retry = button("Opnieuw laden");
         retry.setOnClickListener(v -> loadItems(category));
         content.addView(retry);
-    }
-
-    private String categoryItemsCacheKey(String categoryId) {
-        return "xtream_items_" + mode + "_" + categoryId;
-    }
-
-    private String seriesEpisodesCacheKey(String seriesId) {
-        return "xtream_episodes_" + seriesId;
-    }
-
-    private List<XtreamItem> loadCachedItems(String key) {
-        List<XtreamItem> out = new ArrayList<>();
-        try {
-            String raw = getSharedPreferences("media_player", Context.MODE_PRIVATE)
-                    .getString(key, "");
-            if (raw == null || raw.trim().isEmpty()) return out;
-
-            JSONArray arr = new JSONArray(raw);
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject o = arr.optJSONObject(i);
-                if (o == null) continue;
-
-                String id = o.optString("id", "");
-                String name = o.optString("name", "");
-                if (id.isEmpty() || name.isEmpty()) continue;
-
-                out.add(new XtreamItem(
-                        id,
-                        name,
-                        o.optString("extension", ""),
-                        o.optString("rating", ""),
-                        o.optString("imageUrl", ""),
-                        o.optString("year", "")
-                ));
-            }
-        } catch (Throwable ignored) {
-        }
-        return out;
-    }
-
-    private void saveCachedItems(String key, List<XtreamItem> items) {
-        try {
-            JSONArray arr = new JSONArray();
-            for (XtreamItem item : items) {
-                JSONObject o = new JSONObject();
-                o.put("id", item.id);
-                o.put("name", item.name);
-                o.put("extension", item.extension);
-                o.put("rating", item.rating);
-                o.put("imageUrl", item.imageUrl);
-                o.put("year", item.year);
-                arr.put(o);
-            }
-
-            getSharedPreferences("media_player", Context.MODE_PRIVATE)
-                    .edit()
-                    .putString(key, arr.toString())
-                    .apply();
-        } catch (Throwable ignored) {
-        }
     }
 
     private XtreamItem parseItem(JSONObject o) {
@@ -1157,12 +1088,6 @@ public class XtreamCatalogActivity extends Activity {
 
     private void loadSeriesEpisodes(XtreamItem series) {
         List<XtreamItem> cached = seriesEpisodeCache.get(series.id);
-        if (cached == null || cached.isEmpty()) {
-            cached = loadCachedItems(seriesEpisodesCacheKey(series.id));
-            if (!cached.isEmpty()) {
-                seriesEpisodeCache.put(series.id, new ArrayList<>(cached));
-            }
-        }
         List<XtreamItem> fallback = cached == null
                 ? new ArrayList<>()
                 : new ArrayList<>(cached);
@@ -1176,7 +1101,7 @@ public class XtreamCatalogActivity extends Activity {
         new Thread(() -> {
             List<XtreamItem> episodes = new ArrayList<>();
 
-            for (int attempt = 0; attempt < 4 && episodes.isEmpty(); attempt++) {
+            for (int attempt = 0; attempt < 2 && episodes.isEmpty(); attempt++) {
                 try {
                     String raw = get(config.api("get_series_info", "series_id", series.id));
                     Object data = new org.json.JSONTokener(raw).nextValue();
@@ -1184,12 +1109,11 @@ public class XtreamCatalogActivity extends Activity {
                 } catch (Throwable ignored) {
                 }
 
-                if (episodes.isEmpty() && attempt < 3) {
+                if (episodes.isEmpty() && attempt == 0) {
                     try {
-                        Thread.sleep(600L * (attempt + 1));
+                        Thread.sleep(450);
                     } catch (InterruptedException ignored) {
                         Thread.currentThread().interrupt();
-                        break;
                     }
                 }
             }
@@ -1200,7 +1124,6 @@ public class XtreamCatalogActivity extends Activity {
             runOnUiThread(() -> {
                 if (!result.isEmpty()) {
                     seriesEpisodeCache.put(series.id, new ArrayList<>(result));
-                    saveCachedItems(seriesEpisodesCacheKey(series.id), result);
                     renderEpisodes(series, result);
                     return;
                 }

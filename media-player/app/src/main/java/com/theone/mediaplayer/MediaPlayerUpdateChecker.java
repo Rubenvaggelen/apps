@@ -5,7 +5,6 @@ import android.app.AlertDialog;
 import android.app.DownloadManager;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
@@ -27,10 +26,6 @@ public final class MediaPlayerUpdateChecker {
             "https://api.github.com/repos/Rubenvaggelen/apps/releases?per_page=40";
     private static final String TAG_PREFIX = "media-player-v";
     private static final String APK_MIME = "application/vnd.android.package-archive";
-    private static final String UPDATE_PREFS = "media_player_updates";
-    private static final String PENDING_VERSION = "pending_version";
-    private static final String PENDING_NAME = "pending_name";
-    private static final String PENDING_URL = "pending_url";
 
     private MediaPlayerUpdateChecker() {}
 
@@ -116,49 +111,6 @@ public final class MediaPlayerUpdateChecker {
         }).start();
     }
 
-    public static void resumePendingUpdate(Activity activity) {
-        if (activity == null || activity.isFinishing()) return;
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-                !activity.getPackageManager().canRequestPackageInstalls()) {
-            return;
-        }
-
-        SharedPreferences pending =
-                activity.getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE);
-        int versionCode = pending.getInt(PENDING_VERSION, 0);
-        String name = pending.getString(PENDING_NAME, "");
-        String downloadUrl = pending.getString(PENDING_URL, "");
-
-        if (versionCode <= 0 || downloadUrl == null || downloadUrl.trim().isEmpty()) return;
-
-        if (versionCode <= getCurrentVersionCode(activity)) {
-            clearPendingUpdate(activity);
-            return;
-        }
-
-        clearPendingUpdate(activity);
-        beginUpdate(activity, new UpdateInfo(versionCode, name, downloadUrl));
-    }
-
-    private static void rememberPendingUpdate(Context context, UpdateInfo update) {
-        context.getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
-                .edit()
-                .putInt(PENDING_VERSION, update.versionCode)
-                .putString(PENDING_NAME, update.name == null ? "" : update.name)
-                .putString(PENDING_URL, update.downloadUrl == null ? "" : update.downloadUrl)
-                .apply();
-    }
-
-    private static void clearPendingUpdate(Context context) {
-        context.getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
-                .edit()
-                .remove(PENDING_VERSION)
-                .remove(PENDING_NAME)
-                .remove(PENDING_URL)
-                .apply();
-    }
-
     private static long getCurrentVersionCode(Context context) {
         try {
             android.content.pm.PackageInfo info =
@@ -175,15 +127,13 @@ public final class MediaPlayerUpdateChecker {
 
         new AlertDialog.Builder(activity)
                 .setTitle("Nieuwe versie beschikbaar")
-                .setMessage("Er is een nieuwe versie van The One Media Player beschikbaar. Downloaden en installeren gebeurt rechtstreeks vanuit de app.")
-                .setPositiveButton("Downloaden en installeren", (dialog, which) -> beginUpdate(activity, update))
+                .setMessage("Er is een nieuwe versie van The One Media Player beschikbaar.")
+                .setPositiveButton("Bijwerken", (dialog, which) -> beginUpdate(activity, update))
                 .setNegativeButton("Later", null)
                 .show();
     }
 
     private static void beginUpdate(Activity activity, UpdateInfo update) {
-        rememberPendingUpdate(activity, update);
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
                 !activity.getPackageManager().canRequestPackageInstalls()) {
             try {
@@ -194,15 +144,13 @@ public final class MediaPlayerUpdateChecker {
                 activity.startActivity(settings);
                 Toast.makeText(
                         activity,
-                        "Sta installatie vanuit The One Media Player toe. Daarna gaat de update automatisch verder.",
+                        "Sta installatie van updates toe en kies daarna opnieuw Bijwerken.",
                         Toast.LENGTH_LONG
                 ).show();
             } catch (Throwable ignored) {
             }
             return;
         }
-
-        clearPendingUpdate(activity);
 
         try {
             DownloadManager manager =

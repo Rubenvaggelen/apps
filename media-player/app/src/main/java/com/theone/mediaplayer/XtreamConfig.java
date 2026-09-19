@@ -89,8 +89,12 @@ public final class XtreamConfig {
         String ext = extension == null || extension.trim().isEmpty()
                 ? ("live".equals(prefix) ? "ts" : "mp4")
                 : extension.trim().replace(".", "");
-        return server + "/" + prefix + "/" + Uri.encode(username) + "/" + Uri.encode(password)
+        return server + "/" + prefix + "/" + pathCredential(username) + "/" + pathCredential(password)
                 + "/" + id + "." + ext;
+    }
+
+    private static String pathCredential(String value) {
+        return Uri.encode(value == null ? "" : value, "@");
     }
 
     private static String query(String value) {
