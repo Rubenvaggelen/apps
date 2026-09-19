@@ -68,6 +68,14 @@ jobs:
           Path("media-player/app/src/main/assets/private_youtube_key.txt").write_text(m.group(1), encoding="utf-8")
           PY
 
+      - name: Resolve Media Player version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION_CODE="$(grep -E 'versionCode[[:space:]]*=' media-player/app/build.gradle.kts | head -1 | sed -E 's/.*=[[:space:]]*([0-9]+).*/\1/')"
+          test -n "$VERSION_CODE"
+          echo "MEDIA_PLAYER_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+
       - name: Build signed Media Player update
         run: gradle -p media-player clean assembleRelease --no-daemon
 
@@ -78,13 +86,13 @@ jobs:
           APKSIGNER="$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner"
           APK="media-player/app/build/outputs/apk/release/app-release.apk"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
-          cp "$APK" media-player/app/build/outputs/apk/release/The-One-Media-Player-v2102.apk
+          cp "$APK" "media-player/app/build/outputs/apk/release/The-One-Media-Player-v$MEDIA_PLAYER_VERSION_CODE.apk"
 
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: the-one-media-player-v2102
-          path: media-player/app/build/outputs/apk/release/The-One-Media-Player-v2102.apk
+          name: the-one-media-player-v${{ env.MEDIA_PLAYER_VERSION_CODE }}
+          path: media-player/app/build/outputs/apk/release/The-One-Media-Player-v${{ env.MEDIA_PLAYER_VERSION_CODE }}.apk
 
       - name: Publish in-app update
         shell: bash
@@ -92,12 +100,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="media-player-v2102"
-          APK="media-player/app/build/outputs/apk/release/The-One-Media-Player-v2102.apk"
+          TAG="media-player-v$MEDIA_PLAYER_VERSION_CODE"
+          APK="media-player/app/build/outputs/apk/release/The-One-Media-Player-v$MEDIA_PLAYER_VERSION_CODE.apk"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$APK" --clobber
           else
-            gh release create "$TAG" "$APK" --title "The One Media Player v2102" --notes "V19-basis: Main The One-logo hersteld. Zelfde vaste signing-key voor update over de bestaande app."
+            gh release create "$TAG" "$APK" --title "The One Media Player v$MEDIA_PLAYER_VERSION_CODE" --notes "V19-basis met alleen de gevraagde Media Player-aanpassingen. Zelfde vaste signing-key voor update over de bestaande app."
           fi
 
       - name: Smoke-test Media Player on Android emulator
