@@ -1,4 +1,4 @@
-name: Diagnose Media Player Stream Format
+name: Diagnose Media Player Extensions
 
 on:
   push:
@@ -15,79 +15,92 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MEDIA_PLAYER_KEYSTORE_PATH: ${{ github.workspace }}/media-player-fixed.keystore
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-
-      - name: Restore signing key
+      - name: Restore and decrypt source
         shell: bash
         run: |
           set -euo pipefail
           echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > "$MEDIA_PLAYER_KEYSTORE_PATH"
-
-      - name: Decrypt source
-        shell: bash
-        run: |
-          set -euo pipefail
           base64 -d .github/media-player-private-source.enc.b64 > /tmp/source.enc
           keytool -importkeystore -srckeystore "$MEDIA_PLAYER_KEYSTORE_PATH" -srcstorepass android -srcalias androiddebugkey -destkeystore /tmp/signing.p12 -deststoretype PKCS12 -deststorepass changeit -destkeypass changeit -noprompt >/dev/null
           openssl pkcs12 -in /tmp/signing.p12 -passin pass:changeit -nodes -nocerts -out /tmp/private.pem >/dev/null 2>&1
           openssl pkeyutl -decrypt -inkey /tmp/private.pem -in /tmp/source.enc -out /tmp/source.json -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
-
-      - name: Inspect account and playlist stream format
+      - name: Probe VOD and series extensions
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, urllib.request, urllib.parse
+          import json, urllib.request, urllib.parse, urllib.error
           from pathlib import Path
-
           src=json.loads(Path("/tmp/source.json").read_text())
-          m3u=src["m3u_url"]
-          p=urllib.parse.urlsplit(m3u)
+          p=urllib.parse.urlsplit(src["m3u_url"])
           q=urllib.parse.parse_qs(p.query)
           user=(q.get("username") or [""])[0]
           pw=(q.get("password") or [""])[0]
           server=f"{p.scheme}://{p.netloc}"
 
-          def read_json(url):
+          def api(action, **extra):
+              params={"username":user,"password":pw,"action":action}
+              params.update(extra)
+              return server+"/player_api.php?"+urllib.parse.urlencode(params)
+
+          def js(url):
               req=urllib.request.Request(url,headers={"User-Agent":"TheOneMediaPlayer/0.9","Connection":"close"})
               with urllib.request.urlopen(req,timeout=20) as r:
                   return json.loads(r.read().decode("utf-8","replace"))
 
-          account=read_json(server+"/player_api.php?"+urllib.parse.urlencode({"username":user,"password":pw}))
-          ui=account.get("user_info") or {}
-          print("account_status="+str(ui.get("status","")))
-          print("active_cons="+str(ui.get("active_cons","")))
-          print("max_connections="+str(ui.get("max_connections","")))
-          print("allowed_output_formats="+",".join(map(str,ui.get("allowed_output_formats") or [])))
-          print("m3u_output="+str((q.get("output") or [""])[0]))
+          def status(url):
+              req=urllib.request.Request(url,headers={"User-Agent":"VLC/3.0.20 LibVLC/3.0.20","Range":"bytes=0-255","Connection":"close"})
+              try:
+                  with urllib.request.urlopen(req,timeout=12) as r:
+                      r.read(256)
+                      return r.status
+              except urllib.error.HTTPError as e:
+                  return e.code
+              except Exception:
+                  return -1
 
-          req=urllib.request.Request(m3u,headers={"User-Agent":"TheOneMediaPlayer/0.9","Connection":"close"})
-          movie_ext=""
-          series_ext=""
-          with urllib.request.urlopen(req,timeout=25) as r:
-              for _ in range(20000):
-                  line=r.readline().decode("utf-8","replace").strip()
-                  if not line: continue
-                  low=line.lower()
-                  if not movie_ext and "/movie/" in low:
-                      path=urllib.parse.urlsplit(line).path
-                      movie_ext=path.rsplit(".",1)[-1].lower() if "." in path.rsplit("/",1)[-1] else "none"
-                  if not series_ext and "/series/" in low:
-                      path=urllib.parse.urlsplit(line).path
-                      series_ext=path.rsplit(".",1)[-1].lower() if "." in path.rsplit("/",1)[-1] else "none"
-                  if movie_ext and series_ext:
-                      break
-          print("playlist_movie_extension="+movie_ext)
-          print("playlist_series_extension="+series_ext)
+          vc=js(api("get_vod_categories"))
+          vod=js(api("get_vod_streams",category_id=str(vc[0].get("category_id","")))) if vc else []
+          m=next((x for x in vod if str(x.get("stream_id",""))),None)
+          if m:
+              mid=str(m["stream_id"])
+              api_ext=str(m.get("container_extension") or "mp4").lstrip(".")
+              for ext in dict.fromkeys([api_ext,"ts","m3u8","mp4"]):
+                  u=server+"/movie/"+user+"/"+pw+"/"+mid+"."+ext
+                  print("movie_"+ext+"_status="+str(status(u)))
+
+          sc=js(api("get_series_categories"))
+          shows=js(api("get_series",category_id=str(sc[0].get("category_id","")))) if sc else []
+          show=next((x for x in shows if str(x.get("series_id") or x.get("id") or "")),None)
+          def ep(node):
+              if isinstance(node,dict):
+                  eid=node.get("id") or node.get("stream_id") or node.get("episode_id")
+                  if eid and any(k in node for k in ("episode_num","episode","episode_number","container_extension","title")):
+                      return node
+                  for v in node.values():
+                      z=ep(v)
+                      if z:return z
+              elif isinstance(node,list):
+                  for v in node:
+                      z=ep(v)
+                      if z:return z
+              return None
+          if show:
+              info=js(api("get_series_info",series_id=str(show.get("series_id") or show.get("id"))))
+              e=ep(info)
+              if e:
+                  eid=str(e.get("id") or e.get("stream_id") or e.get("episode_id"))
+                  api_ext=str(e.get("container_extension") or e.get("extension") or "mp4").lstrip(".")
+                  for ext in dict.fromkeys([api_ext,"ts","m3u8","mp4"]):
+                      u=server+"/series/"+user+"/"+pw+"/"+eid+"."+ext
+                      print("series_"+ext+"_status="+str(status(u)))
           PY
-
       - name: Cleanup
         if: always()
         run: rm -f /tmp/source.enc /tmp/source.json /tmp/signing.p12 /tmp/private.pem
