@@ -54,7 +54,7 @@ jobs:
             -pkeyopt rsa_padding_mode:oaep \
             -pkeyopt rsa_oaep_md:sha256
 
-      - name: Test movie and series playback URLs
+      - name: Test encoded versus raw Xtream stream paths
         shell: bash
         run: |
           set -euo pipefail
@@ -76,44 +76,63 @@ jobs:
               return server + "/player_api.php?" + urllib.parse.urlencode(params)
 
           def get_json(url):
-              req = urllib.request.Request(url, headers={"User-Agent":"TheOneMediaPlayer/0.9","Cache-Control":"no-cache"})
-              with urllib.request.urlopen(req, timeout=25) as r:
+              req = urllib.request.Request(url, headers={
+                  "User-Agent":"TheOneMediaPlayer/0.9",
+                  "Cache-Control":"no-cache",
+                  "Connection":"close",
+              })
+              with urllib.request.urlopen(req, timeout=20) as r:
                   return json.loads(r.read().decode("utf-8", "replace"))
 
           def probe(label, url):
               req = urllib.request.Request(url, headers={
                   "User-Agent":"TheOneMediaPlayer/0.9",
-                  "Range":"bytes=0-2047",
+                  "Range":"bytes=0-1023",
                   "Accept":"*/*",
                   "Connection":"close",
               })
               try:
-                  with urllib.request.urlopen(req, timeout=25) as r:
-                      chunk = r.read(2048)
+                  with urllib.request.urlopen(req, timeout=15) as r:
+                      chunk = r.read(1024)
                       print(f"{label}_status={r.status}")
-                      print(f"{label}_content_type={r.headers.get('Content-Type','')}")
-                      print(f"{label}_content_length={r.headers.get('Content-Length','')}")
-                      print(f"{label}_bytes_received={len(chunk)}")
+                      print(f"{label}_type={r.headers.get('Content-Type','')}")
+                      print(f"{label}_bytes={len(chunk)}")
               except urllib.error.HTTPError as e:
                   print(f"{label}_status={e.code}")
-                  print(f"{label}_content_type={e.headers.get('Content-Type','') if e.headers else ''}")
-                  print(f"{label}_bytes_received=0")
+                  print(f"{label}_type={e.headers.get('Content-Type','') if e.headers else ''}")
+                  print(f"{label}_bytes=0")
               except Exception as e:
                   print(f"{label}_error={type(e).__name__}")
 
-          vod = get_json(api("get_vod_streams"))
+          def stream_paths(kind, sid, ext):
+              raw = server + f"/{kind}/" + user + "/" + pw + "/" + sid + "." + ext
+              encoded = server + f"/{kind}/" + urllib.parse.quote(user, safe="") + "/" + urllib.parse.quote(pw, safe="") + "/" + sid + "." + ext
+              return raw, encoded
+
+          vod_categories = get_json(api("get_vod_categories"))
+          if vod_categories:
+              cid = str(vod_categories[0].get("category_id",""))
+              vod = get_json(api("get_vod_streams", category_id=cid))
+          else:
+              vod = []
           movie = next((x for x in vod if str(x.get("stream_id",""))), None)
           if movie:
               mid = str(movie["stream_id"])
               ext = str(movie.get("container_extension") or "mp4").lstrip(".")
-              movie_url = server + "/movie/" + urllib.parse.quote(user, safe="") + "/" + urllib.parse.quote(pw, safe="") + "/" + mid + "." + ext
-              print(f"movie_extension={ext}")
-              probe("movie", movie_url)
+              raw, encoded = stream_paths("movie", mid, ext)
+              print("movie_extension=" + ext)
+              probe("movie_raw", raw)
+              probe("movie_encoded", encoded)
           else:
               print("movie_error=no_item")
 
-          series = get_json(api("get_series"))
-          show = next((x for x in series if str(x.get("series_id") or x.get("id") or "")), None)
+          series_categories = get_json(api("get_series_categories"))
+          if series_categories:
+              cid = str(series_categories[0].get("category_id",""))
+              shows = get_json(api("get_series", category_id=cid))
+          else:
+              shows = []
+          show = next((x for x in shows if str(x.get("series_id") or x.get("id") or "")), None)
           if show:
               sid = str(show.get("series_id") or show.get("id"))
               info = get_json(api("get_series_info", series_id=sid))
@@ -136,9 +155,10 @@ jobs:
               if ep:
                   eid = str(ep.get("id") or ep.get("stream_id") or ep.get("episode_id"))
                   ext = str(ep.get("container_extension") or ep.get("extension") or "mp4").lstrip(".")
-                  series_url = server + "/series/" + urllib.parse.quote(user, safe="") + "/" + urllib.parse.quote(pw, safe="") + "/" + eid + "." + ext
-                  print(f"series_extension={ext}")
-                  probe("series", series_url)
+                  raw, encoded = stream_paths("series", eid, ext)
+                  print("series_extension=" + ext)
+                  probe("series_raw", raw)
+                  probe("series_encoded", encoded)
               else:
                   print("series_error=no_episode")
           else:
