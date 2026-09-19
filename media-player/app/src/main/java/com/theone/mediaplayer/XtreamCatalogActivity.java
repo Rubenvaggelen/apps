@@ -944,13 +944,23 @@ public class XtreamCatalogActivity extends Activity {
                                         + " • " + title;
 
                                 String ext = ep.optString("container_extension", "mp4");
+                                JSONObject epInfo = ep.optJSONObject("info");
+                                String episodeImage = firstNonEmpty(
+                                        ep.optString("stream_icon", ""),
+                                        ep.optString("cover", ""),
+                                        ep.optString("movie_image", ""),
+                                        epInfo == null ? "" : epInfo.optString("movie_image", ""),
+                                        epInfo == null ? "" : epInfo.optString("cover_big", ""),
+                                        epInfo == null ? "" : epInfo.optString("cover", ""),
+                                        series.imageUrl
+                                );
 
                                 episodes.add(new XtreamItem(
                                         id,
                                         label,
                                         ext,
                                         "",
-                                        "",
+                                        episodeImage,
                                         ""
                                 ));
                             }
@@ -977,6 +987,32 @@ public class XtreamCatalogActivity extends Activity {
         title.setPadding(0, dp(14), 0, dp(12));
         content.addView(title);
 
+        if (series.imageUrl != null && series.imageUrl.startsWith("http")) {
+            LinearLayout hero = new LinearLayout(this);
+            hero.setOrientation(LinearLayout.HORIZONTAL);
+            hero.setBackground(PremiumUi.card(this));
+            hero.setElevation(dp(4));
+            hero.setPadding(dp(12), dp(12), dp(12), dp(12));
+
+            ImageView poster = new ImageView(this);
+            poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            poster.setBackgroundColor(Color.rgb(11, 18, 28));
+            LinearLayout.LayoutParams posterLp = new LinearLayout.LayoutParams(dp(104), dp(156));
+            posterLp.rightMargin = dp(14);
+            hero.addView(poster, posterLp);
+            loadImage(poster, series.imageUrl);
+
+            LinearLayout heroInfo = new LinearLayout(this);
+            heroInfo.setOrientation(LinearLayout.VERTICAL);
+            heroInfo.addView(text(displayTitle(series.name), 20, Color.WHITE, true));
+            heroInfo.addView(text(episodes.size() + " afleveringen", 14, BLUE, false));
+            hero.addView(heroInfo, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+            LinearLayout.LayoutParams heroLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            heroLp.bottomMargin = dp(12);
+            content.addView(hero, heroLp);
+        }
+
         if (episodes.isEmpty()) {
             content.addView(text("Geen afleveringen gevonden.", 16, MUTED, false));
             return;
@@ -987,12 +1023,24 @@ public class XtreamCatalogActivity extends Activity {
             final int startIndex = index;
 
             LinearLayout card = new LinearLayout(this);
-            card.setOrientation(LinearLayout.VERTICAL);
+            card.setOrientation(LinearLayout.HORIZONTAL);
             card.setBackground(PremiumUi.card(this));
             card.setElevation(dp(3));
-            card.setPadding(dp(16), dp(14), dp(16), dp(14));
+            card.setPadding(dp(12), dp(12), dp(12), dp(12));
 
-            card.addView(text(ep.name, 18, Color.WHITE, true));
+            if (ep.imageUrl != null && ep.imageUrl.startsWith("http")) {
+                ImageView thumb = new ImageView(this);
+                thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                thumb.setBackgroundColor(Color.rgb(11, 18, 28));
+                LinearLayout.LayoutParams thumbLp = new LinearLayout.LayoutParams(dp(142), dp(88));
+                thumbLp.rightMargin = dp(12);
+                card.addView(thumb, thumbLp);
+                loadImage(thumb, ep.imageUrl);
+            }
+
+            LinearLayout episodeInfo = new LinearLayout(this);
+            episodeInfo.setOrientation(LinearLayout.VERTICAL);
+            episodeInfo.addView(text(ep.name, 18, Color.WHITE, true));
 
             Button play = button("▶ Afspelen");
             play.setOnClickListener(v -> {
@@ -1011,7 +1059,12 @@ public class XtreamCatalogActivity extends Activity {
                 intent.putStringArrayListExtra("play_queue", queue);
                 startActivity(intent);
             });
-            card.addView(play);
+            episodeInfo.addView(play);
+            card.addView(episodeInfo, new LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    1f
+            ));
 
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,

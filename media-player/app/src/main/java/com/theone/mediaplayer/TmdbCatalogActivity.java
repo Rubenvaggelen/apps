@@ -293,6 +293,26 @@ public class TmdbCatalogActivity extends Activity {
         title.setPadding(0, dp(12), 0, dp(8));
         content.addView(title);
 
+        String detailPosterPath = details.optString("poster_path", "");
+        if (detailPosterPath.trim().isEmpty()) detailPosterPath = meta.posterPath;
+        if (detailPosterPath != null && !detailPosterPath.trim().isEmpty()) {
+            LinearLayout hero = card();
+            hero.setOrientation(LinearLayout.HORIZONTAL);
+            ImageView poster = new ImageView(this);
+            poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            poster.setBackgroundColor(Color.rgb(25, 31, 42));
+            LinearLayout.LayoutParams posterLp = new LinearLayout.LayoutParams(dp(132), dp(198));
+            posterLp.rightMargin = dp(14);
+            hero.addView(poster, posterLp);
+            loadImage(poster, TMDB_IMAGE + detailPosterPath);
+            LinearLayout heroInfo = new LinearLayout(this);
+            heroInfo.setOrientation(LinearLayout.VERTICAL);
+            heroInfo.addView(text(meta.title, 20, Color.WHITE, true));
+            heroInfo.addView(text(meta.year.isEmpty() ? "Serie" : "Serie • " + meta.year, 14, BLUE, false));
+            hero.addView(heroInfo, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            content.addView(hero);
+        }
+
         StringBuilder detailLine = new StringBuilder();
         if ("movie".equals(meta.type)) {
             int runtime = details.optInt("runtime", 0);
@@ -334,11 +354,37 @@ public class TmdbCatalogActivity extends Activity {
                     if (number < 0) continue;
                     String name = s.optString("name", "Seizoen " + number);
                     int count = s.optInt("episode_count", 0);
-                    Button season = button(name + (count > 0 ? " • " + count + " afl." : ""));
+
+                    LinearLayout seasonCard = card();
+                    seasonCard.setOrientation(LinearLayout.HORIZONTAL);
+                    String seasonPosterPath = s.optString("poster_path", "");
+                    if (seasonPosterPath.trim().isEmpty()) seasonPosterPath = meta.posterPath;
+                    if (seasonPosterPath != null && !seasonPosterPath.trim().isEmpty()) {
+                        ImageView seasonPoster = new ImageView(this);
+                        seasonPoster.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                        seasonPoster.setBackgroundColor(Color.rgb(25, 31, 42));
+                        LinearLayout.LayoutParams imageLp = new LinearLayout.LayoutParams(dp(82), dp(123));
+                        imageLp.rightMargin = dp(12);
+                        seasonCard.addView(seasonPoster, imageLp);
+                        loadImage(seasonPoster, TMDB_IMAGE + seasonPosterPath);
+                    }
+
+                    LinearLayout seasonInfo = new LinearLayout(this);
+                    seasonInfo.setOrientation(LinearLayout.VERTICAL);
+                    seasonInfo.addView(text(name, 18, Color.WHITE, true));
+                    if (count > 0) {
+                        TextView countView = text(count + " afleveringen", 13, BLUE, false);
+                        countView.setPadding(0, dp(4), 0, dp(8));
+                        seasonInfo.addView(countView);
+                    }
+                    Button season = button("Open seizoen");
                     season.setOnClickListener(v -> loadSeason(meta, number, name));
+                    seasonInfo.addView(season);
+                    seasonCard.addView(seasonInfo, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
                     LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                     lp.bottomMargin = dp(8);
-                    content.addView(season, lp);
+                    content.addView(seasonCard, lp);
                 }
             }
         }
@@ -384,24 +430,41 @@ public class TmdbCatalogActivity extends Activity {
             String airDate = ep.optString("air_date", "");
 
             LinearLayout card = card();
-            card.addView(text(String.format(Locale.US, "S%02dE%02d • %s", seasonNumber, epNumber, name), 18, Color.WHITE, true));
+            card.setOrientation(LinearLayout.HORIZONTAL);
+
+            String episodeImagePath = ep.optString("still_path", "");
+            if (episodeImagePath.trim().isEmpty()) episodeImagePath = series.posterPath;
+            if (episodeImagePath != null && !episodeImagePath.trim().isEmpty()) {
+                ImageView episodeImage = new ImageView(this);
+                episodeImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                episodeImage.setBackgroundColor(Color.rgb(25, 31, 42));
+                LinearLayout.LayoutParams imageLp = new LinearLayout.LayoutParams(dp(142), dp(88));
+                imageLp.rightMargin = dp(12);
+                card.addView(episodeImage, imageLp);
+                loadImage(episodeImage, TMDB_IMAGE + episodeImagePath);
+            }
+
+            LinearLayout episodeInfo = new LinearLayout(this);
+            episodeInfo.setOrientation(LinearLayout.VERTICAL);
+            episodeInfo.addView(text(String.format(Locale.US, "S%02dE%02d • %s", seasonNumber, epNumber, name), 18, Color.WHITE, true));
             String small = airDate.trim().isEmpty() ? "" : airDate;
             if (!small.isEmpty()) {
                 TextView air = text(small, 13, BLUE, false);
                 air.setPadding(0, dp(3), 0, dp(5));
-                card.addView(air);
+                episodeInfo.addView(air);
             }
             if (!overview.trim().isEmpty()) {
                 String shortOverview = overview.length() > 240 ? overview.substring(0, 237) + "…" : overview;
                 TextView desc = text(shortOverview, 14, MUTED, false);
                 desc.setPadding(0, 0, 0, dp(8));
-                card.addView(desc);
+                episodeInfo.addView(desc);
             }
 
             Button play = button("▶ Open aflevering in mijn speler");
             int finalEpNumber = epNumber;
             play.setOnClickListener(v -> openFromOwnSource(series, seasonNumber, finalEpNumber));
-            card.addView(play);
+            episodeInfo.addView(play);
+            card.addView(episodeInfo, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             content.addView(card);
         }
         addTmdbAttribution(content);

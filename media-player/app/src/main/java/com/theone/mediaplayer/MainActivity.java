@@ -67,17 +67,30 @@ public class MainActivity extends Activity {
     private PlayerView activePlayerView;
     private SharedPreferences prefs;
     private boolean playerFullscreen = false;
+    private static final int PICK_STREAM_MEDIA = 4410;
+    private LanCastBridge lanCast;
+    private Uri selectedStreamUri;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         try {
             prefs = getSharedPreferences("media_player", Context.MODE_PRIVATE);
+            lanCast = new LanCastBridge(this);
+            if (isTvBuild()) {
+                String receiverError = lanCast.startTvReceiver(url -> showPlayer(url));
+                if (!receiverError.isEmpty()) {
+                    Toast.makeText(this, "Telefoonontvanger kon niet starten: " + receiverError, Toast.LENGTH_LONG).show();
+                }
+            }
+            selectedStreamUri = incomingMediaUri(getIntent());
 
             ArrayList<String> playQueue = getIntent().getStringArrayListExtra("play_queue");
             String playUrl = getIntent().getStringExtra("play_url");
 
-            if (playQueue != null && !playQueue.isEmpty()) {
+            if (selectedStreamUri != null && !isTvBuild()) {
+                showShell("Streamen");
+            } else if (playQueue != null && !playQueue.isEmpty()) {
                 showPlayerQueue(playQueue);
             } else if (playUrl != null && (playUrl.startsWith("http://") || playUrl.startsWith("https://"))) {
                 showPlayer(playUrl);
@@ -134,6 +147,7 @@ public class MainActivity extends Activity {
         addNavButton(nav, "Series", () -> openXtreamCatalog("series"));
         addNavButton(nav, "Verder kijken", () -> showSection("Verder kijken", "Je kijkvoortgang verschijnt hier."));
         addNavButton(nav, "Favorieten", () -> showSection("Favorieten", "Je favoriete zenders, films en series verschijnen hier."));
+        addNavButton(nav, "Streamen", this::showPhoneStreaming);
         addNavButton(nav, "Instellingen", this::showSettings);
         navScroll.addView(nav);
         root.addView(navScroll);
@@ -146,6 +160,7 @@ public class MainActivity extends Activity {
         if ("Home".equals(section)) showHome();
         else if ("Films".equals(section)) showFilms();
         else if ("Test M3U".equals(section)) showDemoM3u();
+        else if ("Streamen".equals(section)) showPhoneStreaming();
         else if ("Instellingen".equals(section)) showSettings();
         else showLiveTv();
     }
@@ -153,7 +168,7 @@ public class MainActivity extends Activity {
     private void showHome() {
         content.removeAllViews();
         ScrollView scroll = new ScrollView(this);
-        LinearLayout box = baseBox("Media Player", "Kies Live TV, Films of Series.");
+        LinearLayout box = baseBox("Media Player", "Kies Live TV, Films, Series of stream vanaf je telefoon.");
         addInfo(box, "Je privé bron wordt pas geladen nadat je een onderdeel opent.");
         scroll.addView(box);
         content.addView(scroll);
@@ -417,6 +432,147 @@ public class MainActivity extends Activity {
         TextView note = text(value, 14, BLUE, false);
         note.setPadding(0, dp(8), 0, 0);
         box.addView(note);
+    }
+
+
+    private boolean isTvBuild() {
+        return "com.theone.mediaplayer.tv".equals(getPackageName());
+    }
+
+    private Uri incomingMediaUri(Intent intent) {
+        if (intent == null) return null;
+        try {
+            if (Intent.ACTION_SEND.equals(intent.getAction())) {
+                return intent.getParcelableExtra(Intent.EXTRA_STREAM);
+            }
+            if (Intent.ACTION_VIEW.equals(intent.getAction())) {
+                Uri data = intent.getData();
+                if (data != null && ("content".equalsIgnoreCase(data.getScheme()) || "file".equalsIgnoreCase(data.getScheme()))) {
+                    return data;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private void showPhoneStreaming() {
+        content.removeAllViews();
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout box = baseBox(
+                "Streamen",
+                isTvBuild()
+                        ? "Ontvang media rechtstreeks vanaf je telefoon."
+                        : "Stuur video of audio rechtstreeks vanaf je telefoon naar The One Media Player TV."
+        );
+
+        if (lanCast == null) lanCast = new LanCastBridge(this);
+
+        if (isTvBuild()) {
+            String receiverError = lanCast.startTvReceiver(url -> showPlayer(url));
+            String ip = LanCastBridge.localIpv4();
+            LinearLayout receiver = cardContainer();
+            receiver.addView(text("Telefoonontvanger", 20, Color.WHITE, true));
+            String address = ip.isEmpty() ? "Geen lokaal IP-adres gevonden" : ip;
+            TextView status = text(
+                    receiverError.isEmpty()
+                            ? "Klaar voor streaming. TV-adres: " + address
+                            : "Ontvangerfout: " + receiverError,
+                    16,
+                    receiverError.isEmpty() ? BLUE : MUTED,
+                    false
+            );
+            status.setPadding(0, dp(8), 0, dp(4));
+            receiver.addView(status);
+            receiver.addView(text("Open op je telefoon Streamen, vul dit TV-adres één keer in en kies je media.", 14, MUTED, false));
+            addCard(box, receiver);
+        } else {
+            EditText tvHost = PremiumUi.searchField(this, "TV-adres, bijvoorbeeld 192.168.1.25");
+            tvHost.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+            tvHost.setText(prefs.getString("cast_tv_host", ""));
+            box.addView(tvHost);
+
+            Button saveHost = button("TV-adres opslaan");
+            saveHost.setOnClickListener(v -> {
+                prefs.edit().putString("cast_tv_host", tvHost.getText().toString().trim()).apply();
+                Toast.makeText(this, "TV-adres opgeslagen", Toast.LENGTH_SHORT).show();
+            });
+            LinearLayout.LayoutParams saveLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            saveLp.topMargin = dp(8);
+            box.addView(saveHost, saveLp);
+
+            LinearLayout selectedCard = cardContainer();
+            selectedCard.addView(text("Media op deze telefoon", 20, Color.WHITE, true));
+            String selectedName = selectedStreamUri == null ? "Nog niets gekozen" : lanCast.displayName(selectedStreamUri);
+            TextView selected = text(selectedName, 15, selectedStreamUri == null ? MUTED : BLUE, false);
+            selected.setPadding(0, dp(7), 0, dp(10));
+            selectedCard.addView(selected);
+
+            Button choose = button(selectedStreamUri == null ? "Kies video of audio" : "Kies andere media");
+            choose.setOnClickListener(v -> pickMediaForTv());
+            selectedCard.addView(choose);
+
+            if (selectedStreamUri != null) {
+                Button stream = button("▶ Stream naar TV");
+                stream.setOnClickListener(v -> {
+                    String host = tvHost.getText().toString().trim();
+                    prefs.edit().putString("cast_tv_host", host).apply();
+                    Toast.makeText(this, "Verbinden met TV…", Toast.LENGTH_SHORT).show();
+                    lanCast.sendUriToTv(host, selectedStreamUri, (ok, message) ->
+                            Toast.makeText(this, message, ok ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG).show()
+                    );
+                });
+                LinearLayout.LayoutParams streamLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                streamLp.topMargin = dp(8);
+                selectedCard.addView(stream, streamLp);
+            }
+            addCard(box, selectedCard);
+
+            EditText remoteUrl = PremiumUi.searchField(this, "Of plak een directe http(s)-stream URL");
+            remoteUrl.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+            box.addView(remoteUrl);
+
+            Button sendUrl = button("Stuur URL naar TV");
+            sendUrl.setOnClickListener(v -> {
+                String host = tvHost.getText().toString().trim();
+                prefs.edit().putString("cast_tv_host", host).apply();
+                lanCast.sendUrlToTv(host, remoteUrl.getText().toString().trim(), (ok, message) ->
+                        Toast.makeText(this, message, ok ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG).show()
+                );
+            });
+            LinearLayout.LayoutParams sendUrlLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            sendUrlLp.topMargin = dp(8);
+            box.addView(sendUrl, sendUrlLp);
+
+            addInfo(box, "Telefoon en TV moeten op hetzelfde lokale netwerk of dezelfde hotspot zitten. De media wordt rechtstreeks vanaf je telefoon afgespeeld; er wordt niets naar een cloudserver geüpload.");
+        }
+
+        scroll.addView(box);
+        content.addView(scroll);
+    }
+
+    private void pickMediaForTv() {
+        Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        pick.addCategory(Intent.CATEGORY_OPENABLE);
+        pick.setType("*/*");
+        pick.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"video/*", "audio/*"});
+        startActivityForResult(pick, PICK_STREAM_MEDIA);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != PICK_STREAM_MEDIA || resultCode != RESULT_OK || data == null || data.getData() == null) {
+            return;
+        }
+
+        selectedStreamUri = data.getData();
+        try {
+            int flags = data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
+            getContentResolver().takePersistableUriPermission(selectedStreamUri, flags);
+        } catch (Throwable ignored) {
+        }
+        showShell("Streamen");
     }
 
     private void showSettings() {
@@ -791,6 +947,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (lanCast != null) lanCast.stop();
         releasePlayer();
         super.onDestroy();
     }
