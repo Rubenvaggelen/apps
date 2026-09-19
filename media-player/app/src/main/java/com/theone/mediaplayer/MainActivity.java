@@ -27,15 +27,9 @@ import android.widget.Toast;
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
 import androidx.media3.common.MediaItem;
-import androidx.media3.common.PlaybackException;
-import androidx.media3.common.Player;
 import androidx.media3.common.TrackSelectionOverride;
 import androidx.media3.common.Tracks;
-import androidx.media3.datasource.DefaultDataSource;
-import androidx.media3.datasource.DefaultHttpDataSource;
-import androidx.media3.datasource.HttpDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.PlayerView;
 import androidx.mediarouter.app.MediaRouteButton;
 
@@ -83,10 +77,6 @@ public class MainActivity extends Activity {
     private FrameLayout content;
     private ExoPlayer player;
     private PlayerView activePlayerView;
-    private FrameLayout activePlayerRoot;
-    private final ArrayList<String> playbackQueue = new ArrayList<>();
-    private int playbackQueueIndex = 0;
-    private int playbackRetryCount = 0;
     private SharedPreferences prefs;
     private boolean playerFullscreen = false;
 
@@ -1116,79 +1106,32 @@ public class MainActivity extends Activity {
         playerFullscreen = true;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        activePlayerRoot = new FrameLayout(this);
-        activePlayerRoot.setBackgroundColor(Color.BLACK);
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(Color.BLACK);
 
         activePlayerView = new PlayerView(this);
-
-        DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
-                .setUserAgent("VLC/3.0.20 LibVLC/3.0.20")
-                .setAllowCrossProtocolRedirects(true)
-                .setConnectTimeoutMs(15000)
-                .setReadTimeoutMs(30000);
-
-        DefaultDataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(this, httpFactory);
-        player = new ExoPlayer.Builder(this)
-                .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory))
-                .build();
-
+        player = new ExoPlayer.Builder(this).build();
         activePlayerView.setPlayer(player);
         activePlayerView.setUseController(true);
         activePlayerView.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT);
 
-        playbackQueue.clear();
-        playbackQueueIndex = 0;
-        playbackRetryCount = 0;
-
+        ArrayList<MediaItem> items = new ArrayList<>();
         for (String url : urls) {
             if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
-                playbackQueue.add(url);
+                items.add(MediaItem.fromUri(url));
             }
         }
 
-        if (playbackQueue.isEmpty()) {
+        if (items.isEmpty()) {
             showShell("Home");
             return;
         }
 
-        player.addListener(new Player.Listener() {
-            @Override
-            public void onPlaybackStateChanged(int playbackState) {
-                if (playbackState == Player.STATE_READY) {
-                    playbackRetryCount = 0;
-                    clearPlaybackError();
-                } else if (playbackState == Player.STATE_ENDED) {
-                    playNextQueueItem();
-                }
-            }
+        player.setMediaItems(items);
+        player.prepare();
+        player.play();
 
-            @Override
-            public void onPlayerError(PlaybackException error) {
-                int httpCode = findHttpStatus(error);
-                Log.e("TheOneMediaPlayer", "Playback failed HTTP=" + httpCode, error);
-
-                if (httpCode == 458 && playbackRetryCount < 2) {
-                    playbackRetryCount++;
-                    Toast.makeText(
-                            MainActivity.this,
-                            "Stream opnieuw verbinden…",
-                            Toast.LENGTH_SHORT
-                    ).show();
-
-                    if (activePlayerView != null) {
-                        activePlayerView.postDelayed(
-                                MainActivity.this::playCurrentQueueItem,
-                                1200L * playbackRetryCount
-                        );
-                    }
-                    return;
-                }
-
-                showPlaybackError(httpCode);
-            }
-        });
-
-        activePlayerRoot.addView(
+        root.addView(
                 activePlayerView,
                 new FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1196,9 +1139,13 @@ public class MainActivity extends Activity {
                 )
         );
 
-        setContentView(activePlayerRoot);
-        activePlayerRoot.post(this::enterImmersiveFullscreen);
+        // Zet eerst de werkende videospeler op het scherm. Extra bediening mag
+        // nooit meer de film/serie vervangen door het veilige-modusscherm.
+        setContentView(root);
+        root.post(this::enterImmersiveFullscreen);
 
+        // Overlays die samen met de Media3-bediening automatisch verdwijnen.
+        // De lijst blijft mutabel zodat ook The One TV later kan worden toegevoegd.
         final ArrayList<View> autoHidePlayerButtons = new ArrayList<>();
 
         try {
@@ -1211,12 +1158,13 @@ public class MainActivity extends Activity {
             );
             subtitleLp.topMargin = dp(14);
             subtitleLp.rightMargin = dp(14);
-            activePlayerRoot.addView(subtitles, subtitleLp);
+            root.addView(subtitles, subtitleLp);
             autoHidePlayerButtons.add(subtitles);
 
             String playKind = getIntent().getStringExtra("play_kind");
             boolean movieOrSeries = "movie".equals(playKind) || "series".equals(playKind);
 
+            // Fallback voor oudere/openstaande intents zonder play_kind.
             if (!movieOrSeries) {
                 for (String url : urls) {
                     if (url == null) continue;
@@ -1229,6 +1177,8 @@ public class MainActivity extends Activity {
             }
 
             if (movieOrSeries) {
+                // Tijdens de film/serie zelf staat CC niet in beeld.
+                // Tik/OK toont de Media3-bediening én tijdelijk de CC-knop.
                 subtitles.setVisibility(View.GONE);
                 activePlayerView.setControllerAutoShow(false);
                 activePlayerView.hideController();
@@ -1245,94 +1195,6 @@ public class MainActivity extends Activity {
             Log.w("TheOneMediaPlayer", "Subtitle controls unavailable; playback continues", subtitleUiError);
         }
 
-        playCurrentQueueItem();
-    }
-
-    private void playCurrentQueueItem() {
-        if (player == null || playbackQueueIndex < 0 || playbackQueueIndex >= playbackQueue.size()) {
-            return;
-        }
-
-        clearPlaybackError();
-
-        String url = playbackQueue.get(playbackQueueIndex);
-        player.stop();
-        player.clearMediaItems();
-        player.setMediaItem(MediaItem.fromUri(url));
-        player.prepare();
-        player.play();
-    }
-
-    private void playNextQueueItem() {
-        if (playbackQueueIndex + 1 >= playbackQueue.size()) return;
-
-        playbackQueueIndex++;
-        playbackRetryCount = 0;
-        playCurrentQueueItem();
-    }
-
-    private int findHttpStatus(Throwable error) {
-        Throwable current = error;
-        while (current != null) {
-            if (current instanceof HttpDataSource.InvalidResponseCodeException) {
-                return ((HttpDataSource.InvalidResponseCodeException) current).responseCode;
-            }
-            current = current.getCause();
-        }
-        return 0;
-    }
-
-    private void showPlaybackError(int httpCode) {
-        if (activePlayerRoot == null) return;
-
-        clearPlaybackError();
-
-        LinearLayout panel = new LinearLayout(this);
-        panel.setTag("playback_error");
-        panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setGravity(Gravity.CENTER);
-        panel.setPadding(dp(24), dp(20), dp(24), dp(20));
-        panel.setBackground(PremiumUi.card(this));
-
-        String message = httpCode > 0
-                ? "Afspelen mislukt (HTTP " + httpCode + ")"
-                : "Afspelen mislukt";
-        panel.addView(text(message, 19, Color.WHITE, true));
-
-        Button retry = button("Opnieuw proberen");
-        retry.setOnClickListener(v -> {
-            playbackRetryCount = 0;
-            playCurrentQueueItem();
-        });
-        LinearLayout.LayoutParams retryLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        retryLp.topMargin = dp(12);
-        panel.addView(retry, retryLp);
-
-        Button back = PremiumUi.chipButton(this, "← Terug");
-        back.setOnClickListener(v -> onBackPressed());
-        LinearLayout.LayoutParams backLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        backLp.topMargin = dp(8);
-        panel.addView(back, backLp);
-
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                Math.min(dp(420), getResources().getDisplayMetrics().widthPixels - dp(32)),
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER
-        );
-        activePlayerRoot.addView(panel, lp);
-    }
-
-    private void clearPlaybackError() {
-        if (activePlayerRoot == null) return;
-
-        View error = activePlayerRoot.findViewWithTag("playback_error");
-        if (error != null) activePlayerRoot.removeView(error);
     }
 
     private void showSubtitleSelector() {
@@ -1510,10 +1372,6 @@ public class MainActivity extends Activity {
             player.release();
             player = null;
         }
-        activePlayerRoot = null;
-        playbackQueue.clear();
-        playbackQueueIndex = 0;
-        playbackRetryCount = 0;
     }
 
     @Override
