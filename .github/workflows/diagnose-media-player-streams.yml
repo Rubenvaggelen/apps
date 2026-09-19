@@ -65,6 +65,19 @@ jobs:
               except Exception:
                   return -1
 
+          try:
+              req=urllib.request.Request(src["m3u_url"],headers={"User-Agent":"TheOneMediaPlayer/0.9","Connection":"close"})
+              with urllib.request.urlopen(req,timeout=20) as r:
+                  sample=r.read(512)
+                  print("m3u_status="+str(r.status))
+                  print("m3u_has_extm3u="+str(sample.startswith(b"#EXTM3U")))
+          except urllib.error.HTTPError as e:
+              print("m3u_status="+str(e.code))
+              print("m3u_has_extm3u=False")
+          except Exception:
+              print("m3u_status=-1")
+              print("m3u_has_extm3u=False")
+
           vc=js(api("get_vod_categories"))
           vod=js(api("get_vod_streams",category_id=str(vc[0].get("category_id","")))) if vc else []
           m=next((x for x in vod if str(x.get("stream_id",""))),None)
