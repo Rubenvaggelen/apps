@@ -16,7 +16,7 @@ android {
         minSdk = 23
         targetSdk = 36
         versionCode = 2202
-        versionName = "2.2.2-phone-safe-fix"
+        versionName = "2.2.2-phone-xtream-fix"
     }
 
     signingConfigs {
