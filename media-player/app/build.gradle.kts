@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2306
-        versionName = "2.3.6-episode-thumbnails"
+        versionCode = 2307
+        versionName = "2.3.7-playback-compatibility"
     }
 
     signingConfigs {
