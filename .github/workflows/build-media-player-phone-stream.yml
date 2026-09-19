@@ -1,0 +1,74 @@
+name: Build The One Stream
+
+on:
+  push:
+    paths:
+      - 'media-player/app/**'
+      - 'media-player/phoneapp/**'
+      - 'media-player/settings.gradle.kts'
+      - '.github/workflows/build-media-player-phone-stream.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Ensure Android 36
+        shell: bash
+        run: |
+          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -name sdkmanager | head -1)"
+          fi
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0" >/dev/null
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Restore permanent Stream signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.android
+          test -n "${{ secrets.DEBUG_KEYSTORE_BASE64 }}"
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > ~/.android/debug.keystore
+          chmod 600 ~/.android/debug.keystore
+          keytool -list -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android >/dev/null
+
+      - name: Build The One Stream APK
+        run: gradle -p media-player :phoneapp:assembleDebug --no-daemon
+
+      - name: Name APK
+        shell: bash
+        run: |
+          cp media-player/phoneapp/build/outputs/apk/debug/phoneapp-debug.apk media-player/phoneapp/build/outputs/apk/debug/The-One-Stream.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: the-one-stream
+          path: media-player/phoneapp/build/outputs/apk/debug/The-One-Stream.apk
+
+      - name: Publish stable phone Stream download
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="media-player-phone-stream-latest"
+          APK="media-player/phoneapp/build/outputs/apk/debug/The-One-Stream.apk"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK" --clobber
+          else
+            gh release create "$TAG" "$APK" --title "The One Stream" --notes "Telefoon-zender voor The One Media Player TV. Stream lokale video/audio rechtstreeks over hetzelfde netwerk."
+          fi
