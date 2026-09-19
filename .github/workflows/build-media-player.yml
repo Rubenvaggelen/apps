@@ -15,9 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MEDIA_PLAYER_KEYSTORE_PATH: ${{ github.workspace }}/media-player-fixed.keystore
-      MEDIA_PLAYER_KEYSTORE_PASSWORD: ${{ secrets.MEDIA_PLAYER_KEYSTORE_PASSWORD }}
-      MEDIA_PLAYER_KEY_ALIAS: ${{ secrets.MEDIA_PLAYER_KEY_ALIAS }}
-      MEDIA_PLAYER_KEY_PASSWORD: ${{ secrets.MEDIA_PLAYER_KEY_PASSWORD }}
+      MEDIA_PLAYER_KEYSTORE_PASSWORD: android
+      MEDIA_PLAYER_KEY_ALIAS: androiddebugkey
+      MEDIA_PLAYER_KEY_PASSWORD: android
 
     steps:
       - name: Checkout code
@@ -49,11 +49,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${{ secrets.MEDIA_PLAYER_KEYSTORE_BASE64 }}"
-          test -n "$MEDIA_PLAYER_KEYSTORE_PASSWORD"
-          test -n "$MEDIA_PLAYER_KEY_ALIAS"
-          test -n "$MEDIA_PLAYER_KEY_PASSWORD"
-          echo "${{ secrets.MEDIA_PLAYER_KEYSTORE_BASE64 }}" | base64 -d > "$MEDIA_PLAYER_KEYSTORE_PATH"
+          test -n "${{ secrets.DEBUG_KEYSTORE_BASE64 }}"
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > "$MEDIA_PLAYER_KEYSTORE_PATH"
           chmod 600 "$MEDIA_PLAYER_KEYSTORE_PATH"
           keytool -list -keystore "$MEDIA_PLAYER_KEYSTORE_PATH" -alias "$MEDIA_PLAYER_KEY_ALIAS" -storepass "$MEDIA_PLAYER_KEYSTORE_PASSWORD" >/dev/null
 
