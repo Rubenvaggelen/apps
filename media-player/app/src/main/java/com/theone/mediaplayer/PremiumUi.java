@@ -77,15 +77,17 @@ public final class PremiumUi {
         Button b = new Button(context);
         b.setText(label);
         b.setTextColor(Color.WHITE);
-        b.setTextSize(16);
+        b.setTextSize(15);
         b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        b.setLetterSpacing(0.025f);
+        b.setLetterSpacing(0.02f);
         b.setAllCaps(false);
         b.setGravity(Gravity.CENTER);
-        b.setPadding(dp(context, 20), dp(context, 12), dp(context, 20), dp(context, 12));
-        b.setMinHeight(dp(context, 52));
-        b.setBackground(neonButtonBackground(context, true));
-        b.setElevation(dp(context, 8));
+        b.setPadding(dp(context, 18), dp(context, 11), dp(context, 18), dp(context, 11));
+        b.setMinHeight(dp(context, 48));
+
+        // Zelfde donkere neon The One-look als de categorieknoppen.
+        b.setBackground(neonButtonBackground(context, false));
+        b.setElevation(dp(context, 5));
         b.setStateListAnimator(null);
         return b;
     }
