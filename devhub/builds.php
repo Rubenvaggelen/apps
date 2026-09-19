@@ -64,6 +64,7 @@ $buildReady = $latestTag !== '' && $tagCommit === $head;
 $recentTags = array_slice($tags, 0, 8);
 $appDownload = $latestTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releases/download/' . rawurlencode($latestTag) . '/app-debug.apk' : '';
 $carDownload = $latestTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releases/download/' . rawurlencode($latestTag) . '/carradio-debug.apk' : '';
+$mediaDownload = 'https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2316/The-One-Media-Player-v2316.apk';
 $tvDownload = 'https://github.com/Rubenvaggelen/apps/releases/download/media-player-tv-latest/The-One-Media-Player-TV.apk';
 ?>
 <!doctype html>
@@ -114,7 +115,7 @@ $tvDownload = 'https://github.com/Rubenvaggelen/apps/releases/download/media-pla
       <?php else: ?>
         <div class="big" id="releaseVersion"><?=htmlspecialchars($latestTag)?></div>
         <p class="<?= $buildReady?'ok':'warn' ?>" id="releaseState"><?= $buildReady?'✓ Deze release hoort bij de nieuwste commit':'● Nieuwere commit/build aanwezig; dit is de laatste afgeronde release' ?></p>
-        <div class="download-row"><a class="btn ok" id="appDownload" href="<?=htmlspecialchars($appDownload)?>">⬇ The One APK</a><a class="btn ok" id="carDownload" href="<?=htmlspecialchars($carDownload)?>">⬇ The One Car APK</a><a class="btn ok" href="<?=htmlspecialchars($tvDownload)?>">⬇ Media Player Android TV APK</a></div>
+        <div class="download-row"><a class="btn ok" id="appDownload" href="<?=htmlspecialchars($appDownload)?>">⬇ The One APK</a><a class="btn ok" id="carDownload" href="<?=htmlspecialchars($carDownload)?>">⬇ The One Car APK</a><a class="btn ok" href="<?=htmlspecialchars($mediaDownload)?>">⬇ The One Media Player APK</a><a class="btn ok" href="<?=htmlspecialchars($tvDownload)?>">⬇ Media Player Android TV APK</a></div>
       <?php endif; ?>
     </div>
 
