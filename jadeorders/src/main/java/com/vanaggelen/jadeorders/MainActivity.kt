@@ -89,6 +89,7 @@ class MainActivity : AppCompatActivity() {
         nearby = Nearby.getConnectionsClient(this)
         windowsHost = getSharedPreferences("rutu_windows", Context.MODE_PRIVATE).getString("host", "") ?: ""
         landing()
+        RutuUpdateChecker.checkForUpdate(this)
     }
 
     override fun onDestroy() {
