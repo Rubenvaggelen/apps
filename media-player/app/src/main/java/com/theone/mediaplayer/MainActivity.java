@@ -86,6 +86,7 @@ public class MainActivity extends Activity {
     private static final int MAX_PLAYBACK_RETRIES = 15;
     private final Handler playbackRetryHandler = new Handler(Looper.getMainLooper());
     private int playbackRetryCount = 0;
+    private boolean playbackFailureShown = false;
 
     private static final int REQ_PICK_CAST_MEDIA = 7301;
     private TheOneCast.Receiver castReceiver;
@@ -1133,13 +1134,31 @@ public class MainActivity extends Activity {
                         || "live".equals(playKind);
 
         playbackRetryCount = 0;
+        playbackFailureShown = false;
         playbackRetryHandler.removeCallbacksAndMessages(null);
 
         if (retryXtreamPlayback) {
             player.addListener(new Player.Listener() {
                 @Override
                 public void onPlayerError(PlaybackException error) {
-                    if (player == null || playbackRetryCount >= MAX_PLAYBACK_RETRIES) return;
+                    if (player == null) return;
+
+                    if (playbackRetryCount >= MAX_PLAYBACK_RETRIES) {
+                        if (!playbackFailureShown) {
+                            playbackFailureShown = true;
+                            playbackRetryHandler.removeCallbacksAndMessages(null);
+                            new AlertDialog.Builder(MainActivity.this)
+                                    .setTitle("Stream niet beschikbaar")
+                                    .setMessage("Deze aflevering wordt door de Xtream-bron momenteel niet geleverd. Probeer een andere versie of later opnieuw.")
+                                    .setPositiveButton("Terug", (dialog, which) -> {
+                                        releasePlayer();
+                                        finish();
+                                    })
+                                    .setNegativeButton("Sluiten", null)
+                                    .show();
+                        }
+                        return;
+                    }
 
                     playbackRetryCount++;
                     long delayMs = playbackRetryCount <= 3 ? 700L : 1000L;
