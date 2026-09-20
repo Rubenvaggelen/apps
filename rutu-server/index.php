@@ -149,7 +149,7 @@ if ($action === 'create') {
             'tracking' => bin2hex(random_bytes(18))
         ];
         array_unshift($state['orders'], $order);
-        $state['orders'] = array_slice($state['orders'], 0, 500);
+        // Bewaar de volledige bestelgeschiedenis voor de bedrijfsomgeving.
         return $order;
     });
 
