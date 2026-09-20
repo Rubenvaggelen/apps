@@ -158,7 +158,7 @@ async function syncCloudOrders() {
   try {
     const result = await cloudRequest('business_orders');
     const remote = Array.isArray(result.orders) ? result.orders : [];
-    orders = remote.map(o => ({ id:Number(o.id), items:normalizeItems(o.items), total:Number(o.total||0), customer:String(o.customer||'Online klant'), created:String(o.created||o.created_display||''), status:String(o.status||'Nieuw'), historyHidden:Boolean(o.history_hidden) }));
+    orders = remote.map(o => ({ id:Number(o.id), items:normalizeItems(o.items), total:Number(o.total||0), customer:String(o.customer||'Online klant'), created:String(o.created||o.created_display||''), status:String(o.status||'Nieuw'), historyHidden:Boolean(o.history_hidden), historyCleared:Boolean(o.history_cleared) }));
     nextId = Math.max(1046, ...orders.map(o => o.id + 1));
     cloudOnline = true; broadcast(); return true;
   } catch (_) { cloudOnline = false; return false; }
@@ -307,6 +307,13 @@ app.whenReady().then(() => {
     await cloudRequest('business_hide_history', 'POST', { id:Number(id) });
     await syncCloudOrders();
     return true;
+  });
+  ipcMain.handle('clear-business-history', async () => {
+    loadCloudConfig();
+    if (!cloudConfig) throw new Error('Rutu business config ontbreekt');
+    const result = await cloudRequest('business_clear_history', 'POST', {});
+    await syncCloudOrders();
+    return result;
   });
   ipcMain.handle('place-order', (_event, order) => addOrder(order));
   ipcMain.handle('set-status', async (_event, { id, status }) => setOrderStatus(id, status));

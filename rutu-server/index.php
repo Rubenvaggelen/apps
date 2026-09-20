@@ -108,6 +108,7 @@ function clean_order_for_customer(array $order, bool $includeTracking = false): 
 function clean_order_for_business(array $order): array {
     $out = clean_order_for_customer($order, false);
     $out['history_hidden'] = (bool)($order['history_hidden'] ?? false);
+    $out['history_cleared'] = (bool)($order['history_cleared'] ?? false);
     return $out;
 }
 
@@ -170,7 +171,8 @@ if ($action === 'create') {
             'created' => gmdate('c', $createdTs),
             'created_display' => date('H:i', $createdTs),
             'tracking' => bin2hex(random_bytes(18)),
-            'history_hidden' => false
+            'history_hidden' => false,
+            'history_cleared' => false
         ];
         array_unshift($state['orders'], $order);
         // Bewaar de volledige bestelgeschiedenis voor de bedrijfsomgeving.
@@ -272,6 +274,24 @@ if ($action === 'business_orders') {
         $state['orders']
     ));
     respond(200, ['ok' => true, 'orders' => $orders]);
+}
+
+if ($action === 'business_clear_history') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => 'POST vereist.']);
+    if (!business_authorized($keyFile)) respond(401, ['ok' => false, 'error' => 'Niet geautoriseerd.']);
+
+    $count = with_state($stateFile, true, function (&$state) {
+        $count = 0;
+        foreach ($state['orders'] as &$order) {
+            if (in_array((string)($order['status'] ?? ''), ['Afgerond', 'Geweigerd'], true)) {
+                $order['history_cleared'] = true;
+                $count++;
+            }
+        }
+        return $count;
+    });
+
+    respond(200, ['ok' => true, 'cleared' => $count]);
 }
 
 if ($action === 'business_hide_history') {
