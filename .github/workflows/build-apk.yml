@@ -114,7 +114,7 @@ jobs:
           stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'mktemp -d "$HOME/.rutu-update.XXXXXXXX"')
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$apk" "$remote:$stage/Rutu-BBQ-Android.apk"
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$meta" "$remote:$stage/android.json"
-          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "mkdir -p ~/public_html/rutu-updates && mv '$stage/Rutu-BBQ-Android.apk' ~/public_html/rutu-updates/Rutu-BBQ-Android.apk && mv '$stage/android.json' ~/public_html/rutu-updates/android.json && rmdir '$stage'"
+          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "mkdir -p ~/public_html/rutu-updates && mv '$stage/Rutu-BBQ-Android.apk' ~/public_html/rutu-updates/Rutu-BBQ-Android.apk && mv '$stage/android.json' ~/public_html/rutu-updates/android.json && chmod 644 ~/public_html/rutu-updates/Rutu-BBQ-Android.apk ~/public_html/rutu-updates/android.json && rmdir '$stage'"
 
       - name: Create GitHub Release with APKs
         if: github.ref == 'refs/heads/main'
