@@ -1141,6 +1141,22 @@ public class XtreamCatalogActivity extends Activity {
             if (!out.contains(plain)) out.add(plain);
         }
 
+        // Sommige HULU/EN-items verwijzen naar een oude proxytx-host die
+        // niet meer via DNS bereikbaar is. De bestandsnaam is wel dezelfde
+        // TMDB-poster-id, dus gebruik die als veilige afbeeldingsfallback.
+        try {
+            String path = new URL(value).getPath();
+            int slash = path.lastIndexOf('/');
+            String fileName = slash >= 0 ? path.substring(slash + 1) : "";
+            if (!fileName.isEmpty()
+                    && (value.contains("/images/series/")
+                    || value.toLowerCase(Locale.ROOT).contains("proxytx.cloud"))) {
+                String tmdb = "https://image.tmdb.org/t/p/w342/" + fileName;
+                if (!out.contains(tmdb)) out.add(tmdb);
+            }
+        } catch (Throwable ignored) {
+        }
+
         return out;
     }
 
