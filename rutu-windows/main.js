@@ -289,6 +289,18 @@ app.whenReady().then(() => {
     loadCloudConfig();
     return cloudConfig ? syncCloudOrders() : false;
   });
+  ipcMain.handle('get-business-announcement', async () => {
+    loadCloudConfig();
+    if (!cloudConfig) return { active:false, title:'', message:'', from:'', until:'' };
+    const result = await cloudRequest('business_announcement');
+    return result.announcement || {};
+  });
+  ipcMain.handle('set-business-announcement', async (_event, announcement) => {
+    loadCloudConfig();
+    if (!cloudConfig) throw new Error('Rutu business config ontbreekt');
+    const result = await cloudRequest('business_announcement', 'POST', announcement || {});
+    return result.announcement || {};
+  });
   ipcMain.handle('place-order', (_event, order) => addOrder(order));
   ipcMain.handle('set-status', async (_event, { id, status }) => setOrderStatus(id, status));
   ipcMain.handle('reset-orders', () => {
