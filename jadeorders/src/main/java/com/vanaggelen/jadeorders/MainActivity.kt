@@ -429,7 +429,10 @@ class MainActivity : AppCompatActivity() {
                     if (code == 200) {
                         reachedServer = true
                         val status = JSONObject(raw).optJSONObject("order")?.optString("status").orEmpty()
-                        if (status.isNotBlank() && status != order.status) {
+                        if (status == "Afgerond") {
+                            Store.remove(this, order.id)
+                            changed = true
+                        } else if (status.isNotBlank() && status != order.status) {
                             Store.status(this, order.id, status)
                             changed = true
                         }
@@ -481,13 +484,44 @@ class MainActivity : AppCompatActivity() {
         val body = listOf(a.message, dates).filter { it.isNotBlank() }.joinToString("\n")
         hero(if (a.title.isBlank()) "Mededeling van Rutu BBQ" else a.title, body)
     }
-    private fun page() {
-        root = LinearLayout(this).apply {
+    private fun cartTotal(): Double = cart.entries.sumOf { (name, qty) ->
+        (products.firstOrNull { it.name == name }?.price ?: 0.0) * qty
+    }
+
+    private fun page(showCartBar: Boolean = false) {
+        val shell = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(24), dp(20), dp(44))
             setBackgroundColor(Color.rgb(9, 8, 7))
         }
-        setContentView(ScrollView(this).apply { addView(root) })
+        root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(24), dp(20), dp(28))
+            setBackgroundColor(Color.rgb(9, 8, 7))
+        }
+        val scroll = ScrollView(this).apply { addView(root) }
+        shell.addView(
+            scroll,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+        )
+        if (showCartBar) {
+            val total = cartTotal()
+            val qty = cart.values.sum()
+            shell.addView(
+                Button(this).apply {
+                    text = "🛒 Winkelmand  •  $qty items  •  ${money.format(total)}"
+                    isAllCaps = false
+                    minHeight = dp(62)
+                    textSize = 17f
+                    setTextColor(Color.rgb(20, 14, 7))
+                    backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(229, 184, 92))
+                    setOnClickListener { cartScreen() }
+                },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(dp(14), dp(8), dp(14), dp(14))
+                }
+            )
+        }
+        setContentView(shell)
     }
 
     private fun landing() {
@@ -537,7 +571,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderCustomer() {
-        screen = "customer"; page(); back { landing() }; logoMark(true); title("Ons menu"); connectionCard()
+        screen = "customer"; page(true); back { landing() }; logoMark(true); title("Ons menu"); connectionCard()
         section("Online bestellen")
         centered("Je bestelling gaat via internet naar Rutu BBQ. Hetzelfde wifi-netwerk is niet nodig.", 14f, Color.rgb(210, 199, 182))
         button("Internetverbinding opnieuw controleren", secondary = true) { testOnlineConnection(false) }
@@ -552,12 +586,11 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        button("🛒 Winkelmand (${cart.values.sum()})") { cartScreen() }
         button("🧾 Mijn bestellingen", secondary = true) { myOrders() }
     }
 
     private fun cartScreen() {
-        screen = "cart"; page(); back { renderCustomer() }; logoMark(true); title("Jouw winkelmand"); connectionCard()
+        screen = "cart"; page(true); back { renderCustomer() }; logoMark(true); title("Jouw winkelmand"); connectionCard()
         if (cart.isEmpty()) { hero("Je winkelmand is leeg", "Voeg eerst iets lekkers toe."); return }
         var total = 0.0
         cart.toMap().forEach { (name, qty) ->
@@ -574,7 +607,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun myOrders(sync: Boolean = true) {
-        screen = "orders"; page(); back { renderCustomer() }; logoMark(true); title("Mijn bestellingen"); connectionCard()
+        screen = "orders"; Store.removeCompleted(this); page(true); back { renderCustomer() }; logoMark(true); title("Mijn bestellingen"); connectionCard()
         if (sync) syncOnlineStatuses()
         label("🔄 " + lastStatusRefreshText + " • automatisch elke 2 seconden", Color.rgb(24, 31, 25))
         val orders = Store.all(this).reversed()
@@ -664,5 +697,7 @@ class MainActivity : AppCompatActivity() {
         }
         fun upsert(c: Context, order: Order) { val orders = all(c); val i = orders.indexOfFirst { it.id == order.id }; if (i >= 0) orders[i] = order else orders += order; save(c, orders) }
         fun status(c: Context, id: Int, status: String) { val orders = all(c); orders.firstOrNull { it.id == id }?.status = status; save(c, orders) }
+        fun remove(c: Context, id: Int) { val orders = all(c); orders.removeAll { it.id == id }; save(c, orders) }
+        fun removeCompleted(c: Context) { val orders = all(c); if (orders.removeAll { it.status == "Afgerond" }) save(c, orders) }
     }
 }
