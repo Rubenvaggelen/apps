@@ -773,7 +773,10 @@ public class XtreamCatalogActivity extends Activity {
                             o.optString("cover", ""),
                             o.optString("cover_big", ""),
                             o.optString("stream_icon", ""),
-                            o.optString("poster", "")
+                            o.optString("poster", ""),
+                            o.optString("movie_image", ""),
+                            o.optString("backdrop", ""),
+                            firstImageValue(o.opt("backdrop_path"))
                     ),
                     extractYear(o)
             );
@@ -800,6 +803,38 @@ public class XtreamCatalogActivity extends Activity {
             if (value != null && !value.trim().isEmpty()) return value.trim();
         }
         return "";
+    }
+
+    private String firstImageValue(Object value) {
+        if (value == null || value == JSONObject.NULL) return "";
+
+        if (value instanceof JSONArray) {
+            JSONArray arr = (JSONArray) value;
+            for (int i = 0; i < arr.length(); i++) {
+                String candidate = firstImageValue(arr.opt(i));
+                if (!candidate.isEmpty()) return candidate;
+            }
+            return "";
+        }
+
+        if (value instanceof JSONObject) {
+            JSONObject obj = (JSONObject) value;
+            String[] keys = new String[]{"url", "file_path", "path", "image", "cover"};
+            for (String key : keys) {
+                String candidate = firstImageValue(obj.opt(key));
+                if (!candidate.isEmpty()) return candidate;
+            }
+            return "";
+        }
+
+        String text = String.valueOf(value).trim();
+        if (text.startsWith("[") || text.startsWith("{")) {
+            try {
+                return firstImageValue(new org.json.JSONTokener(text).nextValue());
+            } catch (Throwable ignored) {
+            }
+        }
+        return text;
     }
 
     private String extractYear(JSONObject item) {
@@ -1069,24 +1104,70 @@ public class XtreamCatalogActivity extends Activity {
 
     private void loadImage(ImageView view, String urlValue) {
         imagePool.submit(() -> {
-            HttpURLConnection conn = null;
-            try {
-                conn = (HttpURLConnection) new URL(urlValue).openConnection();
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(15000);
-                conn.setRequestProperty("User-Agent", "TheOneMediaPlayer/0.9");
+            Bitmap bitmap = null;
+            for (String candidate : imageCandidates(urlValue)) {
+                bitmap = downloadBitmap(candidate);
+                if (bitmap != null) break;
+            }
 
-                try (InputStream in = conn.getInputStream()) {
-                    Bitmap bitmap = BitmapFactory.decodeStream(in);
-                    if (bitmap != null) {
-                        runOnUiThread(() -> view.setImageBitmap(bitmap));
-                    }
-                }
-            } catch (Throwable ignored) {
-            } finally {
-                if (conn != null) conn.disconnect();
+            if (bitmap != null) {
+                Bitmap ready = bitmap;
+                runOnUiThread(() -> {
+                    if (!isFinishing()) view.setImageBitmap(ready);
+                });
             }
         });
+    }
+
+    private List<String> imageCandidates(String raw) {
+        List<String> out = new ArrayList<>();
+        if (raw == null) return out;
+
+        String value = raw.trim().replace(" ", "%20");
+        if (value.isEmpty()) return out;
+
+        if (value.startsWith("//")) value = "https:" + value;
+        if (value.startsWith("/")) value = config.server + value;
+
+        if (value.startsWith("http://") || value.startsWith("https://")) {
+            out.add(value);
+        }
+
+        if (value.startsWith("http://")) {
+            String secure = "https://" + value.substring("http://".length());
+            if (!out.contains(secure)) out.add(secure);
+        } else if (value.startsWith("https://")) {
+            String plain = "http://" + value.substring("https://".length());
+            if (!out.contains(plain)) out.add(plain);
+        }
+
+        return out;
+    }
+
+    private Bitmap downloadBitmap(String urlValue) {
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) new URL(urlValue).openConnection();
+            conn.setInstanceFollowRedirects(true);
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(15000);
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36");
+            conn.setRequestProperty("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8");
+            if (config != null && config.server != null && !config.server.isEmpty()) {
+                conn.setRequestProperty("Referer", config.server + "/");
+            }
+
+            int code = conn.getResponseCode();
+            if (code < 200 || code >= 300) return null;
+
+            try (InputStream in = conn.getInputStream()) {
+                return BitmapFactory.decodeStream(in);
+            }
+        } catch (Throwable ignored) {
+            return null;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
     }
 
     private void play(XtreamItem item) {
