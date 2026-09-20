@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const http = require('http');
 const os = require('os');
+const fs = require('fs');
 
 let orders = [];
 let nextId = 1046;
@@ -9,6 +10,10 @@ let customerWindow = null;
 let businessWindow = null;
 let apiServer = null;
 const API_PORT = 8765;
+const DEFAULT_CLOUD_API = 'https://rubenvanaggelen.com/rutu-api/index.php';
+let cloudConfig = null;
+let cloudOnline = false;
+let cloudTimer = null;
 
 function makeWindow(file, opts = {}) {
   const win = new BrowserWindow({
@@ -58,6 +63,46 @@ function localAddresses() {
   return [...new Set(result)];
 }
 
+function businessConfigPath() { return path.join(os.homedir(), 'Documents', 'Rutu BBQ', 'rutu-business.json'); }
+
+function loadCloudConfig() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(businessConfigPath(), 'utf8'));
+    if (raw && raw.businessKey) { cloudConfig = { apiBase: String(raw.apiBase || DEFAULT_CLOUD_API), businessKey: String(raw.businessKey) }; return; }
+  } catch (_) {}
+  cloudConfig = null;
+}
+
+async function cloudRequest(action, method = 'GET', body = null) {
+  if (!cloudConfig) throw new Error('Rutu business config ontbreekt');
+  const url = new URL(cloudConfig.apiBase);
+  url.searchParams.set('action', action);
+  const headers = { 'Accept': 'application/json', 'X-Rutu-Business-Key': cloudConfig.businessKey };
+  if (body) headers['Content-Type'] = 'application/json; charset=utf-8';
+  const response = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  const text = await response.text(); let parsed = {};
+  try { parsed = text ? JSON.parse(text) : {}; } catch (_) {}
+  if (!response.ok || parsed.ok === false) throw new Error(parsed.error || ('HTTP ' + response.status));
+  return parsed;
+}
+
+async function syncCloudOrders() {
+  if (!cloudConfig) return false;
+  try {
+    const result = await cloudRequest('business_orders');
+    const remote = Array.isArray(result.orders) ? result.orders : [];
+    orders = remote.map(o => ({ id:Number(o.id), items:normalizeItems(o.items), total:Number(o.total||0), customer:String(o.customer||'Online klant'), created:String(o.created_display||o.created||''), status:String(o.status||'Nieuw') }));
+    nextId = Math.max(1046, ...orders.map(o => o.id + 1));
+    cloudOnline = true; broadcast(); return true;
+  } catch (_) { cloudOnline = false; return false; }
+}
+
+async function setCloudOrderStatus(id, status) {
+  const result = await cloudRequest('business_status', 'POST', { id:Number(id), status:String(status) });
+  const updated = result.order || null;
+  if (updated) { const local = orders.find(o => o.id === Number(updated.id)); if (local) local.status = String(updated.status || local.status); }
+  cloudOnline = true; broadcast(); return updated;
+}
 function normalizeItems(items) {
   if (Array.isArray(items)) return items.map(i => ({ name: String(i.name || ''), qty: Number(i.qty || 0) })).filter(i => i.name && i.qty > 0);
   if (items && typeof items === 'object') return Object.entries(items).map(([name, qty]) => ({ name, qty: Number(qty || 0) })).filter(i => i.qty > 0);
@@ -150,10 +195,10 @@ app.whenReady().then(() => {
   ipcMain.on('open-customer', openCustomer);
   ipcMain.on('open-business', openBusiness);
 
-  ipcMain.handle('get-server-info', () => ({ port: API_PORT, addresses: localAddresses() }));
+  ipcMain.handle('get-server-info', () => ({ port: API_PORT, addresses: localAddresses(), online: cloudOnline, cloudConfigured: Boolean(cloudConfig), cloudApi: cloudConfig ? cloudConfig.apiBase : DEFAULT_CLOUD_API }));
   ipcMain.handle('get-orders', () => JSON.parse(JSON.stringify(orders)));
   ipcMain.handle('place-order', (_event, order) => addOrder(order));
-  ipcMain.handle('set-status', (_event, { id, status }) => setOrderStatus(id, status));
+  ipcMain.handle('set-status', async (_event, { id, status }) => setOrderStatus(id, status));
   ipcMain.handle('reset-orders', () => {
     orders = [];
     nextId = 1046;
