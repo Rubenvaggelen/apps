@@ -105,6 +105,7 @@ jobs:
           printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$keydir/key"
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$keydir/known_hosts"
           printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$keydir/askpass"
+          chmod 600 "$keydir/key"
           chmod 700 "$keydir/askpass"
           eval "$(ssh-agent -s)" >/dev/null
           SSH_ASKPASS="$keydir/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$keydir/key" </dev/null
