@@ -52,6 +52,7 @@ function with_state(string $file, bool $write, callable $callback) {
         if (!is_array($state)) $state = ['next_id' => 1046, 'orders' => []];
         if (!isset($state['next_id'])) $state['next_id'] = 1046;
         if (!isset($state['orders']) || !is_array($state['orders'])) $state['orders'] = [];
+        if (!isset($state['announcement']) || !is_array($state['announcement'])) $state['announcement'] = ['title'=>'','message'=>'','from'=>'','until'=>'','active'=>false,'updated'=>''];
 
         $result = $callback($state);
 
@@ -168,6 +169,74 @@ if ($action === 'status') {
     });
     if (!$order) respond(404, ['ok' => false, 'error' => 'Bestelling niet gevonden.']);
     respond(200, ['ok' => true, 'order' => clean_order_for_customer($order, false)]);
+}
+
+if ($action === 'announcement') {
+    $announcement = with_state($stateFile, false, function ($state) {
+        $a = $state['announcement'] ?? ['title'=>'','message'=>'','from'=>'','until'=>'','active'=>false,'updated'=>''];
+        if (!is_array($a)) $a = ['title'=>'','message'=>'','from'=>'','until'=>'','active'=>false,'updated'=>''];
+
+        $active = (bool)($a['active'] ?? false);
+        $today = date('Y-m-d');
+        $from = trim((string)($a['from'] ?? ''));
+        $until = trim((string)($a['until'] ?? ''));
+        if ($from !== '' && $today < $from) $active = false;
+        if ($until !== '' && $today > $until) $active = false;
+
+        return [
+            'title' => trim((string)($a['title'] ?? '')),
+            'message' => trim((string)($a['message'] ?? '')),
+            'from' => $from,
+            'until' => $until,
+            'active' => $active,
+            'updated' => (string)($a['updated'] ?? '')
+        ];
+    });
+    respond(200, ['ok' => true, 'announcement' => $announcement]);
+}
+
+if ($action === 'business_announcement') {
+    if (!business_authorized($keyFile)) respond(401, ['ok' => false, 'error' => 'Niet geautoriseerd.']);
+
+    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+        $announcement = with_state($stateFile, false, fn($state) => $state['announcement'] ?? []);
+        respond(200, ['ok' => true, 'announcement' => $announcement]);
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => 'GET of POST vereist.']);
+    $body = body_json();
+    $title = trim((string)($body['title'] ?? ''));
+    $message = trim((string)($body['message'] ?? ''));
+    $from = trim((string)($body['from'] ?? ''));
+    $until = trim((string)($body['until'] ?? ''));
+    $active = (bool)($body['active'] ?? false);
+
+    if (mb_strlen($title) > 80 || mb_strlen($message) > 600) {
+        respond(400, ['ok' => false, 'error' => 'Mededeling is te lang.']);
+    }
+    if ($from !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) {
+        respond(400, ['ok' => false, 'error' => 'Ongeldige vanaf-datum.']);
+    }
+    if ($until !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $until)) {
+        respond(400, ['ok' => false, 'error' => 'Ongeldige tot-datum.']);
+    }
+    if ($from !== '' && $until !== '' && $until < $from) {
+        respond(400, ['ok' => false, 'error' => 'Tot-datum ligt vóór vanaf-datum.']);
+    }
+
+    $announcement = with_state($stateFile, true, function (&$state) use ($title, $message, $from, $until, $active) {
+        $state['announcement'] = [
+            'title' => $title,
+            'message' => $message,
+            'from' => $from,
+            'until' => $until,
+            'active' => $active && ($title !== '' || $message !== ''),
+            'updated' => gmdate('c')
+        ];
+        return $state['announcement'];
+    });
+
+    respond(200, ['ok' => true, 'announcement' => $announcement]);
 }
 
 if ($action === 'business_orders') {
