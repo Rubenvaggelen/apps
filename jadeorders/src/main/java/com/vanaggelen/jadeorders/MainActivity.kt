@@ -33,9 +33,18 @@ import java.util.Locale
 class MainActivity : AppCompatActivity() {
     private enum class Role { NONE, CUSTOMER, BUSINESS }
     data class Product(val name: String, val price: Double, val category: String)
-    data class Order(val id: Int, val items: LinkedHashMap<String, Int>, val total: Double, var status: String)
+    data class Order(val id: Int, val items: LinkedHashMap<String, Int>, val total: Double, var status: String, val trackingToken: String = "")
 
-    private val products = emptyList<Product>()
+    private val products = listOf(
+        Product("Teriyaki Chicken", 12.50, "BBQ"),
+        Product("The Emperor Burger", 14.95, "BBQ"),
+        Product("Nasi Special", 11.50, "Meals"),
+        Product("Roti Kip", 13.50, "Meals"),
+        Product("Friet groot", 4.25, "Sides"),
+        Product("Ube Cheesecake", 6.95, "Dessert"),
+        Product("Cola", 2.75, "Drinks"),
+        Product("Iced Tea", 2.75, "Drinks")
+    )
     private val cart = linkedMapOf<String, Int>()
     private val orderRoutes = mutableMapOf<Int, String>()
     private lateinit var root: LinearLayout
@@ -51,6 +60,18 @@ class MainActivity : AppCompatActivity() {
     private val serviceId by lazy { "$packageName.rutubbq.v1" }
 
     private val uiHandler = Handler(Looper.getMainLooper())
+    private val onlineApiBase = "https://rubenvanaggelen.com/rutu-api/index.php"
+    @Volatile private var onlineAvailable = false
+    private var onlineText = "Online verbinding controleren…"
+    private val onlinePoller = object : Runnable {
+        override fun run() {
+            if (role == Role.CUSTOMER) {
+                testOnlineConnection(true)
+                syncOnlineStatuses()
+                uiHandler.postDelayed(this, 5000)
+            }
+        }
+    }
     private var windowsHost = ""
     private var windowsConnected = false
     private var windowsText = "Windows bedrijf niet verbonden"
@@ -72,6 +93,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         uiHandler.removeCallbacks(windowsPoller)
+        uiHandler.removeCallbacks(onlinePoller)
         nearby.stopAllEndpoints(); nearby.stopAdvertising(); nearby.stopDiscovery()
         super.onDestroy()
     }
@@ -299,6 +321,100 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    private fun onlineUrl(action: String, extra: Map<String, String> = emptyMap()): URL {
+        val query = buildList {
+            add("action=" + java.net.URLEncoder.encode(action, "UTF-8"))
+            extra.forEach { (k, v) -> add(java.net.URLEncoder.encode(k, "UTF-8") + "=" + java.net.URLEncoder.encode(v, "UTF-8")) }
+        }.joinToString("&")
+        return URL("$onlineApiBase?$query")
+    }
+
+    private fun onlineJson(method: String, action: String, body: JSONObject? = null, extra: Map<String, String> = emptyMap()): Pair<Int, String> {
+        val connection = (onlineUrl(action, extra).openConnection() as HttpURLConnection).apply {
+            requestMethod = method
+            connectTimeout = 7000
+            readTimeout = 9000
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            if (body != null) doOutput = true
+        }
+        if (body != null) connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+        val code = connection.responseCode
+        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+        val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+        connection.disconnect()
+        return code to text
+    }
+
+    private fun testOnlineConnection(silent: Boolean) {
+        Thread {
+            try {
+                val (code, raw) = onlineJson("GET", "health")
+                val ok = code == 200 && JSONObject(raw).optBoolean("ok")
+                onlineAvailable = ok
+                onlineText = if (ok) "Online bestellen actief • wifi/4G/5G" else "Online bestelserver niet bereikbaar"
+            } catch (_: Exception) {
+                onlineAvailable = false
+                onlineText = "Online bestelserver niet bereikbaar"
+            }
+            if (!silent) runOnUiThread {
+                toast(if (onlineAvailable) "Online bestellen is actief ✓" else "Geen internetverbinding met Rutu BBQ.")
+                refreshRoleScreen()
+            }
+        }.start()
+    }
+
+    private fun sendOnlineOrder(items: LinkedHashMap<String, Int>, shownTotal: Double) {
+        if (items.isEmpty()) return
+        onlineText = "Bestelling veilig verzenden…"
+        refreshRoleScreen()
+        val itemJson = JSONObject()
+        items.forEach { (name, qty) -> itemJson.put(name, qty) }
+        val payload = JSONObject().put("items", itemJson).put("customer", "Android klant")
+        Thread {
+            try {
+                val (code, raw) = onlineJson("POST", "create", payload)
+                val json = JSONObject(raw)
+                if (code !in 200..299 || !json.optBoolean("ok")) {
+                    val message = json.optString("error", "Bestelling kon niet worden geplaatst.")
+                    runOnUiThread { onlineText = "Verzenden mislukt"; toast(message); refreshRoleScreen() }
+                    return@Thread
+                }
+                val o = json.getJSONObject("order")
+                val order = Order(o.getInt("id"), items, o.optDouble("total", shownTotal), o.optString("status", "Nieuw"), o.optString("tracking", ""))
+                Store.upsert(this, order)
+                onlineAvailable = true
+                onlineText = "Online bestellen actief • bestelling ontvangen"
+                runOnUiThread {
+                    cart.clear()
+                    toast("Bestelling #${order.id} is ontvangen door Rutu BBQ ✓")
+                    myOrders(false)
+                }
+            } catch (_: Exception) {
+                onlineAvailable = false
+                onlineText = "Online bestelserver niet bereikbaar"
+                runOnUiThread { toast("Bestelling niet verzonden. Je winkelmand blijft bewaard."); refreshRoleScreen() }
+            }
+        }.start()
+    }
+
+    private fun syncOnlineStatuses() {
+        val tracked = Store.all(this).filter { it.trackingToken.isNotBlank() }
+        if (tracked.isEmpty()) return
+        Thread {
+            var changed = false
+            tracked.forEach { order ->
+                try {
+                    val (code, raw) = onlineJson("GET", "status", extra = mapOf("id" to order.id.toString(), "tracking" to order.trackingToken))
+                    if (code == 200) {
+                        val status = JSONObject(raw).optJSONObject("order")?.optString("status").orEmpty()
+                        if (status.isNotBlank() && status != order.status) { Store.status(this, order.id, status); changed = true }
+                    }
+                } catch (_: Exception) {}
+            }
+            if (changed && screen == "orders") runOnUiThread { myOrders(false) }
+        }.start()
+    }
     private fun page() {
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -320,7 +436,13 @@ class MainActivity : AppCompatActivity() {
         spacer(20); centered("Android • Rutu BBQ", 12f, Color.rgb(189, 178, 161))
     }
 
-    private fun enterCustomer() { role = Role.CUSTOMER; renderCustomer() }
+    private fun enterCustomer() {
+        role = Role.CUSTOMER
+        testOnlineConnection(false)
+        uiHandler.removeCallbacks(onlinePoller)
+        uiHandler.post(onlinePoller)
+        renderCustomer()
+    }
     private fun enterBusiness() { role = Role.BUSINESS; renderBusiness(); ensureConnection() }
 
     private fun refreshRoleScreen() = runOnUiThread {
@@ -333,6 +455,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun connectionCard() {
+        if (role == Role.CUSTOMER) {
+            label(
+                if (onlineAvailable) "🟢 $onlineText" else "🟠 $onlineText",
+                if (onlineAvailable) Color.rgb(29, 38, 30) else Color.rgb(44, 34, 19)
+            )
+            return
+        }
         when {
             windowsConnected -> label("🟢 $windowsText • $windowsHost:8765", Color.rgb(29, 38, 30))
             connectedEndpoint != null -> label("🟢 $connectionText", Color.rgb(29, 38, 30))
@@ -342,17 +471,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderCustomer() {
         screen = "customer"; page(); back { landing() }; logoMark(true); title("Ons menu"); connectionCard()
-        section("Windows bedrijf koppelen")
-        val ip = EditText(this).apply {
-            hint = "Bijv. 192.168.1.25"
-            setText(windowsHost)
-            setTextColor(Color.WHITE); setHintTextColor(Color.rgb(189, 178, 161))
-            setSingleLine(true); setPadding(dp(14), dp(12), dp(14), dp(12))
-            background = rounded(Color.rgb(23, 20, 15), Color.rgb(70, 70, 80))
-        }
-        root.addView(ip, marginParams(0, 0, 0, 6))
-        button(if (windowsConnected) "✓ Opnieuw testen" else "💻 Verbinden met Windows") { testWindowsConnection(ip.text.toString()) }
-        if (!windowsConnected && connectedEndpoint == null) button("Android-bedrijf zoeken", secondary = true) { ensureConnection() }
+        section("Online bestellen")
+        centered("Je bestelling gaat via internet naar Rutu BBQ. Hetzelfde wifi-netwerk is niet nodig.", 14f, Color.rgb(210, 199, 182))
+        button("Internetverbinding opnieuw controleren", secondary = true) { testOnlineConnection(false) }
         hero("Van het vuur. Voor jou.", "Kies je favorieten. Met aandacht bereid, vers van het vuur.")
         products.groupBy { it.category }.forEach { (category, items) ->
             section(category)
@@ -380,20 +501,17 @@ class MainActivity : AppCompatActivity() {
         }
         section("Totaal  ${money.format(total)}")
         button("Bestelling plaatsen") {
-            if (!windowsConnected && connectedEndpoint == null) { toast("Verbind eerst met de Windows bedrijfsapp."); return@button }
-            val order = Store.create(this, cart, total)
-            if (windowsConnected) sendWindowsOrder(order)
-            else if (sendNearbyOrder(order)) { cart.clear(); toast("Bestelling #${order.id} verzonden ✓"); myOrders(false) }
+            sendOnlineOrder(LinkedHashMap(cart), total)
         }
     }
 
     private fun myOrders(sync: Boolean = true) {
         screen = "orders"; page(); back { renderCustomer() }; logoMark(true); title("Mijn bestellingen"); connectionCard()
-        if (sync) syncWindowsStatuses()
+        if (sync) syncOnlineStatuses()
         val orders = Store.all(this).reversed()
         if (orders.isEmpty()) hero("Nog geen bestellingen", "Je geplaatste bestellingen verschijnen hier.")
         orders.forEach { orderView(it, false) }
-        button("Status nu ophalen", secondary = true) { syncWindowsStatuses() }
+        button("Status nu ophalen", secondary = true) { syncOnlineStatuses() }
     }
 
     private fun renderBusiness() {
@@ -464,12 +582,12 @@ class MainActivity : AppCompatActivity() {
                 try {
                     val parts = row.split("¦"); val items = linkedMapOf<String, Int>()
                     if (parts.getOrNull(3).orEmpty().isNotBlank()) parts[3].split("~").forEach { pair -> val p = pair.split("="); if (p.size == 2) items[p[0]] = p[1].toInt() }
-                    Order(parts[0].toInt(), items, parts[1].toDouble(), parts[2])
+                    Order(parts[0].toInt(), items, parts[1].toDouble(), parts[2], parts.getOrNull(4).orEmpty())
                 } catch (_: Exception) { null }
             }.toMutableList()
         }
         private fun save(c: Context, orders: List<Order>) {
-            val raw = orders.joinToString("§") { o -> "${o.id}¦${o.total}¦${o.status}¦${o.items.entries.joinToString("~") { "${it.key}=${it.value}" }}" }
+            val raw = orders.joinToString("§") { o -> "${o.id}¦${o.total}¦${o.status}¦${o.items.entries.joinToString("~") { "${it.key}=${it.value}" }}¦${o.trackingToken}" }
             c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putString(KEY, raw).apply()
         }
         fun create(c: Context, items: Map<String, Int>, total: Double): Order {
