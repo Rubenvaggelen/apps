@@ -1,7 +1,7 @@
 {
   "name": "rutu-bbq-windows-simulator",
-  "version": "0.3.0",
-  "description": "Rutu BBQ Windows business test environment with Android LAN order bridge",
+  "version": "0.4.0",
+  "description": "Rutu BBQ Windows business test environment with secure online order bridge",
   "main": "main.js",
   "author": "Rutu BBQ",
   "license": "UNLICENSED",
