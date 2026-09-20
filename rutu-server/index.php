@@ -93,6 +93,12 @@ function clean_order_for_customer(array $order, bool $includeTracking = false): 
     return $out;
 }
 
+function clean_order_for_business(array $order): array {
+    $out = clean_order_for_customer($order, false);
+    $out['history_hidden'] = (bool)($order['history_hidden'] ?? false);
+    return $out;
+}
+
 $catalog = [
     'Teriyaki Chicken' => 12.50,
     'The Emperor Burger' => 14.95,
@@ -146,7 +152,8 @@ if ($action === 'create') {
             'customer' => $customer,
             'created' => gmdate('c', $createdTs),
             'created_display' => date('H:i', $createdTs),
-            'tracking' => bin2hex(random_bytes(18))
+            'tracking' => bin2hex(random_bytes(18)),
+            'history_hidden' => false
         ];
         array_unshift($state['orders'], $order);
         // Bewaar de volledige bestelgeschiedenis voor de bedrijfsomgeving.
@@ -242,10 +249,33 @@ if ($action === 'business_announcement') {
 if ($action === 'business_orders') {
     if (!business_authorized($keyFile)) respond(401, ['ok' => false, 'error' => 'Niet geautoriseerd.']);
     $orders = with_state($stateFile, false, fn($state) => array_map(
-        fn($order) => clean_order_for_customer($order, false),
+        fn($order) => clean_order_for_business($order),
         $state['orders']
     ));
     respond(200, ['ok' => true, 'orders' => $orders]);
+}
+
+if ($action === 'business_hide_history') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => 'POST vereist.']);
+    if (!business_authorized($keyFile)) respond(401, ['ok' => false, 'error' => 'Niet geautoriseerd.']);
+    $body = body_json();
+    $id = (int)($body['id'] ?? 0);
+    if ($id <= 0) respond(400, ['ok' => false, 'error' => 'Bestelnummer ontbreekt.']);
+
+    $updated = with_state($stateFile, true, function (&$state) use ($id) {
+        foreach ($state['orders'] as &$order) {
+            if ((int)$order['id'] === $id) {
+                if (!in_array((string)($order['status'] ?? ''), ['Afgerond', 'Geweigerd'], true)) return false;
+                $order['history_hidden'] = true;
+                return $order;
+            }
+        }
+        return null;
+    });
+
+    if ($updated === false) respond(409, ['ok' => false, 'error' => 'Alleen afgeronde of geweigerde bestellingen kunnen uit de geschiedenis worden verborgen.']);
+    if (!$updated) respond(404, ['ok' => false, 'error' => 'Bestelling niet gevonden.']);
+    respond(200, ['ok' => true, 'order' => clean_order_for_business($updated)]);
 }
 
 if ($action === 'business_status') {

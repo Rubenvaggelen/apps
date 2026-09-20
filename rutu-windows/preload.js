@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('rutu', {
   syncOrders: () => ipcRenderer.invoke('sync-cloud-orders'),
   getAnnouncement: () => ipcRenderer.invoke('get-business-announcement'),
   setAnnouncement: value => ipcRenderer.invoke('set-business-announcement', value),
+  hideHistory: id => ipcRenderer.invoke('hide-business-history-order', id),
   placeOrder: order => ipcRenderer.invoke('place-order', order),
   setStatus: (id, status) => ipcRenderer.invoke('set-status', { id, status }),
   resetOrders: () => ipcRenderer.invoke('reset-orders'),
