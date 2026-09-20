@@ -34,7 +34,7 @@ class MainActivity : AppCompatActivity() {
     private enum class Role { NONE, CUSTOMER, BUSINESS }
     data class Product(val name: String, val price: Double, val category: String)
     data class Order(val id: Int, val items: LinkedHashMap<String, Int>, val total: Double, var status: String, val trackingToken: String = "")
-    data class Announcement(val title: String = "", val message: String = "", val from: String = "", val until: String = "", val active: Boolean = false)
+    data class Announcement(val title: String = "", val message: String = "", val from: String = "", val until: String = "", val active: Boolean = false, val orderingBlocked: Boolean = false)
 
     private val products = listOf(
         Product("Teriyaki Chicken", 12.50, "BBQ"),
@@ -396,7 +396,11 @@ class MainActivity : AppCompatActivity() {
                 val json = JSONObject(raw)
                 if (code !in 200..299 || !json.optBoolean("ok")) {
                     val message = json.optString("error", "Bestelling kon niet worden geplaatst.")
-                    runOnUiThread { onlineText = "Verzenden mislukt"; toast(message); refreshRoleScreen() }
+                    runOnUiThread {
+                        onlineText = if (code == 409) "Vandaag gesloten voor bestellingen" else "Verzenden mislukt"
+                        toast(message)
+                        refreshRoleScreen()
+                    }
                     return@Thread
                 }
                 val o = json.getJSONObject("order")
@@ -459,7 +463,8 @@ class MainActivity : AppCompatActivity() {
                         message = obj.optString("message", ""),
                         from = obj.optString("from", ""),
                         until = obj.optString("until", ""),
-                        active = obj.optBoolean("active", false)
+                        active = obj.optBoolean("active", false),
+                        orderingBlocked = obj.optBoolean("ordering_blocked", false)
                     )
                     val changed = next != announcement
                     announcement = next
@@ -576,6 +581,9 @@ class MainActivity : AppCompatActivity() {
         centered("Je bestelling gaat via internet naar Rutu BBQ. Hetzelfde wifi-netwerk is niet nodig.", 14f, Color.rgb(210, 199, 182))
         button("Internetverbinding opnieuw controleren", secondary = true) { testOnlineConnection(false) }
         announcementCard()
+        if (announcement.orderingBlocked) {
+            hero("Vandaag gesloten voor bestellingen", "Je kunt het menu bekijken, maar vandaag geen bestelling plaatsen.")
+        }
         hero("Van het vuur. Voor jou.", "Kies je favorieten. Met aandacht bereid, vers van het vuur.")
         products.groupBy { it.category }.forEach { (category, items) ->
             section(category)
@@ -601,8 +609,12 @@ class MainActivity : AppCompatActivity() {
             }
         }
         section("Totaal  ${money.format(total)}")
-        button("Bestelling plaatsen") {
-            sendOnlineOrder(LinkedHashMap(cart), total)
+        if (announcement.orderingBlocked) {
+            hero("Bestellen is vandaag gesloten", "De gekozen kalenderdatum blokkeert bestellingen. Je winkelmand blijft bewaard.")
+        } else {
+            button("Bestelling plaatsen") {
+                sendOnlineOrder(LinkedHashMap(cart), total)
+            }
         }
     }
 

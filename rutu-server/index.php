@@ -79,6 +79,18 @@ function business_authorized(string $keyFile): bool {
     return $expected !== '' && $provided !== '' && hash_equals($expected, $provided);
 }
 
+function ordering_blocked_today(array $announcement): bool {
+    if (!(bool)($announcement['active'] ?? false)) return false;
+    $from = trim((string)($announcement['from'] ?? ''));
+    $until = trim((string)($announcement['until'] ?? ''));
+    if ($from === '' && $until === '') return false;
+
+    $today = (new DateTimeImmutable('now', new DateTimeZone('Europe/Amsterdam')))->format('Y-m-d');
+    if ($from !== '' && $until !== '') return $today >= $from && $today <= $until;
+    if ($from !== '') return $today === $from;
+    return $today === $until;
+}
+
 function clean_order_for_customer(array $order, bool $includeTracking = false): array {
     $out = [
         'id' => (int)$order['id'],
@@ -118,6 +130,11 @@ if ($action === 'health') {
 
 if ($action === 'create') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => 'POST vereist.']);
+
+    $closure = with_state($stateFile, false, fn($state) => $state['announcement'] ?? []);
+    if (ordering_blocked_today(is_array($closure) ? $closure : [])) {
+        respond(409, ['ok' => false, 'error' => 'Vandaag is Rutu BBQ gesloten voor bestellingen.']);
+    }
     $body = body_json();
     $incoming = $body['items'] ?? null;
     if (!is_array($incoming) || count($incoming) < 1 || count($incoming) > 40) {
@@ -197,7 +214,8 @@ if ($action === 'announcement') {
             'from' => $from,
             'until' => $until,
             'active' => $active,
-            'updated' => (string)($a['updated'] ?? '')
+            'updated' => (string)($a['updated'] ?? ''),
+            'ordering_blocked' => ordering_blocked_today($a)
         ];
     });
     respond(200, ['ok' => true, 'announcement' => $announcement]);
