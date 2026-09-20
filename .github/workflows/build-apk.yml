@@ -81,6 +81,40 @@ jobs:
           name: jade-orders-apk
           path: jadeorders/build/outputs/apk/debug/jadeorders-debug.apk
 
+      - name: Publish Rutu Android in-app update
+        if: github.ref == 'refs/heads/feature/jade-orders'
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          apk="jadeorders/build/outputs/apk/debug/jadeorders-debug.apk"
+          test -s "$apk"
+          version="${{ github.run_number }}"
+          sha=$(sha256sum "$apk" | awk '{print $1}')
+          meta=$(mktemp)
+          printf '{"versionCode":%s,"url":"https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Android.apk","sha256":"%s"}\n' "$version" "$sha" > "$meta"
+
+          keydir=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$keydir" "$meta"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$keydir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$keydir/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$keydir/askpass"
+          chmod 700 "$keydir/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$keydir/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$keydir/key" </dev/null
+          opts=(-i "$keydir/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$keydir/known_hosts")
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'mktemp -d "$HOME/.rutu-update.XXXXXXXX"')
+          scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$apk" "$remote:$stage/Rutu-BBQ-Android.apk"
+          scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$meta" "$remote:$stage/android.json"
+          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "mkdir -p ~/public_html/rutu-updates && mv '$stage/Rutu-BBQ-Android.apk' ~/public_html/rutu-updates/Rutu-BBQ-Android.apk && mv '$stage/android.json' ~/public_html/rutu-updates/android.json && rmdir '$stage'"
+
       - name: Create GitHub Release with APKs
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
