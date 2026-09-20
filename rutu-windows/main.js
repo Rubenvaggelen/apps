@@ -1,8 +1,10 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const http = require('http');
 const os = require('os');
 const fs = require('fs');
+const crypto = require('crypto');
+const { spawn } = require('child_process');
 
 let orders = [];
 let nextId = 1046;
@@ -14,6 +16,69 @@ const DEFAULT_CLOUD_API = 'https://rubenvanaggelen.com/rutu-api/index.php';
 let cloudConfig = null;
 let cloudOnline = false;
 let cloudTimer = null;
+const WINDOWS_UPDATE_META = 'https://rubenvanaggelen.com/rutu-updates/windows.json';
+let updateCheckRunning = false;
+
+function compareVersions(a, b) {
+  const pa = String(a || '').split('.').map(x => Number(x) || 0);
+  const pb = String(b || '').split('.').map(x => Number(x) || 0);
+  const size = Math.max(pa.length, pb.length);
+  for (let i = 0; i < size; i++) {
+    const av = pa[i] || 0, bv = pb[i] || 0;
+    if (av > bv) return 1;
+    if (av < bv) return -1;
+  }
+  return 0;
+}
+
+async function checkForWindowsUpdate(parentWindow) {
+  if (updateCheckRunning) return;
+  updateCheckRunning = true;
+  try {
+    const response = await fetch(WINDOWS_UPDATE_META, { headers: { 'Cache-Control': 'no-cache' } });
+    if (!response.ok) return;
+    const meta = await response.json();
+    if (!meta || !meta.version || !meta.url) return;
+    if (compareVersions(meta.version, app.getVersion()) <= 0) return;
+
+    const choice = await dialog.showMessageBox(parentWindow, {
+      type: 'info',
+      title: 'Rutu update beschikbaar',
+      message: 'Er staat een nieuwe versie van Rutu BBQ klaar.',
+      detail: 'Klik op Bijwerken. De update wordt automatisch gedownload en geïnstalleerd.',
+      buttons: ['Bijwerken', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true
+    });
+    if (choice.response !== 0) return;
+
+    const download = await fetch(meta.url, { headers: { 'Cache-Control': 'no-cache' } });
+    if (!download.ok) throw new Error('Download mislukt');
+    const bytes = Buffer.from(await download.arrayBuffer());
+    if (meta.sha256) {
+      const actual = crypto.createHash('sha256').update(bytes).digest('hex');
+      if (actual.toLowerCase() !== String(meta.sha256).toLowerCase()) throw new Error('Checksum ongeldig');
+    }
+
+    const installer = path.join(app.getPath('temp'), 'Rutu-BBQ-Update.exe');
+    fs.writeFileSync(installer, bytes);
+    spawn(installer, ['/S'], { detached: true, stdio: 'ignore' }).unref();
+    setTimeout(() => app.quit(), 700);
+  } catch (error) {
+    try {
+      await dialog.showMessageBox(parentWindow, {
+        type: 'warning',
+        title: 'Update niet gelukt',
+        message: 'Rutu kon de update nu niet installeren.',
+        detail: 'De huidige versie blijft gewoon werken. Rutu probeert het later opnieuw.',
+        buttons: ['OK']
+      });
+    } catch (_) {}
+  } finally {
+    updateCheckRunning = false;
+  }
+}
 
 function makeWindow(file, opts = {}) {
   const win = new BrowserWindow({
@@ -206,6 +271,7 @@ app.whenReady().then(() => {
     }, 2500);
   }
   const launcher = makeWindow('launcher.html', { width: 980, height: 720, title: 'Rutu BBQ Simulator' });
+  setTimeout(() => checkForWindowsUpdate(launcher), 1500);
   ipcMain.on('open-customer', openCustomer);
   ipcMain.on('open-business', openBusiness);
 
