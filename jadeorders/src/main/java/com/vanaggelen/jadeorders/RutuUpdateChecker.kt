@@ -41,7 +41,7 @@ object RutuUpdateChecker {
                 val latest = json.optInt("versionCode", 0)
                 val apkUrl = json.optString("url", "")
                 val sha256 = json.optString("sha256", "").lowercase()
-                if (latest <= BuildConfig.VERSION_CODE || apkUrl.isBlank()) return@Thread
+                if (latest <= currentVersionCode(activity) || apkUrl.isBlank()) return@Thread
 
                 activity.runOnUiThread {
                     if (!activity.isFinishing) showDialog(activity, latest, apkUrl, sha256)
@@ -50,6 +50,15 @@ object RutuUpdateChecker {
                 // Update-check mag het bestellen nooit blokkeren.
             }
         }.start()
+    }
+
+    private fun currentVersionCode(context: Context): Long {
+        return try {
+            val info = context.packageManager.getPackageInfo(context.packageName, 0)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode else @Suppress("DEPRECATION") info.versionCode.toLong()
+        } catch (_: Exception) {
+            0L
+        }
     }
 
     private fun showDialog(activity: Activity, versionCode: Int, apkUrl: String, sha256: String) {
