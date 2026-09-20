@@ -47,7 +47,9 @@ function openCustomer() {
   customerWindow.on('closed', () => customerWindow = null);
 }
 
-function openBusiness() {
+async function openBusiness() {
+  loadCloudConfig();
+  if (cloudConfig) await syncCloudOrders();
   if (businessWindow && !businessWindow.isDestroyed()) return businessWindow.focus();
   businessWindow = makeWindow('business.html', { width: 1120, height: 850, title: 'Rutu BBQ — Bedrijf' });
   businessWindow.on('closed', () => businessWindow = null);
@@ -126,7 +128,11 @@ function addOrder(input = {}) {
   return created;
 }
 
-function setOrderStatus(id, status) {
+async function setOrderStatus(id, status) {
+  if (cloudConfig) {
+    try { return await setCloudOrderStatus(id, status); }
+    catch (_) { cloudOnline = false; return null; }
+  }
   const item = orders.find(o => o.id === Number(id));
   if (item) item.status = String(status || item.status);
   broadcast();
@@ -178,7 +184,7 @@ function startApiServer() {
       const statusMatch = url.pathname.match(/^\/api\/orders\/(\d+)\/status$/);
       if (req.method === 'POST' && statusMatch) {
         const body = await readJson(req);
-        const updated = setOrderStatus(Number(statusMatch[1]), body.status);
+        const updated = await setOrderStatus(Number(statusMatch[1]), body.status);
         return sendJson(res, updated ? 200 : 404, updated || { error: 'Order not found' });
       }
       return sendJson(res, 404, { error: 'Not found' });
@@ -190,13 +196,33 @@ function startApiServer() {
 }
 
 app.whenReady().then(() => {
+  loadCloudConfig();
   startApiServer();
+  if (cloudConfig) {
+    syncCloudOrders();
+    cloudTimer = setInterval(() => {
+      loadCloudConfig();
+      if (cloudConfig) syncCloudOrders();
+    }, 2500);
+  }
   const launcher = makeWindow('launcher.html', { width: 980, height: 720, title: 'Rutu BBQ Simulator' });
   ipcMain.on('open-customer', openCustomer);
   ipcMain.on('open-business', openBusiness);
 
-  ipcMain.handle('get-server-info', () => ({ port: API_PORT, addresses: localAddresses(), online: cloudOnline, cloudConfigured: Boolean(cloudConfig), cloudApi: cloudConfig ? cloudConfig.apiBase : DEFAULT_CLOUD_API }));
-  ipcMain.handle('get-orders', () => JSON.parse(JSON.stringify(orders)));
+  ipcMain.handle('get-server-info', async () => {
+    loadCloudConfig();
+    if (cloudConfig) await syncCloudOrders();
+    return { port: API_PORT, addresses: localAddresses(), online: cloudOnline, cloudConfigured: Boolean(cloudConfig), cloudApi: cloudConfig ? cloudConfig.apiBase : DEFAULT_CLOUD_API };
+  });
+  ipcMain.handle('get-orders', async () => {
+    loadCloudConfig();
+    if (cloudConfig) await syncCloudOrders();
+    return JSON.parse(JSON.stringify(orders));
+  });
+  ipcMain.handle('sync-cloud-orders', async () => {
+    loadCloudConfig();
+    return cloudConfig ? syncCloudOrders() : false;
+  });
   ipcMain.handle('place-order', (_event, order) => addOrder(order));
   ipcMain.handle('set-status', async (_event, { id, status }) => setOrderStatus(id, status));
   ipcMain.handle('reset-orders', () => {
@@ -213,6 +239,7 @@ app.whenReady().then(() => {
 });
 
 app.on('before-quit', () => {
+  if (cloudTimer) clearInterval(cloudTimer);
   if (apiServer) apiServer.close();
 });
 app.on('window-all-closed', () => app.quit());
