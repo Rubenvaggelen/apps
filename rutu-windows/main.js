@@ -158,7 +158,7 @@ async function syncCloudOrders() {
   try {
     const result = await cloudRequest('business_orders');
     const remote = Array.isArray(result.orders) ? result.orders : [];
-    orders = remote.map(o => ({ id:Number(o.id), items:normalizeItems(o.items), total:Number(o.total||0), customer:String(o.customer||'Online klant'), created:String(o.created_display||o.created||''), status:String(o.status||'Nieuw') }));
+    orders = remote.map(o => ({ id:Number(o.id), items:normalizeItems(o.items), total:Number(o.total||0), customer:String(o.customer||'Online klant'), created:String(o.created||o.created_display||''), status:String(o.status||'Nieuw') }));
     nextId = Math.max(1046, ...orders.map(o => o.id + 1));
     cloudOnline = true; broadcast(); return true;
   } catch (_) { cloudOnline = false; return false; }
