@@ -34,6 +34,40 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
+      - name: Publish Rutu Windows in-app update
+        if: github.ref == 'refs/heads/feature/jade-orders'
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          exe=$(find dist -maxdepth 1 -type f -name '*.exe' | head -1)
+          test -n "$exe" && test -s "$exe"
+          version=$(node -p "require('./package.json').version")
+          sha=$(sha256sum "$exe" | awk '{print $1}')
+          meta=$(mktemp)
+          printf '{"version":"%s","url":"https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Windows.exe","sha256":"%s"}\n' "$version" "$sha" > "$meta"
+
+          keydir=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$keydir" "$meta"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$keydir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$keydir/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$keydir/askpass"
+          chmod 700 "$keydir/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$keydir/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$keydir/key" </dev/null
+          opts=(-i "$keydir/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$keydir/known_hosts")
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'mktemp -d "$HOME/.rutu-update.XXXXXXXX"')
+          scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$exe" "$remote:$stage/Rutu-BBQ-Windows.exe"
+          scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$meta" "$remote:$stage/windows.json"
+          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "mkdir -p ~/public_html/rutu-updates && mv '$stage/Rutu-BBQ-Windows.exe' ~/public_html/rutu-updates/Rutu-BBQ-Windows.exe && mv '$stage/windows.json' ~/public_html/rutu-updates/windows.json && rmdir '$stage'"
+
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
