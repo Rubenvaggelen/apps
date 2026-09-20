@@ -56,6 +56,9 @@ public class XtreamCatalogActivity extends Activity {
     private final java.util.Map<String, List<XtreamItem>> categoryItemCache = new java.util.HashMap<>();
     private final java.util.Map<String, List<XtreamItem>> seriesEpisodeCache = new java.util.HashMap<>();
     private final ExecutorService imagePool = Executors.newFixedThreadPool(4);
+    private Category currentCategory = null;
+    private final List<XtreamItem> currentCategoryItems = new ArrayList<>();
+    private String currentView = "categories";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -86,8 +89,8 @@ public class XtreamCatalogActivity extends Activity {
         LinearLayout header = PremiumUi.brandHeader(this, heading());
         top.addView(header);
 
-        Button back = PremiumUi.chipButton(this, "←  Terug");
-        back.setOnClickListener(v -> finish());
+        Button back = PremiumUi.chipButton(this, "←  1 stap terug");
+        back.setOnClickListener(v -> goBackOneStep());
         LinearLayout.LayoutParams backLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -250,6 +253,9 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private void renderCategories(List<Category> categories) {
+        currentView = "categories";
+        currentCategory = null;
+        currentCategoryItems.clear();
         content.removeAllViews();
 
         if (!"live".equals(mode)) {
@@ -352,6 +358,7 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private void renderGlobalResults(String query) {
+        currentView = "global";
         String normalizedQuery = normalize(query);
         List<XtreamItem> matches = new ArrayList<>();
 
@@ -878,6 +885,10 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private void renderItems(Category category, List<XtreamItem> items) {
+        currentView = "items";
+        currentCategory = category;
+        currentCategoryItems.clear();
+        currentCategoryItems.addAll(items);
         categoryItems.clear();
         categoryItems.addAll(items);
         content.removeAllViews();
@@ -904,7 +915,7 @@ public class XtreamCatalogActivity extends Activity {
             content.addView(hint);
         }
 
-        renderCards(items, 150);
+        renderCards(items, Integer.MAX_VALUE);
     }
 
     private void addLiveCategorySearch(Category category) {
@@ -1158,6 +1169,7 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private void loadSeriesEpisodes(XtreamItem series) {
+        currentView = "episodes";
         List<XtreamItem> cached = seriesEpisodeCache.get(series.id);
         List<XtreamItem> fallback = cached == null
                 ? new ArrayList<>()
@@ -1316,10 +1328,11 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private void renderEpisodes(XtreamItem series, List<XtreamItem> episodes) {
+        currentView = "episodes";
         content.removeAllViews();
 
-        Button back = button("← Terug");
-        back.setOnClickListener(v -> loadCategories());
+        Button back = button("← 1 stap terug");
+        back.setOnClickListener(v -> goBackOneStep());
         content.addView(back);
 
         TextView title = text(series.name, 25, Color.WHITE, true);
@@ -1402,6 +1415,27 @@ public class XtreamCatalogActivity extends Activity {
             lp.bottomMargin = dp(9);
             content.addView(card, lp);
         }
+    }
+
+    private void goBackOneStep() {
+        if ("episodes".equals(currentView)) {
+            if (currentCategory != null && !currentCategoryItems.isEmpty()) {
+                renderItems(currentCategory, new ArrayList<>(currentCategoryItems));
+            } else {
+                loadCategories();
+            }
+            return;
+        }
+        if ("items".equals(currentView) || "global".equals(currentView)) {
+            loadCategories();
+            return;
+        }
+        finish();
+    }
+
+    @Override
+    public void onBackPressed() {
+        goBackOneStep();
     }
 
     private int compareEpisodeNames(String left, String right) {
