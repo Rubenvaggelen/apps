@@ -42,7 +42,11 @@ class UnifiedNotificationListener : NotificationListenerService() {
             }
         }
 
-        private fun conversationKey(title: String): String = title.trim().lowercase(Locale.ROOT)
+        private fun conversationKey(title: String): String =
+            title.trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
+
+        private fun isWhatsAppPackage(packageName: String): Boolean =
+            packageName == "com.whatsapp" || packageName == "com.whatsapp.w4b"
 
         fun sendReply(key: String, text: String): Boolean {
             val pair = replyActions[key] ?: return false
@@ -55,7 +59,7 @@ class UnifiedNotificationListener : NotificationListenerService() {
             return try {
                 pendingIntent.send(context, 0, intent)
                 true
-            } catch (_: PendingIntent.CanceledException) {
+            } catch (_: Exception) {
                 replyActions.remove(key)
                 whatsAppReplyKeyByConversation.entries.removeAll { it.value == key }
                 false
@@ -63,12 +67,28 @@ class UnifiedNotificationListener : NotificationListenerService() {
         }
 
         fun sendReplyToConversation(title: String, text: String): Boolean {
-            val key = whatsAppReplyKeyByConversation[conversationKey(title)] ?: return false
-            return sendReply(key, text)
+            val wanted = conversationKey(title)
+
+            fun tryCached(): Boolean {
+                val key = whatsAppReplyKeyByConversation[wanted] ?: return false
+                return sendReply(key, text)
+            }
+
+            if (tryCached()) return true
+
+            // WhatsApp vernieuwt of vervangt RemoteInput/PendingIntent regelmatig.
+            // Herlees daarom de actieve meldingen vlak voor een reply in plaats van
+            // uitsluitend te vertrouwen op een mogelijk verouderde cache.
+            instance?.refreshWhatsAppReplyTargets()
+            return tryCached()
         }
 
-        fun hasReplyTarget(title: String): Boolean =
-            whatsAppReplyKeyByConversation.containsKey(conversationKey(title))
+        fun hasReplyTarget(title: String): Boolean {
+            val wanted = conversationKey(title)
+            if (whatsAppReplyKeyByConversation.containsKey(wanted)) return true
+            instance?.refreshWhatsAppReplyTargets()
+            return whatsAppReplyKeyByConversation.containsKey(wanted)
+        }
 
         fun voiceNoteSourceForConversation(title: String): VoiceNoteSource? =
             voiceNoteSources[conversationKey(title)]
@@ -138,8 +158,60 @@ class UnifiedNotificationListener : NotificationListenerService() {
         // Daardoor kan The One Car binnen een gesprek vaak nog een vervolgreply sturen, ook
         // als Android de zichtbare melding al heeft weggehaald. Bij een CanceledException
         // wordt de cache hierboven automatisch opgeruimd.
-        if (sbn.packageName != "com.whatsapp") {
+        if (!isWhatsAppPackage(sbn.packageName)) {
             replyActions.remove(sbn.key)
+        }
+    }
+
+    private fun refreshWhatsAppReplyTargets() {
+        try {
+            activeNotifications.orEmpty()
+                .filter { isWhatsAppPackage(it.packageName) }
+                .forEach { cacheWhatsAppReplyAction(it) }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun cacheWhatsAppReplyAction(sbn: StatusBarNotification) {
+        if (!isWhatsAppPackage(sbn.packageName)) return
+
+        var replyPendingIntent: PendingIntent? = null
+        var replyRemoteInput: RemoteInput? = null
+
+        sbn.notification.actions?.forEach { action ->
+            val inputs = action.remoteInputs.orEmpty()
+            val preferred = inputs.firstOrNull { it.allowFreeFormInput } ?: inputs.firstOrNull()
+            if (preferred != null) {
+                // Een actie die expliciet als Reply gemarkeerd is krijgt voorrang.
+                if (replyRemoteInput == null ||
+                    action.semanticAction == Notification.Action.SEMANTIC_ACTION_REPLY) {
+                    replyPendingIntent = action.actionIntent
+                    replyRemoteInput = preferred
+                }
+            }
+        }
+
+        val pending = replyPendingIntent ?: return
+        val remote = replyRemoteInput ?: return
+        replyActions[sbn.key] = Pair(pending, remote)
+        lastWhatsAppReplyKey = sbn.key
+
+        val names = LinkedHashSet<String>()
+        val extras = sbn.notification.extras
+        extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.takeIf { it.isNotBlank() }?.let { names.add(it) }
+        extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString()?.takeIf { it.isNotBlank() }?.let { names.add(it) }
+
+        try {
+            extras.getParcelableArray(Notification.EXTRA_MESSAGES)?.let { bundles ->
+                Notification.MessagingStyle.Message.getMessagesFromBundleArray(bundles).forEach { msg ->
+                    msg.senderPerson?.name?.toString()?.takeIf { it.isNotBlank() }?.let { names.add(it) }
+                }
+            }
+        } catch (_: Exception) {
+        }
+
+        names.forEach { name ->
+            whatsAppReplyKeyByConversation[conversationKey(name)] = sbn.key
         }
     }
 
@@ -230,6 +302,14 @@ class UnifiedNotificationListener : NotificationListenerService() {
         // filtert zelf bekende bronnen en verzamelt veel meer tekstvelden dan EXTRA_TEXT.
         handleFinanceNotification(sbn)
 
+        // Nieuwere WhatsApp-versies kunnen de bruikbare RemoteInput juist op een
+        // summary/conversation-notificatie zetten. Sla de replyactie daarom op vóór
+        // de group-summary return; ontvangen berichten bleven anders wel werken,
+        // maar terugsturen vanuit The One Car niet.
+        if (isWhatsAppPackage(sbn.packageName)) {
+            cacheWhatsAppReplyAction(sbn)
+        }
+
         if (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
 
         val appLabel = try {
@@ -251,13 +331,13 @@ class UnifiedNotificationListener : NotificationListenerService() {
         val hasReply = replyPendingIntent != null && replyRemoteInput != null
         if (hasReply) {
             replyActions[sbn.key] = Pair(replyPendingIntent!!, replyRemoteInput!!)
-            if (sbn.packageName == "com.whatsapp") {
+            if (isWhatsAppPackage(sbn.packageName)) {
                 lastWhatsAppReplyKey = sbn.key
                 whatsAppReplyKeyByConversation[conversationKey(title)] = sbn.key
             }
         }
 
-        if (sbn.packageName == "com.whatsapp") {
+        if (isWhatsAppPackage(sbn.packageName)) {
             val key = conversationKey(title)
             val lower = text.lowercase(Locale.ROOT)
             val looksLikeVoice = lower.contains("spraakbericht") || lower.contains("voice message") || lower.contains("audio message")
@@ -296,7 +376,7 @@ class UnifiedNotificationListener : NotificationListenerService() {
             )
         )
 
-        if (sbn.packageName == "com.whatsapp") {
+        if (isWhatsAppPackage(sbn.packageName)) {
             WhatsAppCarFilterStore.registerSeen(applicationContext, title)
         }
         CarRadioForwarder.forwardIfEnabled(
