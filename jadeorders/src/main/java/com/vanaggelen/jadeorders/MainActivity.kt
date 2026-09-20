@@ -34,6 +34,7 @@ class MainActivity : AppCompatActivity() {
     private enum class Role { NONE, CUSTOMER, BUSINESS }
     data class Product(val name: String, val price: Double, val category: String)
     data class Order(val id: Int, val items: LinkedHashMap<String, Int>, val total: Double, var status: String, val trackingToken: String = "")
+    data class Announcement(val title: String = "", val message: String = "", val from: String = "", val until: String = "", val active: Boolean = false)
 
     private val products = listOf(
         Product("Teriyaki Chicken", 12.50, "BBQ"),
@@ -63,12 +64,19 @@ class MainActivity : AppCompatActivity() {
     private val onlineApiBase = "https://rubenvanaggelen.com/rutu-api/index.php"
     @Volatile private var onlineAvailable = false
     private var onlineText = "Online verbinding controleren…"
+    @Volatile private var announcement = Announcement()
+    private var lastAnnouncementCheck = 0L
+    private var lastStatusRefreshText = "Status wordt automatisch bijgewerkt"
     private val onlinePoller = object : Runnable {
         override fun run() {
             if (role == Role.CUSTOMER) {
-                testOnlineConnection(true)
                 syncOnlineStatuses()
-                uiHandler.postDelayed(this, 5000)
+                val now = System.currentTimeMillis()
+                if (now - lastAnnouncementCheck >= 15000L) {
+                    lastAnnouncementCheck = now
+                    syncAnnouncement(false)
+                }
+                uiHandler.postDelayed(this, 2000)
             }
         }
     }
@@ -89,7 +97,17 @@ class MainActivity : AppCompatActivity() {
         nearby = Nearby.getConnectionsClient(this)
         windowsHost = getSharedPreferences("rutu_windows", Context.MODE_PRIVATE).getString("host", "") ?: ""
         landing()
+        syncAnnouncement(true)
         RutuUpdateChecker.checkForUpdate(this)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        syncAnnouncement(true)
+        if (role == Role.CUSTOMER) {
+            uiHandler.removeCallbacks(onlinePoller)
+            uiHandler.post(onlinePoller)
+        }
     }
 
     override fun onDestroy() {
@@ -404,17 +422,64 @@ class MainActivity : AppCompatActivity() {
         if (tracked.isEmpty()) return
         Thread {
             var changed = false
+            var reachedServer = false
             tracked.forEach { order ->
                 try {
                     val (code, raw) = onlineJson("GET", "status", extra = mapOf("id" to order.id.toString(), "tracking" to order.trackingToken))
                     if (code == 200) {
+                        reachedServer = true
                         val status = JSONObject(raw).optJSONObject("order")?.optString("status").orEmpty()
-                        if (status.isNotBlank() && status != order.status) { Store.status(this, order.id, status); changed = true }
+                        if (status.isNotBlank() && status != order.status) {
+                            Store.status(this, order.id, status)
+                            changed = true
+                        }
                     }
                 } catch (_: Exception) {}
             }
-            if (changed && screen == "orders") runOnUiThread { myOrders(false) }
+            if (reachedServer) {
+                onlineAvailable = true
+                onlineText = "Online verbonden • status live"
+                lastStatusRefreshText = "Live bijgewerkt: " + java.text.SimpleDateFormat("HH:mm:ss", Locale("nl", "NL")).format(java.util.Date())
+            }
+            if (screen == "orders" && (changed || reachedServer)) runOnUiThread { myOrders(false) }
         }.start()
+    }
+
+    private fun syncAnnouncement(refreshVisibleScreen: Boolean) {
+        Thread {
+            try {
+                val (code, raw) = onlineJson("GET", "announcement")
+                if (code == 200) {
+                    val obj = JSONObject(raw).optJSONObject("announcement")
+                    val next = if (obj == null) Announcement() else Announcement(
+                        title = obj.optString("title", ""),
+                        message = obj.optString("message", ""),
+                        from = obj.optString("from", ""),
+                        until = obj.optString("until", ""),
+                        active = obj.optBoolean("active", false)
+                    )
+                    val changed = next != announcement
+                    announcement = next
+                    if (refreshVisibleScreen && changed) runOnUiThread {
+                        if (screen == "landing") landing()
+                        else if (screen == "customer") renderCustomer()
+                    }
+                }
+            } catch (_: Exception) {}
+        }.start()
+    }
+
+    private fun announcementCard() {
+        val a = announcement
+        if (!a.active || (a.title.isBlank() && a.message.isBlank())) return
+        val dates = when {
+            a.from.isNotBlank() && a.until.isNotBlank() -> "Van " + a.from + " t/m " + a.until
+            a.from.isNotBlank() -> "Vanaf " + a.from
+            a.until.isNotBlank() -> "Tot en met " + a.until
+            else -> ""
+        }
+        val body = listOf(a.message, dates).filter { it.isNotBlank() }.joinToString("\n")
+        hero(if (a.title.isBlank()) "Mededeling van Rutu BBQ" else a.title, body)
     }
     private fun page() {
         root = LinearLayout(this).apply {
@@ -432,6 +497,7 @@ class MainActivity : AppCompatActivity() {
         page(); spacer(8); logoMark(); title("Welkom bij Rutu BBQ")
         centered("More than food. It’s an experience.", 16f, Color.rgb(205, 179, 122)); spacer(34)
         hero("Fire. Roots. Flavour.", "Gemaakt in vuur. Unieke smaak. Kies je favorieten en geniet.")
+        announcementCard()
         button("Bekijk het menu") { enterCustomer() }
 
         spacer(20); centered("Android • Rutu BBQ", 12f, Color.rgb(189, 178, 161))
@@ -475,6 +541,7 @@ class MainActivity : AppCompatActivity() {
         section("Online bestellen")
         centered("Je bestelling gaat via internet naar Rutu BBQ. Hetzelfde wifi-netwerk is niet nodig.", 14f, Color.rgb(210, 199, 182))
         button("Internetverbinding opnieuw controleren", secondary = true) { testOnlineConnection(false) }
+        announcementCard()
         hero("Van het vuur. Voor jou.", "Kies je favorieten. Met aandacht bereid, vers van het vuur.")
         products.groupBy { it.category }.forEach { (category, items) ->
             section(category)
@@ -509,10 +576,10 @@ class MainActivity : AppCompatActivity() {
     private fun myOrders(sync: Boolean = true) {
         screen = "orders"; page(); back { renderCustomer() }; logoMark(true); title("Mijn bestellingen"); connectionCard()
         if (sync) syncOnlineStatuses()
+        label("🔄 " + lastStatusRefreshText + " • automatisch elke 2 seconden", Color.rgb(24, 31, 25))
         val orders = Store.all(this).reversed()
         if (orders.isEmpty()) hero("Nog geen bestellingen", "Je geplaatste bestellingen verschijnen hier.")
         orders.forEach { orderView(it, false) }
-        button("Status nu ophalen", secondary = true) { syncOnlineStatuses() }
     }
 
     private fun renderBusiness() {
