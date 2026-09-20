@@ -187,7 +187,8 @@ if ($action === 'announcement') {
         $today = date('Y-m-d');
         $from = trim((string)($a['from'] ?? ''));
         $until = trim((string)($a['until'] ?? ''));
-        if ($from !== '' && $today < $from) $active = false;
+        // Een geplande mededeling wordt direct als banner getoond, ook als
+        // de gekozen vanaf-datum in de toekomst ligt. Na de einddatum verdwijnt hij.
         if ($until !== '' && $today > $until) $active = false;
 
         return [

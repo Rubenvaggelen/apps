@@ -482,7 +482,7 @@ class MainActivity : AppCompatActivity() {
             else -> ""
         }
         val body = listOf(a.message, dates).filter { it.isNotBlank() }.joinToString("\n")
-        hero(if (a.title.isBlank()) "Mededeling van Rutu BBQ" else a.title, body)
+        hero(if (a.title.isBlank()) "📢 Mededeling van Rutu BBQ" else "📢 " + a.title, body)
     }
     private fun cartTotal(): Double = cart.entries.sumOf { (name, qty) ->
         (products.firstOrNull { it.name == name }?.price ?: 0.0) * qty
@@ -590,7 +590,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun cartScreen() {
-        screen = "cart"; page(true); back { renderCustomer() }; logoMark(true); title("Jouw winkelmand"); connectionCard()
+        screen = "cart"; page(true); back { renderCustomer() }; logoMark(true); title("Jouw winkelmand"); connectionCard(); announcementCard()
         if (cart.isEmpty()) { hero("Je winkelmand is leeg", "Voeg eerst iets lekkers toe."); return }
         var total = 0.0
         cart.toMap().forEach { (name, qty) ->
@@ -607,7 +607,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun myOrders(sync: Boolean = true) {
-        screen = "orders"; Store.removeCompleted(this); page(true); back { renderCustomer() }; logoMark(true); title("Mijn bestellingen"); connectionCard()
+        screen = "orders"; Store.removeCompleted(this); page(true); back { renderCustomer() }; logoMark(true); title("Mijn bestellingen"); connectionCard(); announcementCard()
         if (sync) syncOnlineStatuses()
         label("🔄 " + lastStatusRefreshText + " • automatisch elke 2 seconden", Color.rgb(24, 31, 25))
         val orders = Store.all(this).reversed()
