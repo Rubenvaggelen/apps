@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2318
-        versionName = "2.3.18-menu-back-full-series-posters"
+        versionCode = 2319
+        versionName = "2.3.19-provider-poster-fallback"
     }
 
     signingConfigs {
