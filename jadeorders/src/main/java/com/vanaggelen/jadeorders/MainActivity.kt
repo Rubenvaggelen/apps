@@ -39,11 +39,11 @@ import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
     private enum class Role { NONE, CUSTOMER, BUSINESS }
-    data class Product(val name: String, val price: Double, val category: String)
+    data class Product(val name: String, val price: Double, val category: String, val description: String)
     data class Order(val id: Int, val items: LinkedHashMap<String, Int>, val total: Double, var status: String, val trackingToken: String = "", val delivery: Boolean = false, val address: String = "", val postcode: String = "", val deliveryFee: Double = 0.0)
     data class Announcement(val title: String = "", val message: String = "", val from: String = "", val until: String = "", val active: Boolean = false, val orderingBlocked: Boolean = false)
 
-    private val products = emptyList<Product>()
+    private val products = listOf(\n        Product("BBQ Regular", 10.00, "BBQ", "1 bout • 2 stokjes saté • salade")\n    )
     private val cart = linkedMapOf<String, Int>()
     private var deliverySelected = false
     private var deliveryAddress = ""
