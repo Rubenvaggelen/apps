@@ -448,7 +448,13 @@ class MainActivity : AppCompatActivity() {
                 onlineText = "Online verbonden • status live"
                 lastStatusRefreshText = "Live bijgewerkt: " + java.text.SimpleDateFormat("HH:mm:ss", Locale("nl", "NL")).format(java.util.Date())
             }
-            if (screen == "orders" && (changed || reachedServer)) runOnUiThread { myOrders(false) }
+            if (changed || reachedServer) runOnUiThread {
+                when (screen) {
+                    "orders" -> myOrders(false)
+                    "cart" -> cartScreen()
+                    "customer" -> renderCustomer()
+                }
+            }
         }.start()
     }
 
@@ -493,6 +499,12 @@ class MainActivity : AppCompatActivity() {
         (products.firstOrNull { it.name == name }?.price ?: 0.0) * qty
     }
 
+    private fun openOrders(): List<Order> = Store.all(this).filter { it.status != "Afgerond" }
+
+    private fun openOrdersTotal(): Double = openOrders().sumOf { it.total }
+
+    private fun openOrdersItemCount(): Int = openOrders().sumOf { order -> order.items.values.sum() }
+
     private fun page(showCartBar: Boolean = false) {
         val shell = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -509,14 +521,27 @@ class MainActivity : AppCompatActivity() {
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
         )
         if (showCartBar) {
-            val total = cartTotal()
-            val qty = cart.values.sum()
+            val newTotal = cartTotal()
+            val newQty = cart.values.sum()
+            val openCount = openOrders().size
+            val openItems = openOrdersItemCount()
+            val openTotal = openOrdersTotal()
+            val label = when {
+                newQty > 0 && openCount > 0 ->
+                    "🛒 Winkelmand • $newQty nieuw • ${money.format(newTotal)}   |   📦 $openCount open • ${money.format(openTotal)}"
+                newQty > 0 ->
+                    "🛒 Winkelmand • $newQty items • ${money.format(newTotal)}"
+                openCount > 0 ->
+                    "📦 Openstaand • $openCount bestelling${if (openCount == 1) "" else "en"} • $openItems items • ${money.format(openTotal)}"
+                else ->
+                    "🛒 Winkelmand • 0 items • ${money.format(0.0)}"
+            }
             shell.addView(
                 Button(this).apply {
-                    text = "🛒 Winkelmand  •  $qty items  •  ${money.format(total)}"
+                    text = label
                     isAllCaps = false
                     minHeight = dp(62)
-                    textSize = 17f
+                    textSize = 15f
                     setTextColor(Color.rgb(20, 14, 7))
                     backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(229, 184, 92))
                     setOnClickListener { cartScreen() }
@@ -599,12 +624,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun cartScreen() {
         screen = "cart"; page(true); back { renderCustomer() }; logoMark(true); title("Jouw winkelmand"); connectionCard(); announcementCard()
-        val openOrders = Store.all(this).filter { it.status != "Afgerond" }.reversed()
+        val openOrders = openOrders().reversed()
         if (openOrders.isNotEmpty()) {
             section("Openstaande bestellingen")
             openOrders.forEach { orderView(it, false) }
+            section("Openstaand totaal  ${money.format(openOrders.sumOf { it.total })}")
         }
-        if (cart.isEmpty()) { hero("Je winkelmand is leeg", "Voeg eerst iets lekkers toe."); return }
+        if (cart.isEmpty()) {
+            if (openOrders.isEmpty()) hero("Je winkelmand is leeg", "Voeg eerst iets lekkers toe.")
+            else hero("Geen nieuwe items", "Je openstaande bestelling${if (openOrders.size == 1) "" else "en"} blijft hierboven zichtbaar totdat deze is afgerond.")
+            return
+        }
         var total = 0.0
         cart.toMap().forEach { (name, qty) ->
             val p = products.first { it.name == name }; total += p.price * qty
