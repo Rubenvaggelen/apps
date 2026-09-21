@@ -40,7 +40,7 @@ struct LandingView: View {
                 .accessibilityLabel("Rutu BBQ — gouden levensboom met vlammen")
             VStack(spacing: 7) {
                 Text("Made in fire. Unique taste.").font(.system(size: 30, weight: .bold, design: .serif)).foregroundStyle(rutuGoldLight)
-                Text("More than food. It’s an experience.").foregroundStyle(.secondary).italic()
+
             }
             VStack(spacing: 12) {
                 RutuButton(title: "Bestellen", icon: "bag.fill", action: customer)
