@@ -101,7 +101,9 @@ jobs:
         run: |
           set -euo pipefail
           apk="jadeorders/build/outputs/apk/debug/jadeorders-debug.apk"
+          business_apk="rutubusinessandroid/build/outputs/apk/debug/rutubusinessandroid-debug.apk"
           test -s "$apk"
+          test -s "$business_apk"
           version="${{ github.run_number }}"
           sha=$(sha256sum "$apk" | awk '{print $1}')
           meta=$(mktemp)
@@ -120,8 +122,9 @@ jobs:
           remote="$DEPLOY_USER@$DEPLOY_HOST"
           stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'mktemp -d "$HOME/.rutu-update.XXXXXXXX"')
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$apk" "$remote:$stage/Rutu-BBQ-Android.apk"
+          scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$business_apk" "$remote:$stage/Rutu-BBQ-Bedrijf-Android.apk"
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$meta" "$remote:$stage/android.json"
-          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "mkdir -p ~/public_html/rutu-updates && mv '$stage/Rutu-BBQ-Android.apk' ~/public_html/rutu-updates/Rutu-BBQ-Android.apk && mv '$stage/android.json' ~/public_html/rutu-updates/android.json && chmod 644 ~/public_html/rutu-updates/Rutu-BBQ-Android.apk ~/public_html/rutu-updates/android.json && rmdir '$stage'"
+          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "mkdir -p ~/public_html/rutu-updates ~/dev.vanaggelen.com/rutu-downloads && mv '$stage/Rutu-BBQ-Android.apk' ~/public_html/rutu-updates/Rutu-BBQ-Android.apk && mv '$stage/android.json' ~/public_html/rutu-updates/android.json && mv '$stage/Rutu-BBQ-Bedrijf-Android.apk' ~/dev.vanaggelen.com/rutu-downloads/Rutu-BBQ-Bedrijf-Android.apk && chmod 644 ~/public_html/rutu-updates/Rutu-BBQ-Android.apk ~/public_html/rutu-updates/android.json ~/dev.vanaggelen.com/rutu-downloads/Rutu-BBQ-Bedrijf-Android.apk && rmdir '$stage'"
 
       - name: Create GitHub Release with APKs
         if: github.ref == 'refs/heads/main'
