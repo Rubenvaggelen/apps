@@ -492,7 +492,7 @@ class MainActivity : AppCompatActivity() {
                 onlineText = "Online verbonden • status live"
                 lastStatusRefreshText = "Live bijgewerkt: " + java.text.SimpleDateFormat("HH:mm:ss", Locale("nl", "NL")).format(java.util.Date())
             }
-            if (changed || reachedServer) runOnUiThread {
+            if (changed) runOnUiThread {
                 when (screen) {
                     "orders" -> myOrders(false)
                     "cart" -> cartScreen()
