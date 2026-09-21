@@ -30,7 +30,7 @@ class MainActivity : Activity() {
             "(function(){const m=document.getElementById('orderModal');if(m&&m.classList.contains('open')){closeOrderModal();return 'closed'}return 'none'})()"
         ) { result ->
             if (result != "\"closed\"") {
-                if (webView.canGoBack()) webView.goBack() else super.onBackPressed()
+                if (webView.canGoBack()) webView.goBack() else finish()
             }
         }
     }
