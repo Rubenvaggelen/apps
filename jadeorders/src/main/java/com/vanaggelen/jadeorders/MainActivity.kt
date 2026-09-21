@@ -18,6 +18,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -60,6 +61,43 @@ class MainActivity : AppCompatActivity() {
     private var screen = "landing"
     private val serviceId by lazy { "$packageName.rutubbq.v1" }
 
+    private fun customerName(): String =
+        getSharedPreferences("rutu_customer", Context.MODE_PRIVATE).getString("name", "").orEmpty().trim()
+
+    private fun saveCustomerName(name: String) {
+        getSharedPreferences("rutu_customer", Context.MODE_PRIVATE).edit().putString("name", name.trim()).apply()
+    }
+
+    private fun ensureCustomerName() {
+        if (customerName().isNotBlank()) return
+        val input = EditText(this).apply {
+            hint = "Jouw naam"
+            singleLine = true
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Welkom bij Rutu BBQ")
+            .setMessage("Vul je naam in. Deze naam ziet Rutu BBQ bij je bestelling.")
+            .setView(input)
+            .setCancelable(false)
+            .setPositiveButton("Opslaan", null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val name = input.text?.toString().orEmpty().trim()
+                if (name.length < 2) {
+                    input.error = "Vul je naam in"
+                    return@setOnClickListener
+                }
+                saveCustomerName(name.take(60))
+                dialog.dismiss()
+                if (role == Role.CUSTOMER) refreshRoleScreen()
+            }
+        }
+        dialog.show()
+    }
+
     private val uiHandler = Handler(Looper.getMainLooper())
     private val onlineApiBase = "https://rubenvanaggelen.com/rutu-api/index.php"
     @Volatile private var onlineAvailable = false
@@ -97,6 +135,7 @@ class MainActivity : AppCompatActivity() {
         nearby = Nearby.getConnectionsClient(this)
         windowsHost = getSharedPreferences("rutu_windows", Context.MODE_PRIVATE).getString("host", "") ?: ""
         landing()
+        ensureCustomerName()
         syncAnnouncement(true)
         RutuUpdateChecker.checkForUpdate(this)
     }
@@ -297,7 +336,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun sendWindowsOrder(order: Order) {
-        val payload = orderToJson(order).put("customer", "Android klant")
+        val payload = orderToJson(order).put("customer", customerName().ifBlank { "Android klant" })
         Thread {
             try {
                 val (code, _) = httpJson("POST", "/api/orders", payload)
@@ -389,7 +428,12 @@ class MainActivity : AppCompatActivity() {
         refreshRoleScreen()
         val itemJson = JSONObject()
         items.forEach { (name, qty) -> itemJson.put(name, qty) }
-        val payload = JSONObject().put("items", itemJson).put("customer", "Android klant")
+        val name = customerName()
+        if (name.isBlank()) {
+            runOnUiThread { ensureCustomerName() }
+            return
+        }
+        val payload = JSONObject().put("items", itemJson).put("customer", name)
         Thread {
             try {
                 val (code, raw) = onlineJson("POST", "create", payload)
