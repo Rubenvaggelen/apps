@@ -105,13 +105,22 @@ function broadcast() {
   }
 }
 
-async function openBusiness(pin) {
+async function openBusiness(sourceWindow, pin) {
   if (String(pin || '') !== '170250') throw new Error('Onjuiste bedrijfscode.');
   loadCloudConfig();
   if (cloudConfig) await syncCloudOrders();
-  if (businessWindow && !businessWindow.isDestroyed()) return businessWindow.focus();
-  businessWindow = makeWindow('business.html', { width: 1120, height: 850, title: 'Rutu BBQ — Bedrijf' });
-  businessWindow.on('closed', () => businessWindow = null);
+
+  const win = sourceWindow && !sourceWindow.isDestroyed() ? sourceWindow : businessWindow;
+  if (!win || win.isDestroyed()) throw new Error('Company Build-venster is niet beschikbaar.');
+
+  businessWindow = win;
+  win.setTitle('Company Build — Bedrijf');
+  win.setMinimumSize(760, 650);
+  win.setSize(1120, 850);
+  await win.loadFile('business.html');
+  win.center();
+  win.focus();
+  return { ok: true };
 }
 
 function localAddresses() {
@@ -288,7 +297,10 @@ app.whenReady().then(() => {
   }
   const launcher = makeWindow('launcher.html', { width: 980, height: 720, title: 'Company Build' });
   setTimeout(() => checkForWindowsUpdate(launcher), 1500);
-  ipcMain.handle('open-business', async (_event, pin) => openBusiness(pin));
+  ipcMain.handle('open-business', async (event, pin) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    return openBusiness(win, pin);
+  });
 
   ipcMain.handle('get-server-info', async () => {
     loadCloudConfig();
@@ -341,7 +353,7 @@ app.whenReady().then(() => {
   });
 
   launcher.on('closed', () => {
-    if (businessWindow && !businessWindow.isDestroyed()) businessWindow.close();
+    if (businessWindow === launcher) businessWindow = null;
   });
 });
 

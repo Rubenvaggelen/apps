@@ -1,11 +1,45 @@
 <!doctype html>
 <html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Company Build</title><link rel="stylesheet" href="brand.css"><style>
-body{min-height:100vh;display:grid;place-items:center}.welcome{width:min(960px,100%);padding:40px;display:grid;grid-template-columns:1fr 1fr;gap:42px;align-items:center}.logo{display:block;width:100%;max-width:400px;margin:auto}.welcome h1{font-size:42px}.welcome p{color:var(--muted)}.choices{display:grid;gap:12px;margin-top:30px}.choices button{text-align:left;padding:17px 20px}.choices small{display:block;margin-top:4px;font-weight:400;font-size:13px}.secondary{background:#211c14;color:var(--light);border-color:var(--line)}.note{font-size:12px;line-height:1.7}@media(max-width:660px){.welcome{grid-template-columns:1fr;gap:16px;padding:24px}.logo{max-width:260px}.welcome h1{font-size:32px}.choices{margin-top:20px}}
-</style></head><body><main class="welcome"><img class="logo" src="assets/rutu-logo.png" alt="Rutu BBQ — gouden levensboom met vlammen"><section><div class="eyebrow">RUTU BBQ • COMPANY BUILD</div><h1>Made in fire.<br>Unique taste.</h1><div class="choices"><button class="send" onclick="openBusinessSecure()">Open bedrijfsomgeving<small>Ontvang en verwerk je bestellingen</small></button></div></section></main><script>
-async function openBusinessSecure(){
-  const pin=prompt('Voer de bedrijfscode in:');
-  if(pin===null)return;
-  try{await rutu.openBusiness(pin)}
-  catch(e){alert(e&&e.message?e.message:'Onjuiste bedrijfscode.')}
+body{min-height:100vh;display:grid;place-items:center}.welcome{width:min(960px,100%);padding:40px;display:grid;grid-template-columns:1fr 1fr;gap:42px;align-items:center}.logo{display:block;width:100%;max-width:400px;margin:auto}.welcome h1{font-size:42px}.welcome p{color:var(--muted)}.choices{display:grid;gap:12px;margin-top:30px}.choices button{text-align:left;padding:17px 20px}.choices small{display:block;margin-top:4px;font-weight:400;font-size:13px}.secondary{background:#211c14;color:var(--light);border-color:var(--line)}.note{font-size:12px;line-height:1.7}.code-panel{display:none;margin-top:18px;padding:18px;border:1px solid var(--line);border-radius:14px;background:#17130d}.code-panel.open{display:block}.code-panel label{display:block;margin-bottom:8px;color:var(--light);font-weight:700}.code-panel input{width:100%;padding:14px;border-radius:10px;border:1px solid var(--line);background:#0d0b08;color:#fff;font-size:20px;letter-spacing:4px}.code-actions{display:flex;gap:10px;margin-top:12px}.code-actions button{flex:1;text-align:center}.code-error{min-height:20px;margin-top:10px;color:#ff9d82;font-size:13px}@media(max-width:660px){.welcome{grid-template-columns:1fr;gap:16px;padding:24px}.logo{max-width:260px}.welcome h1{font-size:32px}.choices{margin-top:20px}}
+</style></head><body><main class="welcome"><img class="logo" src="assets/rutu-logo.png" alt="Rutu BBQ — gouden levensboom met vlammen"><section><div class="eyebrow">RUTU BBQ • COMPANY BUILD</div><h1>Made in fire.<br>Unique taste.</h1><div class="choices"><button class="send" id="openBusinessButton" onclick="showCodePanel()">Open bedrijfsomgeving<small>Ontvang en verwerk je bestellingen</small></button></div>
+<div class="code-panel" id="codePanel">
+  <label for="businessCode">Bedrijfscode</label>
+  <input id="businessCode" type="password" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="••••••">
+  <div class="code-actions">
+    <button class="send" onclick="submitBusinessCode()">Openen</button>
+    <button class="secondary" onclick="hideCodePanel()">Annuleren</button>
+  </div>
+  <div class="code-error" id="codeError"></div>
+</div>
+</section></main><script>
+function showCodePanel(){
+  const panel=document.getElementById('codePanel');
+  panel.classList.add('open');
+  document.getElementById('codeError').textContent='';
+  const input=document.getElementById('businessCode');
+  input.value='';
+  setTimeout(()=>input.focus(),50);
 }
+function hideCodePanel(){
+  document.getElementById('codePanel').classList.remove('open');
+  document.getElementById('businessCode').value='';
+  document.getElementById('codeError').textContent='';
+}
+async function submitBusinessCode(){
+  const input=document.getElementById('businessCode');
+  const error=document.getElementById('codeError');
+  const pin=input.value.trim();
+  if(!pin){error.textContent='Voer de bedrijfscode in.';input.focus();return;}
+  error.textContent='Bezig met openen…';
+  try{
+    await rutu.openBusiness(pin);
+  }catch(e){
+    error.textContent=(e&&e.message)?e.message:'Onjuiste bedrijfscode.';
+    input.value='';
+    input.focus();
+  }
+}
+document.getElementById('businessCode').addEventListener('keydown',e=>{
+  if(e.key==='Enter')submitBusinessCode();
+});
 </script></body></html>
