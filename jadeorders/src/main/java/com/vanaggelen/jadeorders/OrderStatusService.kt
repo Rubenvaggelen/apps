@@ -148,16 +148,16 @@ class OrderStatusService : Service() {
         val title = when (status) {
             "In bereiding" -> "Je bestelling wordt bereid"
             "Klaar" -> "Je bestelling is klaar"
-            "Afgerond" -> "Je bestelling is afgerond"
+            "Afgerond" -> "Uw bestelling is afgegeven"
             "Uitverkocht" -> "Uitverkocht"
             "Geweigerd" -> "Bestelling geweigerd"
             "Geannuleerd" -> "Bestelling geannuleerd"
             else -> "Bestelupdate"
         }
-        val message = if (status == "Uitverkocht") {
-            "Bestelling #$orderId is helaas uitverkocht."
-        } else {
-            "Bestelling #$orderId heeft nu status: $status."
+        val message = when (status) {
+            "Uitverkocht" -> "Bestelling #$orderId is helaas uitverkocht."
+            "Afgerond" -> "Uw bestelling is afgegeven"
+            else -> "Bestelling #$orderId heeft nu status: $status."
         }
 
         val intent = Intent(this, MainActivity::class.java).apply {
