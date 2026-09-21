@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const http = require('http');
 const os = require('os');
@@ -285,7 +285,49 @@ function startApiServer() {
   apiServer.listen(API_PORT, '0.0.0.0');
 }
 
+function ensureCompanyBuildDesktopShortcut() {
+  if (process.platform !== 'win32') return false;
+
+  try {
+    const portableSource = String(process.env.PORTABLE_EXECUTABLE_FILE || '').trim();
+    const installDir = path.join(process.env.LOCALAPPDATA || app.getPath('appData'), 'Rutu BBQ', 'Company Build');
+    const installedExe = path.join(installDir, 'Company Build.exe');
+    const desktopShortcut = path.join(app.getPath('desktop'), 'Company Build.lnk');
+
+    fs.mkdirSync(installDir, { recursive: true });
+
+    if (portableSource && path.resolve(portableSource).toLowerCase() !== path.resolve(installedExe).toLowerCase()) {
+      fs.copyFileSync(portableSource, installedExe);
+      shell.writeShortcutLink(desktopShortcut, {
+        target: installedExe,
+        cwd: installDir,
+        description: 'Rutu BBQ Company Build',
+        icon: installedExe,
+        iconIndex: 0
+      });
+      spawn(installedExe, [], { detached: true, stdio: 'ignore', cwd: installDir }).unref();
+      setTimeout(() => app.quit(), 250);
+      return true;
+    }
+
+    if (portableSource || fs.existsSync(installedExe)) {
+      const target = fs.existsSync(installedExe) ? installedExe : portableSource;
+      shell.writeShortcutLink(desktopShortcut, {
+        target,
+        cwd: path.dirname(target),
+        description: 'Rutu BBQ Company Build',
+        icon: target,
+        iconIndex: 0
+      });
+    }
+  } catch (_) {
+    // The app must remain usable even if Windows blocks shortcut creation.
+  }
+  return false;
+}
+
 app.whenReady().then(() => {
+  if (ensureCompanyBuildDesktopShortcut()) return;
   loadCloudConfig();
   startApiServer();
   if (cloudConfig) {
