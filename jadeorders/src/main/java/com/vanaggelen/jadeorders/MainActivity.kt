@@ -488,6 +488,86 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    private fun addToOnlineOrder(order: Order, items: LinkedHashMap<String, Int>) {
+        if (items.isEmpty() || order.trackingToken.isBlank()) return
+        onlineText = "Toevoeging veilig verzenden…"
+        refreshRoleScreen()
+        val itemJson = JSONObject()
+        items.forEach { (name, qty) -> itemJson.put(name, qty) }
+        val payload = JSONObject().put("id", order.id).put("tracking", order.trackingToken).put("items", itemJson)
+        Thread {
+            try {
+                val (code, raw) = onlineJson("POST", "add_items", payload)
+                val json = JSONObject(raw)
+                if (code !in 200..299 || !json.optBoolean("ok")) {
+                    val message = json.optString("error", "Toevoegen aan je bestelling is niet gelukt.")
+                    runOnUiThread { onlineText = "Toevoegen mislukt"; toast(message); refreshRoleScreen() }
+                    return@Thread
+                }
+                val o = json.getJSONObject("order")
+                val mergedItems = LinkedHashMap(order.items)
+                items.forEach { (name, qty) -> mergedItems[name] = (mergedItems[name] ?: 0) + qty }
+                val updated = Order(
+                    order.id, mergedItems, o.optDouble("total", order.total), o.optString("status", order.status), order.trackingToken,
+                    o.optBoolean("delivery", order.delivery), o.optString("address", order.address), o.optString("postcode", order.postcode), o.optDouble("delivery_fee", order.deliveryFee)
+                )
+                Store.upsert(this, updated)
+                onlineAvailable = true
+                onlineText = "Online bestellen actief • toevoeging ontvangen"
+                runOnUiThread {
+                    cart.clear()
+                    deliverySelected = false; deliveryAddress = ""; deliveryPostcode = ""
+                    toast("Toegevoegd aan bestelling #${order.id} ✓")
+                    cartScreen()
+                }
+            } catch (_: Exception) {
+                onlineAvailable = false
+                onlineText = "Online bestelserver niet bereikbaar"
+                runOnUiThread { toast("Toevoeging niet verzonden. Je winkelmand blijft bewaard."); refreshRoleScreen() }
+            }
+        }.start()
+    }
+
+    private fun addToOnlineOrder(order: Order, items: LinkedHashMap<String, Int>) {
+        if (items.isEmpty() || order.trackingToken.isBlank()) return
+        onlineText = "Toevoeging veilig verzenden…"
+        refreshRoleScreen()
+        val itemJson = JSONObject()
+        items.forEach { (name, qty) -> itemJson.put(name, qty) }
+        val payload = JSONObject().put("id", order.id).put("tracking", order.trackingToken).put("items", itemJson)
+        Thread {
+            try {
+                val (code, raw) = onlineJson("POST", "add_items", payload)
+                val json = JSONObject(raw)
+                if (code !in 200..299 || !json.optBoolean("ok")) {
+                    val message = json.optString("error", "Toevoegen aan je bestelling is niet gelukt.")
+                    runOnUiThread { onlineText = "Toevoegen mislukt"; toast(message); refreshRoleScreen() }
+                    return@Thread
+                }
+                val o = json.getJSONObject("order")
+                val mergedItems = LinkedHashMap(order.items)
+                items.forEach { (name, qty) -> mergedItems[name] = (mergedItems[name] ?: 0) + qty }
+                val updated = Order(
+                    order.id, mergedItems, o.optDouble("total", order.total), o.optString("status", order.status), order.trackingToken,
+                    o.optBoolean("delivery", order.delivery), o.optString("address", order.address), o.optString("postcode", order.postcode), o.optDouble("delivery_fee", order.deliveryFee)
+                )
+                Store.upsert(this, updated)
+                onlineAvailable = true
+                onlineText = "Online bestellen actief • toevoeging ontvangen"
+                runOnUiThread {
+                    cart.clear()
+                    deliverySelected = false; deliveryAddress = ""; deliveryPostcode = ""
+                    toast("Toegevoegd aan bestelling #${order.id} ✓")
+                    cartScreen()
+                }
+            } catch (_: Exception) {
+                onlineAvailable = false
+                onlineText = "Online bestelserver niet bereikbaar"
+                runOnUiThread { toast("Toevoeging niet verzonden. Je winkelmand blijft bewaard."); refreshRoleScreen() }
+            }
+        }.start()
+    }
+
     private fun cancelOnlineOrder(order: Order) {
         if (order.trackingToken.isBlank()) {
             toast("Deze bestelling kan niet online worden geannuleerd.")
@@ -759,6 +839,28 @@ class MainActivity : AppCompatActivity() {
             }
         }
         val productTotal = total
+        val addTarget = if (announcement.orderingBlocked) openOrders.firstOrNull { it.trackingToken.isNotBlank() } else null
+        if (announcement.orderingBlocked) {
+            if (addTarget == null) {
+                hero("Bestellen is vandaag gesloten", "Nieuwe bestellingen zijn geblokkeerd. Je winkelmand blijft bewaard.")
+                return
+            }
+            hero("Toevoegen aan bestelling #${addTarget.id}", "Omdat je al een openstaande bestelling hebt, mag je hier nog producten aan toevoegen. Er wordt geen nieuwe bestelling aangemaakt.")
+            section("Toevoeging  ${money.format(productTotal)}")
+            button("Toevoegen aan bestelling #${addTarget.id}") { addToOnlineOrder(addTarget, LinkedHashMap(cart)) }
+            return
+        }
+        val addTarget = if (announcement.orderingBlocked) openOrders.firstOrNull { it.trackingToken.isNotBlank() } else null
+        if (announcement.orderingBlocked) {
+            if (addTarget == null) {
+                hero("Bestellen is vandaag gesloten", "Nieuwe bestellingen zijn geblokkeerd. Je winkelmand blijft bewaard.")
+                return
+            }
+            hero("Toevoegen aan bestelling #${addTarget.id}", "Omdat je al een openstaande bestelling hebt, mag je hier nog producten aan toevoegen. Er wordt geen nieuwe bestelling aangemaakt.")
+            section("Toevoeging  ${money.format(productTotal)}")
+            button("Toevoegen aan bestelling #${addTarget.id}") { addToOnlineOrder(addTarget, LinkedHashMap(cart)) }
+            return
+        }
         val deliveryCheck = CheckBox(this).apply {
             text = "Bezorgen"
             textSize = 17f

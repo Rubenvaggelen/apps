@@ -203,6 +203,49 @@ if ($action === 'create') {
     respond(201, ['ok' => true, 'order' => clean_order_for_customer($order, true)]);
 }
 
+if ($action === 'add_items') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => 'POST vereist.']);
+    $body = body_json();
+    $id = (int)($body['id'] ?? 0);
+    $tracking = trim((string)($body['tracking'] ?? ''));
+    $incoming = $body['items'] ?? null;
+    if ($id <= 0 || $tracking === '') respond(400, ['ok' => false, 'error' => 'Bestelgegevens ontbreken.']);
+    if (!is_array($incoming) || count($incoming) < 1 || count($incoming) > 40) respond(400, ['ok' => false, 'error' => 'Je winkelmand is leeg of te groot.']);
+
+    $items = [];
+    $extraTotal = 0.0;
+    foreach ($incoming as $name => $qty) {
+        $name = trim((string)$name);
+        $qty = (int)$qty;
+        if (!array_key_exists($name, $catalog) || $qty < 1 || $qty > 25) respond(400, ['ok' => false, 'error' => 'Een product of aantal is ongeldig.']);
+        $items[$name] = $qty;
+        $extraTotal += $catalog[$name] * $qty;
+    }
+    $extraTotal = round($extraTotal, 2);
+
+    $updated = with_state($stateFile, true, function (&$state) use ($id, $tracking, $items, $extraTotal) {
+        foreach ($state['orders'] as &$order) {
+            if ((int)$order['id'] !== $id) continue;
+            if (!hash_equals((string)($order['tracking'] ?? ''), $tracking)) return false;
+            if (in_array((string)($order['status'] ?? ''), ['Afgerond', 'Geannuleerd', 'Uitverkocht', 'Geweigerd'], true)) return 'closed';
+            foreach ($items as $name => $qty) {
+                $newQty = (int)($order['items'][$name] ?? 0) + $qty;
+                if ($newQty > 25) return 'too_many';
+                $order['items'][$name] = $newQty;
+            }
+            $order['total'] = round((float)($order['total'] ?? 0) + $extraTotal, 2);
+            $order['updated'] = gmdate('c');
+            return $order;
+        }
+        return null;
+    });
+    if ($updated === false) respond(403, ['ok' => false, 'error' => 'Bestelling kan niet worden geverifieerd.']);
+    if ($updated === 'closed') respond(409, ['ok' => false, 'error' => 'Deze bestelling staat niet meer open.']);
+    if ($updated === 'too_many') respond(409, ['ok' => false, 'error' => 'Het totale aantal van een product is te hoog.']);
+    if (!$updated) respond(404, ['ok' => false, 'error' => 'Bestelling niet gevonden.']);
+    respond(200, ['ok' => true, 'order' => clean_order_for_customer($updated, false)]);
+}
+
 if ($action === 'status') {
     $id = (int)($_GET['id'] ?? 0);
     $tracking = trim((string)($_GET['tracking'] ?? ''));
