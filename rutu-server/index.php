@@ -116,16 +116,7 @@ function clean_order_for_business(array $order): array {
     return $out;
 }
 
-$catalog = [
-    'Teriyaki Chicken' => 12.50,
-    'The Emperor Burger' => 14.95,
-    'Nasi Special' => 11.50,
-    'Roti Kip' => 13.50,
-    'Friet groot' => 4.25,
-    'Ube Cheesecake' => 6.95,
-    'Cola' => 2.75,
-    'Iced Tea' => 2.75
-];
+$catalog = [];
 
 $action = (string)($_GET['action'] ?? 'health');
 
