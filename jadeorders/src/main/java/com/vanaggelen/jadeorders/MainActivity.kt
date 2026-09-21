@@ -43,16 +43,7 @@ class MainActivity : AppCompatActivity() {
     data class Order(val id: Int, val items: LinkedHashMap<String, Int>, val total: Double, var status: String, val trackingToken: String = "", val delivery: Boolean = false, val address: String = "", val postcode: String = "", val deliveryFee: Double = 0.0)
     data class Announcement(val title: String = "", val message: String = "", val from: String = "", val until: String = "", val active: Boolean = false, val orderingBlocked: Boolean = false)
 
-    private val products = listOf(
-        Product("Teriyaki Chicken", 12.50, "BBQ"),
-        Product("The Emperor Burger", 14.95, "BBQ"),
-        Product("Nasi Special", 11.50, "Meals"),
-        Product("Roti Kip", 13.50, "Meals"),
-        Product("Friet groot", 4.25, "Sides"),
-        Product("Ube Cheesecake", 6.95, "Dessert"),
-        Product("Cola", 2.75, "Drinks"),
-        Product("Iced Tea", 2.75, "Drinks")
-    )
+    private val products = emptyList<Product>()
     private val cart = linkedMapOf<String, Int>()
     private var deliverySelected = false
     private var deliveryAddress = ""
