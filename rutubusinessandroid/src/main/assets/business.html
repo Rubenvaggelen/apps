@@ -6,7 +6,7 @@
 <title>Rutu BBQ Bedrijf</title>
 <style>
 :root{color-scheme:dark;--gold:#e5b85c;--light:#f4d593;--muted:#bdb2a1;--line:#463820;--panel:#17140f}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top left,#251809 0,transparent 55%),#090807;color:#f8f2e8;font:16px/1.5 system-ui,sans-serif}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top left,#251809 0,transparent 55%),#090807;color:#f8f2e8;font:16px/1.5 system-ui,sans-serif;position:relative;min-height:100vh}body::before{content:"";position:fixed;inset:0;background:url('https://dev.rubenvanaggelen.com/rutu-assets/logo.png') center 52%/min(72vw,520px) auto no-repeat;opacity:.08;pointer-events:none;z-index:0}.wrap{position:relative;z-index:1}
 header{position:sticky;top:0;z-index:10;padding:14px 16px;background:#0a0908f2;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
 .brand{font:700 22px Georgia,serif;letter-spacing:1.5px;color:var(--light)}.tag,.hint,.meta{color:var(--muted);font-size:13px}
 .wrap{padding:18px 14px 30px;max-width:1000px;margin:auto}.hero,.panel,.order{background:linear-gradient(145deg,#201a12,var(--panel));border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}
@@ -39,7 +39,7 @@ button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:1
     <div class="row" style="margin-top:12px"><label class="grow"><input id="noticeActive" type="checkbox"> Actief tonen</label><button class="gold" onclick="saveNotice()">Publiceren</button><button class="gray" onclick="clearNotice()">Verwijderen</button></div>
     <div id="noticeResult" class="hint"></div>
   </section>
-  <section class="panel"><div class="row"><h2 class="grow">Bestelgeschiedenis</h2><button class="gray" onclick="clearHistory()">Wis geschiedenis</button></div><div id="history"></div></section>
+  <section class="panel"><div class="row"><h2 class="grow">Bestelgeschiedenis</h2><button class="gray" onclick="clearHistory()">Wis geschiedenis</button></div><div id="historyResult" class="hint" style="margin-bottom:10px"></div><div id="history"></div></section>
 </main>
 
 <div class="order-modal" id="orderModal" onclick="if(event.target===this)closeOrderModal()"><div class="modal-card"><div class="modal-head"><h2 id="orderModalTitle">Openstaande bestellingen</h2><button class="gray" onclick="closeOrderModal()">Sluiten</button></div><div id="orderModalBody"></div></div></div>
@@ -88,7 +88,7 @@ async function loadNotice(){try{const r=await api('business_announcement'),a=r.a
 async function saveNotice(){const out=document.getElementById('noticeResult');out.textContent='Publiceren…';try{await api('business_announcement','POST',{title:noticeTitle.value.trim(),message:noticeMessage.value.trim(),from:noticeFrom.value,until:noticeUntil.value,active:noticeActive.checked});out.textContent='Klantupdate gepubliceerd ✓'}catch(e){out.textContent='Mislukt: '+e.message}}
 async function clearNotice(){noticeTitle.value='';noticeMessage.value='';noticeFrom.value='';noticeUntil.value='';noticeActive.checked=false;await saveNotice()}
 async function hideHistory(id){try{await api('business_hide_history','POST',{id:Number(id)});await sync()}catch(e){alert(e.message)}}
-async function clearHistory(){if(!confirm('Geschiedenis wissen en teller op nul zetten?'))return;try{await api('business_clear_history','POST',{});await sync()}catch(e){alert(e.message)}}
+async function clearHistory(){const out=document.getElementById('historyResult');out.textContent='Geschiedenis wissen…';try{const r=await api('business_clear_history','POST',{});await sync();const n=Number(r.cleared||0);out.textContent=n>0?(n+' bestelling'+(n===1?'':'en')+' uit geschiedenis gewist ✓'):'Geschiedenis is al leeg ✓'}catch(e){out.textContent='Wissen mislukt: '+e.message}}
 function openKeyModal(){businessKey.value=key();keyResult.textContent='';keyModal.classList.add('open')}
 function closeKeyModal(){if(key())keyModal.classList.remove('open')}
 async function saveBusinessKey(){const v=businessKey.value.trim();if(!v){keyResult.textContent='Vul een bedrijfsleutel in.';return}localStorage.setItem('rutu_business_key',v);keyResult.textContent='Controleren…';try{await api('business_orders');keyResult.textContent='Koppeling gelukt ✓';setTimeout(()=>{keyModal.classList.remove('open');sync();loadNotice()},300)}catch(e){localStorage.removeItem('rutu_business_key');keyResult.textContent='Koppeling mislukt: '+e.message}}
