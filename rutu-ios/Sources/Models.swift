@@ -5,6 +5,7 @@ struct Product: Identifiable, Hashable {
     let name: String
     let price: Double
     let category: String
+    let description: String
 }
 
 struct RutuOrder: Identifiable, Codable, Hashable {
@@ -20,7 +21,9 @@ final class RutuStore: ObservableObject {
     @Published var cart: [String: Int] = [:]
     @Published var orders: [RutuOrder] = []
 
-    let products: [Product] = []
+    let products: [Product] = [
+        .init(name: "BBQ Regular", price: 10.00, category: "BBQ", description: "1 bout • 2 stokjes saté • salade")
+    ]
 
     init() { load() }
 
