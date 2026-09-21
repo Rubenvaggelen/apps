@@ -44,7 +44,12 @@ class MainActivity : AppCompatActivity() {
     data class Announcement(val title: String = "", val message: String = "", val from: String = "", val until: String = "", val active: Boolean = false, val orderingBlocked: Boolean = false)
 
     private val products = listOf(
-        Product("BBQ Regular", 10.00, "BBQ", "1 bout • 2 stokjes saté • salade")
+        Product("BBQ Regular", 10.00, "BBQ", "1 bout • 2 stokjes saté • salade"),
+        Product("BBQ Extra", 15.00, "BBQ", "2 bouten • 2 stokjes saté • salade"),
+        Product("BBQ Gezin", 25.00, "BBQ", "3 bouten • 6 stokjes saté • 3 salades"),
+        Product("Extra bout", 3.00, "Extra's", "Los bij te bestellen"),
+        Product("Extra salade", 2.50, "Extra's", "Los bij te bestellen"),
+        Product("Portie saté", 5.00, "Extra's", "Los bij te bestellen")
     )
     private val cart = linkedMapOf<String, Int>()
     private var deliverySelected = false
