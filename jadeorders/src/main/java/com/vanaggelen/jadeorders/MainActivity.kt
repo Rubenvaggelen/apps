@@ -243,6 +243,7 @@ class MainActivity : AppCompatActivity() {
         val notificationKey = "order_$orderId"
         if (notificationPrefs.getString(notificationKey, "") == status) return
         notificationPrefs.edit().putString(notificationKey, status).apply()
+        if (status == "Afgerond") markEatWellBannerForDelivery(orderId)
         val title = when (status) {
             "In bereiding" -> "Je bestelling wordt bereid"
             "Klaar" -> "Je bestelling is klaar"
@@ -666,7 +667,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun syncOnlineStatuses() {
-        val tracked = Store.all(this).filter { it.trackingToken.isNotBlank() }
+        val tracked = Store.all(this).filter { it.trackingToken.isNotBlank() && it.status !in finalCustomerStatuses }
         if (tracked.isEmpty()) return
         Thread {
             var changed = false
@@ -679,7 +680,7 @@ class MainActivity : AppCompatActivity() {
                         val status = JSONObject(raw).optJSONObject("order")?.optString("status").orEmpty()
                         if (status == "Afgerond" && status != order.status) {
                             notifyOrderStatus(order.id, status)
-                            Store.remove(this, order.id)
+                            Store.status(this, order.id, status)
                             changed = true
                         } else if (status.isNotBlank() && status != order.status) {
                             Store.status(this, order.id, status)
@@ -745,7 +746,36 @@ class MainActivity : AppCompatActivity() {
         (products.firstOrNull { it.name == name }?.price ?: 0.0) * qty
     }
 
-    private fun openOrders(): List<Order> = Store.all(this).filter { it.status !in listOf("Afgerond", "Geannuleerd", "Uitverkocht", "Geweigerd") }
+    private val finalCustomerStatuses = setOf("Afgerond", "Geannuleerd", "Uitverkocht", "Geweigerd")
+    private val eatWellBannerRefresh = Runnable {
+        if (role == Role.CUSTOMER && (screen == "landing" || screen == "customer")) {
+            if (screen == "landing") landing() else renderCustomer()
+        }
+    }
+
+    private fun markEatWellBannerForDelivery(orderId: Int) {
+        val order = Store.all(this).firstOrNull { it.id == orderId } ?: return
+        if (!order.delivery) return
+        getSharedPreferences("rutu_customer_banner", Context.MODE_PRIVATE)
+            .edit()
+            .putLong("eat_well_until", System.currentTimeMillis() + 3 * 60 * 1000L)
+            .apply()
+    }
+
+    private fun showEatWellBannerIfActive() {
+        val prefs = getSharedPreferences("rutu_customer_banner", Context.MODE_PRIVATE)
+        val until = prefs.getLong("eat_well_until", 0L)
+        val remaining = until - System.currentTimeMillis()
+        if (remaining <= 0L) {
+            if (until > 0L) prefs.edit().remove("eat_well_until").apply()
+            return
+        }
+        hero("Eet smakelijk!", "Uw bezorgbestelling is afgegeven.")
+        uiHandler.removeCallbacks(eatWellBannerRefresh)
+        uiHandler.postDelayed(eatWellBannerRefresh, remaining + 150L)
+    }
+
+    private fun openOrders(): List<Order> = Store.all(this).filter { it.status !in finalCustomerStatuses }
 
     private fun openOrdersTotal(): Double = openOrders()
         .filter { it.status !in listOf("Geannuleerd", "Uitverkocht", "Geweigerd") }
@@ -815,6 +845,7 @@ class MainActivity : AppCompatActivity() {
         nearby.stopAllEndpoints(); nearby.stopAdvertising(); nearby.stopDiscovery()
         page(); spacer(8); logoMark(); title("Welkom bij Rutu BBQ")
         centered("Made in fire. Unique taste.", 16f, Color.rgb(205, 179, 122)); spacer(34)
+        showEatWellBannerIfActive()
         hero("Fire. Roots. Flavour.", "Kies je favorieten en geniet.")
         announcementCard()
         button("Bekijk het menu") { enterCustomer() }
@@ -863,6 +894,7 @@ class MainActivity : AppCompatActivity() {
         centered("Je bestelling gaat via internet naar Rutu BBQ. Hetzelfde wifi-netwerk is niet nodig.", 14f, Color.rgb(210, 199, 182))
         button("Internetverbinding opnieuw controleren", secondary = true) { testOnlineConnection(false) }
         announcementCard()
+        showEatWellBannerIfActive()
         if (announcement.orderingBlocked) {
             hero("Vandaag gesloten voor bestellingen", "Je kunt het menu bekijken, maar vandaag geen bestelling plaatsen.")
         }
@@ -994,12 +1026,35 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun myOrders(sync: Boolean = true) {
-        screen = "orders"; Store.removeCompleted(this); page(true); back { renderCustomer() }; logoMark(true); title("Mijn bestellingen"); connectionCard(); announcementCard()
+        screen = "orders"; page(true); back { renderCustomer() }; logoMark(true); title("Mijn bestellingen"); connectionCard(); announcementCard()
         if (sync) syncOnlineStatuses()
         label("🔄 " + lastStatusRefreshText + " • automatisch elke 2 seconden", Color.rgb(24, 31, 25))
-        val orders = Store.all(this).reversed()
-        if (orders.isEmpty()) hero("Nog geen bestellingen", "Je geplaatste bestellingen verschijnen hier.")
-        orders.forEach { orderView(it, false) }
+
+        val allOrders = Store.all(this).reversed()
+        val open = allOrders.filter { it.status !in finalCustomerStatuses }
+        val history = allOrders.filter { it.status in finalCustomerStatuses }
+
+        section("Openstaande bestellingen")
+        if (open.isEmpty()) centered("Geen openstaande bestellingen.", 15f, Color.rgb(210, 199, 182))
+        open.forEach { orderView(it, false) }
+
+        section("Bestelgeschiedenis")
+        if (history.isEmpty()) {
+            centered("Je bestelgeschiedenis is leeg.", 15f, Color.rgb(210, 199, 182))
+        } else {
+            history.forEach { orderView(it, false) }
+            button("Wis bestelgeschiedenis", secondary = true) {
+                AlertDialog.Builder(this)
+                    .setTitle("Bestelgeschiedenis wissen?")
+                    .setMessage("Alleen afgesloten bestellingen worden verwijderd. Openstaande bestellingen blijven staan.")
+                    .setNegativeButton("Annuleren", null)
+                    .setPositiveButton("Wissen") { _, _ ->
+                        Store.clearCustomerHistory(this)
+                        myOrders(false)
+                    }
+                    .show()
+            }
+        }
     }
 
     private fun renderBusiness() {
@@ -1094,6 +1149,10 @@ class MainActivity : AppCompatActivity() {
         fun upsert(c: Context, order: Order) { val orders = all(c); val i = orders.indexOfFirst { it.id == order.id }; if (i >= 0) orders[i] = order else orders += order; save(c, orders) }
         fun status(c: Context, id: Int, status: String) { val orders = all(c); orders.firstOrNull { it.id == id }?.status = status; save(c, orders) }
         fun remove(c: Context, id: Int) { val orders = all(c); orders.removeAll { it.id == id }; save(c, orders) }
-        fun removeCompleted(c: Context) { val orders = all(c); if (orders.removeAll { it.status == "Afgerond" }) save(c, orders) }
+        fun clearCustomerHistory(c: Context) {
+            val finalStatuses = setOf("Afgerond", "Geannuleerd", "Uitverkocht", "Geweigerd")
+            val orders = all(c)
+            if (orders.removeAll { it.status in finalStatuses }) save(c, orders)
+        }
     }
 }

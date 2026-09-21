@@ -79,9 +79,14 @@ class OrderStatusService : Service() {
                 if (code == 200) {
                     val status = JSONObject(raw).optJSONObject("order")?.optString("status").orEmpty()
                     if (status.isNotBlank() && status != order.status) {
+                        if (status == "Afgerond" && order.delivery) {
+                            getSharedPreferences("rutu_customer_banner", Context.MODE_PRIVATE)
+                                .edit()
+                                .putLong("eat_well_until", System.currentTimeMillis() + 3 * 60 * 1000L)
+                                .apply()
+                        }
                         notifyStatus(order.id, status)
-                        if (status == "Afgerond") MainActivity.Store.remove(this, order.id)
-                        else MainActivity.Store.status(this, order.id, status)
+                        MainActivity.Store.status(this, order.id, status)
                     }
                 }
             } catch (_: Exception) {
