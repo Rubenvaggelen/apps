@@ -1,6 +1,6 @@
 {
   "name": "rutu-bbq-company-build",
-  "version": "0.4.25",
+  "version": "0.4.26",
   "description": "Rutu BBQ Company Build for Windows business operations",
   "main": "main.js",
   "author": "Rutu BBQ",
@@ -8,7 +8,7 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win nsis"
+    "dist": "electron-builder --win nsis portable"
   },
   "devDependencies": {
     "electron": "^37.3.1",
@@ -30,16 +30,21 @@
     ],
     "win": {
       "target": [
-        "nsis"
+        "nsis",
+        "portable"
       ],
       "icon": "assets/rutu.ico"
     },
     "nsis": {
+      "artifactName": "Company-Build-Setup-${version}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Company Build"
+    },
+    "portable": {
+      "artifactName": "Company-Build-${version}-Portable.${ext}"
     }
   }
 }
