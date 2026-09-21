@@ -13,6 +13,7 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -22,6 +23,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.widget.doAfterTextChanged
 import com.google.android.gms.nearby.Nearby
 import com.google.android.gms.nearby.connection.*
 import org.json.JSONArray
@@ -34,7 +36,7 @@ import java.util.Locale
 class MainActivity : AppCompatActivity() {
     private enum class Role { NONE, CUSTOMER, BUSINESS }
     data class Product(val name: String, val price: Double, val category: String)
-    data class Order(val id: Int, val items: LinkedHashMap<String, Int>, val total: Double, var status: String, val trackingToken: String = "")
+    data class Order(val id: Int, val items: LinkedHashMap<String, Int>, val total: Double, var status: String, val trackingToken: String = "", val delivery: Boolean = false, val address: String = "", val postcode: String = "", val deliveryFee: Double = 0.0)
     data class Announcement(val title: String = "", val message: String = "", val from: String = "", val until: String = "", val active: Boolean = false, val orderingBlocked: Boolean = false)
 
     private val products = listOf(
@@ -48,6 +50,9 @@ class MainActivity : AppCompatActivity() {
         Product("Iced Tea", 2.75, "Drinks")
     )
     private val cart = linkedMapOf<String, Int>()
+    private var deliverySelected = false
+    private var deliveryAddress = ""
+    private var deliveryPostcode = ""
     private val orderRoutes = mutableMapOf<Int, String>()
     private lateinit var root: LinearLayout
     private lateinit var nearby: ConnectionsClient
@@ -60,6 +65,14 @@ class MainActivity : AppCompatActivity() {
     private var pendingStart = false
     private var screen = "landing"
     private val serviceId by lazy { "$packageName.rutubbq.v1" }
+
+    private fun normalizedPostcode(value: String): String = value.uppercase(Locale.ROOT).replace(" ", "")
+    private fun validPostcode(value: String): Boolean = Regex("^\\d{4}[A-Z]{2}$").matches(normalizedPostcode(value))
+    private fun deliveryFeeFor(value: String): Double = if (normalizedPostcode(value).take(4) == "1106") 2.50 else 5.00
+    private fun displayPostcode(value: String): String {
+        val p = normalizedPostcode(value)
+        return if (p.length == 6) "${p.take(4)} ${p.drop(4)}" else value.trim()
+    }
 
     private fun customerName(): String =
         getSharedPreferences("rutu_customer", Context.MODE_PRIVATE).getString("name", "").orEmpty().trim()
@@ -422,7 +435,7 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    private fun sendOnlineOrder(items: LinkedHashMap<String, Int>, shownTotal: Double) {
+    private fun sendOnlineOrder(items: LinkedHashMap<String, Int>, shownTotal: Double, delivery: Boolean = false, address: String = "", postcode: String = "") {
         if (items.isEmpty()) return
         onlineText = "Bestelling veilig verzenden…"
         refreshRoleScreen()
@@ -433,7 +446,8 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread { ensureCustomerName() }
             return
         }
-        val payload = JSONObject().put("items", itemJson).put("customer", name)
+        val payload = JSONObject().put("items", itemJson).put("customer", name).put("delivery", delivery)
+        if (delivery) payload.put("address", address.trim()).put("postcode", normalizedPostcode(postcode))
         Thread {
             try {
                 val (code, raw) = onlineJson("POST", "create", payload)
@@ -448,12 +462,18 @@ class MainActivity : AppCompatActivity() {
                     return@Thread
                 }
                 val o = json.getJSONObject("order")
-                val order = Order(o.getInt("id"), items, o.optDouble("total", shownTotal), o.optString("status", "Nieuw"), o.optString("tracking", ""))
+                val order = Order(
+                    o.getInt("id"), items, o.optDouble("total", shownTotal), o.optString("status", "Nieuw"), o.optString("tracking", ""),
+                    o.optBoolean("delivery", delivery), o.optString("address", address.trim()), o.optString("postcode", normalizedPostcode(postcode)), o.optDouble("delivery_fee", 0.0)
+                )
                 Store.upsert(this, order)
                 onlineAvailable = true
                 onlineText = "Online bestellen actief • bestelling ontvangen"
                 runOnUiThread {
                     cart.clear()
+                    deliverySelected = false
+                    deliveryAddress = ""
+                    deliveryPostcode = ""
                     toast("Bestelling #${order.id} is ontvangen door Rutu BBQ ✓")
                     myOrders(false)
                 }
@@ -728,12 +748,84 @@ class MainActivity : AppCompatActivity() {
                 smallButton("+") { cart[name] = qty + 1; cartScreen() }
             }
         }
-        section("Totaal  ${money.format(total)}")
+        val productTotal = total
+        val deliveryCheck = CheckBox(this).apply {
+            text = "Bezorgen"
+            textSize = 17f
+            setTextColor(Color.WHITE)
+            isChecked = deliverySelected
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            setOnCheckedChangeListener { _, checked ->
+                deliverySelected = checked
+                if (!checked) {
+                    deliveryAddress = ""
+                    deliveryPostcode = ""
+                }
+                cartScreen()
+            }
+        }
+        root.addView(deliveryCheck, marginParams(0, 8, 0, 8))
+
+        var shownTotal = productTotal
+        if (deliverySelected) {
+            val addressInput = EditText(this).apply {
+                hint = "Straat + huisnummer"
+                setText(deliveryAddress)
+                setTextColor(Color.WHITE)
+                setHintTextColor(Color.rgb(160, 150, 138))
+                setSingleLine(true)
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = rounded(Color.rgb(23, 20, 15), Color.rgb(91, 69, 34))
+            }
+            val postcodeInput = EditText(this).apply {
+                hint = "Postcode, bijvoorbeeld 1106 AB"
+                setText(deliveryPostcode)
+                setTextColor(Color.WHITE)
+                setHintTextColor(Color.rgb(160, 150, 138))
+                setSingleLine(true)
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = rounded(Color.rgb(23, 20, 15), Color.rgb(91, 69, 34))
+            }
+            root.addView(addressInput, marginParams(0, 0, 0, 8))
+            root.addView(postcodeInput, marginParams(0, 0, 0, 8))
+            val feeText = TextView(this).apply { textSize = 14f; setTextColor(Color.rgb(210, 199, 182)); setPadding(dp(8), dp(4), dp(8), dp(4)) }
+            val totalText = TextView(this).apply { typeface = Typeface.create("serif", Typeface.BOLD); textSize = 22f; setTextColor(Color.rgb(244, 213, 147)); setPadding(0, dp(18), 0, dp(10)) }
+            root.addView(feeText)
+            root.addView(totalText)
+
+            fun refreshDeliveryTotals() {
+                val valid = validPostcode(deliveryPostcode)
+                val fee = if (valid) deliveryFeeFor(deliveryPostcode) else 0.0
+                shownTotal = productTotal + fee
+                feeText.text = if (valid) "Bezorgkosten ${money.format(fee)} • postcode ${displayPostcode(deliveryPostcode)}" else "Bezorgkosten: ${money.format(2.50)} binnen 1106 • ${money.format(5.00)} daarbuiten"
+                totalText.text = "Totaal  ${money.format(shownTotal)}"
+            }
+            addressInput.doAfterTextChanged { deliveryAddress = it?.toString().orEmpty() }
+            postcodeInput.doAfterTextChanged {
+                deliveryPostcode = it?.toString().orEmpty()
+                refreshDeliveryTotals()
+            }
+            refreshDeliveryTotals()
+        } else {
+            section("Totaal  ${money.format(productTotal)}")
+        }
+
         if (announcement.orderingBlocked) {
             hero("Bestellen is vandaag gesloten", "De gekozen kalenderdatum blokkeert bestellingen. Je winkelmand blijft bewaard.")
         } else {
             button("Bestelling plaatsen") {
-                sendOnlineOrder(LinkedHashMap(cart), total)
+                if (deliverySelected) {
+                    if (deliveryAddress.trim().length < 3) {
+                        toast("Vul je straat en huisnummer in.")
+                        return@button
+                    }
+                    if (!validPostcode(deliveryPostcode)) {
+                        toast("Vul een volledige postcode in, bijvoorbeeld 1106 AB.")
+                        return@button
+                    }
+                    shownTotal = productTotal + deliveryFeeFor(deliveryPostcode)
+                }
+                sendOnlineOrder(LinkedHashMap(cart), shownTotal, deliverySelected, deliveryAddress, deliveryPostcode)
             }
         }
     }
@@ -758,7 +850,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun orderView(o: Order, admin: Boolean) {
-        card("#${o.id}   •   ${money.format(o.total)}\n${o.items.entries.joinToString("  •  ") { "${it.value}× ${it.key}" }}\nStatus: ${o.status}") {
+        val deliveryLine = if (o.delivery) "\nBezorgen: ${o.address}, ${displayPostcode(o.postcode)} • ${money.format(o.deliveryFee)}" else "\nAfhalen"
+        card("#${o.id}   •   ${money.format(o.total)}\n${o.items.entries.joinToString("  •  ") { "${it.value}× ${it.key}" }}$deliveryLine\nStatus: ${o.status}") {
             if (admin) when (o.status) {
                 "Nieuw" -> { smallButton("Accepteren") { changeStatus(o, "In bereiding") }; smallButton("Weigeren") { changeStatus(o, "Geweigerd") } }
                 "In bereiding" -> smallButton("Klaar") { changeStatus(o, "Klaar") }
@@ -817,12 +910,17 @@ class MainActivity : AppCompatActivity() {
                 try {
                     val parts = row.split("¦"); val items = linkedMapOf<String, Int>()
                     if (parts.getOrNull(3).orEmpty().isNotBlank()) parts[3].split("~").forEach { pair -> val p = pair.split("="); if (p.size == 2) items[p[0]] = p[1].toInt() }
-                    Order(parts[0].toInt(), items, parts[1].toDouble(), parts[2], parts.getOrNull(4).orEmpty())
+                    Order(
+                        parts[0].toInt(), items, parts[1].toDouble(), parts[2], parts.getOrNull(4).orEmpty(),
+                        parts.getOrNull(5) == "1", parts.getOrNull(6).orEmpty(), parts.getOrNull(7).orEmpty(), parts.getOrNull(8)?.toDoubleOrNull() ?: 0.0
+                    )
                 } catch (_: Exception) { null }
             }.toMutableList()
         }
         private fun save(c: Context, orders: List<Order>) {
-            val raw = orders.joinToString("§") { o -> "${o.id}¦${o.total}¦${o.status}¦${o.items.entries.joinToString("~") { "${it.key}=${it.value}" }}¦${o.trackingToken}" }
+            val raw = orders.joinToString("§") { o ->
+                "${o.id}¦${o.total}¦${o.status}¦${o.items.entries.joinToString("~") { "${it.key}=${it.value}" }}¦${o.trackingToken}¦${if (o.delivery) "1" else "0"}¦${o.address.replace("¦", " ")}¦${o.postcode.replace("¦", " ")}¦${o.deliveryFee}"
+            }
             c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putString(KEY, raw).apply()
         }
         fun create(c: Context, items: Map<String, Int>, total: Double): Order {

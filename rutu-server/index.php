@@ -99,7 +99,11 @@ function clean_order_for_customer(array $order, bool $includeTracking = false): 
         'status' => (string)$order['status'],
         'customer' => (string)$order['customer'],
         'created' => (string)$order['created'],
-        'created_display' => (string)$order['created_display']
+        'created_display' => (string)$order['created_display'],
+        'delivery' => (bool)($order['delivery'] ?? false),
+        'address' => (string)($order['address'] ?? ''),
+        'postcode' => (string)($order['postcode'] ?? ''),
+        'delivery_fee' => (float)($order['delivery_fee'] ?? 0)
     ];
     if ($includeTracking) $out['tracking'] = (string)$order['tracking'];
     return $out;
@@ -153,12 +157,25 @@ if ($action === 'create') {
         $items[$name] = $qty;
         $total += $catalog[$name] * $qty;
     }
-    $total = round($total, 2);
+    $subtotal = round($total, 2);
+    $delivery = filter_var($body['delivery'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $address = '';
+    $postcode = '';
+    $deliveryFee = 0.0;
+    if ($delivery) {
+        $address = preg_replace('/\\s+/', ' ', trim((string)($body['address'] ?? '')));
+        $postcode = strtoupper(preg_replace('/\\s+/', '', trim((string)($body['postcode'] ?? ''))));
+        if (mb_strlen($address) < 3) respond(400, ['ok' => false, 'error' => 'Vul je straat en huisnummer in.']);
+        if (!preg_match('/^\\d{4}[A-Z]{2}$/', $postcode)) respond(400, ['ok' => false, 'error' => 'Vul een volledige postcode in, bijvoorbeeld 1106 AB.']);
+        $address = mb_substr($address, 0, 120);
+        $deliveryFee = substr($postcode, 0, 4) === '1106' ? 2.50 : 5.00;
+    }
+    $total = round($subtotal + $deliveryFee, 2);
     $customer = trim((string)($body['customer'] ?? 'Online klant'));
     if ($customer === '') $customer = 'Online klant';
     $customer = mb_substr($customer, 0, 80);
 
-    $order = with_state($stateFile, true, function (&$state) use ($items, $total, $customer) {
+    $order = with_state($stateFile, true, function (&$state) use ($items, $total, $customer, $delivery, $address, $postcode, $deliveryFee) {
         $id = max(1046, (int)$state['next_id']);
         $state['next_id'] = $id + 1;
         $createdTs = time();
@@ -168,6 +185,10 @@ if ($action === 'create') {
             'total' => $total,
             'status' => 'Nieuw',
             'customer' => $customer,
+            'delivery' => $delivery,
+            'address' => $address,
+            'postcode' => $postcode,
+            'delivery_fee' => $deliveryFee,
             'created' => gmdate('c', $createdTs),
             'created_display' => date('H:i', $createdTs),
             'tracking' => bin2hex(random_bytes(18)),
