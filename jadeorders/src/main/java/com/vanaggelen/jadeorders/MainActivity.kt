@@ -72,7 +72,7 @@ class MainActivity : AppCompatActivity() {
         if (customerName().isNotBlank()) return
         val input = EditText(this).apply {
             hint = "Jouw naam"
-            singleLine = true
+            setSingleLine(true)
             setPadding(dp(12), dp(8), dp(12), dp(8))
         }
         val dialog = AlertDialog.Builder(this)
@@ -612,6 +612,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun enterCustomer() {
+        if (customerName().isBlank()) ensureCustomerName()
         role = Role.CUSTOMER
         testOnlineConnection(false)
         uiHandler.removeCallbacks(onlinePoller)
