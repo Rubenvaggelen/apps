@@ -53,8 +53,9 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const openStatuses=o=>!['Afgerond','Geweigerd','Geannuleerd','Uitverkocht'].includes(o.status);
 let sessionCode=''
 async function api(action,method='GET',body=null){
+  if(!key()) throw new Error('Bedrijfsleutel ontbreekt');
   const u=new URL(API);u.searchParams.set('action',action);
-  const headers={'Accept':'application/json','X-Rutu-Business-Key':sessionCode};
+  const headers={'Accept':'application/json','X-Rutu-Business-Key':key()};
   if(body)headers['Content-Type']='application/json; charset=utf-8';
   const r=await fetch(u,{method,headers,body:body?JSON.stringify(body):undefined,cache:'no-store'});
   const text=await r.text();let data={};try{data=text?JSON.parse(text):{}}catch(e){}
