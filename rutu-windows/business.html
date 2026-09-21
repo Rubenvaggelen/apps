@@ -35,6 +35,15 @@
     <div id="orderModalBody"></div>
   </div>
 </div>
+<div class="setup-modal" id="setupModal">
+  <div class="setup-card" role="dialog" aria-modal="true" aria-labelledby="setupTitle">
+    <h2 id="setupTitle">Bedrijfsapp koppelen</h2>
+    <p>Voer één keer de bedrijfskey in. Daarna wordt deze alleen op deze Windows-laptop opgeslagen en hoef je hem niet opnieuw in te voeren.</p>
+    <input id="setupKey" type="password" autocomplete="off" placeholder="Bedrijfskey">
+    <div class="setup-result" id="setupResult"></div>
+    <button class="send" onclick="saveBusinessSetup()">Opslaan en verbinden</button>
+  </div>
+</div>
 <script>
 let orders=[];
 const money=n=>new Intl.NumberFormat('nl-NL',{style:'currency',currency:'EUR'}).format(Number(n||0));
@@ -53,10 +62,37 @@ function render(){const active=orders.filter(o=>o.status!=='Afgerond');const his
 async function loadNotice(){try{const a=await rutu.getAnnouncement();document.getElementById('noticeTitle').value=a.title||'';document.getElementById('noticeMessage').value=a.message||'';document.getElementById('noticeFrom').value=a.from||'';document.getElementById('noticeUntil').value=a.until||'';document.getElementById('noticeActive').checked=!!a.active;document.getElementById('noticeState').textContent=a.active?'Actief in klantapp':'Niet actief'}catch(e){document.getElementById('noticeResult').textContent='Mededeling kon niet worden geladen.'}}
 async function saveNotice(){const result=document.getElementById('noticeResult');result.textContent='Publiceren…';try{const a=await rutu.setAnnouncement({title:document.getElementById('noticeTitle').value.trim(),message:document.getElementById('noticeMessage').value.trim(),from:document.getElementById('noticeFrom').value,until:document.getElementById('noticeUntil').value,active:document.getElementById('noticeActive').checked});result.textContent='Klantupdate gepubliceerd ✓';document.getElementById('noticeState').textContent=a.active?'Actief in klantapp':'Niet actief'}catch(e){result.textContent='Publiceren mislukt: '+(e.message||e)}}
 async function clearNotice(){document.getElementById('noticeTitle').value='';document.getElementById('noticeMessage').value='';document.getElementById('noticeFrom').value='';document.getElementById('noticeUntil').value='';document.getElementById('noticeActive').checked=false;await saveNotice()}
-rutu.getServerInfo().then(info=>{document.getElementById('serverAddress').textContent=info.cloudConfigured?(info.online?'Online gekoppeld ✓':'Online koppeling wordt opgebouwd…'):'Bedrijfsconfiguratie ontbreekt';});
-rutu.getOrders().then(x=>{orders=x;render()});
+async function initBusiness(){
+  try{
+    const info=await rutu.getServerInfo();
+    document.getElementById('serverAddress').textContent=info.cloudConfigured?(info.online?'Online gekoppeld ✓':'Online koppeling wordt opgebouwd…'):'Bedrijfskey nodig';
+    if(!info.cloudConfigured){
+      document.getElementById('setupModal').classList.add('open');
+      setTimeout(()=>document.getElementById('setupKey').focus(),100);
+      return;
+    }
+    orders=await rutu.getOrders();render();await loadNotice();
+  }catch(e){
+    document.getElementById('serverAddress').textContent='Online verbinding mislukt';
+  }
+}
+async function saveBusinessSetup(){
+  const input=document.getElementById('setupKey'),out=document.getElementById('setupResult');
+  const value=input.value.trim();
+  if(!value){out.textContent='Vul de bedrijfskey in.';input.focus();return}
+  out.textContent='Key controleren…';
+  try{
+    await rutu.saveBusinessKey(value);
+    out.textContent='Koppeling gelukt ✓';
+    document.getElementById('setupModal').classList.remove('open');
+    document.getElementById('serverAddress').textContent='Online gekoppeld ✓';
+    orders=await rutu.getOrders();render();await loadNotice();
+  }catch(e){
+    input.value='';out.textContent=e.message||'Koppeling mislukt.';input.focus();
+  }
+}
 rutu.onOrdersUpdated(x=>{orders=x;render()});
-loadNotice();
+initBusiness();
 setInterval(()=>rutu.syncOrders().catch(()=>{}),2500);
 </script>
 </body></html>
