@@ -240,7 +240,6 @@ if ($action === 'add_items') {
     if ($updated === false) respond(403, ['ok' => false, 'error' => 'Bestelling kan niet worden geverifieerd.']);
     if ($updated === 'closed') respond(409, ['ok' => false, 'error' => 'Deze bestelling staat niet meer open.']);
     if ($updated === 'too_many') respond(409, ['ok' => false, 'error' => 'Het totale aantal van een product is te hoog.']);
-    if ($updated === 'delivery_required') respond(409, ['ok' => false, 'error' => 'Deze status is alleen beschikbaar voor bezorgbestellingen.']);
     if (!$updated) respond(404, ['ok' => false, 'error' => 'Bestelling niet gevonden.']);
     respond(200, ['ok' => true, 'order' => clean_order_for_customer($updated, false)]);
 }
@@ -426,6 +425,7 @@ if ($action === 'business_status') {
         }
         return null;
     });
+    if ($updated === 'delivery_required') respond(409, ['ok' => false, 'error' => 'Deze status is alleen beschikbaar voor bezorgbestellingen.']);
     if (!$updated) respond(404, ['ok' => false, 'error' => 'Bestelling niet gevonden.']);
     respond(200, ['ok' => true, 'order' => clean_order_for_customer($updated, false)]);
 }
