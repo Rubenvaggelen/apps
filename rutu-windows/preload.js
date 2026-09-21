@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('rutu', {
   openCustomer: () => ipcRenderer.send('open-customer'),
   openBusiness: () => ipcRenderer.send('open-business'),
   getServerInfo: () => ipcRenderer.invoke('get-server-info'),
+  saveBusinessKey: value => ipcRenderer.invoke('save-business-key', value),
   getOrders: () => ipcRenderer.invoke('get-orders'),
   syncOrders: () => ipcRenderer.invoke('sync-cloud-orders'),
   getAnnouncement: () => ipcRenderer.invoke('get-business-announcement'),
