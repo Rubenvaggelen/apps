@@ -283,7 +283,7 @@ if ($action === 'business_clear_history') {
     $count = with_state($stateFile, true, function (&$state) {
         $count = 0;
         foreach ($state['orders'] as &$order) {
-            if (in_array((string)($order['status'] ?? ''), ['Afgerond', 'Geweigerd'], true)) {
+            if ((string)($order['status'] ?? '') === 'Afgerond') {
                 $order['history_cleared'] = true;
                 $count++;
             }
@@ -304,7 +304,7 @@ if ($action === 'business_hide_history') {
     $updated = with_state($stateFile, true, function (&$state) use ($id) {
         foreach ($state['orders'] as &$order) {
             if ((int)$order['id'] === $id) {
-                if (!in_array((string)($order['status'] ?? ''), ['Afgerond', 'Geweigerd'], true)) return false;
+                if ((string)($order['status'] ?? '') !== 'Afgerond') return false;
                 $order['history_hidden'] = true;
                 return $order;
             }
