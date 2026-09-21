@@ -7,6 +7,7 @@ private let rutuPanel = Color(red: 0.09, green: 0.08, blue: 0.06)
 struct ContentView: View {
     @EnvironmentObject var store: RutuStore
     @State private var role: Role?
+    @State private var showBusinessPin = false
 
     enum Role { case customer, business }
 
@@ -24,6 +25,58 @@ struct ContentView: View {
             }
         }
         .tint(rutuGold)
+        .sheet(isPresented: $showBusinessPin) {
+            BusinessPinView {
+                showBusinessPin = false
+                role = .business
+            }
+        }
+    }
+}
+
+
+struct BusinessPinView: View {
+    let onSuccess: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var code = ""
+    @State private var error = ""
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 18) {
+                Image("RutuLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 150, height: 150)
+                Text("Bedrijfsomgeving")
+                    .font(.title2.bold())
+                    .foregroundStyle(rutuGoldLight)
+                SecureField("Bedrijfscode", text: $code)
+                    .keyboardType(.numberPad)
+                    .padding()
+                    .background(rutuPanel)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                if !error.isEmpty {
+                    Text(error).foregroundStyle(.red).font(.caption)
+                }
+                RutuButton(title: "Openen", icon: "lock.open.fill") {
+                    if code == "170250" {
+                        error = ""
+                        onSuccess()
+                    } else {
+                        code = ""
+                        error = "Onjuiste bedrijfscode."
+                    }
+                }
+            }
+            .padding(28)
+            .navigationTitle("Rutu BBQ")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Sluiten") { dismiss() }
+                }
+            }
+        }
     }
 }
 
