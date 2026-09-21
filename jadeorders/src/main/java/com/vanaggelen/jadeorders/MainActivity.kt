@@ -1,7 +1,11 @@
 package com.vanaggelen.jadeorders
 
 import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Typeface
 import android.widget.ImageView
@@ -59,6 +63,9 @@ class MainActivity : AppCompatActivity() {
     private val money = NumberFormat.getCurrencyInstance(Locale("nl", "NL"))
     private val strategy = Strategy.P2P_POINT_TO_POINT
     private val permissionRequest = 4041
+    private val notificationPermissionRequest = 4042
+    private val orderNotificationChannel = "rutu_order_updates"
+    private var appInForeground = false
     private var role = Role.NONE
     private var connectedEndpoint: String? = null
     private var connectionText = "Niet verbonden"
@@ -149,6 +156,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         nearby = Nearby.getConnectionsClient(this)
+        createOrderNotificationChannel()
         windowsHost = getSharedPreferences("rutu_windows", Context.MODE_PRIVATE).getString("host", "") ?: ""
         landing()
         ensureCustomerName()
@@ -158,11 +166,17 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        appInForeground = true
         syncAnnouncement(true)
         if (role == Role.CUSTOMER) {
             uiHandler.removeCallbacks(onlinePoller)
             uiHandler.post(onlinePoller)
         }
+    }
+
+    override fun onPause() {
+        appInForeground = false
+        super.onPause()
     }
 
     override fun onDestroy() {
@@ -201,6 +215,65 @@ class MainActivity : AppCompatActivity() {
             pendingStart = false
             if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) startNearbyForRole()
             else toast("Toestemming is nodig voor een directe Android-naar-Android verbinding.")
+        }
+    }
+
+    private fun ensureNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), notificationPermissionRequest)
+        }
+    }
+
+    private fun createOrderNotificationChannel() {
+        if (Build.VERSION.SDK_INT < 26) return
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannel(
+            NotificationChannel(orderNotificationChannel, "Bestelupdates", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Belangrijke updates over je Rutu BBQ-bestelling"
+            }
+        )
+    }
+
+    private fun notifyOutOfStock(orderId: Int) {
+        val message = "Bestelling #$orderId is helaas uitverkocht."
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pending = PendingIntent.getActivity(
+            this, orderId, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val builder = if (Build.VERSION.SDK_INT >= 26) {
+            android.app.Notification.Builder(this, orderNotificationChannel)
+        } else {
+            @Suppress("DEPRECATION")
+            android.app.Notification.Builder(this)
+        }
+        builder
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle("Uitverkocht")
+            .setContentText(message)
+            .setStyle(android.app.Notification.BigTextStyle().bigText(message))
+            .setAutoCancel(true)
+            .setContentIntent(pending)
+
+        if (Build.VERSION.SDK_INT < 33 ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        ) {
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.notify(12000 + orderId, builder.build())
+        }
+
+        if (appInForeground) runOnUiThread {
+            if (!isFinishing && !isDestroyed) {
+                AlertDialog.Builder(this)
+                    .setTitle("Uitverkocht")
+                    .setMessage(message)
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
         }
     }
 
@@ -270,8 +343,10 @@ class MainActivity : AppCompatActivity() {
                     }
                     "status" -> if (role == Role.CUSTOMER) {
                         val id = json.getInt("id"); val status = json.getString("status")
+                        val previous = Store.all(this@MainActivity).firstOrNull { it.id == id }?.status
                         Store.status(this@MainActivity, id, status)
-                        runOnUiThread { toast("Bestelling #$id: $status"); if (screen == "orders") myOrders(false) }
+                        if (status == "Uitverkocht" && previous != status) notifyOutOfStock(id)
+                        runOnUiThread { if (status != "Uitverkocht") toast("Bestelling #$id: $status"); if (screen == "orders") myOrders(false) }
                     }
                 }
             } catch (_: Exception) { runOnUiThread { toast("Bericht kon niet worden gelezen") } }
@@ -384,7 +459,9 @@ class MainActivity : AppCompatActivity() {
                     val status = obj.optString("status", "Nieuw")
                     val local = Store.all(this).firstOrNull { it.id == id }
                     if (local != null && local.status != status) {
-                        Store.status(this, id, status); changed = true
+                        Store.status(this, id, status)
+                        if (status == "Uitverkocht") notifyOutOfStock(id)
+                        changed = true
                     }
                 }
                 if (changed && screen == "orders") runOnUiThread { myOrders(false) }
@@ -583,6 +660,7 @@ class MainActivity : AppCompatActivity() {
                             changed = true
                         } else if (status.isNotBlank() && status != order.status) {
                             Store.status(this, order.id, status)
+                            if (status == "Uitverkocht") notifyOutOfStock(order.id)
                             changed = true
                         }
                     }
@@ -724,6 +802,7 @@ class MainActivity : AppCompatActivity() {
     private fun enterCustomer() {
         if (customerName().isBlank()) ensureCustomerName()
         role = Role.CUSTOMER
+        ensureNotificationPermission()
         testOnlineConnection(false)
         uiHandler.removeCallbacks(onlinePoller)
         uiHandler.post(onlinePoller)
