@@ -599,6 +599,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun cartScreen() {
         screen = "cart"; page(true); back { renderCustomer() }; logoMark(true); title("Jouw winkelmand"); connectionCard(); announcementCard()
+        val openOrders = Store.all(this).filter { it.status != "Afgerond" }.reversed()
+        if (openOrders.isNotEmpty()) {
+            section("Openstaande bestellingen")
+            openOrders.forEach { orderView(it, false) }
+        }
         if (cart.isEmpty()) { hero("Je winkelmand is leeg", "Voeg eerst iets lekkers toe."); return }
         var total = 0.0
         cart.toMap().forEach { (name, qty) ->
