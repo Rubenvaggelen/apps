@@ -795,7 +795,7 @@ class MainActivity : AppCompatActivity() {
         nearby.stopAllEndpoints(); nearby.stopAdvertising(); nearby.stopDiscovery()
         page(); spacer(8); logoMark(); title("Welkom bij Rutu BBQ")
         centered("More than food. It’s an experience.", 16f, Color.rgb(205, 179, 122)); spacer(34)
-        hero("Fire. Roots. Flavour.", "Gemaakt in vuur. Unieke smaak. Kies je favorieten en geniet.")
+        hero("Fire. Roots. Flavour.", "Made in fire. Unique taste. Kies je favorieten en geniet.")
         announcementCard()
         button("Bekijk het menu") { enterCustomer() }
 
