@@ -844,7 +844,7 @@ class MainActivity : AppCompatActivity() {
             section(category)
             items.forEach { p ->
                 val qty = cart[p.name] ?: 0
-                card("${p.name}\n${money.format(p.price)}${if (qty > 0) "   •   $qty× in mand" else ""}") {
+                card("${p.name}\n${p.description}\n${money.format(p.price)}${if (qty > 0) "   •   $qty× in mand" else ""}") {
                     button("+ Toevoegen") { cart[p.name] = qty + 1; renderCustomer() }
                 }
             }
