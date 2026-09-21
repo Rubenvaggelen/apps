@@ -112,7 +112,8 @@ function openCustomer() {
   customerWindow.on('closed', () => customerWindow = null);
 }
 
-async function openBusiness() {
+async function openBusiness(pin) {
+  if (String(pin || '') !== '170250') throw new Error('Onjuiste bedrijfscode.');
   loadCloudConfig();
   if (cloudConfig) await syncCloudOrders();
   if (businessWindow && !businessWindow.isDestroyed()) return businessWindow.focus();
@@ -295,7 +296,7 @@ app.whenReady().then(() => {
   const launcher = makeWindow('launcher.html', { width: 980, height: 720, title: 'Rutu BBQ Simulator' });
   setTimeout(() => checkForWindowsUpdate(launcher), 1500);
   ipcMain.on('open-customer', openCustomer);
-  ipcMain.on('open-business', openBusiness);
+  ipcMain.handle('open-business', async (_event, pin) => openBusiness(pin));
 
   ipcMain.handle('get-server-info', async () => {
     loadCloudConfig();

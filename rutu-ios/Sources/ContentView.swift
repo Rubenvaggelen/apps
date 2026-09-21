@@ -20,7 +20,7 @@ struct ContentView: View {
                 case .business: BusinessView(onBack: { self.role = nil })
                 }
             } else {
-                LandingView(customer: { role = .customer }, business: { role = .business })
+                LandingView(customer: { role = .customer }, business: { showBusinessPin = true })
             }
         }
         .tint(rutuGold)

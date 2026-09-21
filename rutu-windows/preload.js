@@ -2,7 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('rutu', {
   openCustomer: () => ipcRenderer.send('open-customer'),
-  openBusiness: () => ipcRenderer.send('open-business'),
+  openBusiness: pin => ipcRenderer.invoke('open-business', pin),
   getServerInfo: () => ipcRenderer.invoke('get-server-info'),
   saveBusinessKey: value => ipcRenderer.invoke('save-business-key', value),
   getOrders: () => ipcRenderer.invoke('get-orders'),

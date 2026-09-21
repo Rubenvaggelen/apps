@@ -1,7 +1,11 @@
 package com.vanaggelen.rutubusiness
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.os.Bundle
+import android.text.InputType
+import android.widget.EditText
+import android.widget.Toast
 import android.webkit.WebView
 import android.webkit.WebViewClient
 
@@ -26,9 +30,37 @@ class MainActivity : Activity() {
                 }
             }
         }
-        setContentView(webView)
-        webView.loadUrl("file:///android_asset/business.html")
-        webView.post { webView.scrollTo(0, 0) }
+        requestBusinessCode()
+    }
+
+    private fun requestBusinessCode() {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            hint = "Bedrijfscode"
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Rutu BBQ Bedrijf")
+            .setMessage("Voer de bedrijfscode in.")
+            .setView(input)
+            .setCancelable(false)
+            .setNegativeButton("Sluiten") { _, _ -> finish() }
+            .setPositiveButton("Openen", null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                if (input.text.toString() == "170250") {
+                    dialog.dismiss()
+                    setContentView(webView)
+                    webView.loadUrl("file:///android_asset/business.html")
+                    webView.post { webView.scrollTo(0, 0) }
+                } else {
+                    input.text.clear()
+                    Toast.makeText(this, "Onjuiste bedrijfscode.", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        dialog.show()
     }
 
     @Deprecated("Deprecated in Android SDK")
