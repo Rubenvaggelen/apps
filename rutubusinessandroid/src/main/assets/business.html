@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Rutu BBQ Bedrijf</title>
+<style>
+:root{color-scheme:dark;--gold:#e5b85c;--light:#f4d593;--muted:#bdb2a1;--line:#463820;--panel:#17140f}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top left,#251809 0,transparent 55%),#090807;color:#f8f2e8;font:16px/1.5 system-ui,sans-serif}
+header{position:sticky;top:0;z-index:10;padding:14px 16px;background:#0a0908f2;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{font:700 22px Georgia,serif;letter-spacing:1.5px;color:var(--light)}.tag,.hint,.meta{color:var(--muted);font-size:13px}
+.wrap{padding:18px 14px 30px;max-width:1000px;margin:auto}.hero,.panel,.order{background:linear-gradient(145deg,#201a12,var(--panel));border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}
+h1,h2,h3{font-family:Georgia,serif;color:var(--light);font-weight:500}h1{font-size:28px;margin:0 0 8px}h2{font-size:22px;margin:8px 0 14px}.eyebrow{font-size:11px;letter-spacing:2px;color:var(--gold);font-weight:700;text-transform:uppercase}
+button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:10px 14px;font-weight:700;font-size:14px;cursor:pointer}.gold{background:var(--gold);color:#211507}.green{background:#224934;color:#dcffe9;border-color:#407e5b}.red{background:#49221e;color:#ffddd6;border-color:#87483f}.gray{background:#242019;color:var(--light);border-color:var(--line)}.orange{background:#d49d3e;color:#1f1407}
+.badge{background:#3b2b11;color:var(--light);border:1px solid #85652a;border-radius:100px;padding:8px 13px;min-height:0}
+.summary{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:14px 0}.summary div{background:#17140f;border:1px solid var(--line);border-radius:12px;padding:12px}.summary b{display:block;color:var(--light);font-size:22px}
+.order-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.order-total{color:var(--gold);font-weight:700}.status{color:var(--light);font-weight:700;margin:12px 0}.actions{display:flex;gap:8px;flex-wrap:wrap}
+.notice-grid{display:grid;gap:10px}.notice-grid input,.notice-grid textarea,.key-input{width:100%;background:#0f0d0a;color:#fff;border:1px solid var(--line);border-radius:10px;padding:12px;font:15px system-ui}.notice-grid textarea{min-height:90px;resize:vertical}.row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}.row .grow{flex:1}.empty{text-align:center;padding:28px 16px;color:var(--muted);border:1px dashed var(--line);border-radius:12px}
+.order-modal,.key-modal{display:none;position:fixed;inset:0;background:#000b;z-index:100;align-items:center;justify-content:center;padding:16px}.order-modal.open,.key-modal.open{display:flex}.modal-card{width:min(760px,100%);max-height:88vh;overflow:auto;background:linear-gradient(145deg,#201a12,var(--panel));border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 20px 70px #000}.modal-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.modal-head h2{margin:0}.open-orders-list{display:flex;flex-direction:column;gap:12px}.error{color:#ffb4aa}.ok{color:#a8ddb3}.history-row{display:flex;justify-content:space-between;gap:10px;align-items:center;background:#17140f;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:7px}.history-row button{min-height:34px;padding:5px 9px}
+@media(min-width:760px){.summary{grid-template-columns:repeat(5,1fr)}.notice-grid{grid-template-columns:2fr 1fr 1fr}.notice-grid textarea{grid-column:1/-1}}
+</style>
+</head>
+<body>
+<header>
+  <div><div class="brand">RUTU BBQ</div><div class="tag">Bedrijfsapp Android</div></div>
+  <div class="row"><button class="gray" onclick="openKeyModal()">Koppeling</button><button id="count" class="badge" onclick="openOpenOrders()">0 nieuw</button></div>
+</header>
+<main class="wrap">
+  <section class="hero"><div class="eyebrow">RUTU BBQ • BEDRIJF</div><h1>Jouw keuken. Alles in beeld.</h1><div id="connection" class="hint">Verbinden met online bestellingen…</div></section>
+  <div class="summary" id="summary"></div>
+  <section class="panel"><h2>Actieve bestellingen</h2><div id="orders"></div></section>
+  <section class="panel">
+    <div class="eyebrow">KLANTUPDATE</div><h2>Mededeling in de klantapp</h2>
+    <div class="notice-grid">
+      <input id="noticeTitle" maxlength="80" placeholder="Titel, bijvoorbeeld Vakantie">
+      <input id="noticeFrom" type="date"><input id="noticeUntil" type="date">
+      <textarea id="noticeMessage" maxlength="600" placeholder="Bericht aan klanten"></textarea>
+    </div>
+    <div class="row" style="margin-top:12px"><label class="grow"><input id="noticeActive" type="checkbox"> Actief tonen</label><button class="gold" onclick="saveNotice()">Publiceren</button><button class="gray" onclick="clearNotice()">Verwijderen</button></div>
+    <div id="noticeResult" class="hint"></div>
+  </section>
+  <section class="panel"><div class="row"><h2 class="grow">Bestelgeschiedenis</h2><button class="gray" onclick="clearHistory()">Wis geschiedenis</button></div><div id="history"></div></section>
+</main>
+
+<div class="order-modal" id="orderModal" onclick="if(event.target===this)closeOrderModal()"><div class="modal-card"><div class="modal-head"><h2 id="orderModalTitle">Openstaande bestellingen</h2><button class="gray" onclick="closeOrderModal()">Sluiten</button></div><div id="orderModalBody"></div></div></div>
+<div class="key-modal" id="keyModal"><div class="modal-card"><h2>Bedrijfsapp koppelen</h2><p class="hint">Voer de bedrijfsleutel één keer in. Deze wordt alleen op dit Android-apparaat opgeslagen en staat niet in de APK of Dev Hub.</p><input id="businessKey" class="key-input" type="password" autocomplete="off" placeholder="Bedrijfsleutel"><div id="keyResult" class="hint" style="margin-top:8px"></div><div class="row" style="margin-top:14px"><button class="gold" onclick="saveBusinessKey()">Opslaan en verbinden</button><button class="gray" onclick="closeKeyModal()">Annuleren</button></div></div></div>
+
+<script>
+const API='https://rubenvanaggelen.com/rutu-api/index.php';
+let orders=[];
+const money=n=>new Intl.NumberFormat('nl-NL',{style:'currency',currency:'EUR'}).format(Number(n||0));
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const openStatuses=o=>!['Afgerond','Geweigerd','Geannuleerd','Uitverkocht'].includes(o.status);
+function key(){return localStorage.getItem('rutu_business_key')||''}
+async function api(action,method='GET',body=null){
+  if(!key()) throw new Error('Bedrijfsleutel ontbreekt');
+  const u=new URL(API);u.searchParams.set('action',action);
+  const headers={'Accept':'application/json','X-Rutu-Business-Key':key()};
+  if(body)headers['Content-Type']='application/json; charset=utf-8';
+  const r=await fetch(u,{method,headers,body:body?JSON.stringify(body):undefined,cache:'no-store'});
+  const text=await r.text();let data={};try{data=text?JSON.parse(text):{}}catch(e){}
+  if(!r.ok||data.ok===false)throw new Error(data.error||('HTTP '+r.status));
+  return data;
+}
+function normalize(o){return{id:Number(o.id),items:Object.entries(o.items||{}).map(([name,qty])=>({name,qty:Number(qty)})),total:Number(o.total||0),customer:String(o.customer||'Online klant'),delivery:!!o.delivery,address:String(o.address||''),postcode:String(o.postcode||''),deliveryFee:Number(o.delivery_fee||0),created:String(o.created||o.created_display||''),status:String(o.status||'Nieuw'),historyHidden:!!o.history_hidden,historyCleared:!!o.history_cleared}}
+function when(v){if(!v)return'';const d=new Date(v);return Number.isNaN(d.getTime())?esc(v):new Intl.DateTimeFormat('nl-NL',{dateStyle:'medium',timeStyle:'short'}).format(d)}
+function actions(o){if(o.status==='Nieuw')return '<button class="green" onclick="setStatus('+o.id+',\'In bereiding\')">Accepteren</button><button class="red" onclick="setStatus('+o.id+',\'Uitverkocht\')">Annuleren • Uitverkocht</button><button class="red" onclick="setStatus('+o.id+',\'Geweigerd\')">Weigeren</button>';if(o.status==='In bereiding')return '<button class="orange" onclick="setStatus('+o.id+',\'Klaar\')">Markeer klaar</button><button class="red" onclick="setStatus('+o.id+',\'Uitverkocht\')">Annuleren • Uitverkocht</button>';if(o.status==='Klaar')return '<button class="green" onclick="setStatus('+o.id+',\'Afgerond\')">Afronden</button><button class="red" onclick="setStatus('+o.id+',\'Uitverkocht\')">Annuleren • Uitverkocht</button>';return''}
+function orderCard(o){const items=o.items.map(i=>esc(i.qty)+'× '+esc(i.name)).join('<br>');const delivery=o.delivery?'<div class="meta"><b>Bezorgen</b> • '+esc(o.address)+' • '+esc(o.postcode)+' • bezorgkosten '+money(o.deliveryFee)+'</div>':'<div class="meta"><b>Afhalen</b></div>';return '<div class="order"><div class="order-head"><b>Bestelling #'+o.id+'</b><span class="order-total">'+money(o.total)+'</span></div><div class="meta">'+when(o.created)+' • '+esc(o.customer)+'</div>'+delivery+'<div>'+items+'</div><div class="status">Status: '+esc(o.status)+'</div><div class="actions">'+actions(o)+'</div></div>'}
+function render(){
+ const active=orders.filter(o=>o.status!=='Afgerond'),open=orders.filter(openStatuses),history=orders.filter(o=>o.status==='Afgerond'&&!o.historyCleared),newCount=orders.filter(o=>o.status==='Nieuw').length;
+ document.getElementById('count').textContent=newCount+' nieuw';
+ document.getElementById('summary').innerHTML='<div><b>'+newCount+'</b>Nieuw</div><div><b>'+open.length+'</b>Openstaand</div><div><b>'+money(open.reduce((s,o)=>s+o.total,0))+'</b>Open waarde</div><div><b>'+history.length+'</b>Geschiedenis</div><div><b>'+money(history.reduce((s,o)=>s+o.total,0))+'</b>Afgerond</div>';
+ document.getElementById('orders').innerHTML=active.map(orderCard).join('')||'<div class="empty">Geen zichtbare bestellingen.</div>';
+ document.getElementById('history').innerHTML=history.map(o=>o.historyHidden?'<div class="history-row"><span></span><b>'+money(o.total)+'</b></div>':'<div class="history-row"><button class="gray" onclick="openHistory('+o.id+')">#'+o.id+'</button><b>'+money(o.total)+'</b><button class="red" onclick="hideHistory('+o.id+')">Verwijder</button></div>').join('')||'<div class="empty">Geschiedenis is leeg.</div>';
+ const m=document.getElementById('orderModal');if(m.classList.contains('open')&&m.dataset.mode==='open-orders')renderOpenOrdersModal();
+}
+async function sync(){
+ if(!key()){document.getElementById('connection').textContent='Niet gekoppeld';openKeyModal();return}
+ try{const r=await api('business_orders');orders=(r.orders||[]).map(normalize);document.getElementById('connection').innerHTML='<span class="ok">Online gekoppeld ✓</span> • automatisch verversen';render()}
+ catch(e){document.getElementById('connection').innerHTML='<span class="error">Verbinding mislukt: '+esc(e.message)+'</span>'}
+}
+async function setStatus(id,status){try{await api('business_status','POST',{id:Number(id),status});await sync()}catch(e){alert(e.message)}}
+function openOpenOrders(){const m=document.getElementById('orderModal');m.dataset.mode='open-orders';document.getElementById('orderModalTitle').textContent='Openstaande bestellingen';renderOpenOrdersModal();m.classList.add('open')}
+function renderOpenOrdersModal(){const open=orders.filter(openStatuses);document.getElementById('orderModalBody').innerHTML='<div class="open-orders-list">'+(open.map(orderCard).join('')||'<div class="empty">Geen openstaande bestellingen.</div>')+'</div>'}
+function openHistory(id){const o=orders.find(x=>x.id===Number(id));if(!o)return;const m=document.getElementById('orderModal');m.dataset.mode='history';document.getElementById('orderModalTitle').textContent='Bestelling #'+o.id;document.getElementById('orderModalBody').innerHTML=orderCard(o);m.classList.add('open')}
+function closeOrderModal(){const m=document.getElementById('orderModal');m.classList.remove('open');m.dataset.mode=''}
+async function loadNotice(){try{const r=await api('business_announcement'),a=r.announcement||{};noticeTitle.value=a.title||'';noticeMessage.value=a.message||'';noticeFrom.value=a.from||'';noticeUntil.value=a.until||'';noticeActive.checked=!!a.active}catch(e){}}
+async function saveNotice(){const out=document.getElementById('noticeResult');out.textContent='Publiceren…';try{await api('business_announcement','POST',{title:noticeTitle.value.trim(),message:noticeMessage.value.trim(),from:noticeFrom.value,until:noticeUntil.value,active:noticeActive.checked});out.textContent='Klantupdate gepubliceerd ✓'}catch(e){out.textContent='Mislukt: '+e.message}}
+async function clearNotice(){noticeTitle.value='';noticeMessage.value='';noticeFrom.value='';noticeUntil.value='';noticeActive.checked=false;await saveNotice()}
+async function hideHistory(id){try{await api('business_hide_history','POST',{id:Number(id)});await sync()}catch(e){alert(e.message)}}
+async function clearHistory(){if(!confirm('Geschiedenis wissen en teller op nul zetten?'))return;try{await api('business_clear_history','POST',{});await sync()}catch(e){alert(e.message)}}
+function openKeyModal(){businessKey.value=key();keyResult.textContent='';keyModal.classList.add('open')}
+function closeKeyModal(){if(key())keyModal.classList.remove('open')}
+async function saveBusinessKey(){const v=businessKey.value.trim();if(!v){keyResult.textContent='Vul een bedrijfsleutel in.';return}localStorage.setItem('rutu_business_key',v);keyResult.textContent='Controleren…';try{await api('business_orders');keyResult.textContent='Koppeling gelukt ✓';setTimeout(()=>{keyModal.classList.remove('open');sync();loadNotice()},300)}catch(e){localStorage.removeItem('rutu_business_key');keyResult.textContent='Koppeling mislukt: '+e.message}}
+sync();if(key())loadNotice();setInterval(sync,2500);
+</script>
+</body>
+</html>
