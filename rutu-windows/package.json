@@ -1,7 +1,7 @@
 {
-  "name": "rutu-bbq-windows-simulator",
-  "version": "0.4.24",
-  "description": "Rutu BBQ Windows business environment with live orders, customer updates and automatic app updates",
+  "name": "rutu-bbq-company-build",
+  "version": "0.4.25",
+  "description": "Rutu BBQ Company Build for Windows business operations",
   "main": "main.js",
   "author": "Rutu BBQ",
   "license": "UNLICENSED",
@@ -16,7 +16,7 @@
   },
   "build": {
     "appId": "com.vanaggelen.rutubbq.simulator",
-    "productName": "Rutu BBQ Simulator",
+    "productName": "Company Build",
     "directories": {
       "output": "dist"
     },
@@ -24,7 +24,6 @@
       "main.js",
       "preload.js",
       "launcher.html",
-      "customer.html",
       "business.html",
       "brand.css",
       "assets/**"
@@ -40,7 +39,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Rutu BBQ Simulator"
+      "shortcutName": "Company Build"
     }
   }
 }

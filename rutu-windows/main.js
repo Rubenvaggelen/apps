@@ -8,7 +8,6 @@ const { spawn } = require('child_process');
 
 let orders = [];
 let nextId = 1046;
-let customerWindow = null;
 let businessWindow = null;
 let apiServer = null;
 const API_PORT = 8765;
@@ -88,7 +87,7 @@ function makeWindow(file, opts = {}) {
     minHeight: 650,
     backgroundColor: '#090807',
     icon: path.join(__dirname, 'assets', 'rutu.ico'),
-    title: opts.title || 'Rutu BBQ Simulator',
+    title: opts.title || 'Company Build',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -101,15 +100,9 @@ function makeWindow(file, opts = {}) {
 
 function broadcast() {
   const payload = JSON.parse(JSON.stringify(orders));
-  for (const win of [customerWindow, businessWindow]) {
-    if (win && !win.isDestroyed()) win.webContents.send('orders-updated', payload);
+  if (businessWindow && !businessWindow.isDestroyed()) {
+    businessWindow.webContents.send('orders-updated', payload);
   }
-}
-
-function openCustomer() {
-  if (customerWindow && !customerWindow.isDestroyed()) return customerWindow.focus();
-  customerWindow = makeWindow('customer.html', { title: 'Rutu BBQ — Klant' });
-  customerWindow.on('closed', () => customerWindow = null);
 }
 
 async function openBusiness(pin) {
@@ -293,9 +286,8 @@ app.whenReady().then(() => {
       if (cloudConfig) syncCloudOrders();
     }, 2500);
   }
-  const launcher = makeWindow('launcher.html', { width: 980, height: 720, title: 'Rutu BBQ Simulator' });
+  const launcher = makeWindow('launcher.html', { width: 980, height: 720, title: 'Company Build' });
   setTimeout(() => checkForWindowsUpdate(launcher), 1500);
-  ipcMain.on('open-customer', openCustomer);
   ipcMain.handle('open-business', async (_event, pin) => openBusiness(pin));
 
   ipcMain.handle('get-server-info', async () => {
@@ -349,7 +341,6 @@ app.whenReady().then(() => {
   });
 
   launcher.on('closed', () => {
-    if (customerWindow && !customerWindow.isDestroyed()) customerWindow.close();
     if (businessWindow && !businessWindow.isDestroyed()) businessWindow.close();
   });
 });
