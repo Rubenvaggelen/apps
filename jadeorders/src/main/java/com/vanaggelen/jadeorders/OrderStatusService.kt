@@ -79,10 +79,11 @@ class OrderStatusService : Service() {
                 if (code == 200) {
                     val status = JSONObject(raw).optJSONObject("order")?.optString("status").orEmpty()
                     if (status.isNotBlank() && status != order.status) {
-                        if (status == "Afgerond" && order.delivery) {
+                        if (status == "Afgerond") {
                             getSharedPreferences("rutu_customer_banner", Context.MODE_PRIVATE)
                                 .edit()
                                 .putLong("eat_well_until", System.currentTimeMillis() + 3 * 60 * 1000L)
+                                .putBoolean("force_landing", true)
                                 .apply()
                         }
                         notifyStatus(order.id, status)

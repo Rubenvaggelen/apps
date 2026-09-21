@@ -171,6 +171,12 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         appInForeground = true
         syncAnnouncement(true)
+        val bannerPrefs = getSharedPreferences("rutu_customer_banner", Context.MODE_PRIVATE)
+        val bannerUntil = bannerPrefs.getLong("eat_well_until", 0L)
+        if (bannerPrefs.getBoolean("force_landing", false) && bannerUntil > System.currentTimeMillis()) {
+            bannerPrefs.edit().putBoolean("force_landing", false).apply()
+            landing()
+        }
         syncOnlineStatuses()
         if (role == Role.CUSTOMER) {
             uiHandler.removeCallbacks(onlinePoller)
@@ -247,7 +253,7 @@ class MainActivity : AppCompatActivity() {
         val notificationKey = "order_$orderId"
         if (notificationPrefs.getString(notificationKey, "") == status) return
         notificationPrefs.edit().putString(notificationKey, status).apply()
-        if (status == "Afgerond") markEatWellBannerForDelivery(orderId)
+        if (status == "Afgerond") markEatWellBanner(orderId)
         val title = when (status) {
             "In bereiding" -> "Je bestelling wordt bereid"
             "Klaar" -> "Je bestelling is klaar"
@@ -371,7 +377,11 @@ class MainActivity : AppCompatActivity() {
                         val previous = Store.all(this@MainActivity).firstOrNull { it.id == id }?.status
                         Store.status(this@MainActivity, id, status)
                         if (previous != null && previous != status) notifyOrderStatus(id, status)
-                        runOnUiThread { toast("Bestelling #$id: $status"); if (screen == "orders") myOrders(false) }
+                        runOnUiThread {
+                            toast("Bestelling #$id: $status")
+                            if (status == "Afgerond") landing()
+                            else if (screen == "orders") myOrders(false)
+                        }
                     }
                 }
             } catch (_: Exception) { runOnUiThread { toast("Bericht kon niet worden gelezen") } }
@@ -478,6 +488,7 @@ class MainActivity : AppCompatActivity() {
                 if (code != 200) return@Thread
                 val arr = JSONArray(text)
                 var changed = false
+                var completed = false
                 for (i in 0 until arr.length()) {
                     val obj = arr.getJSONObject(i)
                     val id = obj.getInt("id")
@@ -486,10 +497,14 @@ class MainActivity : AppCompatActivity() {
                     if (local != null && local.status != status) {
                         Store.status(this, id, status)
                         notifyOrderStatus(id, status)
+                        if (status == "Afgerond") completed = true
                         changed = true
                     }
                 }
-                if (changed && screen == "orders") runOnUiThread { myOrders(false) }
+                if (changed) runOnUiThread {
+                    if (completed) landing()
+                    else if (screen == "orders") myOrders(false)
+                }
             } catch (_: Exception) {
                 windowsConnected = false; windowsText = "Windows verbinding verbroken"
                 runOnUiThread { if (screen == "customer" || screen == "cart" || screen == "orders") refreshRoleScreen() }
@@ -675,6 +690,7 @@ class MainActivity : AppCompatActivity() {
         if (tracked.isEmpty()) return
         Thread {
             var changed = false
+            var completed = false
             var reachedServer = false
             tracked.forEach { order ->
                 try {
@@ -685,6 +701,7 @@ class MainActivity : AppCompatActivity() {
                         if (status == "Afgerond" && status != order.status) {
                             notifyOrderStatus(order.id, status)
                             Store.status(this, order.id, status)
+                            completed = true
                             changed = true
                         } else if (status.isNotBlank() && status != order.status) {
                             Store.status(this, order.id, status)
@@ -700,11 +717,15 @@ class MainActivity : AppCompatActivity() {
                 lastStatusRefreshText = "Live bijgewerkt: " + java.text.SimpleDateFormat("HH:mm:ss", Locale("nl", "NL")).format(java.util.Date())
             }
             if (changed) runOnUiThread {
-                when (screen) {
-                    "landing" -> landing()
-                    "orders" -> myOrders(false)
-                    "cart" -> cartScreen()
-                    "customer" -> renderCustomer()
+                if (completed) {
+                    landing()
+                } else {
+                    when (screen) {
+                        "landing" -> landing()
+                        "orders" -> myOrders(false)
+                        "cart" -> cartScreen()
+                        "customer" -> renderCustomer()
+                    }
                 }
             }
         }.start()
@@ -780,12 +801,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun markEatWellBannerForDelivery(orderId: Int) {
-        val order = Store.all(this).firstOrNull { it.id == orderId } ?: return
-        if (!order.delivery) return
+    private fun markEatWellBanner(orderId: Int) {
+        if (Store.all(this).none { it.id == orderId }) return
         getSharedPreferences("rutu_customer_banner", Context.MODE_PRIVATE)
             .edit()
             .putLong("eat_well_until", System.currentTimeMillis() + 3 * 60 * 1000L)
+            .putBoolean("force_landing", true)
             .apply()
     }
 
@@ -870,6 +891,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun landing() {
+        getSharedPreferences("rutu_customer_banner", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("force_landing", false)
+            .apply()
         role = Role.NONE; screen = "landing"; connectedEndpoint = null
         windowsConnected = false; uiHandler.removeCallbacks(windowsPoller)
         nearby.stopAllEndpoints(); nearby.stopAdvertising(); nearby.stopDiscovery()
