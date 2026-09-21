@@ -246,7 +246,7 @@ class MainActivity : AppCompatActivity() {
         val title = when (status) {
             "In bereiding" -> "Je bestelling wordt bereid"
             "Klaar" -> "Je bestelling is klaar"
-            "Afgerond" -> "Uw bestelling is afgegeven"
+            "Afgerond" -> "Uw bestelling is afgegeven. Dank u voor uw bestelling."
             "Uitverkocht" -> "Uitverkocht"
             "Geweigerd" -> "Bestelling geweigerd"
             "Geannuleerd" -> "Bestelling geannuleerd"
@@ -254,7 +254,7 @@ class MainActivity : AppCompatActivity() {
         }
         val message = when (status) {
             "Uitverkocht" -> "Bestelling #$orderId is helaas uitverkocht."
-            "Afgerond" -> "Uw bestelling is afgegeven"
+            "Afgerond" -> "Uw bestelling is afgegeven. Dank u voor uw bestelling."
             else -> "Bestelling #$orderId heeft nu status: $status."
         }
         val intent = Intent(this, MainActivity::class.java).apply {
