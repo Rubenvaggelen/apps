@@ -48,7 +48,6 @@ struct LandingView: View {
             }
             .padding(.horizontal, 28)
             Spacer()
-            Text("Rutu BBQ • iOS testomgeving").font(.footnote).foregroundStyle(.secondary)
         }
         .padding(.vertical, 24).padding(.horizontal, 16) }
     }
