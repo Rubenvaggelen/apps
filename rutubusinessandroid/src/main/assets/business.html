@@ -23,7 +23,7 @@ button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:1
 <body>
 <header>
   <div><div class="brand">RUTU BBQ</div><div class="tag">Bedrijfsapp Android</div></div>
-  <div class="row"><button class="gray" onclick="openCodeModal()">Toegang</button><button id="count" class="badge" onclick="openOpenOrders()">0 nieuw</button></div>
+  <div class="row"><button class="gray" onclick="openKeyModal()">Koppeling</button><button id="count" class="badge" onclick="openOpenOrders()">0 nieuw</button></div>
 </header>
 <main class="wrap">
   <section class="hero"><div class="eyebrow">RUTU BBQ • BEDRIJF</div><h1>Jouw keuken. Alles in beeld.</h1><div id="connection" class="hint">Verbinden met online bestellingen…</div></section>
@@ -43,7 +43,7 @@ button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:1
 </main>
 
 <div class="order-modal" id="orderModal" onclick="if(event.target===this)closeOrderModal()"><div class="modal-card"><div class="modal-head"><h2 id="orderModalTitle">Openstaande bestellingen</h2><button class="gray" onclick="closeOrderModal()">Sluiten</button></div><div id="orderModalBody"></div></div></div>
-<div class="key-modal" id="keyModal"><div class="modal-card"><h2>Bedrijfscode</h2><p class="hint">Voer de vaste 4-cijferige bedrijfscode in.</p><input id="businessCode" class="key-input" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="4-cijferige code"><div id="keyResult" class="hint" style="margin-top:8px"></div><div class="row" style="margin-top:14px"><button class="gold" onclick="unlockBusiness()">Open bedrijfsapp</button></div></div></div>
+<div class="key-modal" id="keyModal"><div class="modal-card"><h2>Bedrijfsapp koppelen</h2><p class="hint">Voer de bedrijfsleutel één keer in. Deze wordt alleen op dit Android-apparaat opgeslagen en staat niet in de APK of Dev Hub.</p><input id="businessKey" class="key-input" type="password" autocomplete="off" placeholder="Bedrijfsleutel"><div id="keyResult" class="hint" style="margin-top:8px"></div><div class="row" style="margin-top:14px"><button class="gold" onclick="saveBusinessKey()">Opslaan en verbinden</button><button class="gray" onclick="closeKeyModal()">Annuleren</button></div></div></div>
 
 <script>
 const API='https://rubenvanaggelen.com/rutu-api/index.php';
