@@ -246,6 +246,7 @@ class MainActivity : AppCompatActivity() {
         val title = when (status) {
             "In bereiding" -> "Je bestelling wordt bereid"
             "Klaar" -> "Je bestelling is klaar"
+            "Bestelling is onderweg" -> "Uw bestelling is onderweg"
             "Afgerond" -> "Uw bestelling is afgegeven. Eet u smakelijk."
             "Uitverkocht" -> "Uitverkocht"
             "Geweigerd" -> "Bestelling geweigerd"
@@ -254,6 +255,7 @@ class MainActivity : AppCompatActivity() {
         }
         val message = when (status) {
             "Uitverkocht" -> "Bestelling #$orderId is helaas uitverkocht."
+            "Bestelling is onderweg" -> "Uw bestelling is onderweg."
             "Afgerond" -> "Uw bestelling is afgegeven. Eet u smakelijk."
             else -> "Bestelling #$orderId heeft nu status: $status."
         }
@@ -1016,7 +1018,8 @@ class MainActivity : AppCompatActivity() {
             if (admin) when (o.status) {
                 "Nieuw" -> { smallButton("Accepteren") { changeStatus(o, "In bereiding") }; smallButton("Weigeren") { changeStatus(o, "Geweigerd") } }
                 "In bereiding" -> smallButton("Klaar") { changeStatus(o, "Klaar") }
-                "Klaar", "Geweigerd", "Geannuleerd", "Uitverkocht" -> smallButton("Afronden") { changeStatus(o, "Afgerond") }
+                "Klaar" -> if (o.delivery) smallButton("Bestelling is onderweg") { changeStatus(o, "Bestelling is onderweg") } else smallButton("Afronden") { changeStatus(o, "Afgerond") }
+                "Bestelling is onderweg", "Geweigerd", "Geannuleerd", "Uitverkocht" -> smallButton("Afronden") { changeStatus(o, "Afgerond") }
             } else if (o.status !in listOf("Afgerond", "Geannuleerd", "Uitverkocht", "Geweigerd")) {
                 smallButton("Bestelling annuleren") { cancelOnlineOrder(o) }
             }

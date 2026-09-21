@@ -240,6 +240,7 @@ if ($action === 'add_items') {
     if ($updated === false) respond(403, ['ok' => false, 'error' => 'Bestelling kan niet worden geverifieerd.']);
     if ($updated === 'closed') respond(409, ['ok' => false, 'error' => 'Deze bestelling staat niet meer open.']);
     if ($updated === 'too_many') respond(409, ['ok' => false, 'error' => 'Het totale aantal van een product is te hoog.']);
+    if ($updated === 'delivery_required') respond(409, ['ok' => false, 'error' => 'Deze status is alleen beschikbaar voor bezorgbestellingen.']);
     if (!$updated) respond(404, ['ok' => false, 'error' => 'Bestelling niet gevonden.']);
     respond(200, ['ok' => true, 'order' => clean_order_for_customer($updated, false)]);
 }
@@ -410,7 +411,7 @@ if ($action === 'business_status') {
     $body = body_json();
     $id = (int)($body['id'] ?? 0);
     $status = trim((string)($body['status'] ?? ''));
-    $allowed = ['Nieuw', 'In bereiding', 'Klaar', 'Afgerond', 'Geweigerd', 'Geannuleerd', 'Uitverkocht'];
+    $allowed = ['Nieuw', 'In bereiding', 'Klaar', 'Bestelling is onderweg', 'Afgerond', 'Geweigerd', 'Geannuleerd', 'Uitverkocht'];
     if ($id <= 0 || !in_array($status, $allowed, true)) {
         respond(400, ['ok' => false, 'error' => 'Ongeldige statuswijziging.']);
     }
@@ -418,6 +419,7 @@ if ($action === 'business_status') {
     $updated = with_state($stateFile, true, function (&$state) use ($id, $status) {
         foreach ($state['orders'] as &$order) {
             if ((int)$order['id'] === $id) {
+                if ($status === 'Bestelling is onderweg' && empty($order['delivery'])) return 'delivery_required';
                 $order['status'] = $status;
                 return $order;
             }

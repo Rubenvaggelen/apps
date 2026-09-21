@@ -148,6 +148,7 @@ class OrderStatusService : Service() {
         val title = when (status) {
             "In bereiding" -> "Je bestelling wordt bereid"
             "Klaar" -> "Je bestelling is klaar"
+            "Bestelling is onderweg" -> "Uw bestelling is onderweg"
             "Afgerond" -> "Uw bestelling is afgegeven. Eet u smakelijk."
             "Uitverkocht" -> "Uitverkocht"
             "Geweigerd" -> "Bestelling geweigerd"
@@ -156,6 +157,7 @@ class OrderStatusService : Service() {
         }
         val message = when (status) {
             "Uitverkocht" -> "Bestelling #$orderId is helaas uitverkocht."
+            "Bestelling is onderweg" -> "Uw bestelling is onderweg."
             "Afgerond" -> "Uw bestelling is afgegeven. Eet u smakelijk."
             else -> "Bestelling #$orderId heeft nu status: $status."
         }
