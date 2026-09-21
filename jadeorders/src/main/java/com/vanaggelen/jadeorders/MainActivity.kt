@@ -162,6 +162,7 @@ class MainActivity : AppCompatActivity() {
         landing()
         ensureCustomerName()
         syncAnnouncement(true)
+        ensureBackgroundOrderStatusService()
         RutuUpdateChecker.checkForUpdate(this)
     }
 
@@ -238,6 +239,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun notifyOrderStatus(orderId: Int, status: String) {
+        val notificationPrefs = getSharedPreferences("rutu_notification_state", Context.MODE_PRIVATE)
+        val notificationKey = "order_$orderId"
+        if (notificationPrefs.getString(notificationKey, "") == status) return
+        notificationPrefs.edit().putString(notificationKey, status).apply()
         val title = when (status) {
             "In bereiding" -> "Je bestelling wordt bereid"
             "Klaar" -> "Je bestelling is klaar"
@@ -278,6 +283,15 @@ class MainActivity : AppCompatActivity() {
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.notify(12000 + orderId, builder.build())
         }
+    }
+
+    private fun ensureBackgroundOrderStatusService() {
+        val finalStatuses = setOf("Afgerond", "Geannuleerd", "Uitverkocht", "Geweigerd")
+        val hasTrackedOrder = Store.all(this).any { it.trackingToken.isNotBlank() && it.status !in finalStatuses }
+        if (!hasTrackedOrder) return
+        val serviceIntent = Intent(this, OrderStatusService::class.java)
+        if (Build.VERSION.SDK_INT >= 26) ContextCompat.startForegroundService(this, serviceIntent)
+        else startService(serviceIntent)
     }
 
     private fun startNearbyForRole() = when (role) {
@@ -550,6 +564,7 @@ class MainActivity : AppCompatActivity() {
                     o.optBoolean("delivery", delivery), o.optString("address", address.trim()), o.optString("postcode", normalizedPostcode(postcode)), o.optDouble("delivery_fee", 0.0)
                 )
                 Store.upsert(this, order)
+                ensureBackgroundOrderStatusService()
                 onlineAvailable = true
                 onlineText = "Online bestellen actief • bestelling ontvangen"
                 runOnUiThread {
@@ -592,6 +607,7 @@ class MainActivity : AppCompatActivity() {
                     o.optBoolean("delivery", order.delivery), o.optString("address", order.address), o.optString("postcode", order.postcode), o.optDouble("delivery_fee", order.deliveryFee)
                 )
                 Store.upsert(this, updated)
+                ensureBackgroundOrderStatusService()
                 onlineAvailable = true
                 onlineText = "Online bestellen actief • toevoeging ontvangen"
                 runOnUiThread {
