@@ -302,6 +302,7 @@ app.whenReady().then(() => {
     if (cloudConfig) await syncCloudOrders();
     return { port: API_PORT, addresses: localAddresses(), online: cloudOnline, cloudConfigured: Boolean(cloudConfig), cloudApi: cloudConfig ? cloudConfig.apiBase : DEFAULT_CLOUD_API };
   });
+  ipcMain.handle('save-business-key', async (_event, value) => saveBusinessKey(value));
   ipcMain.handle('get-orders', async () => {
     loadCloudConfig();
     if (cloudConfig) await syncCloudOrders();
