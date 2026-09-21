@@ -20,16 +20,7 @@ final class RutuStore: ObservableObject {
     @Published var cart: [String: Int] = [:]
     @Published var orders: [RutuOrder] = []
 
-    let products: [Product] = [
-        .init(name: "Teriyaki Chicken", price: 12.50, category: "BBQ"),
-        .init(name: "The Emperor Burger", price: 14.95, category: "BBQ"),
-        .init(name: "Nasi Special", price: 11.50, category: "Meals"),
-        .init(name: "Roti Kip", price: 13.50, category: "Meals"),
-        .init(name: "Friet groot", price: 4.25, category: "Sides"),
-        .init(name: "Ube Cheesecake", price: 6.95, category: "Dessert"),
-        .init(name: "Cola", price: 2.75, category: "Drinks"),
-        .init(name: "Iced Tea", price: 2.75, category: "Drinks")
-    ]
+    let products: [Product] = []
 
     init() { load() }
 
