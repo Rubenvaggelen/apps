@@ -21,3 +21,6 @@ button{min-height:46px;padding:12px 18px;border:1px solid transparent;border-rad
 .order-modal-head{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:16px}.order-modal-head h2{margin:0}.modal-close{min-height:38px;padding:8px 12px}
 .modal-meta{color:var(--muted);font-size:13px;margin-bottom:16px}.modal-items{display:flex;flex-direction:column;gap:7px}.modal-line{padding:9px 0;border-bottom:1px solid var(--line)}
 .modal-total{display:flex;justify-content:space-between;gap:18px;margin-top:18px;padding-top:16px;border-top:1px solid var(--line);font-size:20px}.modal-total b{color:var(--gold)}.modal-status{margin-top:14px;color:var(--light);font-weight:700}
+
+.badge-button{font:600 15px "Segoe UI",sans-serif;min-height:0;cursor:pointer}.badge-button:hover{filter:brightness(1.15)}
+.open-orders-list{display:flex;flex-direction:column;gap:14px}.order-modal[data-mode="open-orders"] .order-modal-card{width:min(900px,100%)}
