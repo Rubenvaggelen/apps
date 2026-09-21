@@ -905,7 +905,7 @@ class MainActivity : AppCompatActivity() {
         announcementCard()
         button("Bekijk het menu") { enterCustomer() }
 
-        spacer(20); centered("Android • Rutu BBQ", 12f, Color.rgb(189, 178, 161))
+        spacer(20)
         watchEatWellBanner()
     }
 
