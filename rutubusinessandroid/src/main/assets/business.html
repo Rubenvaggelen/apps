@@ -51,7 +51,7 @@ let orders=[];
 const money=n=>new Intl.NumberFormat('nl-NL',{style:'currency',currency:'EUR'}).format(Number(n||0));
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const openStatuses=o=>!['Afgerond','Geweigerd','Geannuleerd','Uitverkocht'].includes(o.status);
-function key(){return localStorage.getItem('rutu_business_key')||''}
+let sessionCode=''
 async function api(action,method='GET',body=null){
   if(!key()) throw new Error('Bedrijfsleutel ontbreekt');
   const u=new URL(API);u.searchParams.set('action',action);
