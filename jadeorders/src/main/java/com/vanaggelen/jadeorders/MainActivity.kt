@@ -64,6 +64,9 @@ class MainActivity : AppCompatActivity() {
     private var connectionText = "Niet verbonden"
     private var pendingStart = false
     private var screen = "landing"
+    private var renderedScreen = ""
+    private var activeScroll: ScrollView? = null
+    private val scrollPositions = mutableMapOf<String, Int>()
     private val serviceId by lazy { "$packageName.rutubbq.v1" }
 
     private fun normalizedPostcode(value: String): String = value.uppercase(Locale.ROOT).replace(" ", "")
@@ -475,7 +478,7 @@ class MainActivity : AppCompatActivity() {
                     deliveryAddress = ""
                     deliveryPostcode = ""
                     toast("Bestelling #${order.id} is ontvangen door Rutu BBQ ✓")
-                    myOrders(false)
+                    cartScreen()
                 }
             } catch (_: Exception) {
                 onlineAvailable = false
@@ -601,7 +604,7 @@ class MainActivity : AppCompatActivity() {
         (products.firstOrNull { it.name == name }?.price ?: 0.0) * qty
     }
 
-    private fun openOrders(): List<Order> = Store.all(this).filter { it.status != "Afgerond" }
+    private fun openOrders(): List<Order> = Store.all(this).filter { it.status !in listOf("Afgerond", "Geannuleerd", "Uitverkocht", "Geweigerd") }
 
     private fun openOrdersTotal(): Double = openOrders()
         .filter { it.status !in listOf("Geannuleerd", "Uitverkocht", "Geweigerd") }
@@ -610,6 +613,9 @@ class MainActivity : AppCompatActivity() {
     private fun openOrdersItemCount(): Int = openOrders().sumOf { order -> order.items.values.sum() }
 
     private fun page(showCartBar: Boolean = false) {
+        activeScroll?.let { scroll ->
+            if (renderedScreen.isNotBlank()) scrollPositions[renderedScreen] = scroll.scrollY
+        }
         val shell = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.rgb(9, 8, 7))
@@ -620,6 +626,9 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(Color.rgb(9, 8, 7))
         }
         val scroll = ScrollView(this).apply { addView(root) }
+        activeScroll = scroll
+        val restoreY = scrollPositions[screen] ?: 0
+        renderedScreen = screen
         shell.addView(
             scroll,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
@@ -656,6 +665,7 @@ class MainActivity : AppCompatActivity() {
             )
         }
         setContentView(shell)
+        if (restoreY > 0) scroll.post { scroll.scrollTo(0, restoreY) }
     }
 
     private fun landing() {
