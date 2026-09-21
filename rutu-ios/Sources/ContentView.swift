@@ -98,6 +98,7 @@ struct ProductCard: View {
             }.frame(width: 72, height: 72)
             VStack(alignment: .leading, spacing: 5) {
                 Text(product.name).font(.headline).fixedSize(horizontal: false, vertical: true)
+                Text(product.description).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Text(product.category).font(.caption).foregroundStyle(.secondary)
                 Text(product.price, format: .currency(code: "EUR")).font(.subheadline.bold()).foregroundStyle(rutuGoldLight)
             }
