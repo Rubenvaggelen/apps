@@ -140,6 +140,24 @@ function loadCloudConfig() {
   cloudConfig = null;
 }
 
+async function saveBusinessKey(value) {
+  const valueText = String(value || '').trim();
+  if (!valueText) throw new Error('Vul de bedrijfskey in.');
+  const previous = cloudConfig;
+  cloudConfig = { apiBase: DEFAULT_CLOUD_API, businessKey: valueText };
+  try {
+    await cloudRequest('business_orders');
+    const file = businessConfigPath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(cloudConfig, null, 2), 'utf8');
+    await syncCloudOrders();
+    return { ok: true };
+  } catch (error) {
+    cloudConfig = previous;
+    throw new Error('De bedrijfskey is niet geldig of de server is niet bereikbaar.');
+  }
+}
+
 async function cloudRequest(action, method = 'GET', body = null) {
   if (!cloudConfig) throw new Error('Rutu business config ontbreekt');
   const url = new URL(cloudConfig.apiBase);
