@@ -820,7 +820,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         eatWellBannerVisible = true
-        hero("Eet smakelijk!", "Uw bezorgbestelling is afgegeven.")
+        hero("Eet smakelijk!", "Uw bestelling is afgegeven.")
         uiHandler.removeCallbacks(eatWellBannerRefresh)
         uiHandler.postDelayed(eatWellBannerRefresh, remaining + 150L)
     }
