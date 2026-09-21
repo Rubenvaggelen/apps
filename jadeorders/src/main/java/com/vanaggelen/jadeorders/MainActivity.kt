@@ -713,7 +713,7 @@ class MainActivity : AppCompatActivity() {
         if (openOrders.isNotEmpty()) {
             section("Openstaande bestellingen")
             openOrders.forEach { orderView(it, false) }
-            section("Openstaand totaal  ${money.format(openOrders.sumOf { it.total })}")
+            section("Openstaand totaal  ${money.format(openOrdersTotal())}")
         }
         if (cart.isEmpty()) {
             if (openOrders.isEmpty()) hero("Je winkelmand is leeg", "Voeg eerst iets lekkers toe.")
