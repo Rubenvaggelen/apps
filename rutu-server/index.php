@@ -116,7 +116,9 @@ function clean_order_for_business(array $order): array {
     return $out;
 }
 
-$catalog = [];
+$catalog = [
+    'BBQ Regular' => 10.00
+];
 
 $action = (string)($_GET['action'] ?? 'health');
 
