@@ -237,8 +237,20 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun notifyOutOfStock(orderId: Int) {
-        val message = "Bestelling #$orderId is helaas uitverkocht."
+    private fun notifyOrderStatus(orderId: Int, status: String) {
+        val title = when (status) {
+            "In bereiding" -> "Je bestelling wordt bereid"
+            "Klaar" -> "Je bestelling is klaar"
+            "Afgerond" -> "Je bestelling is afgerond"
+            "Uitverkocht" -> "Uitverkocht"
+            "Geweigerd" -> "Bestelling geweigerd"
+            "Geannuleerd" -> "Bestelling geannuleerd"
+            else -> "Bestelupdate"
+        }
+        val message = when (status) {
+            "Uitverkocht" -> "Bestelling #$orderId is helaas uitverkocht."
+            else -> "Bestelling #$orderId heeft nu status: $status."
+        }
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
@@ -253,8 +265,8 @@ class MainActivity : AppCompatActivity() {
             android.app.Notification.Builder(this)
         }
         builder
-            .setSmallIcon(android.R.drawable.ic_dialog_alert)
-            .setContentTitle("Uitverkocht")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(title)
             .setContentText(message)
             .setStyle(android.app.Notification.BigTextStyle().bigText(message))
             .setAutoCancel(true)
@@ -265,16 +277,6 @@ class MainActivity : AppCompatActivity() {
         ) {
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.notify(12000 + orderId, builder.build())
-        }
-
-        if (appInForeground) runOnUiThread {
-            if (!isFinishing && !isDestroyed) {
-                AlertDialog.Builder(this)
-                    .setTitle("Uitverkocht")
-                    .setMessage(message)
-                    .setPositiveButton("OK", null)
-                    .show()
-            }
         }
     }
 
@@ -346,8 +348,8 @@ class MainActivity : AppCompatActivity() {
                         val id = json.getInt("id"); val status = json.getString("status")
                         val previous = Store.all(this@MainActivity).firstOrNull { it.id == id }?.status
                         Store.status(this@MainActivity, id, status)
-                        if (status == "Uitverkocht" && previous != status) notifyOutOfStock(id)
-                        runOnUiThread { if (status != "Uitverkocht") toast("Bestelling #$id: $status"); if (screen == "orders") myOrders(false) }
+                        if (previous != null && previous != status) notifyOrderStatus(id, status)
+                        runOnUiThread { toast("Bestelling #$id: $status"); if (screen == "orders") myOrders(false) }
                     }
                 }
             } catch (_: Exception) { runOnUiThread { toast("Bericht kon niet worden gelezen") } }
@@ -461,7 +463,7 @@ class MainActivity : AppCompatActivity() {
                     val local = Store.all(this).firstOrNull { it.id == id }
                     if (local != null && local.status != status) {
                         Store.status(this, id, status)
-                        if (status == "Uitverkocht") notifyOutOfStock(id)
+                        notifyOrderStatus(id, status)
                         changed = true
                     }
                 }
@@ -656,12 +658,13 @@ class MainActivity : AppCompatActivity() {
                     if (code == 200) {
                         reachedServer = true
                         val status = JSONObject(raw).optJSONObject("order")?.optString("status").orEmpty()
-                        if (status == "Afgerond") {
+                        if (status == "Afgerond" && status != order.status) {
+                            notifyOrderStatus(order.id, status)
                             Store.remove(this, order.id)
                             changed = true
                         } else if (status.isNotBlank() && status != order.status) {
                             Store.status(this, order.id, status)
-                            if (status == "Uitverkocht") notifyOutOfStock(order.id)
+                            notifyOrderStatus(order.id, status)
                             changed = true
                         }
                     }
