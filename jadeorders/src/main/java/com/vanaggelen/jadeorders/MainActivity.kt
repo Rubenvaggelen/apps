@@ -158,6 +158,9 @@ class MainActivity : AppCompatActivity() {
         nearby = Nearby.getConnectionsClient(this)
         createOrderNotificationChannel()
         windowsHost = getSharedPreferences("rutu_windows", Context.MODE_PRIVATE).getString("host", "") ?: ""
+        screen = "landing"
+        renderedScreen = ""
+        scrollPositions.clear()
         landing()
         ensureCustomerName()
         syncAnnouncement(true)
