@@ -18,10 +18,17 @@ class MainActivity : Activity() {
             settings.allowFileAccess = true
             settings.allowFileAccessFromFileURLs = true
             settings.allowUniversalAccessFromFileURLs = true
-            webViewClient = WebViewClient()
+            webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView, url: String) {
+                    super.onPageFinished(view, url)
+                    view.clearHistory()
+                    view.scrollTo(0, 0)
+                }
+            }
         }
         setContentView(webView)
         webView.loadUrl("file:///android_asset/business.html")
+        webView.post { webView.scrollTo(0, 0) }
     }
 
     @Deprecated("Deprecated in Android SDK")
