@@ -66,7 +66,7 @@ jobs:
           stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'mktemp -d "$HOME/.rutu-update.XXXXXXXX"')
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$exe" "$remote:$stage/Rutu-BBQ-Windows.exe"
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$meta" "$remote:$stage/windows.json"
-          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "mkdir -p ~/public_html/rutu-updates && mv '$stage/Rutu-BBQ-Windows.exe' ~/public_html/rutu-updates/Rutu-BBQ-Windows.exe && mv '$stage/windows.json' ~/public_html/rutu-updates/windows.json && rmdir '$stage'"
+          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "mkdir -p ~/public_html/rutu-updates ~/dev.vanaggelen.com/rutu-downloads && cp '$stage/Rutu-BBQ-Windows.exe' ~/public_html/rutu-updates/Rutu-BBQ-Windows.exe && mv '$stage/Rutu-BBQ-Windows.exe' ~/dev.vanaggelen.com/rutu-downloads/Rutu-BBQ-Bedrijf-Windows.exe && mv '$stage/windows.json' ~/public_html/rutu-updates/windows.json && chmod 644 ~/public_html/rutu-updates/Rutu-BBQ-Windows.exe ~/public_html/rutu-updates/windows.json ~/dev.vanaggelen.com/rutu-downloads/Rutu-BBQ-Bedrijf-Windows.exe && rmdir '$stage'"
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
