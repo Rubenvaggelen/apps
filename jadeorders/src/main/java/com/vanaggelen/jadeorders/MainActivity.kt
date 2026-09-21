@@ -465,6 +465,44 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    private fun cancelOnlineOrder(order: Order) {
+        if (order.trackingToken.isBlank()) {
+            toast("Deze bestelling kan niet online worden geannuleerd.")
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Bestelling #${order.id} annuleren?")
+            .setMessage("Weet je zeker dat je deze bestelling wilt annuleren?")
+            .setNegativeButton("Nee", null)
+            .setPositiveButton("Ja, annuleren") { _, _ ->
+                Thread {
+                    try {
+                        val payload = JSONObject()
+                            .put("id", order.id)
+                            .put("tracking", order.trackingToken)
+                        val (code, raw) = onlineJson("POST", "cancel", payload)
+                        val json = JSONObject(raw)
+                        if (code in 200..299 && json.optBoolean("ok")) {
+                            Store.status(this, order.id, "Geannuleerd")
+                            runOnUiThread {
+                                toast("Bestelling #${order.id} is geannuleerd.")
+                                when (screen) {
+                                    "orders" -> myOrders(false)
+                                    "cart" -> cartScreen()
+                                    "customer" -> renderCustomer()
+                                }
+                            }
+                        } else {
+                            runOnUiThread { toast(json.optString("error", "Annuleren is niet gelukt.")) }
+                        }
+                    } catch (_: Exception) {
+                        runOnUiThread { toast("Annuleren is nu niet gelukt. Probeer het opnieuw.") }
+                    }
+                }.start()
+            }
+            .show()
+    }
+
     private fun syncOnlineStatuses() {
         val tracked = Store.all(this).filter { it.trackingToken.isNotBlank() }
         if (tracked.isEmpty()) return
@@ -545,7 +583,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun openOrders(): List<Order> = Store.all(this).filter { it.status != "Afgerond" }
 
-    private fun openOrdersTotal(): Double = openOrders().sumOf { it.total }
+    private fun openOrdersTotal(): Double = openOrders()
+        .filter { it.status !in listOf("Geannuleerd", "Uitverkocht", "Geweigerd") }
+        .sumOf { it.total }
 
     private fun openOrdersItemCount(): Int = openOrders().sumOf { order -> order.items.values.sum() }
 
@@ -722,7 +762,9 @@ class MainActivity : AppCompatActivity() {
             if (admin) when (o.status) {
                 "Nieuw" -> { smallButton("Accepteren") { changeStatus(o, "In bereiding") }; smallButton("Weigeren") { changeStatus(o, "Geweigerd") } }
                 "In bereiding" -> smallButton("Klaar") { changeStatus(o, "Klaar") }
-                "Klaar" -> smallButton("Afronden") { changeStatus(o, "Afgerond") }
+                "Klaar", "Geweigerd", "Geannuleerd", "Uitverkocht" -> smallButton("Afronden") { changeStatus(o, "Afgerond") }
+            } else if (o.status !in listOf("Afgerond", "Geannuleerd", "Uitverkocht", "Geweigerd")) {
+                smallButton("Bestelling annuleren") { cancelOnlineOrder(o) }
             }
         }
     }

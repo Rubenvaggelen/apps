@@ -197,6 +197,31 @@ if ($action === 'status') {
     respond(200, ['ok' => true, 'order' => clean_order_for_customer($order, false)]);
 }
 
+if ($action === 'cancel') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => 'POST vereist.']);
+    $body = body_json();
+    $id = (int)($body['id'] ?? 0);
+    $tracking = trim((string)($body['tracking'] ?? ''));
+    if ($id <= 0 || $tracking === '') respond(400, ['ok' => false, 'error' => 'Bestelgegevens ontbreken.']);
+
+    $updated = with_state($stateFile, true, function (&$state) use ($id, $tracking) {
+        foreach ($state['orders'] as &$order) {
+            if ((int)$order['id'] !== $id) continue;
+            if (!hash_equals((string)($order['tracking'] ?? ''), $tracking)) return false;
+            if ((string)($order['status'] ?? '') === 'Afgerond') return 'closed';
+            if (in_array((string)($order['status'] ?? ''), ['Geannuleerd', 'Uitverkocht'], true)) return $order;
+            $order['status'] = 'Geannuleerd';
+            return $order;
+        }
+        return null;
+    });
+
+    if ($updated === false) respond(403, ['ok' => false, 'error' => 'Bestelling kan niet worden geverifieerd.']);
+    if ($updated === 'closed') respond(409, ['ok' => false, 'error' => 'Deze bestelling is al afgerond.']);
+    if (!$updated) respond(404, ['ok' => false, 'error' => 'Bestelling niet gevonden.']);
+    respond(200, ['ok' => true, 'order' => clean_order_for_customer($updated, false)]);
+}
+
 if ($action === 'announcement') {
     $announcement = with_state($stateFile, false, function ($state) {
         $a = $state['announcement'] ?? ['title'=>'','message'=>'','from'=>'','until'=>'','active'=>false,'updated'=>''];
@@ -323,7 +348,7 @@ if ($action === 'business_status') {
     $body = body_json();
     $id = (int)($body['id'] ?? 0);
     $status = trim((string)($body['status'] ?? ''));
-    $allowed = ['Nieuw', 'In bereiding', 'Klaar', 'Afgerond', 'Geweigerd'];
+    $allowed = ['Nieuw', 'In bereiding', 'Klaar', 'Afgerond', 'Geweigerd', 'Geannuleerd', 'Uitverkocht'];
     if ($id <= 0 || !in_array($status, $allowed, true)) {
         respond(400, ['ok' => false, 'error' => 'Ongeldige statuswijziging.']);
     }
