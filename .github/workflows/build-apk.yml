@@ -58,7 +58,8 @@ jobs:
           for APK in \
             "app/build/outputs/apk/debug/app-debug.apk" \
             "carradio/build/outputs/apk/debug/carradio-debug.apk" \
-            "jadeorders/build/outputs/apk/debug/jadeorders-debug.apk"; do
+            "jadeorders/build/outputs/apk/debug/jadeorders-debug.apk" \
+            "rutubusinessandroid/build/outputs/apk/debug/rutubusinessandroid-debug.apk"; do
             APK_CERT=$($APKSIGNER verify --print-certs "$APK" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1 | tr -d ':' | tr '[:upper:]' '[:lower:]')
             test -n "$KEY_CERT" && test -n "$APK_CERT" && test "$KEY_CERT" = "$APK_CERT"
           done
@@ -80,6 +81,12 @@ jobs:
         with:
           name: jade-orders-apk
           path: jadeorders/build/outputs/apk/debug/jadeorders-debug.apk
+
+      - name: Upload Rutu Business Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rutu-business-android-apk
+          path: rutubusinessandroid/build/outputs/apk/debug/rutubusinessandroid-debug.apk
 
       - name: Publish Rutu Android in-app update
         if: github.ref == 'refs/heads/feature/jade-orders'
@@ -126,5 +133,6 @@ jobs:
             app/build/outputs/apk/debug/app-debug.apk
             carradio/build/outputs/apk/debug/carradio-debug.apk
             jadeorders/build/outputs/apk/debug/jadeorders-debug.apk
+            rutubusinessandroid/build/outputs/apk/debug/rutubusinessandroid-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
