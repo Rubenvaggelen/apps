@@ -163,6 +163,7 @@ class MainActivity : AppCompatActivity() {
         ensureCustomerName()
         syncAnnouncement(true)
         ensureBackgroundOrderStatusService()
+        syncOnlineStatuses()
         RutuUpdateChecker.checkForUpdate(this)
     }
 
@@ -170,6 +171,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         appInForeground = true
         syncAnnouncement(true)
+        syncOnlineStatuses()
         if (role == Role.CUSTOMER) {
             uiHandler.removeCallbacks(onlinePoller)
             uiHandler.post(onlinePoller)
@@ -184,6 +186,8 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         uiHandler.removeCallbacks(windowsPoller)
         uiHandler.removeCallbacks(onlinePoller)
+        uiHandler.removeCallbacks(eatWellBannerWatch)
+        uiHandler.removeCallbacks(eatWellBannerRefresh)
         nearby.stopAllEndpoints(); nearby.stopAdvertising(); nearby.stopDiscovery()
         super.onDestroy()
     }
@@ -697,6 +701,7 @@ class MainActivity : AppCompatActivity() {
             }
             if (changed) runOnUiThread {
                 when (screen) {
+                    "landing" -> landing()
                     "orders" -> myOrders(false)
                     "cart" -> cartScreen()
                     "customer" -> renderCustomer()
@@ -748,8 +753,30 @@ class MainActivity : AppCompatActivity() {
 
     private val finalCustomerStatuses = setOf("Afgerond", "Geannuleerd", "Uitverkocht", "Geweigerd")
     private val eatWellBannerRefresh = Runnable {
-        if (role == Role.CUSTOMER && (screen == "landing" || screen == "customer")) {
+        if (screen == "landing" || screen == "customer") {
             if (screen == "landing") landing() else renderCustomer()
+        }
+    }
+
+    private var eatWellBannerVisible = false
+    private val eatWellBannerWatch = object : Runnable {
+        override fun run() {
+            if (screen != "landing" && screen != "customer") return
+            val until = getSharedPreferences("rutu_customer_banner", Context.MODE_PRIVATE)
+                .getLong("eat_well_until", 0L)
+            val active = until > System.currentTimeMillis()
+            if (active != eatWellBannerVisible) {
+                if (screen == "landing") landing() else renderCustomer()
+                return
+            }
+            uiHandler.postDelayed(this, 1000L)
+        }
+    }
+
+    private fun watchEatWellBanner() {
+        uiHandler.removeCallbacks(eatWellBannerWatch)
+        if (screen == "landing" || screen == "customer") {
+            uiHandler.postDelayed(eatWellBannerWatch, 1000L)
         }
     }
 
@@ -767,9 +794,11 @@ class MainActivity : AppCompatActivity() {
         val until = prefs.getLong("eat_well_until", 0L)
         val remaining = until - System.currentTimeMillis()
         if (remaining <= 0L) {
+            eatWellBannerVisible = false
             if (until > 0L) prefs.edit().remove("eat_well_until").apply()
             return
         }
+        eatWellBannerVisible = true
         hero("Eet smakelijk!", "Uw bezorgbestelling is afgegeven.")
         uiHandler.removeCallbacks(eatWellBannerRefresh)
         uiHandler.postDelayed(eatWellBannerRefresh, remaining + 150L)
@@ -784,6 +813,7 @@ class MainActivity : AppCompatActivity() {
     private fun openOrdersItemCount(): Int = openOrders().sumOf { order -> order.items.values.sum() }
 
     private fun page(showCartBar: Boolean = false) {
+        uiHandler.removeCallbacks(eatWellBannerWatch)
         activeScroll?.let { scroll ->
             if (renderedScreen.isNotBlank()) scrollPositions[renderedScreen] = scroll.scrollY
         }
@@ -851,6 +881,7 @@ class MainActivity : AppCompatActivity() {
         button("Bekijk het menu") { enterCustomer() }
 
         spacer(20); centered("Android • Rutu BBQ", 12f, Color.rgb(189, 178, 161))
+        watchEatWellBanner()
     }
 
     private fun enterCustomer() {
@@ -909,6 +940,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         button("🧾 Mijn bestellingen", secondary = true) { myOrders() }
+        watchEatWellBanner()
     }
 
     private fun cartScreen() {
