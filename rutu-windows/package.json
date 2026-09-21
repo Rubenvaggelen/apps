@@ -1,6 +1,6 @@
 {
   "name": "rutu-bbq-windows-simulator",
-  "version": "0.4.18",
+  "version": "0.4.19",
   "description": "Rutu BBQ Windows business environment with live orders, customer updates and automatic app updates",
   "main": "main.js",
   "author": "Rutu BBQ",
