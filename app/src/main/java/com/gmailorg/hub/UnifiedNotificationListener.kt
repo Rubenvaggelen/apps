@@ -11,6 +11,12 @@ import java.io.File
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
+data class CarMediaSource(
+    val uri: Uri?,
+    val mime: String?,
+    val cachedPath: String? = null
+)
+
 /**
  * Vangt meldingen op van alle apps voor The One op de telefoon.
  * Voor de autoradio wordt alleen WhatsApp doorgestuurd, met een optionele allow-list.
@@ -20,12 +26,10 @@ class UnifiedNotificationListener : NotificationListenerService() {
     companion object {
         private val replyActions = ConcurrentHashMap<String, Pair<PendingIntent, RemoteInput>>()
         private val whatsAppReplyKeyByConversation = ConcurrentHashMap<String, String>()
-        private val voiceNoteSources = ConcurrentHashMap<String, VoiceNoteSource>()
-        private val imageSources = ConcurrentHashMap<String, VoiceNoteSource>()
+        private val voiceNoteSources = ConcurrentHashMap<String, CarMediaSource>()
+        private val imageSources = ConcurrentHashMap<String, CarMediaSource>()
         private val voiceNotePlayActions = ConcurrentHashMap<String, PendingIntent>()
         private val voiceNoteContentIntents = ConcurrentHashMap<String, PendingIntent>()
-
-        data class VoiceNoteSource(val uri: Uri?, val mime: String?, val cachedPath: String? = null)
 
         @Volatile
         var lastWhatsAppReplyKey: String? = null
@@ -92,13 +96,13 @@ class UnifiedNotificationListener : NotificationListenerService() {
             return whatsAppReplyKeyByConversation.containsKey(wanted)
         }
 
-        fun voiceNoteSourceForConversation(title: String): VoiceNoteSource? =
+        fun voiceNoteSourceForConversation(title: String): CarMediaSource? =
             voiceNoteSources[conversationKey(title)]
 
-        fun imageSourceForConversation(title: String): VoiceNoteSource? =
+        fun imageSourceForConversation(title: String): CarMediaSource? =
             imageSources[conversationKey(title)]
 
-        fun mediaSourceForConversation(title: String): VoiceNoteSource? {
+        fun mediaSourceForConversation(title: String): CarMediaSource? {
             val key = conversationKey(title)
             return imageSources[key] ?: voiceNoteSources[key]
         }
@@ -332,7 +336,7 @@ class UnifiedNotificationListener : NotificationListenerService() {
                     }
                 }
                 if (file.exists() && file.length() > 0L) {
-                    val cached = VoiceNoteSource(uri, mime, file.absolutePath)
+                    val cached = CarMediaSource(uri, mime, file.absolutePath)
                     if (image) imageSources[key] = cached else voiceNoteSources[key] = cached
                 }
                 // Houd cache begrensd: oude media uit eerdere ritten mag weg.
@@ -427,11 +431,11 @@ class UnifiedNotificationListener : NotificationListenerService() {
                         mediaMimeHint = mime
                         if (uri != null) {
                             if (mime.startsWith("audio/")) {
-                                voiceNoteSources[key] = VoiceNoteSource(uri, mime)
+                                voiceNoteSources[key] = CarMediaSource(uri, mime)
                                 cacheWhatsAppMedia(key, uri, mime, image = false)
                                 sbn.notification.contentIntent?.let { voiceNoteContentIntents[key] = it }
                             } else if (mime.startsWith("image/")) {
-                                imageSources[key] = VoiceNoteSource(uri, mime)
+                                imageSources[key] = CarMediaSource(uri, mime)
                                 cacheWhatsAppMedia(key, uri, mime, image = true)
                             }
                         }
