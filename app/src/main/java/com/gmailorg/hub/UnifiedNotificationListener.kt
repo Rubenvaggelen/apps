@@ -37,6 +37,7 @@ class UnifiedNotificationListener : NotificationListenerService() {
         private val imageSources = ConcurrentHashMap<String, CarMediaSource>()
         private val voiceNotePlayActions = ConcurrentHashMap<String, PendingIntent>()
         private val voiceNoteContentIntents = ConcurrentHashMap<String, PendingIntent>()
+        private val prefetchedMediaTokens = ConcurrentHashMap.newKeySet<String>()
 
         @Volatile
         var lastWhatsAppReplyKey: String? = null
@@ -333,7 +334,7 @@ class UnifiedNotificationListener : NotificationListenerService() {
         }
     }
 
-    private fun cacheWhatsAppMedia(keys: Set<String>, uri: Uri, mime: String, image: Boolean) {
+    private fun cacheWhatsAppMedia(keys: Set<String>, uri: Uri, mime: String, image: Boolean, contact: String) {
         if (keys.isEmpty()) return
         val direct = CarMediaSource(uri, mime)
         keys.forEach { key ->
@@ -379,12 +380,59 @@ class UnifiedNotificationListener : NotificationListenerService() {
                     keys.forEach { key ->
                         if (image) imageSources[key] = cached else voiceNoteSources[key] = cached
                     }
+                    prefetchMediaToCar(contact, cached)
                 }
                 dir.listFiles()?.sortedByDescending { it.lastModified() }?.drop(30)?.forEach { runCatching { it.delete() } }
             } catch (_: Exception) {
                 // Directe URI blijft als fallback staan zolang WhatsApp hem toestaat.
             }
         }.start()
+    }
+
+    private fun prefetchMediaToCar(contact: String, source: CarMediaSource) {
+        if (contact.isBlank()) return
+        val token = contact.lowercase(Locale.ROOT) + "|" +
+            (source.cachedPath ?: source.uri?.toString().orEmpty())
+        if (token.endsWith("|") || !prefetchedMediaTokens.add(token)) return
+        Thread {
+            try {
+                // Eerst WA_MSG laten aankomen, daarna de bytes stil aan dezelfde chat hangen.
+                Thread.sleep(650L)
+                if (!CarRadioConnectionService.isRadioConnected()) return@Thread
+                val bytes = readMediaSourceForPrefetch(source, 20_000_000) ?: return@Thread
+                if (bytes.isEmpty()) return@Thread
+                CarRadioConnectionService.sendMediaBytes(
+                    contact,
+                    source.mime ?: "application/octet-stream",
+                    bytes,
+                    autoPresent = false
+                )
+            } catch (_: Exception) {
+            }
+        }.start()
+    }
+
+    private fun readMediaSourceForPrefetch(source: CarMediaSource, maxBytes: Int): ByteArray? {
+        try {
+            source.cachedPath?.takeIf { it.isNotBlank() }?.let { path ->
+                val file = File(path)
+                if (file.exists() && file.length() in 1..maxBytes.toLong()) return file.readBytes()
+            }
+            val uri = source.uri ?: return null
+            return contentResolver.openInputStream(uri)?.use { input ->
+                val out = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(32 * 1024)
+                while (out.size() <= maxBytes) {
+                    val read = input.read(buffer)
+                    if (read <= 0) break
+                    if (out.size() + read > maxBytes) return@use null
+                    out.write(buffer, 0, read)
+                }
+                out.toByteArray()
+            }
+        } catch (_: Exception) {
+            return null
+        }
     }
 
     private fun notificationConversationKeys(extras: android.os.Bundle, fallbackTitle: String): LinkedHashSet<String> {
@@ -437,7 +485,7 @@ class UnifiedNotificationListener : NotificationListenerService() {
         }
     }
 
-    private fun cachePictureExtra(extras: android.os.Bundle, keys: Set<String>): Boolean {
+    private fun cachePictureExtra(extras: android.os.Bundle, keys: Set<String>, contact: String): Boolean {
         val value = runCatching { extras.get(Notification.EXTRA_PICTURE) }.getOrNull() ?: return false
         val bitmap = when (value) {
             is Bitmap -> value
@@ -459,6 +507,7 @@ class UnifiedNotificationListener : NotificationListenerService() {
             file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 92, it) }
             val source = CarMediaSource(null, "image/jpeg", file.absolutePath)
             keys.forEach { imageSources[it] = source }
+            prefetchMediaToCar(contact, source)
             true
         } catch (_: Exception) {
             false
@@ -555,11 +604,11 @@ class UnifiedNotificationListener : NotificationListenerService() {
                             when {
                                 mime.startsWith("audio/") -> {
                                     mediaMimeHint = mime
-                                    cacheWhatsAppMedia(keys, uri, mime, image = false)
+                                    cacheWhatsAppMedia(keys, uri, mime, image = false, contact = title)
                                 }
                                 mime.startsWith("image/") -> {
                                     mediaMimeHint = mime
-                                    cacheWhatsAppMedia(keys, uri, mime, image = true)
+                                    cacheWhatsAppMedia(keys, uri, mime, image = true, contact = title)
                                 }
                             }
                         }
@@ -575,19 +624,19 @@ class UnifiedNotificationListener : NotificationListenerService() {
                 when {
                     mime.startsWith("audio/") -> {
                         mediaMimeHint = mime
-                        cacheWhatsAppMedia(keys, uri, mime, image = false)
+                        cacheWhatsAppMedia(keys, uri, mime, image = false, contact = title)
                     }
                     mime.startsWith("image/") && looksLikeImage &&
                         !sourceKey.lowercase(Locale.ROOT).contains("icon") -> {
                         mediaMimeHint = mime
-                        cacheWhatsAppMedia(keys, uri, mime, image = true)
+                        cacheWhatsAppMedia(keys, uri, mime, image = true, contact = title)
                     }
                 }
             }
 
             // 3) BigPicture-notificaties bevatten soms alleen een Bitmap/Icon en geen URI.
             if (looksLikeImage && keys.none { imageSources.containsKey(it) }) {
-                if (cachePictureExtra(extras, keys)) mediaMimeHint = "image/jpeg"
+                if (cachePictureExtra(extras, keys, title)) mediaMimeHint = "image/jpeg"
             }
         }
 

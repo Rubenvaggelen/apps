@@ -128,14 +128,14 @@ class CarRadioConnectionService : Service() {
             return sendProtocolLine("SUPERMARKET_ALERT:${enc("Vergeet niet: $text")}", false)
         }
 
-        fun sendMediaBytes(contact: String, mime: String, bytes: ByteArray): Boolean {
+        fun sendMediaBytes(contact: String, mime: String, bytes: ByteArray, autoPresent: Boolean = true): Boolean {
             if (bytes.isEmpty() || bytes.size > 20_000_000) return false
             val id = System.currentTimeMillis().toString(36)
             val chunkSize = if (activeTransport.startsWith("Wi-Fi", true)) 24_000 else 8_000
             synchronized(writeLock) {
                 val writer = activeWriter ?: return false
                 return try {
-                    writer.write("MEDIA_BEGIN:$id:${enc(mime)}:${bytes.size}:${enc(contact)}")
+                    writer.write("MEDIA_BEGIN:$id:${enc(mime)}:${bytes.size}:${enc(contact)}:${if (autoPresent) 1 else 0}")
                     writer.newLine()
                     var offset = 0
                     while (offset < bytes.size) {

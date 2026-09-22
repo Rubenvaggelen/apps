@@ -185,6 +185,7 @@ class BluetoothListenerService : Service() {
     private var incomingMediaContact: String? = null
     private var incomingMediaMime: String? = null
     private var incomingMediaBuffer: ByteArrayOutputStream? = null
+    private var incomingMediaAutoPresent = true
     private var receivedMediaPlayer: MediaPlayer? = null
     private var incomingVoiceDucked = false
     private var historyClearedForServiceLifetime = false
@@ -626,15 +627,18 @@ class BluetoothListenerService : Service() {
     }
 
     private fun beginIncomingMedia(line: String) {
-        val parts = line.split(":", limit = 5)
-        if (parts.size != 5) return
+        val parts = line.split(":", limit = 6)
+        if (parts.size < 5) return
         val expected = parts[3].toIntOrNull()?.coerceAtMost(20_000_000) ?: return
         incomingMediaId = parts[1]
         incomingMediaMime = dec(parts[2])
         incomingMediaContact = dec(parts[4])
+        incomingMediaAutoPresent = parts.getOrNull(5) != "0"
         incomingMediaBuffer = ByteArrayOutputStream(expected.coerceAtLeast(32_000))
-        // De echte audio komt naar de radio; de tijdelijke request-duck hoeft niet langer.
-        UsbPlaybackService.endDucking(UsbPlaybackService.DUCK_REASON_CHAT_REQUEST)
+        if (incomingMediaAutoPresent) {
+            // De echte audio komt naar de radio; de tijdelijke request-duck hoeft niet langer.
+            UsbPlaybackService.endDucking(UsbPlaybackService.DUCK_REASON_CHAT_REQUEST)
+        }
     }
 
     private fun appendIncomingMedia(line: String) {
@@ -650,10 +654,12 @@ class BluetoothListenerService : Service() {
         val bytes = incomingMediaBuffer?.toByteArray() ?: ByteArray(0)
         val contact = incomingMediaContact.orEmpty()
         val mime = incomingMediaMime.orEmpty().substringBefore(';').trim().ifBlank { "application/octet-stream" }
+        val autoPresent = incomingMediaAutoPresent
         incomingMediaId = null
         incomingMediaBuffer = null
         incomingMediaContact = null
         incomingMediaMime = null
+        incomingMediaAutoPresent = true
         if (bytes.isEmpty() || contact.isBlank()) return
 
         try {
@@ -677,6 +683,11 @@ class BluetoothListenerService : Service() {
             ConversationStore.attachLatestMedia(this, contact, mime, file.absolutePath)
             MessageBus.postDataChanged()
 
+            if (!autoPresent) {
+                // Vooraf ontvangen media wordt alleen aan het bericht gekoppeld.
+                // De gebruiker opent/speelt het later zelf vanuit de chat.
+                return
+            }
             if (isImage) {
                 MessageBus.postStatus("Afbeelding ontvangen")
                 try {
