@@ -114,6 +114,11 @@ class BluetoothListenerService : Service() {
 
         fun requestVoiceNote(conversation: String): Boolean = writeLine("VOICE_NOTE_REQUEST:${enc(conversation)}")
 
+        fun requestMedia(conversation: String, kind: String): Boolean {
+            if (conversation.isBlank() || kind.isBlank()) return false
+            return writeLine("MEDIA_REQUEST:${enc(conversation)}:${enc(kind)}")
+        }
+
         fun sendVoiceAudio(conversation: String, wavBytes: ByteArray): Boolean {
             if (conversation.isBlank() || wavBytes.isEmpty() || wavBytes.size > 7_000_000) return false
             val id = System.currentTimeMillis().toString(36)
@@ -507,13 +512,14 @@ class BluetoothListenerService : Service() {
                 MessageBus.postStatus("✅ Verbonden met $selectedPhone • $transport")
             }
             line.startsWith("WA_MSG:") -> {
-                val parts = line.split(":", limit = 4)
-                if (parts.size == 4) {
+                val parts = line.split(":", limit = 5)
+                if (parts.size >= 4) {
                     val contact = dec(parts[1])
                     val text = dec(parts[2])
                     val time = parts[3].toLongOrNull() ?: System.currentTimeMillis()
+                    val mediaMime = if (parts.size == 5) dec(parts[4]).takeIf { it.isNotBlank() } else null
                     if (contact.isNotBlank() && text.isNotBlank()) {
-                        val added = ConversationStore.addIncoming(this, contact, text, time)
+                        val added = ConversationStore.addIncoming(this, contact, text, time, mediaMime)
                         CarNotificationStore.add(this, contact, text, time)
                         RadioContactStore.registerKnown(this, contact)
                         if (added) DashboardUnreadStore.increment(this)
@@ -622,7 +628,7 @@ class BluetoothListenerService : Service() {
     private fun beginIncomingMedia(line: String) {
         val parts = line.split(":", limit = 5)
         if (parts.size != 5) return
-        val expected = parts[3].toIntOrNull()?.coerceAtMost(12_000_000) ?: return
+        val expected = parts[3].toIntOrNull()?.coerceAtMost(20_000_000) ?: return
         incomingMediaId = parts[1]
         incomingMediaMime = dec(parts[2])
         incomingMediaContact = dec(parts[4])
@@ -636,31 +642,58 @@ class BluetoothListenerService : Service() {
         if (parts.size != 3 || parts[1] != incomingMediaId) return
         val decoded = try { Base64.decode(parts[2], Base64.DEFAULT) } catch (_: Exception) { return }
         val out = incomingMediaBuffer ?: return
-        if (out.size() + decoded.size <= 12_000_000) out.write(decoded)
+        if (out.size() + decoded.size <= 20_000_000) out.write(decoded)
     }
 
     private fun finishIncomingMedia(line: String) {
         if (line.removePrefix("MEDIA_END:") != incomingMediaId) return
         val bytes = incomingMediaBuffer?.toByteArray() ?: ByteArray(0)
         val contact = incomingMediaContact.orEmpty()
-        val mime = incomingMediaMime.orEmpty()
-        incomingMediaId = null; incomingMediaBuffer = null; incomingMediaContact = null; incomingMediaMime = null
+        val mime = incomingMediaMime.orEmpty().substringBefore(';').trim().ifBlank { "application/octet-stream" }
+        incomingMediaId = null
+        incomingMediaBuffer = null
+        incomingMediaContact = null
+        incomingMediaMime = null
         if (bytes.isEmpty() || contact.isBlank()) return
+
         try {
+            val isImage = mime.startsWith("image/", true)
             val ext = when {
+                mime.contains("jpeg", true) || mime.contains("jpg", true) -> ".jpg"
+                mime.contains("png", true) -> ".png"
+                mime.contains("webp", true) -> ".webp"
+                mime.contains("gif", true) -> ".gif"
                 mime.contains("ogg", true) || mime.contains("opus", true) -> ".ogg"
                 mime.contains("mpeg", true) || mime.contains("mp3", true) -> ".mp3"
                 mime.contains("mp4", true) || mime.contains("m4a", true) -> ".m4a"
+                mime.contains("aac", true) -> ".aac"
+                mime.contains("3gpp", true) || mime.contains("3gp", true) -> ".3gp"
                 mime.contains("wav", true) -> ".wav"
-                else -> ".audio"
+                else -> if (isImage) ".img" else ".audio"
             }
-            val file = File(cacheDir, "wa_voice_${System.currentTimeMillis()}$ext")
+            val prefix = if (isImage) "wa_image_" else "wa_voice_"
+            val file = File(cacheDir, "$prefix${System.currentTimeMillis()}$ext")
             FileOutputStream(file).use { it.write(bytes) }
-            ConversationStore.attachLatestVoiceMedia(this, contact, file.absolutePath)
+            ConversationStore.attachLatestMedia(this, contact, mime, file.absolutePath)
             MessageBus.postDataChanged()
-            playReceivedVoice(file.absolutePath)
+
+            if (isImage) {
+                MessageBus.postStatus("Afbeelding ontvangen")
+                try {
+                    startActivity(
+                        Intent(this, ImageViewerActivity::class.java)
+                            .putExtra(ImageViewerActivity.EXTRA_PATH, file.absolutePath)
+                            .putExtra(ImageViewerActivity.EXTRA_TITLE, ContactAliases.displayName(contact))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                } catch (_: Exception) {
+                    MessageBus.postStatus("Afbeelding opgeslagen • tik opnieuw om te openen")
+                }
+            } else {
+                playReceivedVoice(file.absolutePath)
+            }
         } catch (_: Exception) {
-            MessageBus.postStatus("Spraakbericht kon niet worden opgeslagen")
+            MessageBus.postStatus(if (mime.startsWith("image/", true)) "Afbeelding kon niet worden opgeslagen" else "Spraakbericht kon niet worden opgeslagen")
         }
     }
 
