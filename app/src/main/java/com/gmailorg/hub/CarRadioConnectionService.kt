@@ -689,7 +689,7 @@ class CarRadioConnectionService : Service() {
         }.start()
     }
 
-    private fun readMediaSource(source: UnifiedNotificationListener.VoiceNoteSource, maxBytes: Int): ByteArray? {
+    private fun readMediaSource(source: CarMediaSource, maxBytes: Int): ByteArray? {
         try {
             source.cachedPath?.takeIf { it.isNotBlank() }?.let { path ->
                 val file = java.io.File(path)
