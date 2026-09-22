@@ -12,7 +12,8 @@ object ConversationStore {
         val mine: Boolean,
         val read: Boolean,
         val voiceNote: Boolean = false,
-        val mediaPath: String? = null
+        val mediaPath: String? = null,
+        val mediaMime: String? = null
     )
 
     data class Summary(val contact: String, val latestText: String, val latestTime: Long, val unread: Int)
@@ -27,28 +28,51 @@ object ConversationStore {
         return l.contains("spraakbericht") || l.contains("voice message") || l.contains("audio message") || l.startsWith("🎤")
     }
 
-    @Synchronized fun addIncoming(context: Context, contact: String, text: String, time: Long): Boolean =
-        add(context, contact, text, time, false, false, looksVoice(text), null)
+    @Synchronized fun addIncoming(context: Context, contact: String, text: String, time: Long, mediaMime: String? = null): Boolean =
+        add(context, contact, text, time, false, false, mediaMime?.startsWith("audio/", true) == true || looksVoice(text), null, mediaMime)
 
     @Synchronized fun addOutgoing(context: Context, contact: String, text: String, time: Long): Boolean =
-        add(context, contact, text, time, true, true, false, null)
+        add(context, contact, text, time, true, true, false, null, null)
 
-    private fun add(context: Context, contact: String, text: String, time: Long, mine: Boolean, read: Boolean, voice: Boolean, mediaPath: String?): Boolean {
+    private fun add(context: Context, contact: String, text: String, time: Long, mine: Boolean, read: Boolean, voice: Boolean, mediaPath: String?, mediaMime: String?): Boolean {
         if (contact.isBlank() || text.isBlank()) return false
         val list = readAll(context).toMutableList()
         val duplicate = list.takeLast(12).any { it.contact == contact && it.text == text && it.mine == mine && kotlin.math.abs(it.time - time) < 2500L }
         if (duplicate) return false
-        list.add(ChatMessage(contact.trim(), text.trim(), time, mine, read, voice, mediaPath))
+        list.add(ChatMessage(contact.trim(), text.trim(), time, mine, read, voice, mediaPath, mediaMime))
         while (list.size > MAX_MESSAGES) list.removeAt(0)
         save(context, list)
         return true
     }
 
-    @Synchronized fun attachLatestVoiceMedia(context: Context, contact: String, path: String) {
+    @Synchronized fun attachLatestVoiceMedia(context: Context, contact: String, path: String, mime: String = "audio/*") {
+        attachLatestMedia(context, contact, mime, path)
+    }
+
+    @Synchronized fun attachLatestMedia(context: Context, contact: String, mime: String, path: String) {
         val list = readAll(context).toMutableList()
-        val idx = list.indexOfLast { !it.mine && it.contact.equals(contact, true) && it.voiceNote }
-        if (idx >= 0) list[idx] = list[idx].copy(mediaPath = path)
-        else list.add(ChatMessage(contact, "🎤 Spraakbericht", System.currentTimeMillis(), false, false, true, path))
+        val image = mime.startsWith("image/", true)
+        val idx = list.indexOfLast {
+            !it.mine && it.contact.equals(contact, true) &&
+                if (image) it.mediaMime?.startsWith("image/", true) == true
+                else it.voiceNote || it.mediaMime?.startsWith("audio/", true) == true
+        }
+        if (idx >= 0) {
+            list[idx] = list[idx].copy(mediaPath = path, mediaMime = mime, voiceNote = !image)
+        } else {
+            list.add(
+                ChatMessage(
+                    contact = contact,
+                    text = if (image) "🖼️ Afbeelding" else "🎤 Spraakbericht",
+                    time = System.currentTimeMillis(),
+                    mine = false,
+                    read = false,
+                    voiceNote = !image,
+                    mediaPath = path,
+                    mediaMime = mime
+                )
+            )
+        }
         save(context, list)
     }
 
@@ -73,7 +97,7 @@ object ConversationStore {
                     val o = arr.optJSONObject(i) ?: continue
                     val contact = o.optString("contact"); val text = o.optString("text")
                     if (contact.isBlank() || text.isBlank()) continue
-                    add(ChatMessage(contact, text, o.optLong("time", 0L), o.optBoolean("mine", false), o.optBoolean("read", false), o.optBoolean("voiceNote", looksVoice(text)), o.optString("mediaPath").takeIf { it.isNotBlank() }))
+                    add(ChatMessage(contact, text, o.optLong("time", 0L), o.optBoolean("mine", false), o.optBoolean("read", false), o.optBoolean("voiceNote", looksVoice(text)), o.optString("mediaPath").takeIf { it.isNotBlank() }, o.optString("mediaMime").takeIf { it.isNotBlank() }))
                 }
             }
         } catch (_: Exception) { emptyList() }
@@ -84,6 +108,7 @@ object ConversationStore {
         messages.forEach { m -> arr.put(JSONObject().apply {
             put("contact", m.contact); put("text", m.text); put("time", m.time); put("mine", m.mine); put("read", m.read); put("voiceNote", m.voiceNote)
             if (!m.mediaPath.isNullOrBlank()) put("mediaPath", m.mediaPath)
+            if (!m.mediaMime.isNullOrBlank()) put("mediaMime", m.mediaMime)
         }) }
         prefs(context).edit().putString(KEY_MESSAGES, arr.toString()).apply()
     }
