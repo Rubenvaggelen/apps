@@ -1,97 +1,106 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="vertical"
     android:background="@color/bg"
-    android:fillViewport="true">
+    android:paddingHorizontal="18dp"
+    android:paddingTop="12dp"
+    android:paddingBottom="10dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Route"
+        android:textColor="@color/amber"
+        android:textSize="24sp"
+        android:textStyle="bold"/>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Van"
+        android:textColor="@color/text_dim"
+        android:layout_marginTop="8dp"/>
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="20dp">
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Route"
-            android:textColor="@color/amber"
-            android:textSize="26sp"
-            android:textStyle="bold"/>
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Van"
-            android:textColor="@color/text_dim"
-            android:layout_marginTop="16dp"/>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-            <EditText
-                android:id="@+id/routeFrom"
-                android:layout_width="0dp"
-                android:layout_height="54dp"
-                android:layout_weight="1"
-                android:singleLine="true"
-                android:textColor="@color/text_main"
-                android:textColorHint="@color/text_dim"
-                android:background="@drawable/bg_outline"
-                android:paddingHorizontal="12dp"/>
-            <Button
-                android:id="@+id/routeCurrentLocationButton"
-                android:layout_width="wrap_content"
-                android:layout_height="54dp"
-                android:text="Mijn locatie"
-                android:layout_marginStart="8dp"/>
-        </LinearLayout>
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Naar"
-            android:textColor="@color/text_dim"
-            android:layout_marginTop="14dp"/>
+        android:orientation="horizontal">
 
         <EditText
-            android:id="@+id/routeTo"
-            android:layout_width="match_parent"
-            android:layout_height="54dp"
+            android:id="@+id/routeFrom"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
             android:singleLine="true"
-            android:hint="Adres of bestemming"
             android:textColor="@color/text_main"
             android:textColorHint="@color/text_dim"
             android:background="@drawable/bg_outline"
             android:paddingHorizontal="12dp"/>
 
         <Button
+            android:id="@+id/routeCurrentLocationButton"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="Mijn locatie"
+            android:layout_marginStart="8dp"/>
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Naar"
+        android:textColor="@color/text_dim"
+        android:layout_marginTop="8dp"/>
+
+    <EditText
+        android:id="@+id/routeTo"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:singleLine="true"
+        android:hint="Adres of bestemming"
+        android:textColor="@color/text_main"
+        android:textColorHint="@color/text_dim"
+        android:background="@drawable/bg_outline"
+        android:paddingHorizontal="12dp"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:layout_marginTop="12dp"
+        android:weightSum="2">
+
+        <Button
             android:id="@+id/routeCalculateButton"
-            android:layout_width="match_parent"
-            android:layout_height="58dp"
-            android:layout_marginTop="18dp"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
             android:text="Route berekenen"
+            android:textSize="16sp"
+            android:textStyle="bold"
             android:backgroundTint="@color/amber"
             android:textColor="@color/on_amber"/>
 
         <Button
             android:id="@+id/routeFuelStationsButton"
-            android:layout_width="match_parent"
-            android:layout_height="62dp"
-            android:layout_marginTop="16dp"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="10dp"
             android:text="⛽  Benzinepompen"
-            android:textSize="18sp"
+            android:textSize="16sp"
             android:textStyle="bold"
             android:backgroundTint="@color/surface_raised"
             android:textColor="@color/text_main"/>
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:text="Zoek tankstations binnen 5 km, goedkoopste eerst, en navigeer er direct naartoe."
-            android:textColor="@color/text_dim"
-            android:textSize="13sp"/>
     </LinearLayout>
-</ScrollView>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="Benzinepompen: binnen 5 km, goedkoopste eerst, direct navigeren via Google Maps of Waze."
+        android:textColor="@color/text_dim"
+        android:textSize="12sp"/>
+</LinearLayout>
