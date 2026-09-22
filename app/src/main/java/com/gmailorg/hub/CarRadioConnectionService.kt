@@ -10,6 +10,7 @@ import android.bluetooth.BluetoothServerSocket
 import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.content.Intent
+import android.os.Binder
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -70,9 +71,9 @@ class CarRadioConnectionService : Service() {
         @Volatile private var activeTransport = "-"
 
         fun start(context: Context) {
-            val intent = Intent(context, CarRadioConnectionService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
-            else context.startService(intent)
+            // De NotificationListenerService is al door Android gebonden en kan onze
+            // lokale car-service zonder foreground-melding in leven houden.
+            UnifiedNotificationListener.ensureCarRadioBound(context.applicationContext)
         }
 
         fun stop(context: Context) {
@@ -236,6 +237,7 @@ class CarRadioConnectionService : Service() {
     private var discoverySocket: DatagramSocket? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var speechRecognizer: SpeechRecognizer? = null
+    private val localBinder = Binder()
     private val idleStopRunnable = Runnable { handleIdleTimeout() }
 
     private fun handleIdleTimeout() {
@@ -254,7 +256,6 @@ class CarRadioConnectionService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        startAsForeground()
         running = true
         Thread({ listenWifiTcpLoop() }, "TheOne-WifiServer").start()
         Thread({ discoveryResponderLoop() }, "TheOne-WifiDiscovery").start()
@@ -288,8 +289,8 @@ class CarRadioConnectionService : Service() {
         .build()
 
     private fun updateStatus(text: String) {
-        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager)
-            .notify(NOTIFICATION_ID, buildStatusNotification(text))
+        // Verbindingsstatus blijft intern; geen losse autoradio-melding op de telefoon.
+        Log.d(TAG, text)
     }
 
     // ---------------- Wi-Fi/LAN ----------------
@@ -908,7 +909,7 @@ class CarRadioConnectionService : Service() {
         super.onDestroy()
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    override fun onBind(intent: Intent?): IBinder = localBinder
 
     private fun sleepQuietly(ms: Long) {
         try { Thread.sleep(ms) } catch (_: InterruptedException) {}

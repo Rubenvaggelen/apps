@@ -3,8 +3,15 @@ package com.gmailorg.hub
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.RemoteInput
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.content.ServiceConnection
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.Icon
 import android.net.Uri
+import android.os.IBinder
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import java.io.File
@@ -36,6 +43,12 @@ class UnifiedNotificationListener : NotificationListenerService() {
 
         private var appContext: android.content.Context? = null
         @Volatile private var instance: UnifiedNotificationListener? = null
+
+        fun ensureCarRadioBound(context: Context): Boolean {
+            val listener = instance
+            if (listener != null) return listener.ensureCarRadioServerRunning()
+            return false
+        }
 
         fun rescanFinanceNotifications(): Int {
             val service = instance ?: return -1
@@ -115,6 +128,17 @@ class UnifiedNotificationListener : NotificationListenerService() {
         }
     }
 
+    private var carRadioBound = false
+    private val carRadioBinding = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            carRadioBound = true
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            carRadioBound = false
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         NotifStore.init(applicationContext)
@@ -125,6 +149,10 @@ class UnifiedNotificationListener : NotificationListenerService() {
     }
 
     override fun onDestroy() {
+        if (carRadioBound) {
+            try { unbindService(carRadioBinding) } catch (_: Exception) {}
+            carRadioBound = false
+        }
         if (instance === this) instance = null
         super.onDestroy()
     }
@@ -152,14 +180,18 @@ class UnifiedNotificationListener : NotificationListenerService() {
         activeNotifications?.forEach { handleNotification(it) }
     }
 
-    private fun ensureCarRadioServerRunning() {
-        if (!CarRadioForwarder.isEnabled(applicationContext)) return
-        if (!CarRadioForwarder.isNearby(applicationContext) &&
-            !CarRadioConnectionService.isRadioConnected()) return
-        // Alleen als de auto aanwezig is de hotspotserver herstellen.
-        try {
-            CarRadioConnectionService.start(applicationContext)
+    private fun ensureCarRadioServerRunning(): Boolean {
+        if (!CarRadioForwarder.isEnabled(applicationContext)) return false
+        if (carRadioBound) return true
+        return try {
+            carRadioBound = bindService(
+                Intent(this, CarRadioConnectionService::class.java),
+                carRadioBinding,
+                Context.BIND_AUTO_CREATE
+            )
+            carRadioBound
         } catch (_: Exception) {
+            false
         }
     }
 
@@ -301,7 +333,13 @@ class UnifiedNotificationListener : NotificationListenerService() {
         }
     }
 
-    private fun cacheWhatsAppMedia(key: String, uri: Uri, mime: String, image: Boolean) {
+    private fun cacheWhatsAppMedia(keys: Set<String>, uri: Uri, mime: String, image: Boolean) {
+        if (keys.isEmpty()) return
+        val direct = CarMediaSource(uri, mime)
+        keys.forEach { key ->
+            if (image) imageSources[key] = direct else voiceNoteSources[key] = direct
+        }
+
         Thread {
             try {
                 val dir = File(cacheDir, "wa_notification_media").apply { mkdirs() }
@@ -318,7 +356,7 @@ class UnifiedNotificationListener : NotificationListenerService() {
                     mime.contains("wav", true) -> ".wav"
                     else -> if (image) ".img" else ".audio"
                 }
-                val file = File(dir, "${if (image) "image" else "audio"}_${System.currentTimeMillis()}_${key.hashCode()}$ext")
+                val file = File(dir, "${if (image) "image" else "audio"}_${System.currentTimeMillis()}_${keys.first().hashCode()}$ext")
                 val input = contentResolver.openInputStream(uri) ?: return@Thread
                 var total = 0
                 input.use { source ->
@@ -338,14 +376,93 @@ class UnifiedNotificationListener : NotificationListenerService() {
                 }
                 if (file.exists() && file.length() > 0L) {
                     val cached = CarMediaSource(uri, mime, file.absolutePath)
-                    if (image) imageSources[key] = cached else voiceNoteSources[key] = cached
+                    keys.forEach { key ->
+                        if (image) imageSources[key] = cached else voiceNoteSources[key] = cached
+                    }
                 }
-                // Houd cache begrensd: oude media uit eerdere ritten mag weg.
                 dir.listFiles()?.sortedByDescending { it.lastModified() }?.drop(30)?.forEach { runCatching { it.delete() } }
             } catch (_: Exception) {
-                // URI blijft als fallback beschikbaar zolang WhatsApp die toestaat.
+                // Directe URI blijft als fallback staan zolang WhatsApp hem toestaat.
             }
         }.start()
+    }
+
+    private fun notificationConversationKeys(extras: android.os.Bundle, fallbackTitle: String): LinkedHashSet<String> {
+        val keys = LinkedHashSet<String>()
+        fun addName(value: CharSequence?) {
+            val text = value?.toString()?.trim().orEmpty()
+            if (text.isNotBlank()) keys.add(conversationKey(text))
+        }
+        addName(extras.getCharSequence(Notification.EXTRA_TITLE))
+        addName(extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE))
+        addName(fallbackTitle)
+        try {
+            extras.getParcelableArray(Notification.EXTRA_MESSAGES)?.let { bundles ->
+                Notification.MessagingStyle.Message.getMessagesFromBundleArray(bundles).forEach { msg ->
+                    addName(msg.senderPerson?.name)
+                }
+            }
+        } catch (_: Exception) {}
+        return keys
+    }
+
+    private fun collectMediaUris(bundle: android.os.Bundle, out: MutableList<Pair<String, Uri>>, depth: Int = 0) {
+        if (depth > 4) return
+        bundle.keySet().forEach { key ->
+            val lowerKey = key.lowercase(Locale.ROOT)
+            if (lowerKey.contains("avatar") || lowerKey.contains("person") || lowerKey.contains("largeicon")) return@forEach
+            val value = runCatching { bundle.get(key) }.getOrNull()
+            when (value) {
+                is Uri -> out.add(key to value)
+                is CharSequence -> {
+                    val text = value.toString()
+                    if (text.startsWith("content://") || text.startsWith("file://")) {
+                        runCatching { Uri.parse(text) }.getOrNull()?.let { out.add(key to it) }
+                    }
+                }
+                is android.os.Bundle -> collectMediaUris(value, out, depth + 1)
+                is Array<*> -> value.forEach { item ->
+                    when (item) {
+                        is android.os.Bundle -> collectMediaUris(item, out, depth + 1)
+                        is Uri -> out.add(key to item)
+                    }
+                }
+                is Iterable<*> -> value.forEach { item ->
+                    when (item) {
+                        is android.os.Bundle -> collectMediaUris(item, out, depth + 1)
+                        is Uri -> out.add(key to item)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun cachePictureExtra(extras: android.os.Bundle, keys: Set<String>): Boolean {
+        val value = runCatching { extras.get(Notification.EXTRA_PICTURE) }.getOrNull() ?: return false
+        val bitmap = when (value) {
+            is Bitmap -> value
+            is Icon -> {
+                val drawable = runCatching { value.loadDrawable(this) }.getOrNull() ?: return false
+                val width = drawable.intrinsicWidth.coerceAtLeast(1)
+                val height = drawable.intrinsicHeight.coerceAtLeast(1)
+                Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { target ->
+                    val canvas = Canvas(target)
+                    drawable.setBounds(0, 0, width, height)
+                    drawable.draw(canvas)
+                }
+            }
+            else -> return false
+        }
+        return try {
+            val dir = File(cacheDir, "wa_notification_media").apply { mkdirs() }
+            val file = File(dir, "image_${System.currentTimeMillis()}_picture.jpg")
+            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+            val source = CarMediaSource(null, "image/jpeg", file.absolutePath)
+            keys.forEach { imageSources[it] = source }
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private fun handleNotification(sbn: StatusBarNotification) {
@@ -402,47 +519,76 @@ class UnifiedNotificationListener : NotificationListenerService() {
         var mediaMimeHint: String? = null
         if (isWhatsAppPackage(sbn.packageName)) {
             val key = conversationKey(title)
+            val keys = notificationConversationKeys(extras, title).apply { if (key.isNotBlank()) add(key) }
             val lower = text.lowercase(Locale.ROOT)
-            val looksLikeVoice = lower.contains("spraakbericht") || lower.contains("voice message") || lower.contains("audio message")
+            val looksLikeVoice = lower.contains("spraakbericht") || lower.contains("voice message") ||
+                lower.contains("voice note") || lower.contains("audio message") || lower.contains("audiobericht") ||
+                lower.startsWith("🎤")
             val looksLikeImage = lower.contains("foto") || lower.contains("photo") ||
                 lower.contains("afbeelding") || lower.contains("image") || lower.startsWith("📷") || lower.startsWith("🖼")
 
             if (looksLikeVoice) {
                 mediaMimeHint = "audio/*"
-                sbn.notification.contentIntent?.let { voiceNoteContentIntents[key] = it }
+                keys.forEach { mediaKey ->
+                    sbn.notification.contentIntent?.let { voiceNoteContentIntents[mediaKey] = it }
+                }
                 sbn.notification.actions?.firstOrNull { action ->
                     val label = action.title?.toString()?.lowercase(Locale.ROOT).orEmpty()
                     label.contains("afspelen") || label == "play" || label.contains("listen")
-                }?.actionIntent?.let { voiceNotePlayActions[key] = it }
+                }?.actionIntent?.let { action ->
+                    keys.forEach { voiceNotePlayActions[it] = action }
+                }
             } else if (looksLikeImage) {
                 mediaMimeHint = "image/*"
             }
 
+            // 1) Android MessagingStyle: de meest betrouwbare bron als WhatsApp hem vrijgeeft.
             try {
-                val bundles = extras.getParcelableArray(Notification.EXTRA_MESSAGES)
-                if (bundles != null) {
-                    val messages = Notification.MessagingStyle.Message.getMessagesFromBundleArray(bundles)
-                    val withMedia = messages.lastOrNull {
-                        val mime = it.dataMimeType.orEmpty()
-                        it.dataUri != null && (mime.startsWith("audio/") || mime.startsWith("image/"))
-                    }
-                    if (withMedia != null) {
-                        val mime = withMedia.dataMimeType.orEmpty()
-                        val uri = withMedia.dataUri
-                        mediaMimeHint = mime
-                        if (uri != null) {
-                            if (mime.startsWith("audio/")) {
-                                voiceNoteSources[key] = CarMediaSource(uri, mime)
-                                cacheWhatsAppMedia(key, uri, mime, image = false)
-                                sbn.notification.contentIntent?.let { voiceNoteContentIntents[key] = it }
-                            } else if (mime.startsWith("image/")) {
-                                imageSources[key] = CarMediaSource(uri, mime)
-                                cacheWhatsAppMedia(key, uri, mime, image = true)
+                extras.getParcelableArray(Notification.EXTRA_MESSAGES)?.let { bundles ->
+                    Notification.MessagingStyle.Message.getMessagesFromBundleArray(bundles)
+                        .asReversed()
+                        .forEach { message ->
+                            val uri = message.dataUri ?: return@forEach
+                            val mime = message.dataMimeType.orEmpty().ifBlank {
+                                runCatching { contentResolver.getType(uri) }.getOrNull().orEmpty()
+                            }
+                            when {
+                                mime.startsWith("audio/") -> {
+                                    mediaMimeHint = mime
+                                    cacheWhatsAppMedia(keys, uri, mime, image = false)
+                                }
+                                mime.startsWith("image/") -> {
+                                    mediaMimeHint = mime
+                                    cacheWhatsAppMedia(keys, uri, mime, image = true)
+                                }
                             }
                         }
-                    }
                 }
             } catch (_: Exception) {}
+
+            // 2) WhatsApp/Android-versies stoppen de URI soms in een andere notification-extra.
+            // Scan die extras direct en kopieer de media meteen naar onze eigen cache.
+            val uriCandidates = mutableListOf<Pair<String, Uri>>()
+            collectMediaUris(extras, uriCandidates)
+            uriCandidates.distinctBy { it.second.toString() }.forEach { (sourceKey, uri) ->
+                val mime = runCatching { contentResolver.getType(uri) }.getOrNull().orEmpty()
+                when {
+                    mime.startsWith("audio/") -> {
+                        mediaMimeHint = mime
+                        cacheWhatsAppMedia(keys, uri, mime, image = false)
+                    }
+                    mime.startsWith("image/") && looksLikeImage &&
+                        !sourceKey.lowercase(Locale.ROOT).contains("icon") -> {
+                        mediaMimeHint = mime
+                        cacheWhatsAppMedia(keys, uri, mime, image = true)
+                    }
+                }
+            }
+
+            // 3) BigPicture-notificaties bevatten soms alleen een Bitmap/Icon en geen URI.
+            if (looksLikeImage && keys.none { imageSources.containsKey(it) }) {
+                if (cachePictureExtra(extras, keys)) mediaMimeHint = "image/jpeg"
+            }
         }
 
         NotifStore.addOrUpdate(
