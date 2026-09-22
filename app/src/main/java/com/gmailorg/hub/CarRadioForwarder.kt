@@ -20,8 +20,9 @@ object CarRadioForwarder {
         prefs(context).edit().putBoolean(KEY_ENABLED, enabled).apply()
         if (!enabled) {
             CarRadioConnectionService.stop(context)
-        } else if (isNearby(context) || CarRadioConnectionService.isRadioConnected()) {
-            // Alleen starten wanneer de gekozen autoradio daadwerkelijk in de buurt is.
+        } else {
+            // De server is nu stil gebonden: hij mag altijd klaarstaan zonder
+            // buiten de auto een autoradio-melding op de telefoon te tonen.
             CarRadioConnectionService.start(context.applicationContext)
         }
     }
@@ -66,13 +67,12 @@ object CarRadioForwarder {
 
         // Buiten de auto niets starten of bufferen. Anders blijft Android een
         // foreground-melding "Wacht op autoradio" tonen terwijl de radio niet in de buurt is.
-        val radioAvailable = isNearby(context) || CarRadioConnectionService.isRadioConnected()
-        if (!radioAvailable) return
-
         if (!CarRadioConnectionService.isRadioConnected()) {
-            // Hotspot is de dataverbinding; Bluetooth/ACL wordt alleen als aanwezigheidssignaal gebruikt.
+            // Houd de stille hotspotserver beschikbaar zodat de headunit zelf kan reconnecten.
             CarRadioConnectionService.start(context)
         }
+        // Buiten de auto niets bufferen; alleen een echte live radioverbinding krijgt berichten.
+        if (!CarRadioConnectionService.isRadioConnected()) return
         val allowed = WhatsAppCarFilterStore.isAllowed(context, title)
         CarRadioConnectionService.sendContactState(
             title,

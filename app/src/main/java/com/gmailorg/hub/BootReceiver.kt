@@ -13,11 +13,12 @@ class BootReceiver : BroadcastReceiver() {
                 SupermarketRefreshWorker.schedule(appContext)
             }
             ParkingGeofenceManager.syncAll(appContext)
-            // Na herstart niet buiten de auto een foreground autoradio-service starten.
-            // Zodra de gekozen radio weer Bluetooth/ACL-bereik heeft, start de
-            // proximity receiver de hotspotserver vanzelf.
+            // De car-service is stil gebonden en kan dus alvast klaarstaan zonder
+            // een zichtbare autoradio-melding buiten de auto.
             CarRadioForwarder.setNearby(appContext, false)
-            CarRadioConnectionService.stop(appContext)
+            if (CarRadioForwarder.isEnabled(appContext)) {
+                try { CarRadioConnectionService.start(appContext) } catch (_: Exception) {}
+            }
         }
     }
 }
