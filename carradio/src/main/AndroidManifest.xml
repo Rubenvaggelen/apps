@@ -12,6 +12,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
@@ -64,6 +66,7 @@
         <activity android:name=".HouseholdCarActivity" android:screenOrientation="landscape" />
         <activity android:name=".ParkingCarActivity" android:screenOrientation="landscape" />
         <activity android:name=".RouteCarActivity" android:screenOrientation="landscape" />
+        <activity android:name=".FuelPricesCarActivity" android:screenOrientation="landscape" />
         <activity android:name=".NewsCarActivity" android:screenOrientation="landscape" />
         <activity android:name=".CarAppPickerActivity" android:screenOrientation="landscape" />
         <activity android:name=".CarTileManagerActivity" android:screenOrientation="landscape" />
