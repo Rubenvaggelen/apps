@@ -58,6 +58,7 @@
 
         <activity android:name=".WhatsAppConversationsActivity" android:screenOrientation="landscape" />
         <activity android:name=".ChatActivity" android:screenOrientation="landscape" />
+        <activity android:name=".ImageViewerActivity" android:screenOrientation="landscape" />
         <activity android:name=".AllowedContactsActivity" android:screenOrientation="landscape" />
         <activity android:name=".CarSettingsActivity" android:screenOrientation="landscape" />
         <activity android:name=".MessageLogActivity" android:screenOrientation="landscape" />
