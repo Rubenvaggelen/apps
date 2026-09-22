@@ -1,6 +1,7 @@
 package com.gmailorg.carradio
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.MediaPlayer
@@ -126,17 +127,26 @@ class ChatActivity : AppCompatActivity() {
                 gravity = if (msg.mine) Gravity.END else Gravity.START
                 setPadding(0, 4.dp, 0, 4.dp)
             }
+            val isIncomingImage = !msg.mine && (
+                msg.mediaMime?.startsWith("image/", true) == true || looksImageMessage(msg.text)
+            )
             val bubble = TextView(this).apply {
-                text = if (msg.voiceNote && !msg.mine) "🎤 ${msg.text}  • tik om af te spelen" else msg.text
+                text = when {
+                    msg.voiceNote && !msg.mine -> "🎤 ${msg.text}  • tik om af te spelen"
+                    isIncomingImage -> "🖼️ ${msg.text}  • tik om te openen"
+                    else -> msg.text
+                }
                 setTextColor(ContextCompat.getColor(context, R.color.text_main))
                 textSize = 17f
                 setBackgroundResource(if (msg.mine) R.drawable.bg_chat_out else R.drawable.bg_chat_in)
                 maxWidth = (resources.displayMetrics.widthPixels * 0.72).toInt()
+
                 if (msg.voiceNote && !msg.mine) {
                     setOnClickListener {
                         val path = msg.mediaPath
-                        if (!path.isNullOrBlank()) playReceivedVoice(path)
-                        else {
+                        if (!path.isNullOrBlank()) {
+                            playReceivedVoice(path)
+                        } else {
                             status.text = "Spraakbericht ophalen van je telefoon…"
                             duckHandler.removeCallbacks(releaseRequestDuck)
                             UsbPlaybackService.beginDucking(UsbPlaybackService.DUCK_REASON_CHAT_REQUEST, 0.04f)
@@ -145,6 +155,18 @@ class ChatActivity : AppCompatActivity() {
                             if (!BluetoothListenerService.requestVoiceNote(contact)) {
                                 duckHandler.removeCallbacks(releaseRequestDuck)
                                 UsbPlaybackService.endDucking(UsbPlaybackService.DUCK_REASON_CHAT_REQUEST)
+                                Toast.makeText(this@ChatActivity, "Geen live verbinding met je telefoon", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                } else if (isIncomingImage) {
+                    setOnClickListener {
+                        val path = msg.mediaPath
+                        if (!path.isNullOrBlank()) {
+                            openImage(path)
+                        } else {
+                            status.text = "Afbeelding ophalen van je telefoon…"
+                            if (!BluetoothListenerService.requestMedia(contact, "image")) {
                                 Toast.makeText(this@ChatActivity, "Geen live verbinding met je telefoon", Toast.LENGTH_SHORT).show()
                             }
                         }
@@ -197,6 +219,20 @@ class ChatActivity : AppCompatActivity() {
             chatVoiceDucked = false
             UsbPlaybackService.endDucking(UsbPlaybackService.DUCK_REASON_CHAT_PLAYBACK)
         }
+    }
+
+    private fun looksImageMessage(text: String): Boolean {
+        val value = text.lowercase(Locale.ROOT)
+        return value.contains("foto") || value.contains("photo") || value.contains("afbeelding") ||
+            value.contains("image") || value.startsWith("🖼") || value.startsWith("📷")
+    }
+
+    private fun openImage(path: String) {
+        startActivity(
+            Intent(this, ImageViewerActivity::class.java)
+                .putExtra(ImageViewerActivity.EXTRA_PATH, path)
+                .putExtra(ImageViewerActivity.EXTRA_TITLE, ContactAliases.displayName(contact))
+        )
     }
 
     private fun voiceRequestDuckDurationMs(text: String): Long {
