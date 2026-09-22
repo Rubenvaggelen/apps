@@ -20,9 +20,8 @@ object CarRadioForwarder {
         prefs(context).edit().putBoolean(KEY_ENABLED, enabled).apply()
         if (!enabled) {
             CarRadioConnectionService.stop(context)
-        } else {
-            // Houd de telefoonserver direct paraat. De radio maakt zelf via de
-            // telefoon-hotspot verbinding zodra die beschikbaar is.
+        } else if (isNearby(context) || CarRadioConnectionService.isRadioConnected()) {
+            // Alleen starten wanneer de gekozen autoradio daadwerkelijk in de buurt is.
             CarRadioConnectionService.start(context.applicationContext)
         }
     }
@@ -67,12 +66,11 @@ object CarRadioForwarder {
 
         // Buiten de auto niets starten of bufferen. Anders blijft Android een
         // foreground-melding "Wacht op autoradio" tonen terwijl de radio niet in de buurt is.
-        val hotspotActive = CarHotspotDetector.isHotspotLikelyActive(context)
-        val radioAvailable = isNearby(context) || hotspotActive || CarRadioConnectionService.isRadioConnected()
+        val radioAvailable = isNearby(context) || CarRadioConnectionService.isRadioConnected()
         if (!radioAvailable) return
 
         if (!CarRadioConnectionService.isRadioConnected()) {
-            // Bij telefoon-hotspot mag The One de TCP-server starten zonder aparte router of BT-ACL hint.
+            // Hotspot is de dataverbinding; Bluetooth/ACL wordt alleen als aanwezigheidssignaal gebruikt.
             CarRadioConnectionService.start(context)
         }
         val allowed = WhatsAppCarFilterStore.isAllowed(context, title)

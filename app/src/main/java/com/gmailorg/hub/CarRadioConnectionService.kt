@@ -240,11 +240,10 @@ class CarRadioConnectionService : Service() {
 
     private fun handleIdleTimeout() {
         if (isRadioConnected()) return
-        if (CarRadioForwarder.isEnabled(this)) {
-            // The One Car gebruikt de telefoon-hotspot als vaste transportlaag.
-            // Laat de TCP/discovery-server daarom actief zodat de radio ook na
-            // slaapstand, een korte Wi-Fi-dip of een late hotspot-connectie kan herstellen.
-            updateStatus("Wacht op The One Car via telefoon-hotspot...")
+        if (CarRadioForwarder.isNearby(this)) {
+            // Alleen in/bij de auto blijven luisteren. Buiten de auto stoppen we
+            // de foreground service zodat de autoradio-melding direct verdwijnt.
+            updateStatus("Wacht op The One Car...")
             mainHandler.removeCallbacks(idleStopRunnable)
             mainHandler.postDelayed(idleStopRunnable, 90_000L)
             return
@@ -605,11 +604,16 @@ class CarRadioConnectionService : Service() {
         } finally {
             val wasActive = detachConnection(connectionId)
             if (wasActive) {
-                // Bluetooth ACL kan nog actief zijn terwijl alleen onze app-socket kort wegvalt.
-                // Geef de radio tijd om zelf opnieuw te verbinden, maar laat de melding niet eindeloos staan.
-                updateStatus("Verbinding weg — automatisch opnieuw verbinden...")
-                mainHandler.removeCallbacks(idleStopRunnable)
-                mainHandler.postDelayed(idleStopRunnable, 90_000L)
+                if (!CarRadioForwarder.isNearby(this)) {
+                    // We zijn niet meer in/bij de auto: stop meteen zodat Android
+                    // geen "autoradio wil verbinden"-melding buiten de auto toont.
+                    stopSelf()
+                } else {
+                    // In de auto mag een korte hotspot/Wi-Fi-dip wel automatisch herstellen.
+                    updateStatus("Verbinding weg — automatisch opnieuw verbinden...")
+                    mainHandler.removeCallbacks(idleStopRunnable)
+                    mainHandler.postDelayed(idleStopRunnable, 90_000L)
+                }
             }
             try { closeable.close() } catch (_: Exception) {}
         }

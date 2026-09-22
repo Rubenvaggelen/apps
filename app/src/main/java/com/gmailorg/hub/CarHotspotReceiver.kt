@@ -11,6 +11,7 @@ class CarHotspotReceiver : BroadcastReceiver() {
         CarHotspotDetector.updateFromBroadcast(app, intent)
         if (!CarRadioForwarder.isEnabled(app)) return
         if (!CarHotspotDetector.isHotspotLikelyActive(app)) return
+        if (!CarRadioForwarder.isNearby(app) && !CarRadioConnectionService.isRadioConnected()) return
         try {
             CarRadioConnectionService.start(app)
         } catch (_: Exception) {}

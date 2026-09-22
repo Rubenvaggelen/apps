@@ -13,13 +13,11 @@ class BootReceiver : BroadcastReceiver() {
                 SupermarketRefreshWorker.schedule(appContext)
             }
             ParkingGeofenceManager.syncAll(appContext)
-            // Na een telefoonherstart moet de The One Car-server weer luisteren.
-            // De radio verbindt pas wanneer de hotspot bereikbaar is; de server mag
-            // daarom al klaarstaan zonder Bluetooth- of hotspot-detectie als voorwaarde.
+            // Na herstart niet buiten de auto een foreground autoradio-service starten.
+            // Zodra de gekozen radio weer Bluetooth/ACL-bereik heeft, start de
+            // proximity receiver de hotspotserver vanzelf.
             CarRadioForwarder.setNearby(appContext, false)
-            if (CarRadioForwarder.isEnabled(appContext)) {
-                try { CarRadioConnectionService.start(appContext) } catch (_: Exception) {}
-            }
+            CarRadioConnectionService.stop(appContext)
         }
     }
 }

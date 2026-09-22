@@ -154,8 +154,9 @@ class UnifiedNotificationListener : NotificationListenerService() {
 
     private fun ensureCarRadioServerRunning() {
         if (!CarRadioForwarder.isEnabled(applicationContext)) return
-        // NotificationListener leeft ook wanneer de UI gesloten is. Gebruik hem als
-        // extra waakhond zodat de hotspotserver na process-kill/slaapstand terugkomt.
+        if (!CarRadioForwarder.isNearby(applicationContext) &&
+            !CarRadioConnectionService.isRadioConnected()) return
+        // Alleen als de auto aanwezig is de hotspotserver herstellen.
         try {
             CarRadioConnectionService.start(applicationContext)
         } catch (_: Exception) {
