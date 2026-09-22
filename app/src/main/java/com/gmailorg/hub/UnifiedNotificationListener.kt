@@ -38,6 +38,7 @@ class UnifiedNotificationListener : NotificationListenerService() {
         private val voiceNotePlayActions = ConcurrentHashMap<String, PendingIntent>()
         private val voiceNoteContentIntents = ConcurrentHashMap<String, PendingIntent>()
         private val prefetchedMediaTokens = ConcurrentHashMap.newKeySet<String>()
+        private val prefetchInFlightTokens = ConcurrentHashMap.newKeySet<String>()
 
         @Volatile
         var lastWhatsAppReplyKey: String? = null
@@ -391,23 +392,37 @@ class UnifiedNotificationListener : NotificationListenerService() {
 
     private fun prefetchMediaToCar(contact: String, source: CarMediaSource) {
         if (contact.isBlank()) return
-        val token = contact.lowercase(Locale.ROOT) + "|" +
-            (source.cachedPath ?: source.uri?.toString().orEmpty())
-        if (token.endsWith("|") || !prefetchedMediaTokens.add(token)) return
+        val sourceId = source.uri?.toString()?.takeIf { it.isNotBlank() }
+            ?: source.cachedPath.orEmpty()
+        val token = contact.lowercase(Locale.ROOT) + "|" + sourceId
+        if (sourceId.isBlank() || prefetchedMediaTokens.contains(token) || !prefetchInFlightTokens.add(token)) return
+
         Thread {
             try {
-                // Eerst WA_MSG laten aankomen, daarna de bytes stil aan dezelfde chat hangen.
-                Thread.sleep(650L)
-                if (!CarRadioConnectionService.isRadioConnected()) return@Thread
-                val bytes = readMediaSourceForPrefetch(source, 20_000_000) ?: return@Thread
-                if (bytes.isEmpty()) return@Thread
-                CarRadioConnectionService.sendMediaBytes(
-                    contact,
-                    source.mime ?: "application/octet-stream",
-                    bytes,
-                    autoPresent = false
-                )
+                // Verse WhatsApp-media kan net vóór de car-socket of vóór WA_MSG binnenkomen.
+                // Blijf daarom kort opnieuw proberen; één race mag de media niet definitief missen.
+                repeat(15) { attempt ->
+                    if (CarRadioConnectionService.isRadioConnected()) {
+                        val bytes = readMediaSourceForPrefetch(source, 20_000_000)
+                        if (bytes != null && bytes.isNotEmpty()) {
+                            if (attempt == 0) Thread.sleep(650L)
+                            val sent = CarRadioConnectionService.sendMediaBytes(
+                                contact,
+                                source.mime ?: "application/octet-stream",
+                                bytes,
+                                autoPresent = false
+                            )
+                            if (sent) {
+                                prefetchedMediaTokens.add(token)
+                                return@Thread
+                            }
+                        }
+                    }
+                    Thread.sleep(2_000L)
+                }
             } catch (_: Exception) {
+            } finally {
+                prefetchInFlightTokens.remove(token)
             }
         }.start()
     }
@@ -432,6 +447,29 @@ class UnifiedNotificationListener : NotificationListenerService() {
             }
         } catch (_: Exception) {
             return null
+        }
+    }
+
+    private fun notificationMediaContact(extras: android.os.Bundle, fallbackTitle: String): String {
+        val conversationTitle = extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)
+            ?.toString()?.trim().orEmpty()
+        if (conversationTitle.isNotBlank()) return conversationTitle
+
+        val title = fallbackTitle.trim()
+        val genericTitle = title.equals("WhatsApp", true) ||
+            Regex("""^\d+\s+(new|nieuwe)?\s*(messages|berichten)?""", RegexOption.IGNORE_CASE).containsMatchIn(title)
+        if (!genericTitle && title.isNotBlank()) return title
+
+        return try {
+            extras.getParcelableArray(Notification.EXTRA_MESSAGES)?.let { bundles ->
+                Notification.MessagingStyle.Message.getMessagesFromBundleArray(bundles)
+                    .asReversed()
+                    .firstOrNull { it.dataUri != null }
+                    ?.senderPerson?.name?.toString()?.trim()
+                    ?.takeIf { it.isNotBlank() }
+            } ?: title
+        } catch (_: Exception) {
+            title
         }
     }
 
@@ -538,7 +576,7 @@ class UnifiedNotificationListener : NotificationListenerService() {
             cacheWhatsAppReplyAction(sbn)
         }
 
-        if (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
+        val isGroupSummary = sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0
 
         val appLabel = try {
             packageManager.getApplicationLabel(
@@ -567,8 +605,9 @@ class UnifiedNotificationListener : NotificationListenerService() {
 
         var mediaMimeHint: String? = null
         if (isWhatsAppPackage(sbn.packageName)) {
-            val key = conversationKey(title)
-            val keys = notificationConversationKeys(extras, title).apply { if (key.isNotBlank()) add(key) }
+            val mediaContact = notificationMediaContact(extras, title)
+            val key = conversationKey(mediaContact)
+            val keys = notificationConversationKeys(extras, mediaContact).apply { if (key.isNotBlank()) add(key) }
             val lower = text.lowercase(Locale.ROOT)
             val looksLikeVoice = lower.contains("spraakbericht") || lower.contains("voice message") ||
                 lower.contains("voice note") || lower.contains("audio message") || lower.contains("audiobericht") ||
@@ -600,15 +639,21 @@ class UnifiedNotificationListener : NotificationListenerService() {
                             val uri = message.dataUri ?: return@forEach
                             val mime = message.dataMimeType.orEmpty().ifBlank {
                                 runCatching { contentResolver.getType(uri) }.getOrNull().orEmpty()
+                            }.ifBlank {
+                                when {
+                                    looksLikeVoice -> "audio/*"
+                                    looksLikeImage -> "image/*"
+                                    else -> ""
+                                }
                             }
                             when {
                                 mime.startsWith("audio/") -> {
                                     mediaMimeHint = mime
-                                    cacheWhatsAppMedia(keys, uri, mime, image = false, contact = title)
+                                    cacheWhatsAppMedia(keys, uri, mime, image = false, contact = mediaContact)
                                 }
                                 mime.startsWith("image/") -> {
                                     mediaMimeHint = mime
-                                    cacheWhatsAppMedia(keys, uri, mime, image = true, contact = title)
+                                    cacheWhatsAppMedia(keys, uri, mime, image = true, contact = mediaContact)
                                 }
                             }
                         }
@@ -620,25 +665,35 @@ class UnifiedNotificationListener : NotificationListenerService() {
             val uriCandidates = mutableListOf<Pair<String, Uri>>()
             collectMediaUris(extras, uriCandidates)
             uriCandidates.distinctBy { it.second.toString() }.forEach { (sourceKey, uri) ->
-                val mime = runCatching { contentResolver.getType(uri) }.getOrNull().orEmpty()
+                val mime = runCatching { contentResolver.getType(uri) }.getOrNull().orEmpty().ifBlank {
+                    when {
+                        looksLikeVoice -> "audio/*"
+                        looksLikeImage -> "image/*"
+                        else -> ""
+                    }
+                }
                 when {
                     mime.startsWith("audio/") -> {
                         mediaMimeHint = mime
-                        cacheWhatsAppMedia(keys, uri, mime, image = false, contact = title)
+                        cacheWhatsAppMedia(keys, uri, mime, image = false, contact = mediaContact)
                     }
                     mime.startsWith("image/") && looksLikeImage &&
                         !sourceKey.lowercase(Locale.ROOT).contains("icon") -> {
                         mediaMimeHint = mime
-                        cacheWhatsAppMedia(keys, uri, mime, image = true, contact = title)
+                        cacheWhatsAppMedia(keys, uri, mime, image = true, contact = mediaContact)
                     }
                 }
             }
 
             // 3) BigPicture-notificaties bevatten soms alleen een Bitmap/Icon en geen URI.
             if (looksLikeImage && keys.none { imageSources.containsKey(it) }) {
-                if (cachePictureExtra(extras, keys, title)) mediaMimeHint = "image/jpeg"
+                if (cachePictureExtra(extras, keys, mediaContact)) mediaMimeHint = "image/jpeg"
             }
         }
+
+        // Op sommige WhatsApp/Android-versies zit verse media alleen in de group-summary.
+        // Die media is hierboven nu wel verwerkt, maar de summary zelf mag geen extra chatregel worden.
+        if (isGroupSummary) return
 
         NotifStore.addOrUpdate(
             NotifItem(
