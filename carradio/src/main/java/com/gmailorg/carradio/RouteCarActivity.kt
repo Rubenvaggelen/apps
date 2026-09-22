@@ -23,6 +23,9 @@ class RouteCarActivity : AppCompatActivity() {
         fromInput.setText("Huidige locatie")
         findViewById<Button>(R.id.routeCurrentLocationButton).setOnClickListener { fromInput.setText("Huidige locatie") }
         findViewById<Button>(R.id.routeCalculateButton).setOnClickListener { chooseNavigationApp() }
+        findViewById<Button>(R.id.routeFuelStationsButton).setOnClickListener {
+            startActivity(Intent(this, FuelPricesCarActivity::class.java))
+        }
     }
 
     private fun chooseNavigationApp() {
