@@ -7,6 +7,7 @@ import android.content.Intent
 import android.net.Uri
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import java.io.File
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
@@ -20,10 +21,11 @@ class UnifiedNotificationListener : NotificationListenerService() {
         private val replyActions = ConcurrentHashMap<String, Pair<PendingIntent, RemoteInput>>()
         private val whatsAppReplyKeyByConversation = ConcurrentHashMap<String, String>()
         private val voiceNoteSources = ConcurrentHashMap<String, VoiceNoteSource>()
+        private val imageSources = ConcurrentHashMap<String, VoiceNoteSource>()
         private val voiceNotePlayActions = ConcurrentHashMap<String, PendingIntent>()
         private val voiceNoteContentIntents = ConcurrentHashMap<String, PendingIntent>()
 
-        data class VoiceNoteSource(val uri: Uri?, val mime: String?)
+        data class VoiceNoteSource(val uri: Uri?, val mime: String?, val cachedPath: String? = null)
 
         @Volatile
         var lastWhatsAppReplyKey: String? = null
@@ -92,6 +94,14 @@ class UnifiedNotificationListener : NotificationListenerService() {
 
         fun voiceNoteSourceForConversation(title: String): VoiceNoteSource? =
             voiceNoteSources[conversationKey(title)]
+
+        fun imageSourceForConversation(title: String): VoiceNoteSource? =
+            imageSources[conversationKey(title)]
+
+        fun mediaSourceForConversation(title: String): VoiceNoteSource? {
+            val key = conversationKey(title)
+            return imageSources[key] ?: voiceNoteSources[key]
+        }
 
         fun triggerVoiceNoteAction(title: String): Boolean {
             if (appContext == null) return false
@@ -286,6 +296,53 @@ class UnifiedNotificationListener : NotificationListenerService() {
         }
     }
 
+    private fun cacheWhatsAppMedia(key: String, uri: Uri, mime: String, image: Boolean) {
+        Thread {
+            try {
+                val dir = File(cacheDir, "wa_notification_media").apply { mkdirs() }
+                val ext = when {
+                    mime.contains("jpeg", true) || mime.contains("jpg", true) -> ".jpg"
+                    mime.contains("png", true) -> ".png"
+                    mime.contains("webp", true) -> ".webp"
+                    mime.contains("gif", true) -> ".gif"
+                    mime.contains("ogg", true) || mime.contains("opus", true) -> ".ogg"
+                    mime.contains("mpeg", true) || mime.contains("mp3", true) -> ".mp3"
+                    mime.contains("mp4", true) || mime.contains("m4a", true) -> ".m4a"
+                    mime.contains("aac", true) -> ".aac"
+                    mime.contains("3gpp", true) || mime.contains("3gp", true) -> ".3gp"
+                    mime.contains("wav", true) -> ".wav"
+                    else -> if (image) ".img" else ".audio"
+                }
+                val file = File(dir, "${if (image) "image" else "audio"}_${System.currentTimeMillis()}_${key.hashCode()}$ext")
+                val input = contentResolver.openInputStream(uri) ?: return@Thread
+                var total = 0
+                input.use { source ->
+                    file.outputStream().use { target ->
+                        val buffer = ByteArray(32 * 1024)
+                        while (true) {
+                            val read = source.read(buffer)
+                            if (read <= 0) break
+                            total += read
+                            if (total > 20_000_000) {
+                                runCatching { file.delete() }
+                                return@Thread
+                            }
+                            target.write(buffer, 0, read)
+                        }
+                    }
+                }
+                if (file.exists() && file.length() > 0L) {
+                    val cached = VoiceNoteSource(uri, mime, file.absolutePath)
+                    if (image) imageSources[key] = cached else voiceNoteSources[key] = cached
+                }
+                // Houd cache begrensd: oude media uit eerdere ritten mag weg.
+                dir.listFiles()?.sortedByDescending { it.lastModified() }?.drop(30)?.forEach { runCatching { it.delete() } }
+            } catch (_: Exception) {
+                // URI blijft als fallback beschikbaar zolang WhatsApp die toestaat.
+            }
+        }.start()
+    }
+
     private fun handleNotification(sbn: StatusBarNotification) {
         // The foreground service notification is operational state, not a user message.
         // Never show it inside The One's own Meldingen screen.
@@ -337,28 +394,47 @@ class UnifiedNotificationListener : NotificationListenerService() {
             }
         }
 
+        var mediaMimeHint: String? = null
         if (isWhatsAppPackage(sbn.packageName)) {
             val key = conversationKey(title)
             val lower = text.lowercase(Locale.ROOT)
             val looksLikeVoice = lower.contains("spraakbericht") || lower.contains("voice message") || lower.contains("audio message")
+            val looksLikeImage = lower.contains("foto") || lower.contains("photo") ||
+                lower.contains("afbeelding") || lower.contains("image") || lower.startsWith("📷") || lower.startsWith("🖼")
+
             if (looksLikeVoice) {
+                mediaMimeHint = "audio/*"
                 sbn.notification.contentIntent?.let { voiceNoteContentIntents[key] = it }
                 sbn.notification.actions?.firstOrNull { action ->
                     val label = action.title?.toString()?.lowercase(Locale.ROOT).orEmpty()
                     label.contains("afspelen") || label == "play" || label.contains("listen")
                 }?.actionIntent?.let { voiceNotePlayActions[key] = it }
+            } else if (looksLikeImage) {
+                mediaMimeHint = "image/*"
             }
 
             try {
                 val bundles = extras.getParcelableArray(Notification.EXTRA_MESSAGES)
                 if (bundles != null) {
                     val messages = Notification.MessagingStyle.Message.getMessagesFromBundleArray(bundles)
-                    val withAudio = messages.lastOrNull {
-                        it.dataMimeType?.startsWith("audio/") == true && it.dataUri != null
+                    val withMedia = messages.lastOrNull {
+                        val mime = it.dataMimeType.orEmpty()
+                        it.dataUri != null && (mime.startsWith("audio/") || mime.startsWith("image/"))
                     }
-                    if (withAudio != null) {
-                        voiceNoteSources[key] = VoiceNoteSource(withAudio.dataUri, withAudio.dataMimeType)
-                        sbn.notification.contentIntent?.let { voiceNoteContentIntents[key] = it }
+                    if (withMedia != null) {
+                        val mime = withMedia.dataMimeType.orEmpty()
+                        val uri = withMedia.dataUri
+                        mediaMimeHint = mime
+                        if (uri != null) {
+                            if (mime.startsWith("audio/")) {
+                                voiceNoteSources[key] = VoiceNoteSource(uri, mime)
+                                cacheWhatsAppMedia(key, uri, mime, image = false)
+                                sbn.notification.contentIntent?.let { voiceNoteContentIntents[key] = it }
+                            } else if (mime.startsWith("image/")) {
+                                imageSources[key] = VoiceNoteSource(uri, mime)
+                                cacheWhatsAppMedia(key, uri, mime, image = true)
+                            }
+                        }
                     }
                 }
             } catch (_: Exception) {}
@@ -384,7 +460,8 @@ class UnifiedNotificationListener : NotificationListenerService() {
             sbn.packageName,
             title,
             text,
-            sbn.postTime
+            sbn.postTime,
+            mediaMimeHint
         )
     }
 }
