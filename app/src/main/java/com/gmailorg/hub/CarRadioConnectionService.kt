@@ -236,11 +236,21 @@ class CarRadioConnectionService : Service() {
     private var discoverySocket: DatagramSocket? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var speechRecognizer: SpeechRecognizer? = null
-    private val idleStopRunnable = Runnable {
-        if (!isRadioConnected()) {
-            CarRadioForwarder.setNearby(this, false)
-            stopSelf()
+    private val idleStopRunnable = Runnable { handleIdleTimeout() }
+
+    private fun handleIdleTimeout() {
+        if (isRadioConnected()) return
+        if (CarRadioForwarder.isEnabled(this)) {
+            // The One Car gebruikt de telefoon-hotspot als vaste transportlaag.
+            // Laat de TCP/discovery-server daarom actief zodat de radio ook na
+            // slaapstand, een korte Wi-Fi-dip of een late hotspot-connectie kan herstellen.
+            updateStatus("Wacht op The One Car via telefoon-hotspot...")
+            mainHandler.removeCallbacks(idleStopRunnable)
+            mainHandler.postDelayed(idleStopRunnable, 90_000L)
+            return
         }
+        CarRadioForwarder.setNearby(this, false)
+        stopSelf()
     }
 
     override fun onCreate() {
@@ -250,12 +260,18 @@ class CarRadioConnectionService : Service() {
         Thread({ listenWifiTcpLoop() }, "TheOne-WifiServer").start()
         Thread({ discoveryResponderLoop() }, "TheOne-WifiDiscovery").start()
         Thread({ listenBluetoothFixedLoop() }, "TheOne-BtCh8Server").start()
-        // Veiligheidsnet voor headunits/telefoons die soms geen ACL_DISCONNECTED sturen.
-        // Zonder echte app-verbinding blijft de wachtmelding maximaal 90 seconden staan.
+        // Periodieke idle-check. Zolang The One Car-koppeling is ingeschakeld blijft
+        // de hotspotserver beschikbaar, ook wanneer de radio tijdelijk niet verbonden is.
         mainHandler.postDelayed(idleStopRunnable, 90_000L)
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_NOT_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!isRadioConnected()) {
+            mainHandler.removeCallbacks(idleStopRunnable)
+            mainHandler.postDelayed(idleStopRunnable, 90_000L)
+        }
+        return START_STICKY
+    }
 
     private fun startAsForeground() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

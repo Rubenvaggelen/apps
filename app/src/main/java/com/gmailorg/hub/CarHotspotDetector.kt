@@ -50,7 +50,9 @@ object CarHotspotDetector {
                 val method = wifi.javaClass.methods.firstOrNull { it.name == "getWifiApState" && it.parameterTypes.isEmpty() }
                 val state = (method?.invoke(wifi) as? Int)
                 if (state == WIFI_AP_STATE_ENABLED) return true
-                if (state == WIFI_AP_STATE_DISABLED) return false
+                // Een DISABLED-resultaat uit de verborgen API is op nieuwere
+                // Samsung/Android-versies niet altijd definitief. Laat de broadcast-
+                // en interface-detectie hieronder daarom ook nog controleren.
             }
         } catch (_: Exception) {}
 

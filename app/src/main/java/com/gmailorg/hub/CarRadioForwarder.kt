@@ -20,9 +20,10 @@ object CarRadioForwarder {
         prefs(context).edit().putBoolean(KEY_ENABLED, enabled).apply()
         if (!enabled) {
             CarRadioConnectionService.stop(context)
-        } else if (isNearby(context) || CarHotspotDetector.isHotspotLikelyActive(context)) {
-            // Bluetooth-bereik óf de telefoon-hotspot kan de autoradio-link dragen.
-            CarRadioConnectionService.start(context)
+        } else {
+            // Houd de telefoonserver direct paraat. De radio maakt zelf via de
+            // telefoon-hotspot verbinding zodra die beschikbaar is.
+            CarRadioConnectionService.start(context.applicationContext)
         }
     }
 

@@ -13,12 +13,11 @@ class BootReceiver : BroadcastReceiver() {
                 SupermarketRefreshWorker.schedule(appContext)
             }
             ParkingGeofenceManager.syncAll(appContext)
-            // Niet meer blindelings starten bij opstarten: we weten na een
-            // herstart niet zeker of de auto al in bereik is. De
-            // CarRadioProximityReceiver start de verbinding vanzelf zodra
-            // Android een ACL-verbinding met de gekozen autoradio meldt.
+            // Na een telefoonherstart moet de The One Car-server weer luisteren.
+            // De radio verbindt pas wanneer de hotspot bereikbaar is; de server mag
+            // daarom al klaarstaan zonder Bluetooth- of hotspot-detectie als voorwaarde.
             CarRadioForwarder.setNearby(appContext, false)
-            if (CarRadioForwarder.isEnabled(appContext) && CarHotspotDetector.isHotspotLikelyActive(appContext)) {
+            if (CarRadioForwarder.isEnabled(appContext)) {
                 try { CarRadioConnectionService.start(appContext) } catch (_: Exception) {}
             }
         }

@@ -154,8 +154,8 @@ class UnifiedNotificationListener : NotificationListenerService() {
 
     private fun ensureCarRadioServerRunning() {
         if (!CarRadioForwarder.isEnabled(applicationContext)) return
-        val hotspotActive = CarHotspotDetector.isHotspotLikelyActive(applicationContext)
-        if (!CarRadioForwarder.isNearby(applicationContext) && !hotspotActive && !CarRadioConnectionService.isRadioConnected()) return
+        // NotificationListener leeft ook wanneer de UI gesloten is. Gebruik hem als
+        // extra waakhond zodat de hotspotserver na process-kill/slaapstand terugkomt.
         try {
             CarRadioConnectionService.start(applicationContext)
         } catch (_: Exception) {
