@@ -53,7 +53,14 @@ object CarRadioForwarder {
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun forwardIfEnabled(context: Context, packageName: String, title: String, text: String, postTime: Long = System.currentTimeMillis()) {
+    fun forwardIfEnabled(
+        context: Context,
+        packageName: String,
+        title: String,
+        text: String,
+        postTime: Long = System.currentTimeMillis(),
+        mediaMime: String? = null
+    ) {
         if (packageName != "com.whatsapp" || !isEnabled(context)) return
         WhatsAppCarFilterStore.registerSeen(context, title)
 
@@ -74,6 +81,6 @@ object CarRadioForwarder {
             WhatsAppCarFilterStore.isFilterEnabled(context)
         )
         if (!allowed) return
-        CarRadioConnectionService.sendWhatsAppMessage(title, text, postTime)
+        CarRadioConnectionService.sendWhatsAppMessage(title, text, postTime, mediaMime)
     }
 }
