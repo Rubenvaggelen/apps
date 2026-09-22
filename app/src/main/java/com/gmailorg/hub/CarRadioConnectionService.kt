@@ -90,8 +90,8 @@ class CarRadioConnectionService : Service() {
             return sendProtocolLine(line, line.startsWith("MSG:"))
         }
 
-        fun sendWhatsAppMessage(title: String, text: String, postTime: Long): Boolean {
-            return sendProtocolLine("WA_MSG:${enc(title)}:${enc(text)}:$postTime", true)
+        fun sendWhatsAppMessage(title: String, text: String, postTime: Long, mediaMime: String? = null): Boolean {
+            return sendProtocolLine("WA_MSG:${enc(title)}:${enc(text)}:$postTime:${enc(mediaMime.orEmpty())}", true)
         }
 
         fun sendContactState(name: String, allowed: Boolean, filterEnabled: Boolean): Boolean {
@@ -128,9 +128,9 @@ class CarRadioConnectionService : Service() {
         }
 
         fun sendMediaBytes(contact: String, mime: String, bytes: ByteArray): Boolean {
-            if (bytes.isEmpty() || bytes.size > 12_000_000) return false
+            if (bytes.isEmpty() || bytes.size > 20_000_000) return false
             val id = System.currentTimeMillis().toString(36)
-            val chunkSize = if (activeTransport == "Wi-Fi") 24_000 else 8_000
+            val chunkSize = if (activeTransport.startsWith("Wi-Fi", true)) 24_000 else 8_000
             synchronized(writeLock) {
                 val writer = activeWriter ?: return false
                 return try {
@@ -541,6 +541,12 @@ class CarRadioConnectionService : Service() {
                         val contact = dec(command.removePrefix("VOICE_NOTE_REQUEST:"))
                         handleVoiceNoteRequest(contact)
                     }
+                    command.startsWith("MEDIA_REQUEST:") -> {
+                        val parts = command.split(":", limit = 3)
+                        if (parts.size == 3) {
+                            handleMediaRequest(dec(parts[1]), dec(parts[2]))
+                        }
+                    }
                     command.startsWith("REPLY_TEXT_TO:") -> {
                         val parts = command.split(":", limit = 3)
                         if (parts.size == 3) handleRecognizedReply(dec(parts[2]), dec(parts[1]))
@@ -625,9 +631,6 @@ class CarRadioConnectionService : Service() {
         if (contact.isBlank()) return
         val source = UnifiedNotificationListener.voiceNoteSourceForConversation(contact)
         if (source == null) {
-            // WhatsApp geeft niet op elk toestel de audiobron als content-URI vrij.
-            // In dat geval proberen we de Play/content PendingIntent uit de notificatie,
-            // zodat het spraakbericht alsnog via WhatsApp kan worden afgespeeld.
             if (UnifiedNotificationListener.triggerVoiceNoteAction(contact)) {
                 sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("Spraakbericht geopend via WhatsApp op je telefoon.")}", false)
             } else {
@@ -635,37 +638,80 @@ class CarRadioConnectionService : Service() {
             }
             return
         }
-        if (source.uri != null) {
-            Thread {
-                try {
-                    val bytes = contentResolver.openInputStream(source.uri)?.use { input ->
-                        val out = ByteArrayOutputStream()
-                        val buffer = ByteArray(32 * 1024)
-                        while (out.size() <= 12_000_000) {
-                            val read = input.read(buffer)
-                            if (read <= 0) break
-                            out.write(buffer, 0, read)
-                        }
-                        out.toByteArray()
-                    }
-                    if (bytes != null && bytes.isNotEmpty() && bytes.size <= 12_000_000) {
-                        sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("Spraakbericht naar de autoradio sturen…")}", false)
-                        if (!sendMediaBytes(contact, source.mime ?: "audio/*", bytes)) {
-                            sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("Spraakbericht kon niet naar de radio worden gestuurd.")}", false)
-                        }
-                        return@Thread
-                    }
-                } catch (_: Exception) {}
-                if (UnifiedNotificationListener.triggerVoiceNoteAction(contact)) {
-                    sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("Spraakbericht geopend via WhatsApp op je telefoon.")}", false)
-                } else {
-                    sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("WhatsApp gaf geen afspeelbare audio aan The One door.")}", false)
+
+        Thread {
+            val bytes = readMediaSource(source, 20_000_000)
+            if (bytes != null && bytes.isNotEmpty()) {
+                sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("Spraakbericht naar de autoradio sturen…")}", false)
+                if (!sendMediaBytes(contact, source.mime ?: "audio/ogg", bytes)) {
+                    sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("Spraakbericht kon niet naar de radio worden gestuurd.")}", false)
                 }
-            }.start()
-        } else if (UnifiedNotificationListener.triggerVoiceNoteAction(contact)) {
-            sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("Spraakbericht geopend via WhatsApp op je telefoon.")}", false)
-        } else {
-            sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("WhatsApp gaf geen afspeelbare audio aan The One door.")}", false)
+                return@Thread
+            }
+
+            if (UnifiedNotificationListener.triggerVoiceNoteAction(contact)) {
+                sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("Spraakbericht geopend via WhatsApp op je telefoon.")}", false)
+            } else {
+                sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("WhatsApp gaf geen afspeelbare audio aan The One door.")}", false)
+            }
+        }.start()
+    }
+
+    private fun handleMediaRequest(contact: String, kind: String) {
+        if (contact.isBlank() || kind.isBlank()) return
+        val source = when {
+            kind.equals("image", true) -> UnifiedNotificationListener.imageSourceForConversation(contact)
+            kind.equals("audio", true) || kind.equals("voice", true) -> UnifiedNotificationListener.voiceNoteSourceForConversation(contact)
+            else -> UnifiedNotificationListener.mediaSourceForConversation(contact)
+        }
+
+        if (source == null) {
+            sendProtocolLine(
+                "VOICE_NOTE_STATUS:${encLocal(if (kind.equals("image", true)) "Afbeelding is niet meer beschikbaar op de telefoon." else "Media is niet meer beschikbaar op de telefoon.")}",
+                false
+            )
+            return
+        }
+
+        Thread {
+            val bytes = readMediaSource(source, 20_000_000)
+            if (bytes == null || bytes.isEmpty()) {
+                sendProtocolLine(
+                    "VOICE_NOTE_STATUS:${encLocal(if (kind.equals("image", true)) "Afbeelding kon niet worden opgehaald." else "Media kon niet worden opgehaald.")}",
+                    false
+                )
+                return@Thread
+            }
+            val ok = sendMediaBytes(contact, source.mime ?: if (kind.equals("image", true)) "image/jpeg" else "application/octet-stream", bytes)
+            if (!ok) {
+                sendProtocolLine("VOICE_NOTE_STATUS:${encLocal("Media kon niet naar The One Car worden gestuurd.")}", false)
+            }
+        }.start()
+    }
+
+    private fun readMediaSource(source: UnifiedNotificationListener.VoiceNoteSource, maxBytes: Int): ByteArray? {
+        try {
+            source.cachedPath?.takeIf { it.isNotBlank() }?.let { path ->
+                val file = java.io.File(path)
+                if (file.exists() && file.length() in 1..maxBytes.toLong()) {
+                    return file.readBytes()
+                }
+            }
+
+            val uri = source.uri ?: return null
+            return contentResolver.openInputStream(uri)?.use { input ->
+                val out = ByteArrayOutputStream()
+                val buffer = ByteArray(32 * 1024)
+                while (out.size() <= maxBytes) {
+                    val read = input.read(buffer)
+                    if (read <= 0) break
+                    if (out.size() + read > maxBytes) return@use null
+                    out.write(buffer, 0, read)
+                }
+                out.toByteArray()
+            }
+        } catch (_: Exception) {
+            return null
         }
     }
 
