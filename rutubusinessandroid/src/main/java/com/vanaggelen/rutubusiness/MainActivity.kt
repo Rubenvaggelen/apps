@@ -66,7 +66,7 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated in Android SDK")
     override fun onBackPressed() {
         webView.evaluateJavascript(
-            "(function(){const qr=document.getElementById('qrModal');if(qr&&qr.classList.contains('open')){closeQrModal();return 'closed'}const m=document.getElementById('orderModal');if(m&&m.classList.contains('open')){closeOrderModal();return 'closed'}if(typeof ordersScreenOpen!=='undefined'&&ordersScreenOpen){backToDashboard();return 'dashboard'}return 'none'})()"
+            "(function(){const qr=document.getElementById('qrModal');if(qr&&qr.classList.contains('open')){closeQrModal();return 'closed'}const m=document.getElementById('orderModal');if(m&&m.classList.contains('open')){closeOrderModal();return 'closed'}if((typeof ordersScreenOpen!=='undefined'&&ordersScreenOpen)||(typeof historyScreenOpen!=='undefined'&&historyScreenOpen)){backToDashboard();return 'dashboard'}return 'none'})()"
         ) { result ->
             if (result != "\"closed\"" && result != "\"dashboard\"") {
                 if (webView.canGoBack()) webView.goBack() else finish()
