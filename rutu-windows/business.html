@@ -53,7 +53,26 @@ async function setStatus(id,status){await rutu.setStatus(id,status)}
 async function hideHistory(id){await rutu.hideHistory(id)}
 async function clearHistory(){if(!confirm('Geschiedenis wissen en teller op nul zetten?'))return;await rutu.clearHistory()}
 function openHistoryOrder(id){const o=orders.find(x=>Number(x.id)===Number(id));if(!o)return;document.getElementById('orderModal').dataset.mode='history';const items=(o.items||[]).map(i=>'<div class="modal-line"><span>'+esc(i.qty)+'× '+esc(i.name)+'</span></div>').join('');const delivery=o.delivery?'<div class="modal-meta"><b>Bezorgen</b> • '+esc(o.address)+' • '+esc(o.postcode)+' • bezorgkosten '+money(o.deliveryFee)+'</div>':'<div class="modal-meta"><b>Afhalen</b></div>';document.getElementById('orderModalTitle').textContent='Bestelling #'+o.id;document.getElementById('orderModalBody').innerHTML='<div class="modal-meta">'+when(o.created)+' • '+esc(o.customer)+'</div>'+delivery+paymentLine(o)+'<div class="modal-items">'+items+'</div><div class="modal-total"><span>Totaal</span><b>'+money(o.total)+'</b></div><div class="modal-status">Status: '+esc(o.status)+'</div>';document.getElementById('orderModal').classList.add('open')}
-function paymentLine(o){if(!o.delivery||!o.paymentMethod)return'';return'<div class="meta">Betaalwijze: <b>'+esc(o.paymentMethod)+'</b>'+(o.paymentMethod==='Tikkie'&&o.paymentPhone?' • Telefoonnummer: <b>'+esc(o.paymentPhone)+'</b>':'')+'</div>'}
+function copyPaymentLink(id){
+ const o=orders.find(x=>Number(x.id)===Number(id));if(!o||!/^https:\/\/(?:www\.)?tikkie\.me\//.test(o.paymentUrl||''))return;
+ const url=o.paymentUrl;
+ if(navigator.clipboard&&navigator.clipboard.writeText){
+   navigator.clipboard.writeText(url).then(()=>alert('Tikkie-link gekopieerd ✓')).catch(()=>prompt('Kopieer deze Tikkie-link:',url));
+ }else{
+   const input=document.createElement('textarea');input.value=url;document.body.appendChild(input);input.select();
+   const copied=document.execCommand('copy');input.remove();
+   if(copied)alert('Tikkie-link gekopieerd ✓');else prompt('Kopieer deze Tikkie-link:',url);
+ }
+}
+function paymentLine(o){
+ if(!o.delivery||!o.paymentMethod)return'';
+ const status=o.paymentStatus||'Niet gekoppeld';
+ return '<div class="meta">Betaalwijze: <b>'+esc(o.paymentMethod)+'</b>'+
+ (o.paymentMethod==='Tikkie'&&o.paymentPhone?' • Telefoonnummer: <b>'+esc(o.paymentPhone)+'</b>':'')+
+ (o.paymentMethod==='Tikkie'?'<br>Betaalstatus: <b>'+esc(status)+'</b>':'')+
+ (o.paymentMethod==='Tikkie'&&/^https:\/\/(?:www\.)?tikkie\.me\//.test(o.paymentUrl||'')?'<br><button type="button" class="gray" onclick="copyPaymentLink('+Number(o.id)+')">Kopieer Tikkie-link</button>':'')+
+ '</div>';
+}
 function isOpenOrder(o){return !['Afgerond','Geweigerd','Geannuleerd','Uitverkocht'].includes(o.status)}
 function openOpenOrders(){if(!orders.some(isOpenOrder))return;const modal=document.getElementById('orderModal');modal.dataset.mode='open-orders';document.getElementById('orderModalTitle').textContent='Openstaande bestellingen';renderOpenOrdersModal();modal.classList.add('open')}
 function renderOpenOrdersModal(){const open=orders.filter(isOpenOrder);document.getElementById('orderModalBody').innerHTML='<div class="open-orders-list">'+(open.map(o=>orderCard(o,false)).join('')||'<div class="empty">Geen openstaande bestellingen.</div>')+'</div>'}
