@@ -492,6 +492,11 @@ if ($action === 'announcement') {
             'ordering_blocked' => ordering_blocked_today($a)
         ];
     });
+    // Payment-provider onboarding is business-only; never show that notice in customer apps.
+    $noticeText = mb_strtolower(($announcement['title'] ?? '') . ' ' . ($announcement['message'] ?? ''), 'UTF-8');
+    if (str_contains($noticeText, 'tikkie') && (str_contains($noticeText, 'zakelijk') || str_contains($noticeText, 'business'))) {
+        $announcement['active'] = false;
+    }
     respond(200, ['ok' => true, 'announcement' => $announcement]);
 }
 
