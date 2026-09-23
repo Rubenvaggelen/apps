@@ -787,6 +787,9 @@ class MainActivity : AppCompatActivity() {
     private fun announcementCard() {
         val a = announcement
         if (!a.active || (a.title.isBlank() && a.message.isBlank())) return
+        // Tikkie Zakelijk is an internal payment setup matter, not a customer announcement.
+        val announcementText = "${a.title} ${a.message}".lowercase(Locale.ROOT)
+        if ("tikkie" in announcementText && ("zakelijk" in announcementText || "business" in announcementText)) return
         val dates = when {
             a.from.isNotBlank() && a.until.isNotBlank() -> "Van " + a.from + " t/m " + a.until
             a.from.isNotBlank() -> "Vanaf " + a.from
