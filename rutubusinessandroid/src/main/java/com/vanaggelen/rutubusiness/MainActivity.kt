@@ -7,10 +7,25 @@ import android.text.InputType
 import android.widget.EditText
 import android.widget.Toast
 import android.webkit.WebView
+import android.webkit.WebResourceRequest
 import android.webkit.WebViewClient
 
 class MainActivity : Activity() {
     private lateinit var webView: WebView
+    private var businessUnlocked = false
+    private var lastUpdateCheck = 0L
+
+    private fun checkForBusinessUpdate(manual: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!manual && now - lastUpdateCheck < 6 * 60 * 60 * 1000L) return
+        lastUpdateCheck = now
+        RutuBusinessUpdateChecker.checkForUpdate(this, manual)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (businessUnlocked) checkForBusinessUpdate()
+    }
 
     @Suppress("DEPRECATION")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -23,6 +38,13 @@ class MainActivity : Activity() {
             settings.allowFileAccessFromFileURLs = true
             settings.allowUniversalAccessFromFileURLs = true
             webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                    if (request.isForMainFrame && request.url.scheme == "rutuupdate" && request.url.host == "check") {
+                        if (view.url == "file:///android_asset/business.html") checkForBusinessUpdate(manual = true)
+                        return true
+                    }
+                    return false
+                }
                 override fun onPageFinished(view: WebView, url: String) {
                     super.onPageFinished(view, url)
                     view.clearHistory()
@@ -53,6 +75,8 @@ class MainActivity : Activity() {
                     dialog.dismiss()
                     setContentView(webView)
                     webView.loadUrl("file:///android_asset/business.html")
+                    businessUnlocked = true
+                    checkForBusinessUpdate()
                     webView.post { webView.scrollTo(0, 0) }
                 } else {
                     input.text.clear()
