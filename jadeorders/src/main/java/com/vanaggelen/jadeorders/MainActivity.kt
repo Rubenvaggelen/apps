@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.content.pm.PackageManager
 import android.graphics.Typeface
 import android.widget.ImageView
@@ -43,7 +44,7 @@ import java.util.Locale
 class MainActivity : AppCompatActivity() {
     private enum class Role { NONE, CUSTOMER, BUSINESS }
     data class Product(val name: String, val price: Double, val category: String, val description: String)
-    data class Order(val id: Int, val items: LinkedHashMap<String, Int>, val total: Double, var status: String, val trackingToken: String = "", val delivery: Boolean = false, val address: String = "", val postcode: String = "", val deliveryFee: Double = 0.0)
+    data class Order(val id: Int, val items: LinkedHashMap<String, Int>, val total: Double, var status: String, val trackingToken: String = "", val delivery: Boolean = false, val address: String = "", val postcode: String = "", val deliveryFee: Double = 0.0, val paymentMethod: String = "", val paymentUrl: String = "", val paymentStatus: String = "")
     data class Announcement(val title: String = "", val message: String = "", val from: String = "", val until: String = "", val active: Boolean = false, val orderingBlocked: Boolean = false)
 
     private val products = listOf(
@@ -560,6 +561,16 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    private fun openTikkie(url: String) {
+        val uri = try { Uri.parse(url) } catch (_: Exception) { null }
+        if (uri?.scheme != "https" || uri.host !in setOf("tikkie.me", "www.tikkie.me")) {
+            toast("Deze betaallink kan niet veilig worden geopend.")
+            return
+        }
+        try { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+        catch (_: Exception) { toast("Geen app gevonden om de betaallink te openen.") }
+    }
+
     private fun sendOnlineOrder(items: LinkedHashMap<String, Int>, shownTotal: Double, delivery: Boolean = false, address: String = "", postcode: String = "", paymentMethod: String = "", paymentPhone: String = "") {
         if (items.isEmpty()) return
         onlineText = "Bestelling veilig verzenden…"
@@ -589,7 +600,8 @@ class MainActivity : AppCompatActivity() {
                 val o = json.getJSONObject("order")
                 val order = Order(
                     o.getInt("id"), items, o.optDouble("total", shownTotal), o.optString("status", "Nieuw"), o.optString("tracking", ""),
-                    o.optBoolean("delivery", delivery), o.optString("address", address.trim()), o.optString("postcode", normalizedPostcode(postcode)), o.optDouble("delivery_fee", 0.0)
+                    o.optBoolean("delivery", delivery), o.optString("address", address.trim()), o.optString("postcode", normalizedPostcode(postcode)), o.optDouble("delivery_fee", 0.0),
+                    o.optString("payment_method", ""), o.optString("payment_url", ""), o.optString("payment_status", "")
                 )
                 Store.upsert(this, order)
                 ensureBackgroundOrderStatusService()
@@ -604,6 +616,14 @@ class MainActivity : AppCompatActivity() {
                     deliveryPaymentPhone = ""
                     toast("Bestelling #${order.id} is ontvangen door Rutu BBQ ✓")
                     cartScreen()
+                    if (order.paymentMethod == "Tikkie" && order.paymentUrl.isNotBlank()) {
+                        AlertDialog.Builder(this@MainActivity)
+                            .setTitle("Tikkie voor bestelling #${order.id}")
+                            .setMessage("Je betaallink voor ${money.format(order.total)} staat klaar. Wil je nu betalen?")
+                            .setNegativeButton("Later", null)
+                            .setPositiveButton("Betaal via Tikkie") { _, _ -> openTikkie(order.paymentUrl) }
+                            .show()
+                    }
                 }
             } catch (_: Exception) {
                 onlineAvailable = false
@@ -634,7 +654,8 @@ class MainActivity : AppCompatActivity() {
                 items.forEach { (name, qty) -> mergedItems[name] = (mergedItems[name] ?: 0) + qty }
                 val updated = Order(
                     order.id, mergedItems, o.optDouble("total", order.total), o.optString("status", order.status), order.trackingToken,
-                    o.optBoolean("delivery", order.delivery), o.optString("address", order.address), o.optString("postcode", order.postcode), o.optDouble("delivery_fee", order.deliveryFee)
+                    o.optBoolean("delivery", order.delivery), o.optString("address", order.address), o.optString("postcode", order.postcode), o.optDouble("delivery_fee", order.deliveryFee),
+                    o.optString("payment_method", order.paymentMethod), o.optString("payment_url", order.paymentUrl), o.optString("payment_status", order.paymentStatus)
                 )
                 Store.upsert(this, updated)
                 ensureBackgroundOrderStatusService()
@@ -704,7 +725,15 @@ class MainActivity : AppCompatActivity() {
                     val (code, raw) = onlineJson("GET", "status", extra = mapOf("id" to order.id.toString(), "tracking" to order.trackingToken))
                     if (code == 200) {
                         reachedServer = true
-                        val status = JSONObject(raw).optJSONObject("order")?.optString("status").orEmpty()
+                        val serverOrder = JSONObject(raw).optJSONObject("order")
+                        val status = serverOrder?.optString("status").orEmpty()
+                        val paymentMethod = serverOrder?.optString("payment_method", order.paymentMethod).orEmpty()
+                        val paymentUrl = serverOrder?.optString("payment_url", order.paymentUrl).orEmpty()
+                        val paymentStatus = serverOrder?.optString("payment_status", order.paymentStatus).orEmpty()
+                        if (paymentMethod != order.paymentMethod || paymentUrl != order.paymentUrl || paymentStatus != order.paymentStatus) {
+                            Store.upsert(this, order.copy(paymentMethod = paymentMethod, paymentUrl = paymentUrl, paymentStatus = paymentStatus))
+                            changed = true
+                        }
                         if (status == "Afgerond" && status != order.status) {
                             notifyOrderStatus(order.id, status)
                             Store.status(this, order.id, status)
@@ -1180,7 +1209,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun orderView(o: Order, admin: Boolean) {
         val deliveryLine = if (o.delivery) "\nBezorgen: ${o.address}, ${displayPostcode(o.postcode)} • ${money.format(o.deliveryFee)}" else "\nAfhalen"
-        card("#${o.id}   •   ${money.format(o.total)}\n${o.items.entries.joinToString("  •  ") { "${it.value}× ${it.key}" }}$deliveryLine\nStatus: ${o.status}") {
+        val paymentLine = if (o.paymentMethod == "Tikkie") "\nTikkie: " + when (o.paymentStatus) {
+            "Betaald" -> "Betaald ✓"
+            "Openstaand" -> "Nog niet betaald"
+            "Verlopen" -> "Verlopen"
+            "Controle nodig" -> "Betaallink kon niet worden bevestigd; neem contact op met Rutu BBQ"
+            else -> "Automatische betaalfunctie nog niet geactiveerd"
+        } else ""
+        card("#${o.id}   •   ${money.format(o.total)}\n${o.items.entries.joinToString("  •  ") { "${it.value}× ${it.key}" }}$deliveryLine$paymentLine\nStatus: ${o.status}") {
+            if (!admin && o.paymentMethod == "Tikkie" && o.paymentUrl.isNotBlank() && o.paymentStatus != "Betaald") {
+                smallButton("Betaal via Tikkie") { openTikkie(o.paymentUrl) }
+            }
             if (admin) when (o.status) {
                 "Nieuw" -> { smallButton("Accepteren") { changeStatus(o, "In bereiding") }; smallButton("Weigeren") { changeStatus(o, "Geweigerd") } }
                 "In bereiding" -> smallButton("Klaar") { changeStatus(o, "Klaar") }
@@ -1242,14 +1281,15 @@ class MainActivity : AppCompatActivity() {
                     if (parts.getOrNull(3).orEmpty().isNotBlank()) parts[3].split("~").forEach { pair -> val p = pair.split("="); if (p.size == 2) items[p[0]] = p[1].toInt() }
                     Order(
                         parts[0].toInt(), items, parts[1].toDouble(), parts[2], parts.getOrNull(4).orEmpty(),
-                        parts.getOrNull(5) == "1", parts.getOrNull(6).orEmpty(), parts.getOrNull(7).orEmpty(), parts.getOrNull(8)?.toDoubleOrNull() ?: 0.0
+                        parts.getOrNull(5) == "1", parts.getOrNull(6).orEmpty(), parts.getOrNull(7).orEmpty(), parts.getOrNull(8)?.toDoubleOrNull() ?: 0.0,
+                        parts.getOrNull(9).orEmpty(), parts.getOrNull(10).orEmpty(), parts.getOrNull(11).orEmpty()
                     )
                 } catch (_: Exception) { null }
             }.toMutableList()
         }
         private fun save(c: Context, orders: List<Order>) {
             val raw = orders.joinToString("§") { o ->
-                "${o.id}¦${o.total}¦${o.status}¦${o.items.entries.joinToString("~") { "${it.key}=${it.value}" }}¦${o.trackingToken}¦${if (o.delivery) "1" else "0"}¦${o.address.replace("¦", " ")}¦${o.postcode.replace("¦", " ")}¦${o.deliveryFee}"
+                "${o.id}¦${o.total}¦${o.status}¦${o.items.entries.joinToString("~") { "${it.key}=${it.value}" }}¦${o.trackingToken}¦${if (o.delivery) "1" else "0"}¦${o.address.replace("¦", " ")}¦${o.postcode.replace("¦", " ")}¦${o.deliveryFee}¦${o.paymentMethod}¦${o.paymentUrl.replace("¦", "").replace("§", "")}¦${o.paymentStatus}"
             }
             c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putString(KEY, raw).apply()
         }
