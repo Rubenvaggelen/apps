@@ -17,6 +17,8 @@ button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:1
 .order-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.order-total{color:var(--gold);font-weight:700}.status{color:var(--light);font-weight:700;margin:12px 0}.actions{display:flex;gap:8px;flex-wrap:wrap}
 .notice-grid{display:grid;gap:10px}.notice-grid input,.notice-grid textarea,.key-input{width:100%;background:#0f0d0a;color:#fff;border:1px solid var(--line);border-radius:10px;padding:12px;font:15px system-ui}.notice-grid textarea{min-height:90px;resize:vertical}.row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}.row .grow{flex:1}.empty{text-align:center;padding:28px 16px;color:var(--muted);border:1px dashed var(--line);border-radius:12px}
 .order-modal,.key-modal{display:none;position:fixed;inset:0;background:#000b;z-index:100;align-items:center;justify-content:center;padding:16px}.order-modal.open,.key-modal.open{display:flex}.modal-card{width:min(760px,100%);max-height:88vh;overflow:auto;background:linear-gradient(145deg,#201a12,var(--panel));border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 20px 70px #000}.modal-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.modal-head h2{margin:0}.open-orders-list{display:flex;flex-direction:column;gap:12px}.error{color:#ffb4aa}.ok{color:#a8ddb3}.history-row{display:flex;justify-content:space-between;gap:10px;align-items:center;background:#17140f;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:7px}.history-row button{min-height:34px;padding:5px 9px}
+.qr-panel{text-align:center}.qr-preview{display:inline-flex;align-items:center;justify-content:center;background:#fff;border:2px solid var(--gold);border-radius:15px;padding:14px;min-width:196px;min-height:196px;cursor:zoom-in}.qr-preview img{display:block;width:164px;height:164px;image-rendering:pixelated;image-rendering:crisp-edges}.qr-preview:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
+.qr-modal{display:none;position:fixed;inset:0;background:#000e;z-index:130;align-items:center;justify-content:center;padding:16px}.qr-modal.open{display:flex}.qr-modal-card{width:min(540px,100%);max-height:95vh;overflow:auto;background:linear-gradient(145deg,#201a12,var(--panel));border:1px solid var(--gold);border-radius:20px;padding:18px;text-align:center}.qr-modal-card .modal-head{margin-bottom:14px}.qr-enlarged{display:block;width:min(76vw,390px);height:auto;aspect-ratio:1;margin:0 auto;background:#fff;border-radius:12px;padding:16px;image-rendering:pixelated;image-rendering:crisp-edges}
 @media(min-width:760px){.summary{grid-template-columns:repeat(5,1fr)}.notice-grid{grid-template-columns:2fr 1fr 1fr}.notice-grid textarea{grid-column:1/-1}}
 </style>
 </head>
@@ -40,6 +42,14 @@ button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:1
     <div id="noticeResult" class="hint"></div>
   </section>
   <section class="panel"><div class="row"><h2 class="grow">Bestelgeschiedenis</h2><button class="gray" onclick="clearHistory()">Wis geschiedenis</button></div><div id="historyResult" class="hint" style="margin-bottom:10px"></div><div id="history"></div></section>
+  <section class="panel qr-panel" aria-labelledby="qrPanelTitle">
+    <div class="eyebrow">DOWNLOAD</div>
+    <h2 id="qrPanelTitle">Android QR-code</h2>
+    <p class="hint">Scan de QR-code om de Rutu BBQ-klantapp op Android te installeren. Tik erop om hem te vergroten.</p>
+    <button type="button" id="qrPreview" class="qr-preview" onclick="openQrModal()" aria-label="Android QR-code vergroten">
+      <img src="rutu-android-qr.png" width="164" height="164" alt="QR-code voor de Android-klantapp">
+    </button>
+  </section>
 </main>
 <main class="wrap" id="newOrdersScreen" style="display:none">
   <section class="hero">
@@ -54,12 +64,36 @@ button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:1
 </main>
 
 <div class="order-modal" id="orderModal" onclick="if(event.target===this)closeOrderModal()"><div class="modal-card"><div class="modal-head"><h2 id="orderModalTitle">Openstaande bestellingen</h2><button class="gray" onclick="closeOrderModal()">Sluiten</button></div><div id="orderModalBody"></div></div></div>
+<div class="qr-modal" id="qrModal" role="dialog" aria-modal="true" aria-labelledby="qrModalTitle" onclick="if(event.target===this)closeQrModal()">
+  <div class="qr-modal-card">
+    <div class="modal-head"><h2 id="qrModalTitle">Android QR-code</h2><button type="button" id="closeQrButton" class="gray" onclick="closeQrModal()">Sluiten</button></div>
+    <img class="qr-enlarged" src="rutu-android-qr.png" alt="Vergrote QR-code voor de Android-klantapp" width="390" height="390">
+    <p class="hint">Scan deze code om de Rutu BBQ-klantapp te installeren.</p>
+  </div>
+</div>
 <div class="key-modal" id="keyModal"><div class="modal-card"><h2>Bedrijfsapp koppelen</h2><p class="hint">Voer de bedrijfsleutel één keer in. Deze wordt alleen op dit Android-apparaat opgeslagen en staat niet in de APK of Dev Hub.</p><input id="businessKey" class="key-input" type="password" autocomplete="off" placeholder="Bedrijfsleutel"><div id="keyResult" class="hint" style="margin-top:8px"></div><div class="row" style="margin-top:14px"><button class="gold" onclick="saveBusinessKey()">Opslaan en verbinden</button><button class="gray" onclick="closeKeyModal()">Annuleren</button></div></div></div>
 
 <script>
 const API='https://rubenvanaggelen.com/rutu-api/index.php';
 let orders=[];
 let ordersScreenOpen=false;
+function openQrModal(){
+  const modal=document.getElementById('qrModal');
+  modal.classList.add('open');
+  document.getElementById('closeQrButton').focus();
+}
+function closeQrModal(){
+  const modal=document.getElementById('qrModal');
+  if(!modal.classList.contains('open'))return;
+  modal.classList.remove('open');
+  document.getElementById('qrPreview').focus();
+}
+document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&document.getElementById('qrModal').classList.contains('open')){
+    event.preventDefault();
+    closeQrModal();
+  }
+});
 function openNewOrdersScreen(){
   const modal=document.getElementById('orderModal');
   if(modal.classList.contains('open'))closeOrderModal();
