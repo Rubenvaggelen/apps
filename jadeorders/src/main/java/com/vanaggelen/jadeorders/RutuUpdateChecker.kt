@@ -63,8 +63,8 @@ object RutuUpdateChecker {
 
     private fun showDialog(activity: Activity, versionCode: Int, apkUrl: String, sha256: String) {
         AlertDialog.Builder(activity)
-            .setTitle("Rutu update beschikbaar")
-            .setMessage("Er staat een nieuwe versie klaar. Wil je Rutu nu bijwerken?")
+            .setTitle("Rutu update beschikbaar / Rutu update available")
+            .setMessage("Er staat een nieuwe versie klaar. Wil je Rutu nu bijwerken?\nA new version is available. Do you want to update Rutu now?")
             .setPositiveButton("Bijwerken") { _, _ -> startUpdate(activity, versionCode, apkUrl, sha256) }
             .setNegativeButton("Later", null)
             .show()
@@ -82,7 +82,7 @@ object RutuUpdateChecker {
                 )
                 Toast.makeText(
                     activity,
-                    "Sta Rutu toe om updates te installeren en kies daarna opnieuw Bijwerken.",
+                    "Sta Rutu toe om updates te installeren en kies daarna opnieuw Bijwerken.\nAllow Rutu to install updates, then choose Update again.",
                     Toast.LENGTH_LONG
                 ).show()
             } catch (_: Exception) {}
@@ -98,7 +98,7 @@ object RutuUpdateChecker {
 
             val request = DownloadManager.Request(Uri.parse(apkUrl))
                 .setTitle("Rutu BBQ update")
-                .setDescription("Nieuwe versie wordt gedownload")
+                .setDescription("Nieuwe versie wordt gedownload / New version is downloading")
                 .setMimeType(APK_MIME)
                 .setAllowedOverMetered(true)
                 .setAllowedOverRoaming(true)
@@ -106,10 +106,10 @@ object RutuUpdateChecker {
                 .setDestinationInExternalFilesDir(activity, Environment.DIRECTORY_DOWNLOADS, fileName)
 
             val id = manager.enqueue(request)
-            Toast.makeText(activity, "Update wordt gedownload…", Toast.LENGTH_SHORT).show()
+            Toast.makeText(activity, "Update wordt gedownload… / Update is downloading…", Toast.LENGTH_SHORT).show()
             Thread { waitForDownload(activity, manager, id, sha256) }.start()
         } catch (_: Exception) {
-            Toast.makeText(activity, "Update kon niet worden gestart.", Toast.LENGTH_LONG).show()
+            Toast.makeText(activity, "Update kon niet worden gestart. / Update could not be started.", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -126,7 +126,7 @@ object RutuUpdateChecker {
                         val uri = manager.getUriForDownloadedFile(id)
                         if (uri == null || (expectedSha.isNotBlank() && sha256(activity, uri) != expectedSha)) {
                             activity.runOnUiThread {
-                                Toast.makeText(activity, "Updatecontrole mislukt. Update niet geïnstalleerd.", Toast.LENGTH_LONG).show()
+                                Toast.makeText(activity, "Updatecontrole mislukt. Update niet geïnstalleerd. / Update verification failed. Update was not installed.", Toast.LENGTH_LONG).show()
                             }
                             return
                         }
@@ -135,7 +135,7 @@ object RutuUpdateChecker {
                     }
                     if (status == DownloadManager.STATUS_FAILED) {
                         activity.runOnUiThread {
-                            Toast.makeText(activity, "Download van de update is mislukt.", Toast.LENGTH_LONG).show()
+                            Toast.makeText(activity, "Download van de update is mislukt. / Update download failed.", Toast.LENGTH_LONG).show()
                         }
                         return
                     }
@@ -170,7 +170,7 @@ object RutuUpdateChecker {
                 }
             )
         } catch (_: Exception) {
-            Toast.makeText(activity, "Android kon de update niet openen.", Toast.LENGTH_LONG).show()
+            Toast.makeText(activity, "Android kon de update niet openen. / Android could not open the update.", Toast.LENGTH_LONG).show()
         }
     }
 }
