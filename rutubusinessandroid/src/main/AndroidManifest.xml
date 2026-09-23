@@ -4,8 +4,8 @@
     <application
         android:allowBackup="true"
         android:label="Rutu BBQ Bedrijf"
-        android:icon="@drawable/ic_business"
-        android:roundIcon="@drawable/ic_business"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:usesCleartextTraffic="false">
         <activity

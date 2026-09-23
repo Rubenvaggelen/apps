@@ -6,9 +6,9 @@
 <title>Rutu BBQ Bedrijf</title>
 <style>
 :root{color-scheme:dark;--gold:#e5b85c;--light:#f4d593;--muted:#bdb2a1;--line:#463820;--panel:#17140f}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top left,#251809 0,transparent 55%),#090807;color:#f8f2e8;font:16px/1.5 system-ui,sans-serif;position:relative;min-height:100vh}body::before{content:"";position:fixed;inset:0;background:url('https://dev.rubenvanaggelen.com/rutu-assets/logo.png') center 52%/min(72vw,520px) auto no-repeat;opacity:.08;pointer-events:none;z-index:0}.wrap{position:relative;z-index:1}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top left,#251809 0,transparent 55%),#090807;color:#f8f2e8;font:16px/1.5 system-ui,sans-serif;position:relative;min-height:100vh}body::before{content:"";position:fixed;inset:0;background:url('rutu-logo.png') center 52%/min(72vw,520px) auto no-repeat;opacity:.08;pointer-events:none;z-index:0}.wrap{position:relative;z-index:1}
 header{position:sticky;top:0;z-index:10;padding:14px 16px;background:#0a0908f2;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
-.brand{font:700 22px Georgia,serif;letter-spacing:1.5px;color:var(--light)}.tag,.hint,.meta{color:var(--muted);font-size:13px}
+.brand{font:700 22px Georgia,serif;letter-spacing:1.5px;color:var(--light)}.tag,.hint,.meta{color:var(--muted);font-size:13px}.brand-block{display:flex;align-items:center;gap:10px;min-width:0}.brand-logo{width:48px;height:48px;object-fit:contain;border-radius:12px;flex-shrink:0}.hero-logo{display:block;width:min(150px,40vw);height:auto;margin:0 auto 14px;object-fit:contain}@media(max-width:420px){header{gap:8px;padding:12px}.brand{font-size:19px}.brand-logo{width:42px;height:42px}}
 .wrap{padding:18px 14px 30px;max-width:1000px;margin:auto}.hero,.panel,.order{background:linear-gradient(145deg,#201a12,var(--panel));border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}
 h1,h2,h3{font-family:Georgia,serif;color:var(--light);font-weight:500}h1{font-size:28px;margin:0 0 8px}h2{font-size:22px;margin:8px 0 14px}.eyebrow{font-size:11px;letter-spacing:2px;color:var(--gold);font-weight:700;text-transform:uppercase}
 button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:10px 14px;font-weight:700;font-size:14px;cursor:pointer}.gold{background:var(--gold);color:#211507}.green{background:#224934;color:#dcffe9;border-color:#407e5b}.red{background:#49221e;color:#ffddd6;border-color:#87483f}.gray{background:#242019;color:var(--light);border-color:var(--line)}.orange{background:#d49d3e;color:#1f1407}
@@ -22,11 +22,11 @@ button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:1
 </head>
 <body>
 <header>
-  <div><div class="brand">RUTU BBQ</div><div class="tag">Bedrijfsapp Android</div></div>
+  <div class="brand-block"><img class="brand-logo" src="rutu-logo.png" alt="Rutu BBQ-logo" width="48" height="48"><div><div class="brand">RUTU BBQ</div><div class="tag">Bedrijfsapp Android</div></div></div>
   <div class="row"><button class="gray" onclick="openKeyModal()">Koppeling</button><button id="count" class="badge" style="display:none" onclick="openOpenOrders()">0 nieuw</button></div>
 </header>
 <main class="wrap" id="dashboard">
-  <section class="hero"><div class="eyebrow">RUTU BBQ • BEDRIJF</div><h1>Jouw keuken. Alles in beeld.</h1><div id="connection" class="hint">Verbinden met online bestellingen…</div></section>
+  <section class="hero"><img class="hero-logo" src="rutu-logo.png" alt="Rutu BBQ" width="150" height="150"><div class="eyebrow">RUTU BBQ • BEDRIJF</div><h1>Jouw keuken. Alles in beeld.</h1><div id="connection" class="hint">Verbinden met online bestellingen…</div></section>
   <div class="summary" id="summary"></div>
   <section class="panel"><div class="row"><h2 class="grow">Actieve bestellingen</h2><button class="gray" onclick="manualClearActive()">Handmatig opschonen</button><button class="gray" id="restoreActive" style="display:none" onclick="restoreHiddenActive()">Herstellen</button></div><p class="hint">Opschonen verbergt de actieve lijst alleen op dit apparaat; bestelstatussen blijven ongewijzigd.</p><div id="orders"></div></section>
   <section class="panel">
