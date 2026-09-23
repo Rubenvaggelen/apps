@@ -42,7 +42,7 @@ object RutuBusinessUpdateChecker {
                 val apkUrl = json.optString("url", "")
                 val sha256 = json.optString("sha256", "").lowercase()
                 if (latest <= currentVersionCode(activity)) {
-                    if (manual) activity.runOnUiThread { Toast.makeText(activity, "De bedrijfsapp is bijgewerkt.", Toast.LENGTH_SHORT).show() }
+                    if (manual) activity.runOnUiThread { Toast.makeText(activity, "De bedrijfsapp is bijgewerkt. / The business app is up to date.", Toast.LENGTH_SHORT).show() }
                     return@Thread
                 }
                 val trusted = try {
@@ -51,7 +51,7 @@ object RutuBusinessUpdateChecker {
                         u.path == "/rutu-updates/Rutu-BBQ-Bedrijf-Android.apk"
                 } catch (_: Exception) { false }
                 if (!trusted || !Regex("^[a-f0-9]{64}$").matches(sha256)) {
-                    if (manual) activity.runOnUiThread { Toast.makeText(activity, "Updategegevens zijn ongeldig.", Toast.LENGTH_LONG).show() }
+                    if (manual) activity.runOnUiThread { Toast.makeText(activity, "Updategegevens zijn ongeldig. / Update information is invalid.", Toast.LENGTH_LONG).show() }
                     return@Thread
                 }
 
@@ -59,7 +59,7 @@ object RutuBusinessUpdateChecker {
                     if (!activity.isFinishing) showDialog(activity, latest, apkUrl, sha256)
                 }
             } catch (_: Exception) {
-                if (manual) activity.runOnUiThread { Toast.makeText(activity, "Updatecontrole mislukt. Probeer het later opnieuw.", Toast.LENGTH_LONG).show() }
+                if (manual) activity.runOnUiThread { Toast.makeText(activity, "Updatecontrole mislukt. Probeer het later opnieuw. / Update check failed. Please try again later.", Toast.LENGTH_LONG).show() }
             }
         }.start()
     }
@@ -75,8 +75,8 @@ object RutuBusinessUpdateChecker {
 
     private fun showDialog(activity: Activity, versionCode: Int, apkUrl: String, sha256: String) {
         AlertDialog.Builder(activity)
-            .setTitle("Rutu BBQ Bedrijf update")
-            .setMessage("Er staat een nieuwe versie van de bedrijfsapp klaar. Wil je nu bijwerken?")
+            .setTitle("Rutu BBQ Bedrijf update / Rutu BBQ Business update")
+            .setMessage("Er staat een nieuwe versie van de bedrijfsapp klaar. Wil je nu bijwerken?\nA new version of the business app is available. Update now?")
             .setPositiveButton("Bijwerken") { _, _ -> startUpdate(activity, versionCode, apkUrl, sha256) }
             .setNegativeButton("Later", null)
             .show()
@@ -94,7 +94,7 @@ object RutuBusinessUpdateChecker {
                 )
                 Toast.makeText(
                     activity,
-                    "Geef de bedrijfsapp installatierechten en kies daarna opnieuw Controleer op updates.",
+                    "Geef de bedrijfsapp installatierechten en kies daarna opnieuw Controleer op updates.\nAllow the business app to install updates, then choose Check for updates again.",
                     Toast.LENGTH_LONG
                 ).show()
             } catch (_: Exception) {}
@@ -109,8 +109,8 @@ object RutuBusinessUpdateChecker {
             if (dir != null) File(dir, fileName).delete()
 
             val request = DownloadManager.Request(Uri.parse(apkUrl))
-                .setTitle("Rutu BBQ Bedrijf update")
-                .setDescription("Nieuwe versie wordt gedownload")
+                .setTitle("Rutu BBQ Bedrijf update / Rutu BBQ Business update")
+                .setDescription("Nieuwe versie wordt gedownload / New version is downloading")
                 .setMimeType(APK_MIME)
                 .setAllowedOverMetered(true)
                 .setAllowedOverRoaming(true)
@@ -118,10 +118,10 @@ object RutuBusinessUpdateChecker {
                 .setDestinationInExternalFilesDir(activity, Environment.DIRECTORY_DOWNLOADS, fileName)
 
             val id = manager.enqueue(request)
-            Toast.makeText(activity, "Update wordt gedownload…", Toast.LENGTH_SHORT).show()
+            Toast.makeText(activity, "Update wordt gedownload… / Update is downloading…", Toast.LENGTH_SHORT).show()
             Thread { waitForDownload(activity, manager, id, sha256) }.start()
         } catch (_: Exception) {
-            Toast.makeText(activity, "Update kon niet worden gestart.", Toast.LENGTH_LONG).show()
+            Toast.makeText(activity, "Update kon niet worden gestart. / Update could not be started.", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -138,7 +138,7 @@ object RutuBusinessUpdateChecker {
                         val uri = manager.getUriForDownloadedFile(id)
                         if (uri == null || (expectedSha.isNotBlank() && sha256(activity, uri) != expectedSha)) {
                             activity.runOnUiThread {
-                                Toast.makeText(activity, "Updatecontrole mislukt. Update niet geïnstalleerd.", Toast.LENGTH_LONG).show()
+                                Toast.makeText(activity, "Updatecontrole mislukt. Update niet geïnstalleerd. / Update verification failed. Update was not installed.", Toast.LENGTH_LONG).show()
                             }
                             return
                         }
@@ -147,7 +147,7 @@ object RutuBusinessUpdateChecker {
                     }
                     if (status == DownloadManager.STATUS_FAILED) {
                         activity.runOnUiThread {
-                            Toast.makeText(activity, "Download van de update is mislukt.", Toast.LENGTH_LONG).show()
+                            Toast.makeText(activity, "Download van de update is mislukt. / Update download failed.", Toast.LENGTH_LONG).show()
                         }
                         return
                     }
@@ -182,7 +182,7 @@ object RutuBusinessUpdateChecker {
                 }
             )
         } catch (_: Exception) {
-            Toast.makeText(activity, "Android kon de update niet openen.", Toast.LENGTH_LONG).show()
+            Toast.makeText(activity, "Android kon de update niet openen. / Android could not open the update.", Toast.LENGTH_LONG).show()
         }
     }
 }
