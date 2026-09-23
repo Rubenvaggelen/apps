@@ -103,7 +103,8 @@ function clean_order_for_customer(array $order, bool $includeTracking = false): 
         'delivery' => (bool)($order['delivery'] ?? false),
         'address' => (string)($order['address'] ?? ''),
         'postcode' => (string)($order['postcode'] ?? ''),
-        'delivery_fee' => (float)($order['delivery_fee'] ?? 0)
+        'delivery_fee' => (float)($order['delivery_fee'] ?? 0),
+        'payment_method' => (string)($order['payment_method'] ?? '')
     ];
     if ($includeTracking) $out['tracking'] = (string)$order['tracking'];
     return $out;
@@ -111,6 +112,7 @@ function clean_order_for_customer(array $order, bool $includeTracking = false): 
 
 function clean_order_for_business(array $order): array {
     $out = clean_order_for_customer($order, false);
+    $out['payment_phone'] = (string)($order['payment_phone'] ?? '');
     $out['history_hidden'] = (bool)($order['history_hidden'] ?? false);
     $out['history_cleared'] = (bool)($order['history_cleared'] ?? false);
     return $out;
@@ -160,6 +162,8 @@ if ($action === 'create') {
     $address = '';
     $postcode = '';
     $deliveryFee = 0.0;
+    $paymentMethod = '';
+    $paymentPhone = '';
     if ($delivery) {
         $address = preg_replace('/\\s+/', ' ', trim((string)($body['address'] ?? '')));
         $postcode = strtoupper(preg_replace('/\\s+/', '', trim((string)($body['postcode'] ?? ''))));
@@ -167,13 +171,22 @@ if ($action === 'create') {
         if (!preg_match('/^\\d{4}[A-Z]{2}$/', $postcode)) respond(400, ['ok' => false, 'error' => 'Vul een volledige postcode in, bijvoorbeeld 1106 AB.']);
         $address = mb_substr($address, 0, 120);
         $deliveryFee = substr($postcode, 0, 4) === '1106' ? 2.50 : 5.00;
+        $method = strtolower(trim((string)($body['payment_method'] ?? 'Cash')));
+        if (!in_array($method, ['cash', 'tikkie'], true)) respond(400, ['ok' => false, 'error' => 'Kies Cash of Tikkie.']);
+        $paymentMethod = $method === 'tikkie' ? 'Tikkie' : 'Cash';
+        if ($paymentMethod === 'Tikkie') {
+            $paymentPhone = preg_replace('/[\\s()\\-]/', '', trim((string)($body['payment_phone'] ?? '')));
+            if (!preg_match('/^(?:06[0-9]{8}|\\+316[0-9]{8}|00316[0-9]{8})$/', $paymentPhone)) {
+                respond(400, ['ok' => false, 'error' => 'Vul een geldig Nederlands mobiel nummer in voor Tikkie.']);
+            }
+        }
     }
     $total = round($subtotal + $deliveryFee, 2);
     $customer = trim((string)($body['customer'] ?? 'Online klant'));
     if ($customer === '') $customer = 'Online klant';
     $customer = mb_substr($customer, 0, 80);
 
-    $order = with_state($stateFile, true, function (&$state) use ($items, $total, $customer, $delivery, $address, $postcode, $deliveryFee) {
+    $order = with_state($stateFile, true, function (&$state) use ($items, $total, $customer, $delivery, $address, $postcode, $deliveryFee, $paymentMethod, $paymentPhone) {
         $id = max(1046, (int)$state['next_id']);
         $state['next_id'] = $id + 1;
         $createdTs = time();
@@ -187,6 +200,8 @@ if ($action === 'create') {
             'address' => $address,
             'postcode' => $postcode,
             'delivery_fee' => $deliveryFee,
+            'payment_method' => $paymentMethod,
+            'payment_phone' => $paymentPhone,
             'created' => gmdate('c', $createdTs),
             'created_display' => date('H:i', $createdTs),
             'tracking' => bin2hex(random_bytes(18)),
@@ -370,7 +385,7 @@ if ($action === 'business_clear_history') {
     $count = with_state($stateFile, true, function (&$state) {
         $count = 0;
         foreach ($state['orders'] as &$order) {
-            if ((string)($order['status'] ?? '') === 'Afgerond') {
+            if (in_array((string)($order['status'] ?? ''), ['Afgerond', 'Uitverkocht', 'Geweigerd', 'Geannuleerd'], true)) {
                 $order['history_cleared'] = true;
                 $count++;
             }
@@ -391,7 +406,7 @@ if ($action === 'business_hide_history') {
     $updated = with_state($stateFile, true, function (&$state) use ($id) {
         foreach ($state['orders'] as &$order) {
             if ((int)$order['id'] === $id) {
-                if ((string)($order['status'] ?? '') !== 'Afgerond') return false;
+                if (!in_array((string)($order['status'] ?? ''), ['Afgerond', 'Uitverkocht', 'Geweigerd', 'Geannuleerd'], true)) return false;
                 $order['history_hidden'] = true;
                 return $order;
             }
