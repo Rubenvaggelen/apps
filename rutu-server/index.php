@@ -86,7 +86,7 @@ function ordering_schedule_status(array $schedule): array {
     }
     $message = count($windows) === 1 && !empty($schedule['days']['3']['open'])
         && $schedule['days']['3']['from'] === '10:00' && $schedule['days']['3']['until'] === '18:00'
-        ? 'U kunt op woensdag van 10:00 uur tot 18:00 uur uw bestelling plaatsen.'
+        ? 'U kunt iedere woensdag van 10:00 tot 18:00 uur bestellen. Wij helpen u graag.'
         : (count($windows) ? 'Bestellen kan op: ' . implode(', ', $windows) . '.' : 'Bestellen is momenteel gesloten.');
 
     return ['allowed'=>$allowed, 'message'=>$message, 'day'=>(int)$dayKey, 'time'=>$time, 'schedule'=>$schedule];
