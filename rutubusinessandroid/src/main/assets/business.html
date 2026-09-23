@@ -157,14 +157,14 @@ const finalStatuses=['Afgerond','Uitverkocht','Geweigerd','Geannuleerd'];
 let hiddenActiveIds=new Set();
 try{hiddenActiveIds=new Set(JSON.parse(localStorage.getItem('rutu_hidden_active_orders')||'[]').map(Number))}catch(_){}
 function saveHiddenActive(){localStorage.setItem('rutu_hidden_active_orders',JSON.stringify([...hiddenActiveIds]))}
-function manualClearActive(){const visible=orders.filter(o=>openStatuses(o)&&!hiddenActiveIds.has(o.id));if(!visible.length)return;if(!confirm('Alle zichtbare actieve bestellingen alleen op dit apparaat verbergen? De bestelstatussen veranderen niet. Via Herstellen zijn de bestellingen weer zichtbaar.'))return;visible.forEach(o=>hiddenActiveIds.add(o.id));saveHiddenActive();render()}
+function manualClearActive(){const visible=orders.filter(o=>openStatuses(o)&&!hiddenActiveIds.has(o.id));if(!visible.length)return;if(!confirm('Alle zichtbare actieve bestellingen alleen op dit apparaat verbergen? De bestelstatussen veranderen niet. Via Herstellen zijn de bestellingen weer zichtbaar.\n\nHide all visible active orders on this device only? Order statuses will not change. You can restore them using Restore.'))return;visible.forEach(o=>hiddenActiveIds.add(o.id));saveHiddenActive();render()}
 function restoreHiddenActive(){hiddenActiveIds.clear();saveHiddenActive();render()}
 const money=n=>new Intl.NumberFormat('nl-NL',{style:'currency',currency:'EUR'}).format(Number(n||0));
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const openStatuses=o=>!finalStatuses.includes(o.status);
 function key(){return localStorage.getItem('rutu_business_key')||''}
 async function api(action,method='GET',body=null){
-  if(!key()) throw new Error('Bedrijfsleutel ontbreekt');
+  if(!key()) throw new Error('Bedrijfsleutel ontbreekt / Business key is missing');
   const u=new URL(API);u.searchParams.set('action',action);
   const headers={'Accept':'application/json','X-Rutu-Business-Key':key()};
   if(body)headers['Content-Type']='application/json; charset=utf-8';
@@ -178,11 +178,11 @@ function copyPaymentLink(id){
  const o=orders.find(x=>Number(x.id)===Number(id));if(!o||!/^https:\/\/(?:www\.)?tikkie\.me\//.test(o.paymentUrl||''))return;
  const url=o.paymentUrl;
  if(navigator.clipboard&&navigator.clipboard.writeText){
-   navigator.clipboard.writeText(url).then(()=>alert('Tikkie-link gekopieerd ✓')).catch(()=>prompt('Kopieer deze Tikkie-link:',url));
+   navigator.clipboard.writeText(url).then(()=>alert('Tikkie-link gekopieerd ✓\nTikkie link copied ✓')).catch(()=>prompt('Kopieer deze Tikkie-link / Copy this Tikkie link:',url));
  }else{
    const input=document.createElement('textarea');input.value=url;document.body.appendChild(input);input.select();
    const copied=document.execCommand('copy');input.remove();
-   if(copied)alert('Tikkie-link gekopieerd ✓');else prompt('Kopieer deze Tikkie-link:',url);
+   if(copied)alert('Tikkie-link gekopieerd ✓\nTikkie link copied ✓');else prompt('Kopieer deze Tikkie-link / Copy this Tikkie link:',url);
  }
 }
 function paymentLine(o){
@@ -223,9 +223,9 @@ function render(){
  const m=document.getElementById('orderModal');if(m.classList.contains('open')&&m.dataset.mode==='open-orders'){if(active.length)renderOpenOrdersModal();else closeOrderModal();}else if(m.classList.contains('open')&&m.dataset.mode==='history-orders'){renderHistoryOrdersModal();}
 }
 async function sync(){
- if(!key()){document.getElementById('connection').textContent='Niet gekoppeld';openKeyModal();return}
+ if(!key()){document.getElementById('connection').textContent='Niet gekoppeld / Not connected';openKeyModal();return}
  try{const r=await api('business_orders');orders=(r.orders||[]).map(normalize);document.getElementById('connection').innerHTML='<span class="ok">Online gekoppeld ✓</span> • automatisch verversen';render()}
- catch(e){document.getElementById('connection').innerHTML='<span class="error">Verbinding mislukt: '+esc(e.message)+'</span>'}
+ catch(e){document.getElementById('connection').innerHTML='<span class="error">Verbinding mislukt / Connection failed: '+esc(e.message)+'</span>'}
 }
 async function setStatus(id,status){try{await api('business_status','POST',{id:Number(id),status});await sync()}catch(e){alert(e.message)}}
 function openOpenOrders(){if(!orders.some(o=>openStatuses(o)&&!hiddenActiveIds.has(o.id)))return;const m=document.getElementById('orderModal');m.dataset.mode='open-orders';document.getElementById('orderModalTitle').textContent='Openstaande bestellingen';renderOpenOrdersModal();m.classList.add('open')}
@@ -262,7 +262,7 @@ async function loadSchedule(){
   const r=await api('business_ordering_schedule');orderingSchedule=r.schedule||null;
   const select=document.getElementById('scheduleDaySelect');if(select)select.value='3';
   renderSelectedScheduleDay()
- }catch(e){document.getElementById('scheduleResult').textContent='Openingstijden konden niet worden geladen: '+e.message}
+ }catch(e){document.getElementById('scheduleResult').textContent='Openingstijden konden niet worden geladen / Opening hours could not be loaded: '+e.message}
 }
 function renderSelectedScheduleDay(){
  if(!orderingSchedule)return;
@@ -271,7 +271,7 @@ function renderSelectedScheduleDay(){
  document.getElementById('scheduleDayOpen').checked=!!d.open;
  document.getElementById('scheduleDayFrom').value=d.from||'10:00';
  document.getElementById('scheduleDayUntil').value=d.until||'18:00';
- const out=document.getElementById('scheduleResult');if(out)out.textContent=scheduleDayNames[Number(i)]+(d.open?' is open van '+d.from+' tot '+d.until+' uur':' is gesloten voor bestellingen');
+ const out=document.getElementById('scheduleResult');if(out)out.textContent=scheduleDayNames[Number(i)]+(d.open?' is open van '+d.from+' tot '+d.until+' uur / open from '+d.from+' to '+d.until:' is gesloten voor bestellingen / closed for orders');
 }
 async function saveSchedule(){
  const out=document.getElementById('scheduleResult');if(!orderingSchedule)return;
@@ -282,40 +282,40 @@ async function saveSchedule(){
   from:document.getElementById('scheduleDayFrom').value||'10:00',
   until:document.getElementById('scheduleDayUntil').value||'18:00'
  };
- out.textContent=scheduleDayNames[Number(i)]+' opslaan…';
+ out.textContent=scheduleDayNames[Number(i)]+' opslaan… / saving…';
  try{
   const r=await api('business_ordering_schedule','POST',{schedule:{days}});
   orderingSchedule=r.schedule||{days};renderSelectedScheduleDay();
-  out.textContent=scheduleDayNames[Number(i)]+' opgeslagen ✓';
- }catch(e){out.textContent='Opslaan mislukt: '+e.message}
+  out.textContent=scheduleDayNames[Number(i)]+' opgeslagen ✓ / saved ✓';
+ }catch(e){out.textContent='Opslaan mislukt / Save failed: '+e.message}
 }
 async function loadNotice(){try{const r=await api('business_announcement'),a=r.announcement||{};noticeTitle.value=a.title||'';noticeMessage.value=a.message||'';noticeFrom.value=a.from||'';noticeUntil.value=a.until||'';noticeActive.checked=!!a.active}catch(e){}}
-async function saveNotice(){const out=document.getElementById('noticeResult');out.textContent='Publiceren…';try{await api('business_announcement','POST',{title:noticeTitle.value.trim(),message:noticeMessage.value.trim(),from:noticeFrom.value,until:noticeUntil.value,active:noticeActive.checked});out.textContent='Klantupdate gepubliceerd ✓'}catch(e){out.textContent='Mislukt: '+e.message}}
+async function saveNotice(){const out=document.getElementById('noticeResult');out.textContent='Publiceren… / Publishing…';try{await api('business_announcement','POST',{title:noticeTitle.value.trim(),message:noticeMessage.value.trim(),from:noticeFrom.value,until:noticeUntil.value,active:noticeActive.checked});out.textContent='Klantupdate gepubliceerd ✓ / Customer update published ✓'}catch(e){out.textContent='Mislukt / Failed: '+e.message}}
 async function clearNotice(){noticeTitle.value='';noticeMessage.value='';noticeFrom.value='';noticeUntil.value='';noticeActive.checked=false;await saveNotice()}
 async function hideHistory(id){try{await api('business_hide_history','POST',{id:Number(id)});await sync()}catch(e){alert(e.message)}}
 async function clearHistory(){
  const dashboardOut=document.getElementById('historyResult');
  const screenOut=document.getElementById('historyScreenResult');
- if(dashboardOut)dashboardOut.textContent='Geschiedenis wissen…';
- if(screenOut)screenOut.textContent='Geschiedenis wissen…';
+ if(dashboardOut)dashboardOut.textContent='Geschiedenis wissen… / Clearing history…';
+ if(screenOut)screenOut.textContent='Geschiedenis wissen… / Clearing history…';
  try{
   const r=await api('business_clear_history','POST',{});
   historySnapshot=[];
   await sync();
   renderFullHistory();
   const n=Number(r.cleared||0);
-  const msg=n>0?(n+' bestelling'+(n===1?'':'en')+' uit geschiedenis gewist ✓'):'Geschiedenis is al leeg ✓';
+  const msg=n>0?(n+' bestelling'+(n===1?'':'en')+' uit geschiedenis gewist ✓ / '+n+' order'+(n===1?'':'s')+' cleared from history ✓'):'Geschiedenis is al leeg ✓ / History is already empty ✓';
   if(dashboardOut)dashboardOut.textContent=msg;
   if(screenOut)screenOut.textContent=msg;
  }catch(e){
-  const msg='Wissen mislukt: '+e.message;
+  const msg='Wissen mislukt / Clear failed: '+e.message;
   if(dashboardOut)dashboardOut.textContent=msg;
   if(screenOut)screenOut.textContent=msg;
  }
 }
 function openKeyModal(){businessKey.value=key();keyResult.textContent='';keyModal.classList.add('open')}
 function closeKeyModal(){if(key())keyModal.classList.remove('open')}
-async function saveBusinessKey(){const v=businessKey.value.trim();if(!v){keyResult.textContent='Vul een bedrijfsleutel in.';return}localStorage.setItem('rutu_business_key',v);keyResult.textContent='Controleren…';try{await api('business_orders');keyResult.textContent='Koppeling gelukt ✓';setTimeout(()=>{keyModal.classList.remove('open');sync();loadNotice();loadSchedule()},300)}catch(e){localStorage.removeItem('rutu_business_key');keyResult.textContent='Koppeling mislukt: '+e.message}}
+async function saveBusinessKey(){const v=businessKey.value.trim();if(!v){keyResult.textContent='Vul een bedrijfsleutel in. / Enter a business key.';return}localStorage.setItem('rutu_business_key',v);keyResult.textContent='Controleren… / Checking…';try{await api('business_orders');keyResult.textContent='Koppeling gelukt ✓ / Connection successful ✓';setTimeout(()=>{keyModal.classList.remove('open');sync();loadNotice();loadSchedule()},300)}catch(e){localStorage.removeItem('rutu_business_key');keyResult.textContent='Koppeling mislukt / Connection failed: '+e.message}}
 sync();if(key()){loadNotice();loadSchedule()}setInterval(sync,2500);
 </script>
 </body>
