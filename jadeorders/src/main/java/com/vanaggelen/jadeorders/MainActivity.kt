@@ -83,6 +83,20 @@ class MainActivity : AppCompatActivity() {
     private val scrollPositions = mutableMapOf<String, Int>()
     private val serviceId by lazy { "$packageName.rutubbq.v1" }
 
+    private fun bi(nl: String, en: String): String = "$nl\n$en"
+
+    private fun statusEnglish(status: String): String = when (status) {
+        "Nieuw" -> "New"
+        "In bereiding" -> "Being prepared"
+        "Klaar" -> "Ready"
+        "Bestelling is onderweg" -> "Order is on the way"
+        "Afgerond" -> "Completed"
+        "Uitverkocht" -> "Sold out"
+        "Geweigerd" -> "Order declined"
+        "Geannuleerd" -> "Order cancelled"
+        else -> status
+    }
+
     private fun normalizedPostcode(value: String): String = value.uppercase(Locale.ROOT).replace(" ", "")
     private fun validPostcode(value: String): Boolean = Regex("^\\d{4}[A-Z]{2}$").matches(normalizedPostcode(value))
     private fun deliveryFeeFor(value: String): Double = if (normalizedPostcode(value).take(4) == "1106") 2.50 else 5.00
@@ -137,8 +151,8 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(12), dp(8), dp(12), dp(8))
         }
         val dialog = AlertDialog.Builder(this)
-            .setTitle("Welkom bij Rutu BBQ")
-            .setMessage("Vul je naam in. Deze naam ziet Rutu BBQ bij je bestelling.")
+            .setTitle("Welkom bij Rutu BBQ / Welcome to Rutu BBQ")
+            .setMessage(bi("Vul je naam in. Deze naam ziet Rutu BBQ bij je bestelling.", "Enter your name. Rutu BBQ will see this name with your order."))
             .setView(input)
             .setCancelable(false)
             .setPositiveButton("Opslaan", null)
@@ -282,7 +296,7 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == permissionRequest && pendingStart) {
             pendingStart = false
             if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) startNearbyForRole()
-            else toast("Toestemming is nodig voor een directe Android-naar-Android verbinding.")
+            else toast(bi("Toestemming is nodig voor een directe Android-naar-Android verbinding.", "Permission is required for a direct Android-to-Android connection."))
         }
     }
 
@@ -298,8 +312,8 @@ class MainActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT < 26) return
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.createNotificationChannel(
-            NotificationChannel(orderNotificationChannel, "Bestelupdates", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Belangrijke updates over je Rutu BBQ-bestelling"
+            NotificationChannel(orderNotificationChannel, "Bestelupdates / Order updates", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Belangrijke updates over je Rutu BBQ-bestelling / Important updates about your Rutu BBQ order"
             }
         )
     }
@@ -311,20 +325,20 @@ class MainActivity : AppCompatActivity() {
         notificationPrefs.edit().putString(notificationKey, status).apply()
         if (status == "Afgerond") markEatWellBanner(orderId)
         val title = when (status) {
-            "In bereiding" -> "Je bestelling wordt bereid"
-            "Klaar" -> "Je bestelling is klaar"
-            "Bestelling is onderweg" -> "Uw bestelling is onderweg"
-            "Afgerond" -> "Uw bestelling is afgegeven. Eet u smakelijk."
-            "Uitverkocht" -> "Uitverkocht"
-            "Geweigerd" -> "Bestelling geweigerd"
-            "Geannuleerd" -> "Bestelling geannuleerd"
-            else -> "Bestelupdate"
+            "In bereiding" -> "Je bestelling wordt bereid / Your order is being prepared"
+            "Klaar" -> "Je bestelling is klaar / Your order is ready"
+            "Bestelling is onderweg" -> "Uw bestelling is onderweg / Your order is on the way"
+            "Afgerond" -> "Bestelling afgegeven / Order delivered"
+            "Uitverkocht" -> "Uitverkocht / Sold out"
+            "Geweigerd" -> "Bestelling geweigerd / Order declined"
+            "Geannuleerd" -> "Bestelling geannuleerd / Order cancelled"
+            else -> "Bestelupdate / Order update"
         }
         val message = when (status) {
-            "Uitverkocht" -> "Bestelling #$orderId is helaas uitverkocht."
-            "Bestelling is onderweg" -> "Uw bestelling is onderweg."
-            "Afgerond" -> "Uw bestelling is afgegeven. Eet u smakelijk."
-            else -> "Bestelling #$orderId heeft nu status: $status."
+            "Uitverkocht" -> bi("Bestelling #$orderId is helaas uitverkocht.", "Order #$orderId is unfortunately sold out.")
+            "Bestelling is onderweg" -> bi("Uw bestelling is onderweg.", "Your order is on the way.")
+            "Afgerond" -> bi("Uw bestelling is afgegeven. Eet u smakelijk.", "Your order has been delivered. Enjoy your meal.")
+            else -> bi("Bestelling #$orderId heeft nu status: $status.", "Order #$orderId now has status: ${statusEnglish(status)}.")
         }
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -405,7 +419,7 @@ class MainActivity : AppCompatActivity() {
                 connectedEndpoint = endpointId
                 nearby.stopDiscovery(); nearby.stopAdvertising()
                 connectionText = if (role == Role.CUSTOMER) "Verbonden met Android bedrijf ✓" else "Klant verbonden ✓"
-                runOnUiThread { toast("Verbonden ✓"); refreshRoleScreen() }
+                runOnUiThread { toast(bi("Verbonden ✓", "Connected ✓")); refreshRoleScreen() }
             } else {
                 connectedEndpoint = null; connectionText = "Koppeling mislukt"; refreshRoleScreen()
             }
@@ -426,7 +440,7 @@ class MainActivity : AppCompatActivity() {
                     "order" -> if (role == Role.BUSINESS) {
                         val order = orderFromJson(json.getJSONObject("order"))
                         Store.upsert(this@MainActivity, order); orderRoutes[order.id] = endpointId
-                        runOnUiThread { toast("Nieuwe bestelling #${order.id}"); if (screen == "business") renderBusiness() }
+                        runOnUiThread { toast(bi("Nieuwe bestelling #${order.id}", "New order #${order.id}")); if (screen == "business") renderBusiness() }
                     }
                     "status" -> if (role == Role.CUSTOMER) {
                         val id = json.getInt("id"); val status = json.getString("status")
@@ -434,13 +448,13 @@ class MainActivity : AppCompatActivity() {
                         Store.status(this@MainActivity, id, status)
                         if (previous != null && previous != status) notifyOrderStatus(id, status)
                         runOnUiThread {
-                            toast("Bestelling #$id: $status")
+                            toast(bi("Bestelling #$id: $status", "Order #$id: ${statusEnglish(status)}"))
                             if (status == "Afgerond") landing()
                             else if (screen == "orders") myOrders(false)
                         }
                     }
                 }
-            } catch (_: Exception) { runOnUiThread { toast("Bericht kon niet worden gelezen") } }
+            } catch (_: Exception) { runOnUiThread { toast(bi("Bericht kon niet worden gelezen.", "Message could not be read.")) } }
         }
         override fun onPayloadTransferUpdate(endpointId: String, update: PayloadTransferUpdate) = Unit
     }
@@ -492,7 +506,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun testWindowsConnection(rawHost: String) {
         val host = normalizedWindowsHost(rawHost)
-        if (host.isBlank()) { toast("Vul het IP-adres uit de Windows bedrijfsapp in."); return }
+        if (host.isBlank()) { toast(bi("Vul het IP-adres uit de Windows bedrijfsapp in.", "Enter the IP address from the Windows business app.")); return }
         windowsHost = host
         getSharedPreferences("rutu_windows", Context.MODE_PRIVATE).edit().putString("host", host).apply()
         windowsText = "Verbinden met $host…"; windowsConnected = false; refreshRoleScreen()
@@ -504,15 +518,15 @@ class MainActivity : AppCompatActivity() {
                 windowsText = if (ok) "Windows bedrijf verbonden ✓" else "Windows verbinding mislukt"
                 runOnUiThread {
                     if (ok) {
-                        toast("Verbonden met Windows bedrijf ✓")
+                        toast(bi("Verbonden met Windows bedrijf ✓", "Connected to Windows business app ✓"))
                         uiHandler.removeCallbacks(windowsPoller)
                         uiHandler.post(windowsPoller)
-                    } else toast("Kan Windows bedrijf niet bereiken.")
+                    } else toast(bi("Kan Windows bedrijf niet bereiken.", "Cannot reach the Windows business app."))
                     refreshRoleScreen()
                 }
             } catch (_: Exception) {
                 windowsConnected = false; windowsText = "Windows bedrijf niet bereikbaar"
-                runOnUiThread { toast("Geen verbinding. Controleer IP, wifi en Windows Firewall."); refreshRoleScreen() }
+                runOnUiThread { toast(bi("Geen verbinding. Controleer IP, wifi en Windows Firewall.", "No connection. Check the IP address, Wi-Fi and Windows Firewall.")); refreshRoleScreen() }
             }
         }.start()
     }
@@ -523,15 +537,15 @@ class MainActivity : AppCompatActivity() {
             try {
                 val (code, _) = httpJson("POST", "/api/orders", payload)
                 if (code in 200..299) {
-                    runOnUiThread { clearCartAfterPlacedOrder(); toast("Bestelling #${order.id} ontvangen door Windows ✓"); landing() }
+                    runOnUiThread { clearCartAfterPlacedOrder(); toast(bi("Bestelling #${order.id} ontvangen door Windows ✓", "Order #${order.id} received by Windows ✓")); landing() }
                 } else {
                     Store.status(this, order.id, "Verzenden mislukt")
-                    runOnUiThread { toast("Windows heeft de bestelling niet geaccepteerd."); myOrders(false) }
+                    runOnUiThread { toast(bi("Windows heeft de bestelling niet geaccepteerd.", "Windows did not accept the order.")); myOrders(false) }
                 }
             } catch (_: Exception) {
                 windowsConnected = false; windowsText = "Windows verbinding verbroken"
                 Store.status(this, order.id, "Verzenden mislukt")
-                runOnUiThread { toast("Verbinding met Windows verloren."); myOrders(false) }
+                runOnUiThread { toast(bi("Verbinding met Windows verloren.", "Connection to Windows was lost.")); myOrders(false) }
             }
         }.start()
     }
@@ -605,7 +619,7 @@ class MainActivity : AppCompatActivity() {
                 onlineText = "Online bestelserver niet bereikbaar"
             }
             if (!silent) runOnUiThread {
-                toast(if (onlineAvailable) "Online bestellen is actief ✓" else "Geen internetverbinding met Rutu BBQ.")
+                toast(if (onlineAvailable) bi("Online bestellen is actief ✓", "Online ordering is active ✓") else bi("Geen internetverbinding met Rutu BBQ.", "No internet connection to Rutu BBQ."))
                 refreshRoleScreen()
             }
         }.start()
@@ -614,11 +628,11 @@ class MainActivity : AppCompatActivity() {
     private fun openTikkie(url: String) {
         val uri = try { Uri.parse(url) } catch (_: Exception) { null }
         if (uri?.scheme != "https" || uri.host !in setOf("tikkie.me", "www.tikkie.me")) {
-            toast("Deze betaallink kan niet veilig worden geopend.")
+            toast(bi("Deze betaallink kan niet veilig worden geopend.", "This payment link cannot be opened safely."))
             return
         }
         try { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
-        catch (_: Exception) { toast("Geen app gevonden om de betaallink te openen.") }
+        catch (_: Exception) { toast(bi("Geen app gevonden om de betaallink te openen.", "No app found to open the payment link.")) }
     }
 
     private fun promptForTestOrderCode() {
@@ -629,8 +643,8 @@ class MainActivity : AppCompatActivity() {
             setSingleLine(true)
         }
         val dialog = AlertDialog.Builder(this)
-            .setTitle("Testbestelling")
-            .setMessage("Voer de verborgen testcode in.")
+            .setTitle("Testbestelling / Test order")
+            .setMessage(bi("Voer de verborgen testcode in.", "Enter the hidden test code."))
             .setView(input)
             .setNegativeButton("Annuleren", null)
             .setNeutralButton("Code vergeten?", null)
@@ -640,8 +654,8 @@ class MainActivity : AppCompatActivity() {
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
                 AlertDialog.Builder(this)
-                    .setTitle("Herstelvraag")
-                    .setMessage("Maand jaar Leon de controller")
+                    .setTitle("Herstelvraag / Recovery hint")
+                    .setMessage(bi("Maand jaar Leon de controller", "Month and year Leon the controller"))
                     .setPositiveButton("OK", null)
                     .show()
             }
@@ -664,7 +678,7 @@ class MainActivity : AppCompatActivity() {
                                 testOrderCode = entered
                                 testOrderMode = true
                                 dialog.dismiss()
-                                toast("Testmodus actief")
+                                toast(bi("Testmodus actief", "Test mode active"))
                                 cartScreen()
                             } else {
                                 testOrderCode = ""
@@ -675,7 +689,7 @@ class MainActivity : AppCompatActivity() {
                         }
                     } catch (_: Exception) {
                         runOnUiThread {
-                            toast("Testcode kon niet worden gecontroleerd.")
+                            toast(bi("Testcode kon niet worden gecontroleerd.", "The test code could not be verified."))
                             dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
                         }
                     }
@@ -704,7 +718,7 @@ class MainActivity : AppCompatActivity() {
                 val (code, raw) = onlineJson("POST", "create", payload)
                 val json = JSONObject(raw)
                 if (code !in 200..299 || !json.optBoolean("ok")) {
-                    val message = json.optString("error", "Bestelling kon niet worden geplaatst.")
+                    val message = json.optString("error", bi("Bestelling kon niet worden geplaatst.", "Order could not be placed."))
                     runOnUiThread {
                         onlineText = if (code == 409) "Vandaag gesloten voor bestellingen" else "Verzenden mislukt"
                         toast(message)
@@ -731,13 +745,13 @@ class MainActivity : AppCompatActivity() {
                     deliveryPaymentPhone = ""
                     testOrderMode = false
                     testOrderCode = ""
-                    toast("Bestelling #${order.id} is ontvangen door Rutu BBQ ✓")
+                    toast(bi("Bestelling #${order.id} is ontvangen door Rutu BBQ ✓", "Order #${order.id} was received by Rutu BBQ ✓"))
                     landing()
                 }
             } catch (_: Exception) {
                 onlineAvailable = false
                 onlineText = "Online bestelserver niet bereikbaar"
-                runOnUiThread { toast("Bestelling niet verzonden. Je winkelmand blijft bewaard."); refreshRoleScreen() }
+                runOnUiThread { toast(bi("Bestelling niet verzonden. Je winkelmand blijft bewaard.", "Order was not sent. Your cart has been saved.")); refreshRoleScreen() }
             }
         }.start()
     }
@@ -754,7 +768,7 @@ class MainActivity : AppCompatActivity() {
                 val (code, raw) = onlineJson("POST", "add_items", payload)
                 val json = JSONObject(raw)
                 if (code !in 200..299 || !json.optBoolean("ok")) {
-                    val message = json.optString("error", "Toevoegen aan je bestelling is niet gelukt.")
+                    val message = json.optString("error", bi("Toevoegen aan je bestelling is niet gelukt.", "Adding items to your order failed."))
                     runOnUiThread { onlineText = "Toevoegen mislukt"; toast(message); refreshRoleScreen() }
                     return@Thread
                 }
@@ -773,25 +787,25 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     clearCartAfterPlacedOrder()
                     deliverySelected = false; deliveryAddress = ""; deliveryPostcode = ""; deliveryPaymentMethod = "Cash"; deliveryPaymentPhone = ""
-                    toast("Toegevoegd aan bestelling #${order.id} ✓")
+                    toast(bi("Toegevoegd aan bestelling #${order.id} ✓", "Added to order #${order.id} ✓"))
                     landing()
                 }
             } catch (_: Exception) {
                 onlineAvailable = false
                 onlineText = "Online bestelserver niet bereikbaar"
-                runOnUiThread { toast("Toevoeging niet verzonden. Je winkelmand blijft bewaard."); refreshRoleScreen() }
+                runOnUiThread { toast(bi("Toevoeging niet verzonden. Je winkelmand blijft bewaard.", "Addition was not sent. Your cart has been saved.")); refreshRoleScreen() }
             }
         }.start()
     }
 
     private fun cancelOnlineOrder(order: Order) {
         if (order.trackingToken.isBlank()) {
-            toast("Deze bestelling kan niet online worden geannuleerd.")
+            toast(bi("Deze bestelling kan niet online worden geannuleerd.", "This order cannot be cancelled online."))
             return
         }
         AlertDialog.Builder(this)
-            .setTitle("Bestelling #${order.id} annuleren?")
-            .setMessage("Weet je zeker dat je deze bestelling wilt annuleren?")
+            .setTitle("Bestelling #${order.id} annuleren? / Cancel order #${order.id}?")
+            .setMessage(bi("Weet je zeker dat je deze bestelling wilt annuleren?", "Are you sure you want to cancel this order?"))
             .setNegativeButton("Nee", null)
             .setPositiveButton("Ja, annuleren") { _, _ ->
                 Thread {
@@ -804,7 +818,7 @@ class MainActivity : AppCompatActivity() {
                         if (code in 200..299 && json.optBoolean("ok")) {
                             Store.status(this, order.id, "Geannuleerd")
                             runOnUiThread {
-                                toast("Bestelling #${order.id} is geannuleerd.")
+                                toast(bi("Bestelling #${order.id} is geannuleerd.", "Order #${order.id} has been cancelled."))
                                 when (screen) {
                                     "orders" -> myOrders(false)
                                     "cart" -> cartScreen()
@@ -812,10 +826,10 @@ class MainActivity : AppCompatActivity() {
                                 }
                             }
                         } else {
-                            runOnUiThread { toast(json.optString("error", "Annuleren is niet gelukt.")) }
+                            runOnUiThread { toast(json.optString("error", bi("Annuleren is niet gelukt.", "Cancellation failed."))) }
                         }
                     } catch (_: Exception) {
-                        runOnUiThread { toast("Annuleren is nu niet gelukt. Probeer het opnieuw.") }
+                        runOnUiThread { toast(bi("Annuleren is nu niet gelukt. Probeer het opnieuw.", "Cancellation failed. Please try again.")) }
                     }
                 }.start()
             }
@@ -1301,17 +1315,17 @@ class MainActivity : AppCompatActivity() {
             button(if (testOrderMode) "Testbestelling plaatsen" else "Bestelling plaatsen") {
                 if (deliverySelected) {
                     if (deliveryAddress.trim().length < 3) {
-                        toast("Vul je straat en huisnummer in.")
+                        toast(bi("Vul je straat en huisnummer in.", "Enter your street and house number."))
                         return@button
                     }
                     if (!validPostcode(deliveryPostcode)) {
-                        toast("Vul een volledige postcode in, bijvoorbeeld 1106 AB.")
+                        toast(bi("Vul een volledige postcode in, bijvoorbeeld 1106 AB.", "Enter a complete postcode, for example 1106 AB."))
                         return@button
                     }
                     if (deliveryPaymentMethod == "Tikkie") {
                         val phone = deliveryPaymentPhone.replace(Regex("[\\s()-]"), "")
                         if (!Regex("^(?:06\\d{8}|\\+316\\d{8}|00316\\d{8})$").matches(phone)) {
-                            toast("Vul voor Tikkie een geldig Nederlands mobiel nummer in.")
+                            toast(bi("Vul voor Tikkie een geldig Nederlands mobiel nummer in.", "Enter a valid Dutch mobile number for Tikkie."))
                             return@button
                         }
                     }
@@ -1343,8 +1357,8 @@ class MainActivity : AppCompatActivity() {
             history.forEach { orderView(it, false) }
             button("Wis bestelgeschiedenis", secondary = true) {
                 AlertDialog.Builder(this)
-                    .setTitle("Bestelgeschiedenis wissen?")
-                    .setMessage("Alleen afgesloten bestellingen worden verwijderd. Openstaande bestellingen blijven staan.")
+                    .setTitle("Bestelgeschiedenis wissen? / Clear order history?")
+                    .setMessage(bi("Alleen afgesloten bestellingen worden verwijderd. Openstaande bestellingen blijven staan.", "Only closed orders will be removed. Open orders will remain."))
                     .setNegativeButton("Annuleren", null)
                     .setPositiveButton("Wissen") { _, _ ->
                         Store.clearCustomerHistory(this)
