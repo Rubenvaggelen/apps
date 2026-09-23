@@ -50,7 +50,7 @@ jobs:
           fi
 
           files=$(git diff --name-only "$before" "${{ github.sha }}")
-          if printf '%s\n' "$files" | grep -Eq '^(jadeorders/|rutubusinessandroid/|build\.gradle$|settings\.gradle$|gradle\.properties$|gradlew$|gradlew\.bat$|gradle/)'; then
+          if printf '%s\n' "$files" | grep -Eq '^(jadeorders/|rutubusinessandroid/|build\.gradle$|settings\.gradle$|gradle\.properties$|gradlew$|gradlew\.bat$|gradle/|\.github/workflows/build-apk\.yml$)'; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
