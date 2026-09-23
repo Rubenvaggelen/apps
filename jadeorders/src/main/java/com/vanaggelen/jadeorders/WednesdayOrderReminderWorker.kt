@@ -79,10 +79,10 @@ class WednesdayOrderReminderWorker(
             manager.createNotificationChannel(
                 NotificationChannel(
                     CHANNEL_ID,
-                    "Rutu bestelmomenten",
+                    "Rutu bestelmomenten / Rutu ordering times",
                     NotificationManager.IMPORTANCE_HIGH
                 ).apply {
-                    description = "Melding wanneer klanten op woensdag kunnen bestellen bij Rutu BBQ"
+                    description = "Melding wanneer klanten op woensdag kunnen bestellen bij Rutu BBQ / Notification when customers can order from Rutu BBQ on Wednesday"
                 }
             )
         }
@@ -96,8 +96,8 @@ class WednesdayOrderReminderWorker(
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val title = "Rutu BBQ is open voor bestellingen"
-        val message = "Het is woensdag! Je kunt vandaag van 10:00 uur tot 18:00 uur je bestelling plaatsen bij Rutu BBQ."
+        val title = "Rutu BBQ is open voor bestellingen / Rutu BBQ is open for orders"
+        val message = "Het is woensdag! Je kunt vandaag van 10:00 uur tot 18:00 uur je bestelling plaatsen bij Rutu BBQ.\nIt is Wednesday! You can place your Rutu BBQ order today from 10:00 to 18:00."
 
         val builder = if (Build.VERSION.SDK_INT >= 26) {
             Notification.Builder(applicationContext, CHANNEL_ID)
