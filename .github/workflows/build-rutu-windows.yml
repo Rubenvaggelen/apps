@@ -8,6 +8,10 @@ on:
       - '.github/workflows/build-rutu-windows.yml'
   workflow_dispatch: {}
 
+concurrency:
+  group: rutu-windows-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
