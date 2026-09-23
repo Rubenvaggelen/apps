@@ -64,7 +64,7 @@ class WednesdayOrderReminderWorker(
         } catch (_: Exception) {
             // Een mislukte controle mag de app niet hinderen; volgende woensdag wordt opnieuw gepland.
         } finally {
-            schedule(applicationContext)
+            scheduleNext(applicationContext)
         }
         return Result.success()
     }
@@ -123,6 +123,14 @@ class WednesdayOrderReminderWorker(
         private val AMSTERDAM = ZoneId.of("Europe/Amsterdam")
 
         fun schedule(context: Context) {
+            enqueue(context, ExistingWorkPolicy.REPLACE)
+        }
+
+        private fun scheduleNext(context: Context) {
+            enqueue(context, ExistingWorkPolicy.APPEND_OR_REPLACE)
+        }
+
+        private fun enqueue(context: Context, policy: ExistingWorkPolicy) {
             val now = ZonedDateTime.now(AMSTERDAM)
             var target = now
                 .with(TemporalAdjusters.nextOrSame(DayOfWeek.WEDNESDAY))
@@ -140,7 +148,7 @@ class WednesdayOrderReminderWorker(
 
             WorkManager.getInstance(context).enqueueUniqueWork(
                 UNIQUE_WORK,
-                ExistingWorkPolicy.REPLACE,
+                policy,
                 request
             )
         }
