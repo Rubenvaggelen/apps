@@ -1015,7 +1015,7 @@ class MainActivity : AppCompatActivity() {
         announcementCard()
         showEatWellBannerIfActive()
         if (announcement.orderingBlocked) {
-            hero("Bestellen is gesloten", announcement.orderingMessage.ifBlank { "U kunt op woensdag van 10:00 uur tot 18:00 uur uw bestelling plaatsen." })
+            hero("Bestellen bij Rutu BBQ", announcement.orderingMessage.ifBlank { "U kunt iedere woensdag van 10:00 tot 18:00 uur bestellen. Wij helpen u graag." })
         }
         hero("Van het vuur. Voor jou.", "Kies je favorieten. Met aandacht bereid, vers van het vuur.")
         products.groupBy { it.category }.forEach { (category, items) ->
@@ -1072,7 +1072,7 @@ class MainActivity : AppCompatActivity() {
         val addTarget = if (effectiveBlocked) openOrders.firstOrNull { it.trackingToken.isNotBlank() } else null
         if (effectiveBlocked) {
             if (addTarget == null) {
-                hero("Bestellen is gesloten", announcement.orderingMessage.ifBlank { "U kunt op woensdag van 10:00 uur tot 18:00 uur uw bestelling plaatsen." } + "\nJe winkelmand blijft bewaard.")
+                hero("Bestellen bij Rutu BBQ", announcement.orderingMessage.ifBlank { "U kunt iedere woensdag van 10:00 tot 18:00 uur bestellen. Wij helpen u graag." } + "\nJe winkelmand blijft bewaard.")
                 return
             }
             hero("Toevoegen aan bestelling #${addTarget.id}", "Omdat je al een openstaande bestelling hebt, mag je hier nog producten aan toevoegen. Er wordt geen nieuwe bestelling aangemaakt.")
@@ -1181,7 +1181,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (announcement.orderingBlocked && !testOrderMode) {
-            hero("Bestellen is gesloten", announcement.orderingMessage.ifBlank { "U kunt op woensdag van 10:00 uur tot 18:00 uur uw bestelling plaatsen." } + "\nJe winkelmand blijft bewaard.")
+            hero("Bestellen bij Rutu BBQ", announcement.orderingMessage.ifBlank { "U kunt iedere woensdag van 10:00 tot 18:00 uur bestellen. Wij helpen u graag." } + "\nJe winkelmand blijft bewaard.")
         } else {
             button(if (testOrderMode) "Testbestelling plaatsen" else "Bestelling plaatsen") {
                 if (deliverySelected) {
