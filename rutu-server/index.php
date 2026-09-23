@@ -70,6 +70,13 @@ function is_test_customer(string $customer): bool {
     return preg_match('/^(ruben|leon)(?:\s|$)/u', $name) === 1;
 }
 
+function test_order_access_valid(string $customer, string $code): bool {
+    if (!is_test_customer($customer)) return false;
+    if (!preg_match('/^\d{5}$/', $code)) return false;
+    $expectedHash = 'f1f65daea3fd178dd76a4d8ad2ae56dc4bdb5a6d46221fb8a6461c6dde441e98';
+    return hash_equals($expectedHash, hash('sha256', $code));
+}
+
 function ordering_schedule_status(array $schedule): array {
     $schedule = normalize_ordering_schedule($schedule);
     $tz = new DateTimeZone('Europe/Amsterdam');
@@ -335,6 +342,17 @@ if ($action === 'health') {
     respond(200, ['ok' => true, 'service' => 'Rutu BBQ Online Orders', 'version' => 2, 'tikkie_configured' => tikkie_config($dataDir) !== null]);
 }
 
+if ($action === 'test_access') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => 'POST vereist.']);
+    $body = body_json();
+    $customer = mb_substr(trim((string)($body['customer'] ?? '')), 0, 80);
+    $code = trim((string)($body['code'] ?? ''));
+    if (!test_order_access_valid($customer, $code)) {
+        respond(403, ['ok' => false, 'error' => 'Onjuiste testcode.']);
+    }
+    respond(200, ['ok' => true, 'allowed' => true]);
+}
+
 if ($action === 'create') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => 'POST vereist.']);
 
@@ -342,9 +360,9 @@ if ($action === 'create') {
     $customer = trim((string)($body['customer'] ?? 'Online klant'));
     if ($customer === '') $customer = 'Online klant';
     $customer = mb_substr($customer, 0, 80);
-    $testCustomer = is_test_customer($customer);
     $testRequested = filter_var($body['test_order'] ?? false, FILTER_VALIDATE_BOOLEAN);
-    $testBypass = $testCustomer && $testRequested;
+    $testCode = trim((string)($body['test_code'] ?? ''));
+    $testBypass = $testRequested && test_order_access_valid($customer, $testCode);
 
     $availability = with_state($stateFile, false, function ($state) {
         $announcement = is_array($state['announcement'] ?? null) ? $state['announcement'] : [];
