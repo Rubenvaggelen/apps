@@ -58,11 +58,11 @@ class MainActivity : Activity() {
     private fun requestBusinessCode() {
         val input = EditText(this).apply {
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            hint = "Bedrijfscode"
+            hint = "Bedrijfscode / Business code"
         }
         val dialog = AlertDialog.Builder(this)
-            .setTitle("Rutu BBQ Bedrijf")
-            .setMessage("Voer de bedrijfscode in.")
+            .setTitle("Rutu BBQ Bedrijf / Rutu BBQ Business")
+            .setMessage("Voer de bedrijfscode in.\nEnter the business code.")
             .setView(input)
             .setCancelable(false)
             .setNegativeButton("Sluiten") { _, _ -> finish() }
@@ -80,7 +80,7 @@ class MainActivity : Activity() {
                     webView.post { webView.scrollTo(0, 0) }
                 } else {
                     input.text.clear()
-                    Toast.makeText(this, "Onjuiste bedrijfscode.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Onjuiste bedrijfscode. / Incorrect business code.", Toast.LENGTH_SHORT).show()
                 }
             }
         }
