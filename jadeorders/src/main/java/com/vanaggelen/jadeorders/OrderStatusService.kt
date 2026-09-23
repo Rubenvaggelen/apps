@@ -20,6 +20,19 @@ import java.net.URL
 import java.net.URLEncoder
 
 class OrderStatusService : Service() {
+    private fun bi(nl: String, en: String): String = "$nl\n$en"
+    private fun statusEnglish(status: String): String = when (status) {
+        "Nieuw" -> "New"
+        "In bereiding" -> "Being prepared"
+        "Klaar" -> "Ready"
+        "Bestelling is onderweg" -> "Order is on the way"
+        "Afgerond" -> "Completed"
+        "Uitverkocht" -> "Sold out"
+        "Geweigerd" -> "Order declined"
+        "Geannuleerd" -> "Order cancelled"
+        else -> status
+    }
+
     private val handler = Handler(Looper.getMainLooper())
     private val serviceChannel = "rutu_background_updates"
     private val statusChannel = "rutu_order_updates"
@@ -105,19 +118,19 @@ class OrderStatusService : Service() {
         manager.createNotificationChannel(
             NotificationChannel(
                 serviceChannel,
-                "Rutu bestelupdates actief",
+                "Rutu bestelupdates actief / Rutu order updates active",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Houdt openstaande bestellingen op de achtergrond bij"
+                description = "Houdt openstaande bestellingen op de achtergrond bij / Tracks open orders in the background"
             }
         )
         manager.createNotificationChannel(
             NotificationChannel(
                 statusChannel,
-                "Bestelupdates",
+                "Bestelupdates / Order updates",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Belangrijke updates over je Rutu BBQ-bestelling"
+                description = "Belangrijke updates over je Rutu BBQ-bestelling / Important updates about your Rutu BBQ order"
             }
         )
     }
@@ -138,8 +151,8 @@ class OrderStatusService : Service() {
         }
         return builder
             .setSmallIcon(android.R.drawable.stat_notify_sync)
-            .setContentTitle("Rutu bestelupdates actief")
-            .setContentText("Statuswijzigingen komen automatisch op je telefoon.")
+            .setContentTitle("Rutu bestelupdates actief / Rutu order updates active")
+            .setContentText(bi("Statuswijzigingen komen automatisch op je telefoon.", "Status changes will automatically appear on your phone."))
             .setOngoing(true)
             .setContentIntent(pending)
             .build()
@@ -152,20 +165,20 @@ class OrderStatusService : Service() {
         prefs.edit().putString(key, status).apply()
 
         val title = when (status) {
-            "In bereiding" -> "Je bestelling wordt bereid"
-            "Klaar" -> "Je bestelling is klaar"
-            "Bestelling is onderweg" -> "Uw bestelling is onderweg"
-            "Afgerond" -> "Uw bestelling is afgegeven. Eet u smakelijk."
-            "Uitverkocht" -> "Uitverkocht"
-            "Geweigerd" -> "Bestelling geweigerd"
-            "Geannuleerd" -> "Bestelling geannuleerd"
-            else -> "Bestelupdate"
+            "In bereiding" -> "Je bestelling wordt bereid / Your order is being prepared"
+            "Klaar" -> "Je bestelling is klaar / Your order is ready"
+            "Bestelling is onderweg" -> "Uw bestelling is onderweg / Your order is on the way"
+            "Afgerond" -> "Bestelling afgegeven / Order delivered"
+            "Uitverkocht" -> "Uitverkocht / Sold out"
+            "Geweigerd" -> "Bestelling geweigerd / Order declined"
+            "Geannuleerd" -> "Bestelling geannuleerd / Order cancelled"
+            else -> "Bestelupdate / Order update"
         }
         val message = when (status) {
-            "Uitverkocht" -> "Bestelling #$orderId is helaas uitverkocht."
-            "Bestelling is onderweg" -> "Uw bestelling is onderweg."
-            "Afgerond" -> "Uw bestelling is afgegeven. Eet u smakelijk."
-            else -> "Bestelling #$orderId heeft nu status: $status."
+            "Uitverkocht" -> bi("Bestelling #$orderId is helaas uitverkocht.", "Order #$orderId is unfortunately sold out.")
+            "Bestelling is onderweg" -> bi("Uw bestelling is onderweg.", "Your order is on the way.")
+            "Afgerond" -> bi("Uw bestelling is afgegeven. Eet u smakelijk.", "Your order has been delivered. Enjoy your meal.")
+            else -> bi("Bestelling #$orderId heeft nu status: $status.", "Order #$orderId now has status: ${statusEnglish(status)}.")
         }
 
         val intent = Intent(this, MainActivity::class.java).apply {
