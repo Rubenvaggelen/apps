@@ -45,7 +45,7 @@ class MainActivity : AppCompatActivity() {
     private enum class Role { NONE, CUSTOMER, BUSINESS }
     data class Product(val name: String, val price: Double, val category: String, val description: String)
     data class Order(val id: Int, val items: LinkedHashMap<String, Int>, val total: Double, var status: String, val trackingToken: String = "", val delivery: Boolean = false, val address: String = "", val postcode: String = "", val deliveryFee: Double = 0.0, val paymentMethod: String = "", val paymentUrl: String = "", val paymentStatus: String = "")
-    data class Announcement(val title: String = "", val message: String = "", val from: String = "", val until: String = "", val active: Boolean = false, val orderingBlocked: Boolean = false)
+    data class Announcement(val title: String = "", val message: String = "", val from: String = "", val until: String = "", val active: Boolean = false, val orderingBlocked: Boolean = false, val orderingMessage: String = "")
 
     private val products = listOf(
         Product("BBQ Regular", 10.00, "BBQ", "1 bout • 2 stokjes saté • salade"),
@@ -762,7 +762,7 @@ class MainActivity : AppCompatActivity() {
     private fun syncAnnouncement(refreshVisibleScreen: Boolean) {
         Thread {
             try {
-                val (code, raw) = onlineJson("GET", "announcement")
+                val (code, raw) = onlineJson("GET", "announcement", extra = mapOf("customer" to customerName()))
                 if (code == 200) {
                     val obj = JSONObject(raw).optJSONObject("announcement")
                     val next = if (obj == null) Announcement() else Announcement(
@@ -771,7 +771,8 @@ class MainActivity : AppCompatActivity() {
                         from = obj.optString("from", ""),
                         until = obj.optString("until", ""),
                         active = obj.optBoolean("active", false),
-                        orderingBlocked = obj.optBoolean("ordering_blocked", false)
+                        orderingBlocked = obj.optBoolean("ordering_blocked", false),
+                        orderingMessage = obj.optString("ordering_message", "")
                     )
                     val changed = next != announcement
                     announcement = next
@@ -1010,7 +1011,7 @@ class MainActivity : AppCompatActivity() {
         announcementCard()
         showEatWellBannerIfActive()
         if (announcement.orderingBlocked) {
-            hero("Vandaag gesloten voor bestellingen", "Je kunt het menu bekijken, maar vandaag geen bestelling plaatsen.")
+            hero("Bestellen is gesloten", announcement.orderingMessage.ifBlank { "U kunt op woensdag van 10:00 uur tot 18:00 uur uw bestelling plaatsen." })
         }
         hero("Van het vuur. Voor jou.", "Kies je favorieten. Met aandacht bereid, vers van het vuur.")
         products.groupBy { it.category }.forEach { (category, items) ->
@@ -1160,7 +1161,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (announcement.orderingBlocked) {
-            hero("Bestellen is vandaag gesloten", "De gekozen kalenderdatum blokkeert bestellingen. Je winkelmand blijft bewaard.")
+            hero("Bestellen is gesloten", announcement.orderingMessage.ifBlank { "U kunt op woensdag van 10:00 uur tot 18:00 uur uw bestelling plaatsen." } + "\nJe winkelmand blijft bewaard.")
         } else {
             button("Bestelling plaatsen") {
                 if (deliverySelected) {
