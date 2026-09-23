@@ -166,16 +166,31 @@ function paymentLine(o){
  '</div>';
 }
 function when(v){if(!v)return'';const d=new Date(v);return Number.isNaN(d.getTime())?esc(v):new Intl.DateTimeFormat('nl-NL',{dateStyle:'medium',timeStyle:'short'}).format(d)}
-function actions(o){if(o.status==='Nieuw')return '<button class="green" onclick="setStatus('+o.id+',\'In bereiding\')">Accepteren</button><button class="red" onclick="setStatus('+o.id+',\'Uitverkocht\')">Annuleren • Uitverkocht</button><button class="red" onclick="setStatus('+o.id+',\'Geweigerd\')">Weigeren</button>';if(o.status==='In bereiding')return '<button class="orange" onclick="setStatus('+o.id+',\'Klaar\')">Markeer klaar</button><button class="red" onclick="setStatus('+o.id+',\'Uitverkocht\')">Annuleren • Uitverkocht</button>';if(o.status==='Klaar')return o.delivery?'<button class="orange" onclick="setStatus('+o.id+',\'Bestelling is onderweg\')">Bestelling is onderweg</button><button class="red" onclick="setStatus('+o.id+',\'Uitverkocht\')">Annuleren • Uitverkocht</button>':'<button class="green" onclick="setStatus('+o.id+',\'Afgerond\')">Afronden</button><button class="red" onclick="setStatus('+o.id+',\'Uitverkocht\')">Annuleren • Uitverkocht</button>';if(o.status==='Bestelling is onderweg')return '<button class="green" onclick="setStatus('+o.id+',\'Afgerond\')">Afronden</button>';return''}
+function actionButton(o,label,status,color){
+ return '<button class="'+color+'" onclick="setStatus('+Number(o.id)+',&quot;'+esc(status)+'&quot;)">'+esc(label)+'</button>';
+}
+function actions(o){
+ const soldOut=actionButton(o,'Annuleren • Uitverkocht','Uitverkocht','red');
+ const sendTikkie=o.delivery&&o.paymentMethod==='Tikkie'
+   ?actionButton(o,'Uw bestelling is onderweg','Bestelling is onderweg','green'):'';
+ if(o.status==='Nieuw')return actionButton(o,'Accepteren','In bereiding','green')+
+   soldOut+actionButton(o,'Weigeren','Geweigerd','red');
+ if(o.status==='In bereiding')return actionButton(o,'Markeer klaar','Klaar','orange')+sendTikkie+soldOut;
+ if(o.status==='Klaar')return o.delivery
+   ?actionButton(o,o.paymentMethod==='Tikkie'?'Uw bestelling is onderweg':'Bestelling is onderweg','Bestelling is onderweg','orange')+soldOut
+   :actionButton(o,'Afronden','Afgerond','green')+soldOut;
+ if(o.status==='Bestelling is onderweg')return actionButton(o,'Afronden','Afgerond','green');
+ return '';
+}
 function orderCard(o){const items=o.items.map(i=>esc(i.qty)+'× '+esc(i.name)).join('<br>');const delivery=o.delivery?'<div class="meta"><b>Bezorgen</b> • '+esc(o.address)+' • '+esc(o.postcode)+' • bezorgkosten '+money(o.deliveryFee)+'</div>':'<div class="meta"><b>Afhalen</b></div>';return '<div class="order"><div class="order-head"><b>Bestelling #'+o.id+'</b><span class="order-total">'+money(o.total)+'</span></div><div class="meta">'+when(o.created)+' • '+esc(o.customer)+'</div>'+delivery+paymentLine(o)+'<div>'+items+'</div><div class="status">Status: '+esc(o.status)+'</div><div class="actions">'+actions(o)+'</div></div>'}
 function render(){
  const open=orders.filter(openStatuses),active=open.filter(o=>!hiddenActiveIds.has(o.id)),history=orders.filter(o=>finalStatuses.includes(o.status)&&!o.historyCleared),completed=history.filter(o=>o.status==='Afgerond'),newCount=active.filter(o=>o.status==='Nieuw').length;
  const badge=document.getElementById('count');badge.style.display=active.length?'':'none';badge.textContent=newCount>0?newCount+' nieuw':active.length+' openstaand';document.getElementById('restoreActive').style.display=hiddenActiveIds.size?'':'none';
- document.getElementById('summary').innerHTML='<button type="button" class="summary-link" onclick="openNewOrdersScreen()" aria-label="Bekijk '+newCount+' nieuwe bestellingen"><b>'+newCount+'</b>Nieuw</button><div><b>'+open.length+'</b>Openstaand</div><div><b>'+money(open.reduce((s,o)=>s+o.total,0))+'</b>Open waarde</div><div><b>'+history.length+'</b>Geschiedenis</div><div><b>'+money(completed.reduce((s,o)=>s+o.total,0))+'</b>Afgerond</div>';
+ document.getElementById('summary').innerHTML='<button type="button" class="summary-link" onclick="openNewOrdersScreen()" aria-label="Bekijk '+newCount+' nieuwe bestellingen"><b>'+newCount+'</b>Nieuw</button><button type="button" class="summary-link" onclick="openOpenOrders()" aria-label="Bekijk '+active.length+' openstaande bestellingen"><b>'+active.length+'</b>Openstaand</button><div><b>'+money(open.reduce((s,o)=>s+o.total,0))+'</b>Open waarde</div><button type="button" class="summary-link" onclick="openHistoryOrders()" aria-label="Bekijk '+history.length+' oude bestellingen"><b>'+history.length+'</b>Geschiedenis</button><div><b>'+money(completed.reduce((s,o)=>s+o.total,0))+'</b>Afgerond</div>';
  document.getElementById('orders').innerHTML=active.map(orderCard).join('')||'<div class="empty">Geen zichtbare bestellingen.</div>';
  document.getElementById('history').innerHTML=history.map(o=>o.historyHidden?'<div class="history-row"><span></span><b>'+money(o.total)+'</b></div>':'<div class="history-row"><button class="gray" onclick="openHistory('+o.id+')">#'+o.id+'</button><b>'+money(o.total)+'</b><button class="red" onclick="hideHistory('+o.id+')">Verwijder</button></div>').join('')||'<div class="empty">Geschiedenis is leeg.</div>';
  renderFocusedOrders();
- const m=document.getElementById('orderModal');if(m.classList.contains('open')&&m.dataset.mode==='open-orders'){if(active.length)renderOpenOrdersModal();else closeOrderModal();}
+ const m=document.getElementById('orderModal');if(m.classList.contains('open')&&m.dataset.mode==='open-orders'){if(active.length)renderOpenOrdersModal();else closeOrderModal();}else if(m.classList.contains('open')&&m.dataset.mode==='history-orders'){renderHistoryOrdersModal();}
 }
 async function sync(){
  if(!key()){document.getElementById('connection').textContent='Niet gekoppeld';openKeyModal();return}
@@ -185,6 +200,21 @@ async function sync(){
 async function setStatus(id,status){try{await api('business_status','POST',{id:Number(id),status});await sync()}catch(e){alert(e.message)}}
 function openOpenOrders(){if(!orders.some(o=>openStatuses(o)&&!hiddenActiveIds.has(o.id)))return;const m=document.getElementById('orderModal');m.dataset.mode='open-orders';document.getElementById('orderModalTitle').textContent='Openstaande bestellingen';renderOpenOrdersModal();m.classList.add('open')}
 function renderOpenOrdersModal(){const open=orders.filter(o=>openStatuses(o)&&!hiddenActiveIds.has(o.id));document.getElementById('orderModalBody').innerHTML='<div class="open-orders-list">'+(open.map(orderCard).join('')||'<div class="empty">Geen openstaande bestellingen.</div>')+'</div>'}
+function openHistoryOrders(){
+ const modal=document.getElementById('orderModal');
+ modal.dataset.mode='history-orders';
+ document.getElementById('orderModalTitle').textContent='Bestelgeschiedenis';
+ renderHistoryOrdersModal();
+ modal.classList.add('open');
+}
+function renderHistoryOrdersModal(){
+ const old=orders.filter(o=>finalStatuses.includes(o.status)&&!o.historyCleared);
+ const cards=old.map(o=>o.historyHidden
+  ?'<div class="history-row"><span>Verborgen bestelling</span><b>'+money(o.total)+'</b></div>'
+  :orderCard(o)).join('');
+ document.getElementById('orderModalBody').innerHTML='<div class="open-orders-list">'+
+   (cards||'<div class="empty">Er zijn nog geen oude bestellingen.</div>')+'</div>';
+}
 function openHistory(id){const o=orders.find(x=>x.id===Number(id));if(!o)return;const m=document.getElementById('orderModal');m.dataset.mode='history';document.getElementById('orderModalTitle').textContent='Bestelling #'+o.id;document.getElementById('orderModalBody').innerHTML=orderCard(o);m.classList.add('open')}
 function closeOrderModal(){const m=document.getElementById('orderModal');m.classList.remove('open');m.dataset.mode=''}
 async function loadNotice(){try{const r=await api('business_announcement'),a=r.announcement||{};noticeTitle.value=a.title||'';noticeMessage.value=a.message||'';noticeFrom.value=a.from||'';noticeUntil.value=a.until||'';noticeActive.checked=!!a.active}catch(e){}}

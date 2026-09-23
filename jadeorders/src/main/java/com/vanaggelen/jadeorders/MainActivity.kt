@@ -616,14 +616,6 @@ class MainActivity : AppCompatActivity() {
                     deliveryPaymentPhone = ""
                     toast("Bestelling #${order.id} is ontvangen door Rutu BBQ ✓")
                     cartScreen()
-                    if (order.paymentMethod == "Tikkie" && order.paymentUrl.isNotBlank()) {
-                        AlertDialog.Builder(this@MainActivity)
-                            .setTitle("Tikkie voor bestelling #${order.id}")
-                            .setMessage("Je betaallink voor ${money.format(order.total)} staat klaar. Wil je nu betalen?")
-                            .setNegativeButton("Later", null)
-                            .setPositiveButton("Betaal via Tikkie") { _, _ -> openTikkie(order.paymentUrl) }
-                            .show()
-                    }
                 }
             } catch (_: Exception) {
                 onlineAvailable = false
@@ -1236,17 +1228,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun orderView(o: Order, admin: Boolean) {
         val deliveryLine = if (o.delivery) "\nBezorgen: ${o.address}, ${displayPostcode(o.postcode)} • ${money.format(o.deliveryFee)}" else "\nAfhalen"
-        val paymentLine = if (o.paymentMethod == "Tikkie") "\nTikkie: " + when (o.paymentStatus) {
-            "Betaald" -> "Betaald ✓"
-            "Openstaand" -> "Nog niet betaald"
-            "Verlopen" -> "Verlopen"
-            "Controle nodig" -> "Betaallink kon niet worden bevestigd; neem contact op met Rutu BBQ"
-            else -> "Automatische betaalfunctie nog niet geactiveerd"
-        } else ""
-        card("#${o.id}   •   ${money.format(o.total)}\n${o.items.entries.joinToString("  •  ") { "${it.value}× ${it.key}" }}$deliveryLine$paymentLine\nStatus: ${o.status}") {
-            if (!admin && o.paymentMethod == "Tikkie" && o.paymentUrl.isNotBlank() && o.paymentStatus != "Betaald") {
-                smallButton("Betaal via Tikkie") { openTikkie(o.paymentUrl) }
-            }
+        card("#${o.id}   •   ${money.format(o.total)}\n${o.items.entries.joinToString("  •  ") { "${it.value}× ${it.key}" }}$deliveryLine\nStatus: ${o.status}") {
             if (admin) when (o.status) {
                 "Nieuw" -> { smallButton("Accepteren") { changeStatus(o, "In bereiding") }; smallButton("Weigeren") { changeStatus(o, "Geweigerd") } }
                 "In bereiding" -> smallButton("Klaar") { changeStatus(o, "Klaar") }
