@@ -148,11 +148,14 @@ jobs:
           test -s "$business_apk"
           version="${{ github.run_number }}"
           sha=$(sha256sum "$apk" | awk '{print $1}')
+          business_sha=$(sha256sum "$business_apk" | awk '{print $1}')
           meta=$(mktemp)
+          business_meta=$(mktemp)
           printf '{"versionCode":%s,"url":"https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Android.apk","sha256":"%s"}\n' "$version" "$sha" > "$meta"
+          printf '{"versionCode":%s,"url":"https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Bedrijf-Android.apk","sha256":"%s"}\n' "$version" "$business_sha" > "$business_meta"
 
           keydir=$(mktemp -d)
-          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$keydir" "$meta"' EXIT
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$keydir" "$meta" "$business_meta"' EXIT
           printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$keydir/key"
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$keydir/known_hosts"
           printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$keydir/askpass"
@@ -166,7 +169,8 @@ jobs:
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$apk" "$remote:$stage/Rutu-BBQ-Android.apk"
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$business_apk" "$remote:$stage/Rutu-BBQ-Bedrijf-Android.apk"
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$meta" "$remote:$stage/android.json"
-          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "mkdir -p ~/public_html/rutu-updates ~/dev.vanaggelen.com/rutu-downloads && mv '$stage/Rutu-BBQ-Android.apk' ~/public_html/rutu-updates/Rutu-BBQ-Android.apk && mv '$stage/android.json' ~/public_html/rutu-updates/android.json && mv '$stage/Rutu-BBQ-Bedrijf-Android.apk' ~/dev.vanaggelen.com/rutu-downloads/Rutu-BBQ-Bedrijf-Android.apk && chmod 644 ~/public_html/rutu-updates/Rutu-BBQ-Android.apk ~/public_html/rutu-updates/android.json ~/dev.vanaggelen.com/rutu-downloads/Rutu-BBQ-Bedrijf-Android.apk && rmdir '$stage'"
+          scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$business_meta" "$remote:$stage/business-android.json"
+          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "mkdir -p ~/public_html/rutu-updates ~/dev.vanaggelen.com/rutu-downloads && mv '$stage/Rutu-BBQ-Android.apk' ~/public_html/rutu-updates/Rutu-BBQ-Android.apk && mv '$stage/android.json' ~/public_html/rutu-updates/android.json && cp '$stage/Rutu-BBQ-Bedrijf-Android.apk' ~/public_html/rutu-updates/Rutu-BBQ-Bedrijf-Android.apk && mv '$stage/business-android.json' ~/public_html/rutu-updates/business-android.json && mv '$stage/Rutu-BBQ-Bedrijf-Android.apk' ~/dev.vanaggelen.com/rutu-downloads/Rutu-BBQ-Bedrijf-Android.apk && chmod 644 ~/public_html/rutu-updates/Rutu-BBQ-Android.apk ~/public_html/rutu-updates/android.json ~/public_html/rutu-updates/Rutu-BBQ-Bedrijf-Android.apk ~/public_html/rutu-updates/business-android.json ~/dev.vanaggelen.com/rutu-downloads/Rutu-BBQ-Bedrijf-Android.apk && rmdir '$stage'"
 
       - name: Create GitHub Release with APKs
         if: github.ref == 'refs/heads/main'
