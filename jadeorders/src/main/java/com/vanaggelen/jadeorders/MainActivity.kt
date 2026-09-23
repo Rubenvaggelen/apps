@@ -45,7 +45,7 @@ class MainActivity : AppCompatActivity() {
     private enum class Role { NONE, CUSTOMER, BUSINESS }
     data class Product(val name: String, val price: Double, val category: String, val description: String)
     data class Order(val id: Int, val items: LinkedHashMap<String, Int>, val total: Double, var status: String, val trackingToken: String = "", val delivery: Boolean = false, val address: String = "", val postcode: String = "", val deliveryFee: Double = 0.0, val paymentMethod: String = "", val paymentUrl: String = "", val paymentStatus: String = "")
-    data class Announcement(val title: String = "", val message: String = "", val from: String = "", val until: String = "", val active: Boolean = false, val orderingBlocked: Boolean = false, val orderingMessage: String = "")
+    data class Announcement(val title: String = "", val message: String = "", val from: String = "", val until: String = "", val active: Boolean = false, val orderingBlocked: Boolean = false, val orderingMessage: String = "", val testOrderAllowed: Boolean = false)
 
     private val products = listOf(
         Product("BBQ Regular", 10.00, "BBQ", "1 bout • 2 stokjes saté • salade"),
@@ -61,6 +61,7 @@ class MainActivity : AppCompatActivity() {
     private var deliveryPostcode = ""
     private var deliveryPaymentMethod = "Cash"
     private var deliveryPaymentPhone = ""
+    private var testOrderMode = false
     private val orderRoutes = mutableMapOf<Int, String>()
     private lateinit var root: LinearLayout
     private lateinit var nearby: ConnectionsClient
@@ -583,7 +584,7 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread { ensureCustomerName() }
             return
         }
-        val payload = JSONObject().put("items", itemJson).put("customer", name).put("delivery", delivery)
+        val payload = JSONObject().put("items", itemJson).put("customer", name).put("delivery", delivery).put("test_order", testOrderMode)
         if (delivery) payload.put("address", address.trim()).put("postcode", normalizedPostcode(postcode)).put("payment_method", paymentMethod).put("payment_phone", if (paymentMethod == "Tikkie") paymentPhone.trim().replace(Regex("[\\s()-]"), "") else "")
         Thread {
             try {
@@ -615,6 +616,7 @@ class MainActivity : AppCompatActivity() {
                     deliveryPostcode = ""
                     deliveryPaymentMethod = "Cash"
                     deliveryPaymentPhone = ""
+                    testOrderMode = false
                     toast("Bestelling #${order.id} is ontvangen door Rutu BBQ ✓")
                     cartScreen()
                 }
@@ -773,7 +775,8 @@ class MainActivity : AppCompatActivity() {
                         until = obj.optString("until", ""),
                         active = obj.optBoolean("active", false),
                         orderingBlocked = obj.optBoolean("ordering_blocked", false),
-                        orderingMessage = obj.optString("ordering_message", "")
+                        orderingMessage = obj.optString("ordering_message", ""),
+                        testOrderAllowed = obj.optBoolean("test_order_allowed", false)
                     )
                     val changed = next != announcement
                     announcement = next
@@ -1050,10 +1053,26 @@ class MainActivity : AppCompatActivity() {
             }
         }
         val productTotal = total
-        val addTarget = if (announcement.orderingBlocked) openOrders.firstOrNull { it.trackingToken.isNotBlank() } else null
-        if (announcement.orderingBlocked) {
+        if (!announcement.testOrderAllowed) testOrderMode = false
+        if (announcement.orderingBlocked && announcement.testOrderAllowed) {
+            val testCheck = CheckBox(this).apply {
+                text = "Testbestelling plaatsen (alleen Ruben/Leon)"
+                textSize = 16f
+                setTextColor(Color.rgb(244, 213, 147))
+                isChecked = testOrderMode
+                setPadding(dp(8), dp(8), dp(8), dp(8))
+                setOnCheckedChangeListener { _, checked ->
+                    testOrderMode = checked
+                    cartScreen()
+                }
+            }
+            root.addView(testCheck, marginParams(0, 8, 0, 8))
+        }
+        val effectiveBlocked = announcement.orderingBlocked && !testOrderMode
+        val addTarget = if (effectiveBlocked) openOrders.firstOrNull { it.trackingToken.isNotBlank() } else null
+        if (effectiveBlocked) {
             if (addTarget == null) {
-                hero("Bestellen is vandaag gesloten", "Nieuwe bestellingen zijn geblokkeerd. Je winkelmand blijft bewaard.")
+                hero("Bestellen is gesloten", announcement.orderingMessage.ifBlank { "U kunt op woensdag van 10:00 uur tot 18:00 uur uw bestelling plaatsen." } + "\nJe winkelmand blijft bewaard.")
                 return
             }
             hero("Toevoegen aan bestelling #${addTarget.id}", "Omdat je al een openstaande bestelling hebt, mag je hier nog producten aan toevoegen. Er wordt geen nieuwe bestelling aangemaakt.")
@@ -1161,10 +1180,10 @@ class MainActivity : AppCompatActivity() {
             section("Totaal  ${money.format(productTotal)}")
         }
 
-        if (announcement.orderingBlocked) {
+        if (announcement.orderingBlocked && !testOrderMode) {
             hero("Bestellen is gesloten", announcement.orderingMessage.ifBlank { "U kunt op woensdag van 10:00 uur tot 18:00 uur uw bestelling plaatsen." } + "\nJe winkelmand blijft bewaard.")
         } else {
-            button("Bestelling plaatsen") {
+            button(if (testOrderMode) "Testbestelling plaatsen" else "Bestelling plaatsen") {
                 if (deliverySelected) {
                     if (deliveryAddress.trim().length < 3) {
                         toast("Vul je straat en huisnummer in.")
