@@ -62,6 +62,7 @@ class MainActivity : AppCompatActivity() {
     private var deliveryPaymentMethod = "Cash"
     private var deliveryPaymentPhone = ""
     private var testOrderMode = false
+    private var testOrderCode = ""
     private val orderRoutes = mutableMapOf<Int, String>()
     private lateinit var root: LinearLayout
     private lateinit var nearby: ConnectionsClient
@@ -573,6 +574,70 @@ class MainActivity : AppCompatActivity() {
         catch (_: Exception) { toast("Geen app gevonden om de betaallink te openen.") }
     }
 
+    private fun promptForTestOrderCode() {
+        if (!announcement.testOrderAllowed) return
+        val input = EditText(this).apply {
+            hint = "Testcode"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            setSingleLine(true)
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Testbestelling")
+            .setMessage("Voer de verborgen testcode in.")
+            .setView(input)
+            .setNegativeButton("Annuleren", null)
+            .setNeutralButton("Code vergeten?", null)
+            .setPositiveButton("Ontgrendelen", null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                AlertDialog.Builder(this)
+                    .setTitle("Herstelvraag")
+                    .setMessage("Maand jaar Leon de controller")
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val entered = input.text?.toString().orEmpty().trim()
+                if (!Regex("^\\d{5}$").matches(entered)) {
+                    input.error = "Voer de 5-cijferige testcode in"
+                    return@setOnClickListener
+                }
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
+                Thread {
+                    try {
+                        val payload = JSONObject()
+                            .put("customer", customerName())
+                            .put("code", entered)
+                        val (code, raw) = onlineJson("POST", "test_access", payload)
+                        val ok = code in 200..299 && JSONObject(raw).optBoolean("allowed", false)
+                        runOnUiThread {
+                            if (ok) {
+                                testOrderCode = entered
+                                testOrderMode = true
+                                dialog.dismiss()
+                                toast("Testmodus actief")
+                                cartScreen()
+                            } else {
+                                testOrderCode = ""
+                                testOrderMode = false
+                                input.error = "Onjuiste testcode"
+                                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
+                            }
+                        }
+                    } catch (_: Exception) {
+                        runOnUiThread {
+                            toast("Testcode kon niet worden gecontroleerd.")
+                            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
+                        }
+                    }
+                }.start()
+            }
+        }
+        dialog.show()
+    }
+
     private fun sendOnlineOrder(items: LinkedHashMap<String, Int>, shownTotal: Double, delivery: Boolean = false, address: String = "", postcode: String = "", paymentMethod: String = "", paymentPhone: String = "") {
         if (items.isEmpty()) return
         onlineText = "Bestelling veilig verzenden…"
@@ -585,6 +650,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val payload = JSONObject().put("items", itemJson).put("customer", name).put("delivery", delivery).put("test_order", testOrderMode)
+        if (testOrderMode) payload.put("test_code", testOrderCode)
         if (delivery) payload.put("address", address.trim()).put("postcode", normalizedPostcode(postcode)).put("payment_method", paymentMethod).put("payment_phone", if (paymentMethod == "Tikkie") paymentPhone.trim().replace(Regex("[\\s()-]"), "") else "")
         Thread {
             try {
@@ -617,6 +683,7 @@ class MainActivity : AppCompatActivity() {
                     deliveryPaymentMethod = "Cash"
                     deliveryPaymentPhone = ""
                     testOrderMode = false
+                    testOrderCode = ""
                     toast("Bestelling #${order.id} is ontvangen door Rutu BBQ ✓")
                     cartScreen()
                 }
@@ -1053,20 +1120,21 @@ class MainActivity : AppCompatActivity() {
             }
         }
         val productTotal = total
-        if (!announcement.testOrderAllowed) testOrderMode = false
+        if (!announcement.testOrderAllowed) {
+            testOrderMode = false
+            testOrderCode = ""
+        }
         if (announcement.orderingBlocked && announcement.testOrderAllowed) {
-            val testCheck = CheckBox(this).apply {
-                text = "Testbestelling plaatsen (alleen Ruben/Leon)"
-                textSize = 16f
-                setTextColor(Color.rgb(244, 213, 147))
-                isChecked = testOrderMode
-                setPadding(dp(8), dp(8), dp(8), dp(8))
-                setOnCheckedChangeListener { _, checked ->
-                    testOrderMode = checked
+            if (testOrderMode) {
+                hero("Testmodus actief", "Je kunt nu een testbestelling plaatsen.")
+                button("Testmodus uitschakelen", secondary = true) {
+                    testOrderMode = false
+                    testOrderCode = ""
                     cartScreen()
                 }
+            } else {
+                button("Testbestelling plaatsen", secondary = true) { promptForTestOrderCode() }
             }
-            root.addView(testCheck, marginParams(0, 8, 0, 8))
         }
         val effectiveBlocked = announcement.orderingBlocked && !testOrderMode
         val addTarget = if (effectiveBlocked) openOrders.firstOrNull { it.trackingToken.isNotBlank() } else null
