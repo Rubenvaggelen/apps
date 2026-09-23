@@ -72,6 +72,7 @@ class MainActivity : AppCompatActivity() {
     private val notificationPermissionRequest = 4042
     private val orderNotificationChannel = "rutu_order_updates"
     private var appInForeground = false
+    private var returnToLandingOnStart = false
     private var role = Role.NONE
     private var connectedEndpoint: String? = null
     private var connectionText = "Niet verbonden"
@@ -95,6 +96,37 @@ class MainActivity : AppCompatActivity() {
 
     private fun saveCustomerName(name: String) {
         getSharedPreferences("rutu_customer", Context.MODE_PRIVATE).edit().putString("name", name.trim()).apply()
+    }
+
+    private fun saveCart() {
+        val json = JSONObject()
+        cart.forEach { (name, qty) -> if (qty > 0) json.put(name, qty) }
+        getSharedPreferences("rutu_customer_cart", Context.MODE_PRIVATE)
+            .edit()
+            .putString("items", json.toString())
+            .apply()
+    }
+
+    private fun restoreCart() {
+        cart.clear()
+        val raw = getSharedPreferences("rutu_customer_cart", Context.MODE_PRIVATE)
+            .getString("items", "")
+            .orEmpty()
+        if (raw.isBlank()) return
+        try {
+            val json = JSONObject(raw)
+            json.keys().forEach { name ->
+                val qty = json.optInt(name, 0)
+                if (qty > 0 && products.any { it.name == name }) cart[name] = qty.coerceAtMost(25)
+            }
+        } catch (_: Exception) {
+            getSharedPreferences("rutu_customer_cart", Context.MODE_PRIVATE).edit().remove("items").apply()
+        }
+    }
+
+    private fun clearCartAfterPlacedOrder() {
+        cart.clear()
+        saveCart()
     }
 
     private fun ensureCustomerName() {
@@ -167,6 +199,7 @@ class MainActivity : AppCompatActivity() {
         screen = "landing"
         renderedScreen = ""
         scrollPositions.clear()
+        restoreCart()
         landing()
         ensureCustomerName()
         syncAnnouncement(true)
@@ -174,6 +207,14 @@ class MainActivity : AppCompatActivity() {
         syncOnlineStatuses()
         WednesdayOrderReminderWorker.schedule(this)
         RutuUpdateChecker.checkForUpdate(this)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (returnToLandingOnStart) {
+            returnToLandingOnStart = false
+            landing()
+        }
     }
 
     override fun onResume() {
@@ -194,8 +235,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        saveCart()
         appInForeground = false
         super.onPause()
+    }
+
+    override fun onStop() {
+        returnToLandingOnStart = true
+        super.onStop()
     }
 
     override fun onDestroy() {
@@ -476,7 +523,7 @@ class MainActivity : AppCompatActivity() {
             try {
                 val (code, _) = httpJson("POST", "/api/orders", payload)
                 if (code in 200..299) {
-                    runOnUiThread { cart.clear(); toast("Bestelling #${order.id} ontvangen door Windows ✓"); myOrders(false) }
+                    runOnUiThread { clearCartAfterPlacedOrder(); toast("Bestelling #${order.id} ontvangen door Windows ✓"); landing() }
                 } else {
                     Store.status(this, order.id, "Verzenden mislukt")
                     runOnUiThread { toast("Windows heeft de bestelling niet geaccepteerd."); myOrders(false) }
@@ -676,7 +723,7 @@ class MainActivity : AppCompatActivity() {
                 onlineAvailable = true
                 onlineText = "Online bestellen actief • bestelling ontvangen"
                 runOnUiThread {
-                    cart.clear()
+                    clearCartAfterPlacedOrder()
                     deliverySelected = false
                     deliveryAddress = ""
                     deliveryPostcode = ""
@@ -685,7 +732,7 @@ class MainActivity : AppCompatActivity() {
                     testOrderMode = false
                     testOrderCode = ""
                     toast("Bestelling #${order.id} is ontvangen door Rutu BBQ ✓")
-                    cartScreen()
+                    landing()
                 }
             } catch (_: Exception) {
                 onlineAvailable = false
@@ -724,10 +771,10 @@ class MainActivity : AppCompatActivity() {
                 onlineAvailable = true
                 onlineText = "Online bestellen actief • toevoeging ontvangen"
                 runOnUiThread {
-                    cart.clear()
+                    clearCartAfterPlacedOrder()
                     deliverySelected = false; deliveryAddress = ""; deliveryPostcode = ""; deliveryPaymentMethod = "Cash"; deliveryPaymentPhone = ""
                     toast("Toegevoegd aan bestelling #${order.id} ✓")
-                    cartScreen()
+                    landing()
                 }
             } catch (_: Exception) {
                 onlineAvailable = false
@@ -1090,7 +1137,7 @@ class MainActivity : AppCompatActivity() {
             items.forEach { p ->
                 val qty = cart[p.name] ?: 0
                 card("${p.name}\n${p.description}\n${money.format(p.price)}${if (qty > 0) "   •   $qty× in mand" else ""}") {
-                    button("+ Toevoegen") { cart[p.name] = qty + 1; renderCustomer() }
+                    button("+ Toevoegen") { cart[p.name] = qty + 1; saveCart(); renderCustomer() }
                 }
             }
         }
@@ -1115,8 +1162,8 @@ class MainActivity : AppCompatActivity() {
         cart.toMap().forEach { (name, qty) ->
             val p = products.first { it.name == name }; total += p.price * qty
             card("$qty× $name\n${money.format(p.price * qty)}") {
-                smallButton("−") { if (qty <= 1) cart.remove(name) else cart[name] = qty - 1; cartScreen() }
-                smallButton("+") { cart[name] = qty + 1; cartScreen() }
+                smallButton("−") { if (qty <= 1) cart.remove(name) else cart[name] = qty - 1; saveCart(); cartScreen() }
+                smallButton("+") { cart[name] = qty + 1; saveCart(); cartScreen() }
             }
         }
         val productTotal = total
