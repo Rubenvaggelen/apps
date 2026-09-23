@@ -1,0 +1,103 @@
+name: Deploy Rutu Order API
+on:
+  push:
+    branches: [feature/jade-orders]
+    paths:
+      - 'rutu-server/index.php'
+      - '.github/workflows/deploy-rutu-server.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rutu-order-api
+  cancel-in-progress: false
+
+jobs:
+  deploy-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PHP
+        run: |
+          set -euo pipefail
+          php -l rutu-server/index.php
+          grep -q "'payment_method'" rutu-server/index.php
+          grep -q "'payment_phone'" rutu-server/index.php
+
+      - name: Publish guarded API with backup
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "${!name}" || { echo "::error::Missing deployment secret: $name"; exit 1; }
+          done
+          last_change=$(git log -1 --format=%H -- rutu-server/index.php)
+          base_hash=$(git show "$last_change^:rutu-server/index.php" | sha256sum | awk '{print $1}')
+          target_hash=$(sha256sum rutu-server/index.php | awk '{print $1}')
+
+          keydir=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$keydir"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$keydir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$keydir/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$keydir/askpass"
+          chmod 600 "$keydir/key" "$keydir/known_hosts"
+          chmod 700 "$keydir/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$keydir/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$keydir/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          opts=(-i "$keydir/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$keydir/known_hosts" -o ConnectTimeout=20)
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+
+          current_hash=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'sha256sum "$HOME/public_html/rutu-api/index.php" | cut -d " " -f 1')
+          if [ "$current_hash" = "$target_hash" ]; then
+            echo "Order API already at requested version."
+            exit 0
+          fi
+          if [ "$current_hash" != "$base_hash" ]; then
+            echo "::error::Live API differs from the repository baseline. No changes made. Reconcile live changes before deploying."
+            exit 1
+          fi
+
+          stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'mktemp -d "$HOME/.rutu-api-stage.XXXXXXXX"')
+          scp -O -P "$DEPLOY_PORT" "${opts[@]}" rutu-server/index.php "$remote:$stage/index.php"
+          backup=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "bash -s -- '$stage' '$target_hash'" <<'REMOTE'
+          set -euo pipefail
+          stage="$1"
+          expected="$2"
+          target="$HOME/public_html/rutu-api/index.php"
+          test -f "$target"
+          test "$(sha256sum "$stage/index.php" | cut -d ' ' -f1)" = "$expected"
+          php -l "$stage/index.php" >/dev/null
+          mkdir -p "$HOME/.rutu-backups"
+          backup=$(mktemp -d "$HOME/.rutu-backups/api.XXXXXXXX")
+          cp -p "$target" "$backup/index.php"
+          cp "$stage/index.php" "$target.new"
+          chmod 644 "$target.new"
+          mv -f "$target.new" "$target"
+          rm -rf "$stage"
+          echo "$backup"
+          REMOTE
+          )
+          if ! curl -fsS --max-time 15 "https://rubenvanaggelen.com/rutu-api/index.php?action=health" | python3 -c 'import json,sys; x=json.load(sys.stdin); assert x.get("ok") is True'; then
+            ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "cp '$backup/index.php' '$HOME/public_html/rutu-api/index.php'"
+            echo "::error::API health check failed; restored original file."
+            exit 1
+          fi
+          final_hash=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'sha256sum "$HOME/public_html/rutu-api/index.php" | cut -d " " -f 1')
+          test "$final_hash" = "$target_hash"
+          echo "### Rutu order API published" >> "$GITHUB_STEP_SUMMARY"
+          echo "PHP lint, baseline comparison, backup and live health check succeeded." >> "$GITHUB_STEP_SUMMARY"
