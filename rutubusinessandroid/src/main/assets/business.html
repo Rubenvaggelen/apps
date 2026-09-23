@@ -13,7 +13,7 @@ header{position:sticky;top:0;z-index:10;padding:14px 16px;background:#0a0908f2;b
 h1,h2,h3{font-family:Georgia,serif;color:var(--light);font-weight:500}h1{font-size:28px;margin:0 0 8px}h2{font-size:22px;margin:8px 0 14px}.eyebrow{font-size:11px;letter-spacing:2px;color:var(--gold);font-weight:700;text-transform:uppercase}
 button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:10px 14px;font-weight:700;font-size:14px;cursor:pointer}.gold{background:var(--gold);color:#211507}.green{background:#224934;color:#dcffe9;border-color:#407e5b}.red{background:#49221e;color:#ffddd6;border-color:#87483f}.gray{background:#242019;color:var(--light);border-color:var(--line)}.orange{background:#d49d3e;color:#1f1407}
 .badge{background:#3b2b11;color:var(--light);border:1px solid #85652a;border-radius:100px;padding:8px 13px;min-height:0}
-.summary{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:14px 0}.summary div{background:#17140f;border:1px solid var(--line);border-radius:12px;padding:12px}.summary b{display:block;color:var(--light);font-size:22px}
+.summary{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:14px 0}.summary div{background:#17140f;border:1px solid var(--line);border-radius:12px;padding:12px}.summary b{display:block;color:var(--light);font-size:22px}.summary .summary-link{display:block;width:100%;text-align:left;background:#17140f;border:1px solid var(--line);border-radius:12px;padding:12px;color:#f8f2e8;font:inherit}.summary .summary-link:active,.summary .summary-link:focus-visible{border-color:var(--gold);outline:2px solid var(--gold);outline-offset:2px}.orders-screen-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.orders-screen-title h1{margin:0}.orders-screen-title button{flex-shrink:0}.orders-section{margin-top:18px}
 .order-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.order-total{color:var(--gold);font-weight:700}.status{color:var(--light);font-weight:700;margin:12px 0}.actions{display:flex;gap:8px;flex-wrap:wrap}
 .notice-grid{display:grid;gap:10px}.notice-grid input,.notice-grid textarea,.key-input{width:100%;background:#0f0d0a;color:#fff;border:1px solid var(--line);border-radius:10px;padding:12px;font:15px system-ui}.notice-grid textarea{min-height:90px;resize:vertical}.row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}.row .grow{flex:1}.empty{text-align:center;padding:28px 16px;color:var(--muted);border:1px dashed var(--line);border-radius:12px}
 .order-modal,.key-modal{display:none;position:fixed;inset:0;background:#000b;z-index:100;align-items:center;justify-content:center;padding:16px}.order-modal.open,.key-modal.open{display:flex}.modal-card{width:min(760px,100%);max-height:88vh;overflow:auto;background:linear-gradient(145deg,#201a12,var(--panel));border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 20px 70px #000}.modal-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.modal-head h2{margin:0}.open-orders-list{display:flex;flex-direction:column;gap:12px}.error{color:#ffb4aa}.ok{color:#a8ddb3}.history-row{display:flex;justify-content:space-between;gap:10px;align-items:center;background:#17140f;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:7px}.history-row button{min-height:34px;padding:5px 9px}
@@ -25,7 +25,7 @@ button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:1
   <div><div class="brand">RUTU BBQ</div><div class="tag">Bedrijfsapp Android</div></div>
   <div class="row"><button class="gray" onclick="openKeyModal()">Koppeling</button><button id="count" class="badge" style="display:none" onclick="openOpenOrders()">0 nieuw</button></div>
 </header>
-<main class="wrap">
+<main class="wrap" id="dashboard">
   <section class="hero"><div class="eyebrow">RUTU BBQ • BEDRIJF</div><h1>Jouw keuken. Alles in beeld.</h1><div id="connection" class="hint">Verbinden met online bestellingen…</div></section>
   <div class="summary" id="summary"></div>
   <section class="panel"><div class="row"><h2 class="grow">Actieve bestellingen</h2><button class="gray" onclick="manualClearActive()">Handmatig opschonen</button><button class="gray" id="restoreActive" style="display:none" onclick="restoreHiddenActive()">Herstellen</button></div><p class="hint">Opschonen verbergt de actieve lijst alleen op dit apparaat; bestelstatussen blijven ongewijzigd.</p><div id="orders"></div></section>
@@ -41,6 +41,17 @@ button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:1
   </section>
   <section class="panel"><div class="row"><h2 class="grow">Bestelgeschiedenis</h2><button class="gray" onclick="clearHistory()">Wis geschiedenis</button></div><div id="historyResult" class="hint" style="margin-bottom:10px"></div><div id="history"></div></section>
 </main>
+<main class="wrap" id="newOrdersScreen" style="display:none">
+  <section class="hero">
+    <div class="orders-screen-title">
+      <button class="gray" onclick="backToDashboard()">← Terug naar overzicht</button>
+      <h1>Bestellingen</h1>
+    </div>
+    <p class="hint">Nieuwe bestellingen staan bovenaan. Ook de overige actieve bestellingen blijven hieronder zichtbaar.</p>
+  </section>
+  <section class="panel orders-section"><h2 id="newOrdersTitle">Nieuwe bestellingen</h2><div id="focusedNewOrders"></div></section>
+  <section class="panel orders-section" id="otherOrdersSection"><h2>Overige actieve bestellingen</h2><div id="focusedOtherOrders"></div></section>
+</main>
 
 <div class="order-modal" id="orderModal" onclick="if(event.target===this)closeOrderModal()"><div class="modal-card"><div class="modal-head"><h2 id="orderModalTitle">Openstaande bestellingen</h2><button class="gray" onclick="closeOrderModal()">Sluiten</button></div><div id="orderModalBody"></div></div></div>
 <div class="key-modal" id="keyModal"><div class="modal-card"><h2>Bedrijfsapp koppelen</h2><p class="hint">Voer de bedrijfsleutel één keer in. Deze wordt alleen op dit Android-apparaat opgeslagen en staat niet in de APK of Dev Hub.</p><input id="businessKey" class="key-input" type="password" autocomplete="off" placeholder="Bedrijfsleutel"><div id="keyResult" class="hint" style="margin-top:8px"></div><div class="row" style="margin-top:14px"><button class="gold" onclick="saveBusinessKey()">Opslaan en verbinden</button><button class="gray" onclick="closeKeyModal()">Annuleren</button></div></div></div>
@@ -48,6 +59,33 @@ button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:1
 <script>
 const API='https://rubenvanaggelen.com/rutu-api/index.php';
 let orders=[];
+let ordersScreenOpen=false;
+function openNewOrdersScreen(){
+  const modal=document.getElementById('orderModal');
+  if(modal.classList.contains('open'))closeOrderModal();
+  ordersScreenOpen=true;
+  document.getElementById('dashboard').style.display='none';
+  document.getElementById('newOrdersScreen').style.display='';
+  renderFocusedOrders();
+  window.scrollTo(0,0);
+}
+function backToDashboard(){
+  if(!ordersScreenOpen)return;
+  ordersScreenOpen=false;
+  document.getElementById('newOrdersScreen').style.display='none';
+  document.getElementById('dashboard').style.display='';
+  window.scrollTo(0,0);
+}
+function renderFocusedOrders(){
+  if(!ordersScreenOpen)return;
+  const visible=orders.filter(o=>openStatuses(o)&&!hiddenActiveIds.has(o.id));
+  const fresh=visible.filter(o=>o.status==='Nieuw');
+  const other=visible.filter(o=>o.status!=='Nieuw');
+  document.getElementById('newOrdersTitle').textContent='Nieuwe bestellingen ('+fresh.length+')';
+  document.getElementById('focusedNewOrders').innerHTML=fresh.map(orderCard).join('')||'<div class="empty">Geen nieuwe bestellingen.</div>';
+  document.getElementById('focusedOtherOrders').innerHTML=other.map(orderCard).join('')||'<div class="empty">Geen overige actieve bestellingen.</div>';
+  document.getElementById('otherOrdersSection').style.display=other.length?'':'none';
+}
 const finalStatuses=['Afgerond','Uitverkocht','Geweigerd','Geannuleerd'];
 let hiddenActiveIds=new Set();
 try{hiddenActiveIds=new Set(JSON.parse(localStorage.getItem('rutu_hidden_active_orders')||'[]').map(Number))}catch(_){}
@@ -76,9 +114,10 @@ function orderCard(o){const items=o.items.map(i=>esc(i.qty)+'× '+esc(i.name)).j
 function render(){
  const open=orders.filter(openStatuses),active=open.filter(o=>!hiddenActiveIds.has(o.id)),history=orders.filter(o=>finalStatuses.includes(o.status)&&!o.historyCleared),completed=history.filter(o=>o.status==='Afgerond'),newCount=active.filter(o=>o.status==='Nieuw').length;
  const badge=document.getElementById('count');badge.style.display=active.length?'':'none';badge.textContent=newCount>0?newCount+' nieuw':active.length+' openstaand';document.getElementById('restoreActive').style.display=hiddenActiveIds.size?'':'none';
- document.getElementById('summary').innerHTML='<div><b>'+newCount+'</b>Nieuw</div><div><b>'+open.length+'</b>Openstaand</div><div><b>'+money(open.reduce((s,o)=>s+o.total,0))+'</b>Open waarde</div><div><b>'+history.length+'</b>Geschiedenis</div><div><b>'+money(completed.reduce((s,o)=>s+o.total,0))+'</b>Afgerond</div>';
+ document.getElementById('summary').innerHTML='<button type="button" class="summary-link" onclick="openNewOrdersScreen()" aria-label="Bekijk '+newCount+' nieuwe bestellingen"><b>'+newCount+'</b>Nieuw</button><div><b>'+open.length+'</b>Openstaand</div><div><b>'+money(open.reduce((s,o)=>s+o.total,0))+'</b>Open waarde</div><div><b>'+history.length+'</b>Geschiedenis</div><div><b>'+money(completed.reduce((s,o)=>s+o.total,0))+'</b>Afgerond</div>';
  document.getElementById('orders').innerHTML=active.map(orderCard).join('')||'<div class="empty">Geen zichtbare bestellingen.</div>';
  document.getElementById('history').innerHTML=history.map(o=>o.historyHidden?'<div class="history-row"><span></span><b>'+money(o.total)+'</b></div>':'<div class="history-row"><button class="gray" onclick="openHistory('+o.id+')">#'+o.id+'</button><b>'+money(o.total)+'</b><button class="red" onclick="hideHistory('+o.id+')">Verwijder</button></div>').join('')||'<div class="empty">Geschiedenis is leeg.</div>';
+ renderFocusedOrders();
  const m=document.getElementById('orderModal');if(m.classList.contains('open')&&m.dataset.mode==='open-orders'){if(active.length)renderOpenOrdersModal();else closeOrderModal();}
 }
 async function sync(){
