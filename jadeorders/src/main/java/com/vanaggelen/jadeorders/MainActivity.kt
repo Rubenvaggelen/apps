@@ -20,6 +20,9 @@ import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
+import android.text.InputType
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -55,6 +58,8 @@ class MainActivity : AppCompatActivity() {
     private var deliverySelected = false
     private var deliveryAddress = ""
     private var deliveryPostcode = ""
+    private var deliveryPaymentMethod = "Cash"
+    private var deliveryPaymentPhone = ""
     private val orderRoutes = mutableMapOf<Int, String>()
     private lateinit var root: LinearLayout
     private lateinit var nearby: ConnectionsClient
@@ -555,7 +560,7 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    private fun sendOnlineOrder(items: LinkedHashMap<String, Int>, shownTotal: Double, delivery: Boolean = false, address: String = "", postcode: String = "") {
+    private fun sendOnlineOrder(items: LinkedHashMap<String, Int>, shownTotal: Double, delivery: Boolean = false, address: String = "", postcode: String = "", paymentMethod: String = "", paymentPhone: String = "") {
         if (items.isEmpty()) return
         onlineText = "Bestelling veilig verzenden…"
         refreshRoleScreen()
@@ -567,7 +572,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val payload = JSONObject().put("items", itemJson).put("customer", name).put("delivery", delivery)
-        if (delivery) payload.put("address", address.trim()).put("postcode", normalizedPostcode(postcode))
+        if (delivery) payload.put("address", address.trim()).put("postcode", normalizedPostcode(postcode)).put("payment_method", paymentMethod).put("payment_phone", if (paymentMethod == "Tikkie") paymentPhone.trim().replace(Regex("[\\s()-]"), "") else "")
         Thread {
             try {
                 val (code, raw) = onlineJson("POST", "create", payload)
@@ -595,6 +600,8 @@ class MainActivity : AppCompatActivity() {
                     deliverySelected = false
                     deliveryAddress = ""
                     deliveryPostcode = ""
+                    deliveryPaymentMethod = "Cash"
+                    deliveryPaymentPhone = ""
                     toast("Bestelling #${order.id} is ontvangen door Rutu BBQ ✓")
                     cartScreen()
                 }
@@ -635,7 +642,7 @@ class MainActivity : AppCompatActivity() {
                 onlineText = "Online bestellen actief • toevoeging ontvangen"
                 runOnUiThread {
                     cart.clear()
-                    deliverySelected = false; deliveryAddress = ""; deliveryPostcode = ""
+                    deliverySelected = false; deliveryAddress = ""; deliveryPostcode = ""; deliveryPaymentMethod = "Cash"; deliveryPaymentPhone = ""
                     toast("Toegevoegd aan bestelling #${order.id} ✓")
                     cartScreen()
                 }
@@ -1012,6 +1019,8 @@ class MainActivity : AppCompatActivity() {
                 if (!checked) {
                     deliveryAddress = ""
                     deliveryPostcode = ""
+                    deliveryPaymentMethod = "Cash"
+                    deliveryPaymentPhone = ""
                 }
                 cartScreen()
             }
@@ -1040,6 +1049,43 @@ class MainActivity : AppCompatActivity() {
             }
             root.addView(addressInput, marginParams(0, 0, 0, 8))
             root.addView(postcodeInput, marginParams(0, 0, 0, 8))
+            section("Betaalwijze bij bezorgen")
+            val paymentOptions = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+            val cashOption = RadioButton(this).apply {
+                id = android.view.View.generateViewId()
+                text = "Cash"
+                setTextColor(Color.WHITE)
+                textSize = 17f
+            }
+            val tikkieOption = RadioButton(this).apply {
+                id = android.view.View.generateViewId()
+                text = "Tikkie"
+                setTextColor(Color.WHITE)
+                textSize = 17f
+            }
+            paymentOptions.addView(cashOption)
+            paymentOptions.addView(tikkieOption)
+            paymentOptions.check(if (deliveryPaymentMethod == "Tikkie") tikkieOption.id else cashOption.id)
+            paymentOptions.setOnCheckedChangeListener { _, selected ->
+                deliveryPaymentMethod = if (selected == tikkieOption.id) "Tikkie" else "Cash"
+                if (deliveryPaymentMethod != "Tikkie") deliveryPaymentPhone = ""
+                cartScreen()
+            }
+            root.addView(paymentOptions, marginParams(0, 0, 0, 8))
+            if (deliveryPaymentMethod == "Tikkie") {
+                val phoneInput = EditText(this).apply {
+                    hint = "Mobiel nummer voor Tikkie (06 of +316)"
+                    inputType = InputType.TYPE_CLASS_PHONE
+                    setText(deliveryPaymentPhone)
+                    setTextColor(Color.WHITE)
+                    setHintTextColor(Color.rgb(160, 150, 138))
+                    setSingleLine(true)
+                    setPadding(dp(14), dp(12), dp(14), dp(12))
+                    background = rounded(Color.rgb(23, 20, 15), Color.rgb(91, 69, 34))
+                }
+                phoneInput.doAfterTextChanged { deliveryPaymentPhone = it?.toString().orEmpty() }
+                root.addView(phoneInput, marginParams(0, 0, 0, 8))
+            }
             val feeText = TextView(this).apply { textSize = 14f; setTextColor(Color.rgb(210, 199, 182)); setPadding(dp(8), dp(4), dp(8), dp(4)) }
             val totalText = TextView(this).apply { typeface = Typeface.create("serif", Typeface.BOLD); textSize = 22f; setTextColor(Color.rgb(244, 213, 147)); setPadding(0, dp(18), 0, dp(10)) }
             root.addView(feeText)
@@ -1075,9 +1121,17 @@ class MainActivity : AppCompatActivity() {
                         toast("Vul een volledige postcode in, bijvoorbeeld 1106 AB.")
                         return@button
                     }
+                    if (deliveryPaymentMethod == "Tikkie") {
+                        val phone = deliveryPaymentPhone.replace(Regex("[\\s()-]"), "")
+                        if (!Regex("^(?:06\\d{8}|\\+316\\d{8}|00316\\d{8})$").matches(phone)) {
+                            toast("Vul voor Tikkie een geldig Nederlands mobiel nummer in.")
+                            return@button
+                        }
+                    }
                     shownTotal = productTotal + deliveryFeeFor(deliveryPostcode)
                 }
-                sendOnlineOrder(LinkedHashMap(cart), shownTotal, deliverySelected, deliveryAddress, deliveryPostcode)
+                sendOnlineOrder(LinkedHashMap(cart), shownTotal, deliverySelected, deliveryAddress, deliveryPostcode,
+                    if (deliverySelected) deliveryPaymentMethod else "", if (deliverySelected && deliveryPaymentMethod == "Tikkie") deliveryPaymentPhone else "")
             }
         }
     }
