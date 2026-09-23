@@ -1229,6 +1229,9 @@ class MainActivity : AppCompatActivity() {
     private fun orderView(o: Order, admin: Boolean) {
         val deliveryLine = if (o.delivery) "\nBezorgen: ${o.address}, ${displayPostcode(o.postcode)} • ${money.format(o.deliveryFee)}" else "\nAfhalen"
         card("#${o.id}   •   ${money.format(o.total)}\n${o.items.entries.joinToString("  •  ") { "${it.value}× ${it.key}" }}$deliveryLine\nStatus: ${o.status}") {
+            if (!admin && o.paymentMethod == "Tikkie" && o.paymentUrl.isNotBlank() && o.paymentStatus != "Betaald" && o.status !in finalCustomerStatuses) {
+                smallButton("Betaal bestelling") { openTikkie(o.paymentUrl) }
+            }
             if (admin) when (o.status) {
                 "Nieuw" -> { smallButton("Accepteren") { changeStatus(o, "In bereiding") }; smallButton("Weigeren") { changeStatus(o, "Geweigerd") } }
                 "In bereiding" -> smallButton("Klaar") { changeStatus(o, "Klaar") }
