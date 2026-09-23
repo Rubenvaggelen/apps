@@ -139,6 +139,19 @@ function valid_tikkie_link(string $link): bool {
 function tikkie_refresh_one(string $stateFile, ?array $config, ?int $specificId = null): void {
     if ($config === null) return;
     $now = time();
+    // Read-only preflight avoids rewriting orders.json on every business poll.
+    $due = with_state($stateFile, false, function ($state) use ($specificId, $now) {
+        foreach ($state['orders'] as $order) {
+            if ($specificId !== null && (int)$order['id'] !== $specificId) continue;
+            if (($order['payment_method'] ?? '') !== 'Tikkie' || empty($order['payment_request_token'])) continue;
+            if (in_array((string)($order['payment_status'] ?? ''), ['Betaald','Geannuleerd'], true)) continue;
+            if (in_array((string)($order['status'] ?? ''), ['Uitverkocht','Geweigerd','Geannuleerd'], true)) continue;
+            if ($now - (int)($order['payment_checked_at'] ?? 0) < 60) continue;
+            return true;
+        }
+        return false;
+    });
+    if (!$due) return;
     $claimed = with_state($stateFile, true, function (&$state) use ($specificId, $now) {
         foreach ($state['orders'] as &$order) {
             if ($specificId !== null && (int)$order['id'] !== $specificId) continue;
@@ -265,7 +278,7 @@ $catalog = [
 $action = (string)($_GET['action'] ?? 'health');
 
 if ($action === 'health') {
-    respond(200, ['ok' => true, 'service' => 'Rutu BBQ Online Orders', 'version' => 1]);
+    respond(200, ['ok' => true, 'service' => 'Rutu BBQ Online Orders', 'version' => 2, 'tikkie_configured' => tikkie_config($dataDir) !== null]);
 }
 
 if ($action === 'create') {
