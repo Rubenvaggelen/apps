@@ -869,7 +869,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun openOrdersItemCount(): Int = openOrders().sumOf { order -> order.items.values.sum() }
 
-    private fun page(showCartBar: Boolean = false) {
+    private fun page(showCartBar: Boolean = false, showFamilyFooter: Boolean = false) {
         uiHandler.removeCallbacks(eatWellBannerWatch)
         activeScroll?.let { scroll ->
             if (renderedScreen.isNotBlank()) scrollPositions[renderedScreen] = scroll.scrollY
@@ -922,6 +922,33 @@ class MainActivity : AppCompatActivity() {
                 }
             )
         }
+        if (showFamilyFooter) {
+            val footer = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                setPadding(dp(16), dp(10), dp(16), dp(16))
+                setBackgroundColor(Color.rgb(9, 8, 7))
+                contentDescription = "Part of The One Family"
+            }
+            footer.addView(
+                ImageView(this).apply {
+                    setImageResource(R.drawable.the_one_logo)
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    contentDescription = null
+                },
+                LinearLayout.LayoutParams(dp(28), dp(28)).apply { rightMargin = dp(8) }
+            )
+            footer.addView(
+                TextView(this).apply {
+                    text = "Part of The One Family"
+                    textSize = 14f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(Color.rgb(0, 167, 255)) // The One blue
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+            )
+            shell.addView(footer, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
         setContentView(shell)
         if (restoreY > 0) scroll.post { scroll.scrollTo(0, restoreY) }
     }
@@ -934,7 +961,7 @@ class MainActivity : AppCompatActivity() {
         role = Role.NONE; screen = "landing"; connectedEndpoint = null
         windowsConnected = false; uiHandler.removeCallbacks(windowsPoller)
         nearby.stopAllEndpoints(); nearby.stopAdvertising(); nearby.stopDiscovery()
-        page(); spacer(8); logoMark(); title("Welkom bij Rutu BBQ")
+        page(showFamilyFooter = true); spacer(8); logoMark(); title("Welkom bij Rutu BBQ")
         centered("Made in fire. Unique taste.", 16f, Color.rgb(205, 179, 122)); spacer(34)
         showEatWellBannerIfActive()
         hero("Fire. Roots. Flavour.", "Kies je favorieten en geniet.")
