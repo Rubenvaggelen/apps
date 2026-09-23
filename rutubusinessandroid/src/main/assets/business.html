@@ -23,7 +23,7 @@ button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:1
 <body>
 <header>
   <div><div class="brand">RUTU BBQ</div><div class="tag">Bedrijfsapp Android</div></div>
-  <div class="row"><button class="gray" onclick="openKeyModal()">Koppeling</button><button id="count" class="badge" onclick="openOpenOrders()">0 nieuw</button></div>
+  <div class="row"><button class="gray" onclick="openKeyModal()">Koppeling</button><button id="count" class="badge" style="display:none" onclick="openOpenOrders()">0 nieuw</button></div>
 </header>
 <main class="wrap">
   <section class="hero"><div class="eyebrow">RUTU BBQ • BEDRIJF</div><h1>Jouw keuken. Alles in beeld.</h1><div id="connection" class="hint">Verbinden met online bestellingen…</div></section>
@@ -68,11 +68,11 @@ function actions(o){if(o.status==='Nieuw')return '<button class="green" onclick=
 function orderCard(o){const items=o.items.map(i=>esc(i.qty)+'× '+esc(i.name)).join('<br>');const delivery=o.delivery?'<div class="meta"><b>Bezorgen</b> • '+esc(o.address)+' • '+esc(o.postcode)+' • bezorgkosten '+money(o.deliveryFee)+'</div>':'<div class="meta"><b>Afhalen</b></div>';return '<div class="order"><div class="order-head"><b>Bestelling #'+o.id+'</b><span class="order-total">'+money(o.total)+'</span></div><div class="meta">'+when(o.created)+' • '+esc(o.customer)+'</div>'+delivery+'<div>'+items+'</div><div class="status">Status: '+esc(o.status)+'</div><div class="actions">'+actions(o)+'</div></div>'}
 function render(){
  const active=orders.filter(o=>o.status!=='Afgerond'),open=orders.filter(openStatuses),history=orders.filter(o=>o.status==='Afgerond'&&!o.historyCleared),newCount=orders.filter(o=>o.status==='Nieuw').length;
- document.getElementById('count').textContent=newCount+' nieuw';
+ const badge=document.getElementById('count');badge.style.display=open.length?'':'none';badge.textContent=newCount>0?newCount+' nieuw':open.length+' openstaand';
  document.getElementById('summary').innerHTML='<div><b>'+newCount+'</b>Nieuw</div><div><b>'+open.length+'</b>Openstaand</div><div><b>'+money(open.reduce((s,o)=>s+o.total,0))+'</b>Open waarde</div><div><b>'+history.length+'</b>Geschiedenis</div><div><b>'+money(history.reduce((s,o)=>s+o.total,0))+'</b>Afgerond</div>';
  document.getElementById('orders').innerHTML=active.map(orderCard).join('')||'<div class="empty">Geen zichtbare bestellingen.</div>';
  document.getElementById('history').innerHTML=history.map(o=>o.historyHidden?'<div class="history-row"><span></span><b>'+money(o.total)+'</b></div>':'<div class="history-row"><button class="gray" onclick="openHistory('+o.id+')">#'+o.id+'</button><b>'+money(o.total)+'</b><button class="red" onclick="hideHistory('+o.id+')">Verwijder</button></div>').join('')||'<div class="empty">Geschiedenis is leeg.</div>';
- const m=document.getElementById('orderModal');if(m.classList.contains('open')&&m.dataset.mode==='open-orders')renderOpenOrdersModal();
+ const m=document.getElementById('orderModal');if(m.classList.contains('open')&&m.dataset.mode==='open-orders'){if(open.length)renderOpenOrdersModal();else closeOrderModal();}
 }
 async function sync(){
  if(!key()){document.getElementById('connection').textContent='Niet gekoppeld';openKeyModal();return}
@@ -80,7 +80,7 @@ async function sync(){
  catch(e){document.getElementById('connection').innerHTML='<span class="error">Verbinding mislukt: '+esc(e.message)+'</span>'}
 }
 async function setStatus(id,status){try{await api('business_status','POST',{id:Number(id),status});await sync()}catch(e){alert(e.message)}}
-function openOpenOrders(){const m=document.getElementById('orderModal');m.dataset.mode='open-orders';document.getElementById('orderModalTitle').textContent='Openstaande bestellingen';renderOpenOrdersModal();m.classList.add('open')}
+function openOpenOrders(){if(!orders.some(openStatuses))return;const m=document.getElementById('orderModal');m.dataset.mode='open-orders';document.getElementById('orderModalTitle').textContent='Openstaande bestellingen';renderOpenOrdersModal();m.classList.add('open')}
 function renderOpenOrdersModal(){const open=orders.filter(openStatuses);document.getElementById('orderModalBody').innerHTML='<div class="open-orders-list">'+(open.map(orderCard).join('')||'<div class="empty">Geen openstaande bestellingen.</div>')+'</div>'}
 function openHistory(id){const o=orders.find(x=>x.id===Number(id));if(!o)return;const m=document.getElementById('orderModal');m.dataset.mode='history';document.getElementById('orderModalTitle').textContent='Bestelling #'+o.id;document.getElementById('orderModalBody').innerHTML=orderCard(o);m.classList.add('open')}
 function closeOrderModal(){const m=document.getElementById('orderModal');m.classList.remove('open');m.dataset.mode=''}
