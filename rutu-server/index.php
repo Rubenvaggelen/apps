@@ -343,6 +343,8 @@ if ($action === 'create') {
     if ($customer === '') $customer = 'Online klant';
     $customer = mb_substr($customer, 0, 80);
     $testCustomer = is_test_customer($customer);
+    $testRequested = filter_var($body['test_order'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $testBypass = $testCustomer && $testRequested;
 
     $availability = with_state($stateFile, false, function ($state) {
         $announcement = is_array($state['announcement'] ?? null) ? $state['announcement'] : [];
@@ -353,7 +355,7 @@ if ($action === 'create') {
             'schedule_message' => (string)$scheduleStatus['message']
         ];
     });
-    if (!$testCustomer && ((bool)$availability['manual_blocked'] || !(bool)$availability['schedule_allowed'])) {
+    if (!$testBypass && ((bool)$availability['manual_blocked'] || !(bool)$availability['schedule_allowed'])) {
         $message = (bool)$availability['manual_blocked']
             ? 'Vandaag is Rutu BBQ gesloten voor bestellingen.'
             : (string)$availability['schedule_message'];
@@ -553,7 +555,7 @@ if ($action === 'announcement') {
         $scheduleStatus = ordering_schedule_status($state['ordering_schedule'] ?? []);
         $tester = is_test_customer($customerForAvailability);
         $manualBlocked = ordering_blocked_today($a);
-        $orderingAllowed = $tester || (!$manualBlocked && (bool)$scheduleStatus['allowed']);
+        $orderingAllowed = !$manualBlocked && (bool)$scheduleStatus['allowed'];
         return [
             'title' => trim((string)($a['title'] ?? '')),
             'message' => trim((string)($a['message'] ?? '')),
@@ -563,7 +565,7 @@ if ($action === 'announcement') {
             'updated' => (string)($a['updated'] ?? ''),
             'ordering_blocked' => !$orderingAllowed,
             'ordering_allowed' => $orderingAllowed,
-            'ordering_message' => $manualBlocked && !$tester ? 'Vandaag is Rutu BBQ gesloten voor bestellingen.' : (string)$scheduleStatus['message'],
+            'ordering_message' => $manualBlocked ? 'Vandaag is Rutu BBQ gesloten voor bestellingen.' : (string)$scheduleStatus['message'],
             'test_order_allowed' => $tester
         ];
     });
