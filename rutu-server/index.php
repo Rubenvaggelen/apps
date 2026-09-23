@@ -79,6 +79,138 @@ function business_authorized(string $keyFile): bool {
     return $expected !== '' && $provided !== '' && hash_equals($expected, $provided);
 }
 
+
+// Tikkie credentials are loaded only from a private file OUTSIDE public_html.
+// The Tikkie API is disabled until the Rutu owner adds production credentials.
+function tikkie_config(string $dataDir): ?array {
+    $file = $dataDir . '/tikkie.json';
+    if (!is_file($file)) return null;
+    $config = json_decode((string)file_get_contents($file), true);
+    if (!is_array($config)) return null;
+    $mode = (string)($config['mode'] ?? '');
+    if (!in_array($mode, ['production', 'sandbox'], true)) return null;
+    if (empty($config['api_key']) || empty($config['app_token'])) return null;
+    return $config;
+}
+
+function tikkie_request(array $config, string $method, string $path, ?array $payload = null): ?array {
+    if (!function_exists('curl_init')) return null;
+    $base = $config['mode'] === 'sandbox' ? 'https://api-sandbox.abnamro.com/v2/tikkie/' : 'https://api.abnamro.com/v2/tikkie/';
+    $url = $base . $path;
+    $curl = curl_init($url);
+    if ($curl === false) return null;
+    $headers = [
+        'Accept: application/json',
+        'Content-Type: application/json',
+        'API-Key: ' . $config['api_key'],
+        'X-App-Token: ' . $config['app_token']
+    ];
+    $options = [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_TIMEOUT => 12,
+        CURLOPT_CONNECTTIMEOUT => 4,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+        CURLOPT_FOLLOWLOCATION => false,
+        CURLOPT_USERAGENT => 'RutuBBQ/1.0'
+    ];
+    if ($method === 'POST') {
+        $options[CURLOPT_POST] = true;
+        $options[CURLOPT_POSTFIELDS] = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    }
+    curl_setopt_array($curl, $options);
+    $raw = curl_exec($curl);
+    $code = (int)curl_getinfo($curl, CURLINFO_HTTP_CODE);
+    curl_close($curl);
+    if (!is_string($raw) || $code < 200 || $code >= 300) return null;
+    $decoded = json_decode($raw, true);
+    return is_array($decoded) ? $decoded : null;
+}
+
+function valid_tikkie_link(string $link): bool {
+    $url = parse_url($link);
+    return is_array($url) && ($url['scheme'] ?? '') === 'https'
+        && in_array(strtolower((string)($url['host'] ?? '')), ['tikkie.me', 'www.tikkie.me'], true);
+}
+
+// Never mark a payment paid based on a customer action, redirect or caller-supplied status.
+// A server-side read from ABN AMRO is the only source for "Betaald".
+function tikkie_refresh_one(string $stateFile, ?array $config, ?int $specificId = null): void {
+    if ($config === null) return;
+    $now = time();
+    $claimed = with_state($stateFile, true, function (&$state) use ($specificId, $now) {
+        foreach ($state['orders'] as &$order) {
+            if ($specificId !== null && (int)$order['id'] !== $specificId) continue;
+            if (($order['payment_method'] ?? '') !== 'Tikkie') continue;
+            if (empty($order['payment_request_token'])) continue;
+            if (in_array((string)($order['payment_status'] ?? ''), ['Betaald', 'Geannuleerd'], true)) continue;
+            if (in_array((string)($order['status'] ?? ''), ['Uitverkocht', 'Geweigerd', 'Geannuleerd'], true)) continue;
+            if ($now - (int)($order['payment_checked_at'] ?? 0) < 60) continue;
+            $order['payment_checked_at'] = $now; // claim before network IO; avoid stampedes
+            return [
+                'id' => (int)$order['id'],
+                'token' => (string)$order['payment_request_token'],
+                'cents' => (int)($order['payment_amount_cents'] ?? 0)
+            ];
+        }
+        return null;
+    });
+    if (!is_array($claimed)) return;
+    $details = tikkie_request($config, 'GET', 'paymentrequests/' . rawurlencode($claimed['token']));
+    if ($details === null || ($details['paymentRequestToken'] ?? '') !== $claimed['token']) return;
+    $paidCents = max(0, (int)($details['totalAmountPaidInCents'] ?? 0));
+    $count = max(0, (int)($details['numberOfPayments'] ?? 0));
+    $paid = $claimed['cents'] > 0 && $paidCents >= $claimed['cents'] && $count >= 1;
+    $expired = in_array((string)($details['status'] ?? ''), ['EXPIRED','CLOSED'], true) && !$paid;
+    with_state($stateFile, true, function (&$state) use ($claimed, $paid, $expired) {
+        foreach ($state['orders'] as &$order) {
+            if ((int)$order['id'] !== $claimed['id'] || ($order['payment_request_token'] ?? '') !== $claimed['token']) continue;
+            if ($paid) $order['payment_status'] = 'Betaald';
+            elseif ($expired) $order['payment_status'] = 'Verlopen';
+            $order['payment_verified_at'] = gmdate('c');
+            break;
+        }
+        return null;
+    });
+}
+
+function tikkie_create_one(string $stateFile, ?array $config, array $order): void {
+    if ($config === null || ($order['payment_method'] ?? '') !== 'Tikkie') return;
+    $cents = (int)round((float)$order['total'] * 100);
+    $id = (int)$order['id'];
+    $reference = 'RUTU-' . $id;
+    $created = tikkie_request($config, 'POST', 'paymentrequests', [
+        'description' => 'Rutu BBQ bestelling #' . $id,
+        'amountInCents' => $cents,
+        'referenceId' => $reference
+    ]);
+    $valid = $created !== null
+        && is_string($created['paymentRequestToken'] ?? null)
+        && preg_match('/^[a-zA-Z0-9_-]{8,128}$/', $created['paymentRequestToken'])
+        && is_string($created['url'] ?? null) && valid_tikkie_link($created['url'])
+        && (int)($created['amountInCents'] ?? -1) === $cents
+        && (string)($created['referenceId'] ?? '') === $reference;
+    // A timed-out payment request may still have been created at the provider.
+    // Never silently retry it: that could generate duplicate payment requests.
+    with_state($stateFile, true, function (&$state) use ($id, $valid, $created, $cents) {
+        foreach ($state['orders'] as &$current) {
+            if ((int)$current['id'] !== $id) continue;
+            if ($valid) {
+                $current['payment_request_token'] = $created['paymentRequestToken'];
+                $current['payment_url'] = $created['url'];
+                $current['payment_amount_cents'] = $cents;
+                $current['payment_status'] = 'Openstaand';
+                $current['payment_checked_at'] = time();
+            } else {
+                $current['payment_status'] = 'Controle nodig';
+            }
+            break;
+        }
+        return null;
+    });
+}
+
 function ordering_blocked_today(array $announcement): bool {
     if (!(bool)($announcement['active'] ?? false)) return false;
     $from = trim((string)($announcement['from'] ?? ''));
@@ -104,7 +236,9 @@ function clean_order_for_customer(array $order, bool $includeTracking = false): 
         'address' => (string)($order['address'] ?? ''),
         'postcode' => (string)($order['postcode'] ?? ''),
         'delivery_fee' => (float)($order['delivery_fee'] ?? 0),
-        'payment_method' => (string)($order['payment_method'] ?? '')
+        'payment_method' => (string)($order['payment_method'] ?? ''),
+        'payment_status' => (string)($order['payment_status'] ?? ''),
+        'payment_url' => (string)($order['payment_url'] ?? '')
     ];
     if ($includeTracking) $out['tracking'] = (string)$order['tracking'];
     return $out;
@@ -113,6 +247,7 @@ function clean_order_for_customer(array $order, bool $includeTracking = false): 
 function clean_order_for_business(array $order): array {
     $out = clean_order_for_customer($order, false);
     $out['payment_phone'] = (string)($order['payment_phone'] ?? '');
+    $out['payment_reference'] = (string)($order['payment_request_token'] ?? '');
     $out['history_hidden'] = (bool)($order['history_hidden'] ?? false);
     $out['history_cleared'] = (bool)($order['history_cleared'] ?? false);
     return $out;
@@ -186,7 +321,8 @@ if ($action === 'create') {
     if ($customer === '') $customer = 'Online klant';
     $customer = mb_substr($customer, 0, 80);
 
-    $order = with_state($stateFile, true, function (&$state) use ($items, $total, $customer, $delivery, $address, $postcode, $deliveryFee, $paymentMethod, $paymentPhone) {
+    $tikkie = tikkie_config($dataDir);
+    $order = with_state($stateFile, true, function (&$state) use ($items, $total, $customer, $delivery, $address, $postcode, $deliveryFee, $paymentMethod, $paymentPhone, $tikkie) {
         $id = max(1046, (int)$state['next_id']);
         $state['next_id'] = $id + 1;
         $createdTs = time();
@@ -202,6 +338,9 @@ if ($action === 'create') {
             'delivery_fee' => $deliveryFee,
             'payment_method' => $paymentMethod,
             'payment_phone' => $paymentPhone,
+            'payment_status' => $paymentMethod === 'Tikkie' ? ($tikkie === null ? 'Niet gekoppeld' : 'Aanvragen') : '',
+            'payment_url' => '',
+            'payment_request_token' => '',
             'created' => gmdate('c', $createdTs),
             'created_display' => date('H:i', $createdTs),
             'tracking' => bin2hex(random_bytes(18)),
@@ -213,6 +352,13 @@ if ($action === 'create') {
         return $order;
     });
 
+    if ($paymentMethod === 'Tikkie' && $tikkie !== null) {
+        tikkie_create_one($stateFile, $tikkie, $order);
+        $order = with_state($stateFile, false, function ($state) use ($order) {
+            foreach ($state['orders'] as $updated) if ((int)$updated['id'] === (int)$order['id']) return $updated;
+            return $order;
+        });
+    }
     respond(201, ['ok' => true, 'order' => clean_order_for_customer($order, true)]);
 }
 
@@ -241,6 +387,7 @@ if ($action === 'add_items') {
             if ((int)$order['id'] !== $id) continue;
             if (!hash_equals((string)($order['tracking'] ?? ''), $tracking)) return false;
             if (in_array((string)($order['status'] ?? ''), ['Afgerond', 'Geannuleerd', 'Uitverkocht', 'Geweigerd'], true)) return 'closed';
+            if (($order['payment_method'] ?? '') === 'Tikkie' && !empty($order['payment_request_token'])) return 'tikkie_locked';
             foreach ($items as $name => $qty) {
                 $newQty = (int)($order['items'][$name] ?? 0) + $qty;
                 if ($newQty > 25) return 'too_many';
@@ -255,6 +402,7 @@ if ($action === 'add_items') {
     if ($updated === false) respond(403, ['ok' => false, 'error' => 'Bestelling kan niet worden geverifieerd.']);
     if ($updated === 'closed') respond(409, ['ok' => false, 'error' => 'Deze bestelling staat niet meer open.']);
     if ($updated === 'too_many') respond(409, ['ok' => false, 'error' => 'Het totale aantal van een product is te hoog.']);
+    if ($updated === 'tikkie_locked') respond(409, ['ok' => false, 'error' => 'Voor deze bestelling is al een Tikkie aangemaakt. Plaats voor extra producten een nieuwe bestelling.']);
     if (!$updated) respond(404, ['ok' => false, 'error' => 'Bestelling niet gevonden.']);
     respond(200, ['ok' => true, 'order' => clean_order_for_customer($updated, false)]);
 }
@@ -264,6 +412,15 @@ if ($action === 'status') {
     $tracking = trim((string)($_GET['tracking'] ?? ''));
     if ($id <= 0 || $tracking === '') respond(400, ['ok' => false, 'error' => 'Ordergegevens ontbreken.']);
 
+    // Validate the private tracking token before any provider request.
+    $accessGranted = with_state($stateFile, false, function ($state) use ($id, $tracking) {
+        foreach ($state['orders'] as $order) {
+            if ((int)$order['id'] === $id && hash_equals((string)$order['tracking'], $tracking)) return true;
+        }
+        return false;
+    });
+    if (!$accessGranted) respond(404, ['ok' => false, 'error' => 'Bestelling niet gevonden.']);
+    tikkie_refresh_one($stateFile, tikkie_config($dataDir), $id);
     $order = with_state($stateFile, false, function ($state) use ($id, $tracking) {
         foreach ($state['orders'] as $order) {
             if ((int)$order['id'] === $id && hash_equals((string)$order['tracking'], $tracking)) return $order;
@@ -371,6 +528,7 @@ if ($action === 'business_announcement') {
 
 if ($action === 'business_orders') {
     if (!business_authorized($keyFile)) respond(401, ['ok' => false, 'error' => 'Niet geautoriseerd.']);
+    tikkie_refresh_one($stateFile, tikkie_config($dataDir));
     $orders = with_state($stateFile, false, fn($state) => array_map(
         fn($order) => clean_order_for_business($order),
         $state['orders']
