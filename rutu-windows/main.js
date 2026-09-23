@@ -179,7 +179,7 @@ async function syncCloudOrders() {
   try {
     const result = await cloudRequest('business_orders');
     const remote = Array.isArray(result.orders) ? result.orders : [];
-    orders = remote.map(o => ({ id:Number(o.id), items:normalizeItems(o.items), total:Number(o.total||0), customer:String(o.customer||'Online klant'), delivery:Boolean(o.delivery), address:String(o.address||''), postcode:String(o.postcode||''), deliveryFee:Number(o.delivery_fee||0), created:String(o.created||o.created_display||''), status:String(o.status||'Nieuw'), historyHidden:Boolean(o.history_hidden), historyCleared:Boolean(o.history_cleared) }));
+    orders = remote.map(o => ({ id:Number(o.id), items:normalizeItems(o.items), total:Number(o.total||0), customer:String(o.customer||'Online klant'), delivery:Boolean(o.delivery), address:String(o.address||''), postcode:String(o.postcode||''), deliveryFee:Number(o.delivery_fee||0), paymentMethod:String(o.payment_method||''), paymentPhone:String(o.payment_phone||''), created:String(o.created||o.created_display||''), status:String(o.status||'Nieuw'), historyHidden:Boolean(o.history_hidden), historyCleared:Boolean(o.history_cleared) }));
     nextId = Math.max(1046, ...orders.map(o => o.id + 1));
     cloudOnline = true; broadcast(); return true;
   } catch (_) { cloudOnline = false; return false; }
