@@ -170,6 +170,7 @@ class MainActivity : AppCompatActivity() {
         syncAnnouncement(true)
         ensureBackgroundOrderStatusService()
         syncOnlineStatuses()
+        WednesdayOrderReminderWorker.schedule(this)
         RutuUpdateChecker.checkForUpdate(this)
     }
 
