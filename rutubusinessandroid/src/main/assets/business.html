@@ -28,7 +28,7 @@ button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:1
   <div class="row"><button class="gray" onclick="openKeyModal()">Koppeling</button><button id="count" class="badge" style="display:none" onclick="openOpenOrders()">0 nieuw</button></div>
 </header>
 <main class="wrap" id="dashboard">
-  <section class="hero"><img class="hero-logo" src="rutu-logo.png" alt="Rutu BBQ" width="150" height="150"><div class="eyebrow">RUTU BBQ • BEDRIJF</div><h1>Jouw keuken. Alles in beeld.</h1><div id="connection" class="hint">Verbinden met online bestellingen…</div></section>
+  <section class="hero"><img class="hero-logo" src="rutu-logo.png" alt="Rutu BBQ" width="150" height="150"><div class="eyebrow">RUTU BBQ • BEDRIJF</div><h1>Jouw keuken. Alles in beeld.</h1><div id="connection" class="hint">Verbinden met online bestellingen…</div><div class="row" style="margin-top:12px"><button type="button" class="gray" onclick="checkBusinessUpdates()">Controleer op updates</button></div></section>
   <div class="summary" id="summary"></div>
   <section class="panel"><div class="row"><h2 class="grow">Actieve bestellingen</h2><button class="gray" onclick="manualClearActive()">Handmatig opschonen</button><button class="gray" id="restoreActive" style="display:none" onclick="restoreHiddenActive()">Herstellen</button></div><p class="hint">Opschonen verbergt de actieve lijst alleen op dit apparaat; bestelstatussen blijven ongewijzigd.</p><div id="orders"></div></section>
   <section class="panel">
@@ -84,6 +84,7 @@ button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:1
 <script>
 const API='https://rubenvanaggelen.com/rutu-api/index.php';
 let orders=[];
+function checkBusinessUpdates(){window.location.href='rutuupdate://check'}
 let ordersScreenOpen=false;
 let historyScreenOpen=false;
 function openQrModal(){
