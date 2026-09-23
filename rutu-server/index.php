@@ -39,6 +39,59 @@ function body_json(): array {
     return $data;
 }
 
+function default_ordering_schedule(): array {
+    $days = [];
+    for ($day = 1; $day <= 7; $day++) {
+        $days[(string)$day] = ['open' => $day === 3, 'from' => '10:00', 'until' => '18:00'];
+    }
+    return ['timezone' => 'Europe/Amsterdam', 'days' => $days, 'updated' => ''];
+}
+
+function normalize_ordering_schedule($value): array {
+    $default = default_ordering_schedule();
+    if (!is_array($value)) return $default;
+    $rawDays = is_array($value['days'] ?? null) ? $value['days'] : [];
+    foreach ($default['days'] as $key => $fallback) {
+        $day = is_array($rawDays[$key] ?? null) ? $rawDays[$key] : [];
+        $open = (bool)($day['open'] ?? $fallback['open']);
+        $from = trim((string)($day['from'] ?? $fallback['from']));
+        $until = trim((string)($day['until'] ?? $fallback['until']));
+        if (!preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $from)) $from = $fallback['from'];
+        if (!preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $until)) $until = $fallback['until'];
+        if ($until <= $from) { $from = $fallback['from']; $until = $fallback['until']; }
+        $default['days'][$key] = ['open' => $open, 'from' => $from, 'until' => $until];
+    }
+    $default['updated'] = (string)($value['updated'] ?? '');
+    return $default;
+}
+
+function is_test_customer(string $customer): bool {
+    $name = mb_strtolower(trim($customer), 'UTF-8');
+    return preg_match('/^(ruben|leon)(?:\s|$)/u', $name) === 1;
+}
+
+function ordering_schedule_status(array $schedule): array {
+    $schedule = normalize_ordering_schedule($schedule);
+    $tz = new DateTimeZone('Europe/Amsterdam');
+    $now = new DateTimeImmutable('now', $tz);
+    $dayKey = $now->format('N');
+    $time = $now->format('H:i');
+    $day = $schedule['days'][$dayKey] ?? ['open'=>false,'from'=>'10:00','until'=>'18:00'];
+    $allowed = (bool)$day['open'] && $time >= $day['from'] && $time < $day['until'];
+
+    $names = ['1'=>'maandag','2'=>'dinsdag','3'=>'woensdag','4'=>'donderdag','5'=>'vrijdag','6'=>'zaterdag','7'=>'zondag'];
+    $windows = [];
+    foreach ($schedule['days'] as $key => $entry) {
+        if (!empty($entry['open'])) $windows[] = $names[$key] . ' ' . $entry['from'] . '-' . $entry['until'] . ' uur';
+    }
+    $message = count($windows) === 1 && !empty($schedule['days']['3']['open'])
+        && $schedule['days']['3']['from'] === '10:00' && $schedule['days']['3']['until'] === '18:00'
+        ? 'U kunt op woensdag van 10:00 uur tot 18:00 uur uw bestelling plaatsen.'
+        : (count($windows) ? 'Bestellen kan op: ' . implode(', ', $windows) . '.' : 'Bestellen is momenteel gesloten.');
+
+    return ['allowed'=>$allowed, 'message'=>$message, 'day'=>(int)$dayKey, 'time'=>$time, 'schedule'=>$schedule];
+}
+
 function with_state(string $file, bool $write, callable $callback) {
     $fh = fopen($file, 'c+');
     if (!$fh) respond(500, ['ok' => false, 'error' => 'Orderopslag niet beschikbaar.']);
@@ -53,6 +106,7 @@ function with_state(string $file, bool $write, callable $callback) {
         if (!isset($state['next_id'])) $state['next_id'] = 1046;
         if (!isset($state['orders']) || !is_array($state['orders'])) $state['orders'] = [];
         if (!isset($state['announcement']) || !is_array($state['announcement'])) $state['announcement'] = ['title'=>'','message'=>'','from'=>'','until'=>'','active'=>false,'updated'=>''];
+        $state['ordering_schedule'] = normalize_ordering_schedule($state['ordering_schedule'] ?? null);
 
         $result = $callback($state);
 
@@ -284,11 +338,27 @@ if ($action === 'health') {
 if ($action === 'create') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => 'POST vereist.']);
 
-    $closure = with_state($stateFile, false, fn($state) => $state['announcement'] ?? []);
-    if (ordering_blocked_today(is_array($closure) ? $closure : [])) {
-        respond(409, ['ok' => false, 'error' => 'Vandaag is Rutu BBQ gesloten voor bestellingen.']);
-    }
     $body = body_json();
+    $customer = trim((string)($body['customer'] ?? 'Online klant'));
+    if ($customer === '') $customer = 'Online klant';
+    $customer = mb_substr($customer, 0, 80);
+    $testCustomer = is_test_customer($customer);
+
+    $availability = with_state($stateFile, false, function ($state) {
+        $announcement = is_array($state['announcement'] ?? null) ? $state['announcement'] : [];
+        $scheduleStatus = ordering_schedule_status($state['ordering_schedule'] ?? []);
+        return [
+            'manual_blocked' => ordering_blocked_today($announcement),
+            'schedule_allowed' => (bool)$scheduleStatus['allowed'],
+            'schedule_message' => (string)$scheduleStatus['message']
+        ];
+    });
+    if (!$testCustomer && ((bool)$availability['manual_blocked'] || !(bool)$availability['schedule_allowed'])) {
+        $message = (bool)$availability['manual_blocked']
+            ? 'Vandaag is Rutu BBQ gesloten voor bestellingen.'
+            : (string)$availability['schedule_message'];
+        respond(409, ['ok' => false, 'error' => $message, 'ordering_closed' => true]);
+    }
     $incoming = $body['items'] ?? null;
     if (!is_array($incoming) || count($incoming) < 1 || count($incoming) > 40) {
         respond(400, ['ok' => false, 'error' => 'Je winkelmand is leeg of te groot.']);
@@ -330,9 +400,6 @@ if ($action === 'create') {
         }
     }
     $total = round($subtotal + $deliveryFee, 2);
-    $customer = trim((string)($body['customer'] ?? 'Online klant'));
-    if ($customer === '') $customer = 'Online klant';
-    $customer = mb_substr($customer, 0, 80);
 
     $tikkie = tikkie_config($dataDir);
     $order = with_state($stateFile, true, function (&$state) use ($items, $total, $customer, $delivery, $address, $postcode, $deliveryFee, $paymentMethod, $paymentPhone, $tikkie) {
@@ -470,7 +537,8 @@ if ($action === 'cancel') {
 }
 
 if ($action === 'announcement') {
-    $announcement = with_state($stateFile, false, function ($state) {
+    $customerForAvailability = trim((string)($_GET['customer'] ?? ''));
+    $announcement = with_state($stateFile, false, function ($state) use ($customerForAvailability) {
         $a = $state['announcement'] ?? ['title'=>'','message'=>'','from'=>'','until'=>'','active'=>false,'updated'=>''];
         if (!is_array($a)) $a = ['title'=>'','message'=>'','from'=>'','until'=>'','active'=>false,'updated'=>''];
 
@@ -482,6 +550,10 @@ if ($action === 'announcement') {
         // de gekozen vanaf-datum in de toekomst ligt. Na de einddatum verdwijnt hij.
         if ($until !== '' && $today > $until) $active = false;
 
+        $scheduleStatus = ordering_schedule_status($state['ordering_schedule'] ?? []);
+        $tester = is_test_customer($customerForAvailability);
+        $manualBlocked = ordering_blocked_today($a);
+        $orderingAllowed = $tester || (!$manualBlocked && (bool)$scheduleStatus['allowed']);
         return [
             'title' => trim((string)($a['title'] ?? '')),
             'message' => trim((string)($a['message'] ?? '')),
@@ -489,7 +561,10 @@ if ($action === 'announcement') {
             'until' => $until,
             'active' => $active,
             'updated' => (string)($a['updated'] ?? ''),
-            'ordering_blocked' => ordering_blocked_today($a)
+            'ordering_blocked' => !$orderingAllowed,
+            'ordering_allowed' => $orderingAllowed,
+            'ordering_message' => $manualBlocked && !$tester ? 'Vandaag is Rutu BBQ gesloten voor bestellingen.' : (string)$scheduleStatus['message'],
+            'test_order_allowed' => $tester
         ];
     });
     // Payment-provider onboarding is business-only; never show that notice in customer apps.
@@ -544,6 +619,27 @@ if ($action === 'business_announcement') {
     respond(200, ['ok' => true, 'announcement' => $announcement]);
 }
 
+if ($action === 'business_ordering_schedule') {
+    if (!business_authorized($keyFile)) respond(401, ['ok' => false, 'error' => 'Niet geautoriseerd.']);
+
+    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+        $schedule = with_state($stateFile, false, fn($state) => normalize_ordering_schedule($state['ordering_schedule'] ?? null));
+        respond(200, ['ok' => true, 'schedule' => $schedule, 'current' => ordering_schedule_status($schedule)]);
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => 'GET of POST vereist.']);
+    $body = body_json();
+    $incoming = is_array($body['schedule'] ?? null) ? $body['schedule'] : null;
+    if ($incoming === null) respond(400, ['ok' => false, 'error' => 'Openingstijden ontbreken.']);
+    $schedule = normalize_ordering_schedule($incoming);
+    $schedule['updated'] = gmdate('c');
+    with_state($stateFile, true, function (&$state) use ($schedule) {
+        $state['ordering_schedule'] = $schedule;
+        return true;
+    });
+    respond(200, ['ok' => true, 'schedule' => $schedule, 'current' => ordering_schedule_status($schedule)]);
+}
+
 if ($action === 'business_orders') {
     if (!business_authorized($keyFile)) respond(401, ['ok' => false, 'error' => 'Niet geautoriseerd.']);
     tikkie_refresh_one($stateFile, tikkie_config($dataDir));
@@ -561,7 +657,7 @@ if ($action === 'business_clear_history') {
     $count = with_state($stateFile, true, function (&$state) {
         $count = 0;
         foreach ($state['orders'] as &$order) {
-            if (in_array((string)($order['status'] ?? ''), ['Afgerond', 'Uitverkocht', 'Geweigerd', 'Geannuleerd'], true)) {
+            if (!(bool)($order['history_cleared'] ?? false)) {
                 $order['history_cleared'] = true;
                 $count++;
             }
