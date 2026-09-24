@@ -86,15 +86,22 @@ function ordering_schedule_status(array $schedule): array {
     $day = $schedule['days'][$dayKey] ?? ['open'=>false,'from'=>'10:00','until'=>'18:00'];
     $allowed = (bool)$day['open'] && $time >= $day['from'] && $time < $day['until'];
 
-    $names = ['1'=>'maandag','2'=>'dinsdag','3'=>'woensdag','4'=>'donderdag','5'=>'vrijdag','6'=>'zaterdag','7'=>'zondag'];
-    $windows = [];
+    $namesNl = ['1'=>'maandag','2'=>'dinsdag','3'=>'woensdag','4'=>'donderdag','5'=>'vrijdag','6'=>'zaterdag','7'=>'zondag'];
+    $namesEn = ['1'=>'Monday','2'=>'Tuesday','3'=>'Wednesday','4'=>'Thursday','5'=>'Friday','6'=>'Saturday','7'=>'Sunday'];
+    $windowsNl = [];
+    $windowsEn = [];
     foreach ($schedule['days'] as $key => $entry) {
-        if (!empty($entry['open'])) $windows[] = $names[$key] . ' ' . $entry['from'] . '-' . $entry['until'] . ' uur';
+        if (!empty($entry['open'])) {
+            $windowsNl[] = $namesNl[$key] . ' ' . $entry['from'] . '-' . $entry['until'] . ' uur';
+            $windowsEn[] = $namesEn[$key] . ' ' . $entry['from'] . '-' . $entry['until'];
+        }
     }
-    $message = count($windows) === 1 && !empty($schedule['days']['3']['open'])
+    $message = count($windowsNl) === 1 && !empty($schedule['days']['3']['open'])
         && $schedule['days']['3']['from'] === '10:00' && $schedule['days']['3']['until'] === '18:00'
         ? "U kunt iedere woensdag van 10:00 tot 18:00 uur bestellen. Wij helpen u graag.\nYou can order every Wednesday from 10:00 to 18:00. We are happy to help you."
-        : (count($windows) ? 'Bestellen kan op: ' . implode(', ', $windows) . '.' : "Bestellen is momenteel gesloten.\nOrdering is currently closed.");
+        : (count($windowsNl)
+            ? "Bestellen kan op: " . implode(', ', $windowsNl) . ".\nOrdering is available on: " . implode(', ', $windowsEn) . "."
+            : "Bestellen is momenteel gesloten.\nOrdering is currently closed.");
 
     return ['allowed'=>$allowed, 'message'=>$message, 'day'=>(int)$dayKey, 'time'=>$time, 'schedule'=>$schedule];
 }
