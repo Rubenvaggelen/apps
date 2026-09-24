@@ -35,7 +35,7 @@ function body_json(): array {
     $raw = file_get_contents('php://input') ?: '';
     if ($raw === '') return [];
     $data = json_decode($raw, true);
-    if (!is_array($data)) respond(400, ['ok' => false, 'error' => 'Ongeldige aanvraag.\nInvalid request.']);
+    if (!is_array($data)) respond(400, ['ok' => false, 'error' => "Ongeldige aanvraag.\nInvalid request."]);
     return $data;
 }
 
@@ -93,18 +93,18 @@ function ordering_schedule_status(array $schedule): array {
     }
     $message = count($windows) === 1 && !empty($schedule['days']['3']['open'])
         && $schedule['days']['3']['from'] === '10:00' && $schedule['days']['3']['until'] === '18:00'
-        ? 'U kunt iedere woensdag van 10:00 tot 18:00 uur bestellen. Wij helpen u graag.\nYou can order every Wednesday from 10:00 to 18:00. We are happy to help you.'
-        : (count($windows) ? 'Bestellen kan op: ' . implode(', ', $windows) . '.' : 'Bestellen is momenteel gesloten.\nOrdering is currently closed.');
+        ? "U kunt iedere woensdag van 10:00 tot 18:00 uur bestellen. Wij helpen u graag.\nYou can order every Wednesday from 10:00 to 18:00. We are happy to help you."
+        : (count($windows) ? 'Bestellen kan op: ' . implode(', ', $windows) . '.' : "Bestellen is momenteel gesloten.\nOrdering is currently closed.");
 
     return ['allowed'=>$allowed, 'message'=>$message, 'day'=>(int)$dayKey, 'time'=>$time, 'schedule'=>$schedule];
 }
 
 function with_state(string $file, bool $write, callable $callback) {
     $fh = fopen($file, 'c+');
-    if (!$fh) respond(500, ['ok' => false, 'error' => 'Orderopslag niet beschikbaar.\nOrder storage is unavailable.']);
+    if (!$fh) respond(500, ['ok' => false, 'error' => "Orderopslag niet beschikbaar.\nOrder storage is unavailable."]);
     try {
         if (!flock($fh, $write ? LOCK_EX : LOCK_SH)) {
-            respond(500, ['ok' => false, 'error' => 'Orderopslag is tijdelijk bezet.\nOrder storage is temporarily busy.']);
+            respond(500, ['ok' => false, 'error' => "Orderopslag is tijdelijk bezet.\nOrder storage is temporarily busy."]);
         }
         rewind($fh);
         $raw = stream_get_contents($fh) ?: '';
@@ -343,18 +343,18 @@ if ($action === 'health') {
 }
 
 if ($action === 'test_access') {
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => 'POST vereist.\nPOST required.']);
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => "POST vereist.\nPOST required."]);
     $body = body_json();
     $customer = mb_substr(trim((string)($body['customer'] ?? '')), 0, 80);
     $code = trim((string)($body['code'] ?? ''));
     if (!test_order_access_valid($customer, $code)) {
-        respond(403, ['ok' => false, 'error' => 'Onjuiste testcode.\nIncorrect test code.']);
+        respond(403, ['ok' => false, 'error' => "Onjuiste testcode.\nIncorrect test code."]);
     }
     respond(200, ['ok' => true, 'allowed' => true]);
 }
 
 if ($action === 'create') {
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => 'POST vereist.\nPOST required.']);
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => "POST vereist.\nPOST required."]);
 
     $body = body_json();
     $customer = trim((string)($body['customer'] ?? 'Online klant'));
@@ -375,13 +375,13 @@ if ($action === 'create') {
     });
     if (!$testBypass && ((bool)$availability['manual_blocked'] || !(bool)$availability['schedule_allowed'])) {
         $message = (bool)$availability['manual_blocked']
-            ? 'Vandaag is Rutu BBQ gesloten voor bestellingen.\nRutu BBQ is closed for orders today.'
+            ? "Vandaag is Rutu BBQ gesloten voor bestellingen.\nRutu BBQ is closed for orders today."
             : (string)$availability['schedule_message'];
         respond(409, ['ok' => false, 'error' => $message, 'ordering_closed' => true]);
     }
     $incoming = $body['items'] ?? null;
     if (!is_array($incoming) || count($incoming) < 1 || count($incoming) > 40) {
-        respond(400, ['ok' => false, 'error' => 'Je winkelmand is leeg of te groot.\nYour cart is empty or too large.']);
+        respond(400, ['ok' => false, 'error' => "Je winkelmand is leeg of te groot.\nYour cart is empty or too large."]);
     }
 
     $items = [];
@@ -390,7 +390,7 @@ if ($action === 'create') {
         $name = trim((string)$name);
         $qty = (int)$qty;
         if (!array_key_exists($name, $catalog) || $qty < 1 || $qty > 25) {
-            respond(400, ['ok' => false, 'error' => 'Een product of aantal is ongeldig.\nA product or quantity is invalid.']);
+            respond(400, ['ok' => false, 'error' => "Een product of aantal is ongeldig.\nA product or quantity is invalid."]);
         }
         $items[$name] = $qty;
         $total += $catalog[$name] * $qty;
@@ -405,17 +405,17 @@ if ($action === 'create') {
     if ($delivery) {
         $address = preg_replace('/\\s+/', ' ', trim((string)($body['address'] ?? '')));
         $postcode = strtoupper(preg_replace('/\\s+/', '', trim((string)($body['postcode'] ?? ''))));
-        if (mb_strlen($address) < 3) respond(400, ['ok' => false, 'error' => 'Vul je straat en huisnummer in.\nEnter your street and house number.']);
-        if (!preg_match('/^\\d{4}[A-Z]{2}$/', $postcode)) respond(400, ['ok' => false, 'error' => 'Vul een volledige postcode in, bijvoorbeeld 1106 AB.\nEnter a complete postcode, for example 1106 AB.']);
+        if (mb_strlen($address) < 3) respond(400, ['ok' => false, 'error' => "Vul je straat en huisnummer in.\nEnter your street and house number."]);
+        if (!preg_match('/^\\d{4}[A-Z]{2}$/', $postcode)) respond(400, ['ok' => false, 'error' => "Vul een volledige postcode in, bijvoorbeeld 1106 AB.\nEnter a complete postcode, for example 1106 AB."]);
         $address = mb_substr($address, 0, 120);
         $deliveryFee = substr($postcode, 0, 4) === '1106' ? 2.50 : 5.00;
         $method = strtolower(trim((string)($body['payment_method'] ?? 'Cash')));
-        if (!in_array($method, ['cash', 'tikkie'], true)) respond(400, ['ok' => false, 'error' => 'Kies Cash of Tikkie.\nChoose Cash or Tikkie.']);
+        if (!in_array($method, ['cash', 'tikkie'], true)) respond(400, ['ok' => false, 'error' => "Kies Cash of Tikkie.\nChoose Cash or Tikkie."]);
         $paymentMethod = $method === 'tikkie' ? 'Tikkie' : 'Cash';
         if ($paymentMethod === 'Tikkie') {
             $paymentPhone = preg_replace('/[\\s()\\-]/', '', trim((string)($body['payment_phone'] ?? '')));
             if (!preg_match('/^(?:06[0-9]{8}|\\+316[0-9]{8}|00316[0-9]{8})$/', $paymentPhone)) {
-                respond(400, ['ok' => false, 'error' => 'Vul een geldig Nederlands mobiel nummer in voor Tikkie.\nEnter a valid Dutch mobile number for Tikkie.']);
+                respond(400, ['ok' => false, 'error' => "Vul een geldig Nederlands mobiel nummer in voor Tikkie.\nEnter a valid Dutch mobile number for Tikkie."]);
             }
         }
     }
@@ -463,20 +463,20 @@ if ($action === 'create') {
 }
 
 if ($action === 'add_items') {
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => 'POST vereist.\nPOST required.']);
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => "POST vereist.\nPOST required."]);
     $body = body_json();
     $id = (int)($body['id'] ?? 0);
     $tracking = trim((string)($body['tracking'] ?? ''));
     $incoming = $body['items'] ?? null;
-    if ($id <= 0 || $tracking === '') respond(400, ['ok' => false, 'error' => 'Bestelgegevens ontbreken.\nOrder details are missing.']);
-    if (!is_array($incoming) || count($incoming) < 1 || count($incoming) > 40) respond(400, ['ok' => false, 'error' => 'Je winkelmand is leeg of te groot.\nYour cart is empty or too large.']);
+    if ($id <= 0 || $tracking === '') respond(400, ['ok' => false, 'error' => "Bestelgegevens ontbreken.\nOrder details are missing."]);
+    if (!is_array($incoming) || count($incoming) < 1 || count($incoming) > 40) respond(400, ['ok' => false, 'error' => "Je winkelmand is leeg of te groot.\nYour cart is empty or too large."]);
 
     $items = [];
     $extraTotal = 0.0;
     foreach ($incoming as $name => $qty) {
         $name = trim((string)$name);
         $qty = (int)$qty;
-        if (!array_key_exists($name, $catalog) || $qty < 1 || $qty > 25) respond(400, ['ok' => false, 'error' => 'Een product of aantal is ongeldig.\nA product or quantity is invalid.']);
+        if (!array_key_exists($name, $catalog) || $qty < 1 || $qty > 25) respond(400, ['ok' => false, 'error' => "Een product of aantal is ongeldig.\nA product or quantity is invalid."]);
         $items[$name] = $qty;
         $extraTotal += $catalog[$name] * $qty;
     }
@@ -499,18 +499,18 @@ if ($action === 'add_items') {
         }
         return null;
     });
-    if ($updated === false) respond(403, ['ok' => false, 'error' => 'Bestelling kan niet worden geverifieerd.\nThe order could not be verified.']);
-    if ($updated === 'closed') respond(409, ['ok' => false, 'error' => 'Deze bestelling staat niet meer open.\nThis order is no longer open.']);
-    if ($updated === 'too_many') respond(409, ['ok' => false, 'error' => 'Het totale aantal van een product is te hoog.\nThe total quantity of a product is too high.']);
-    if ($updated === 'tikkie_locked') respond(409, ['ok' => false, 'error' => 'Voor deze bestelling is al een Tikkie aangemaakt. Plaats voor extra producten een nieuwe bestelling.\nA Tikkie has already been created for this order. Place a new order for additional products.']);
-    if (!$updated) respond(404, ['ok' => false, 'error' => 'Bestelling niet gevonden.\nOrder not found.']);
+    if ($updated === false) respond(403, ['ok' => false, 'error' => "Bestelling kan niet worden geverifieerd.\nThe order could not be verified."]);
+    if ($updated === 'closed') respond(409, ['ok' => false, 'error' => "Deze bestelling staat niet meer open.\nThis order is no longer open."]);
+    if ($updated === 'too_many') respond(409, ['ok' => false, 'error' => "Het totale aantal van een product is te hoog.\nThe total quantity of a product is too high."]);
+    if ($updated === 'tikkie_locked') respond(409, ['ok' => false, 'error' => "Voor deze bestelling is al een Tikkie aangemaakt. Plaats voor extra producten een nieuwe bestelling.\nA Tikkie has already been created for this order. Place a new order for additional products."]);
+    if (!$updated) respond(404, ['ok' => false, 'error' => "Bestelling niet gevonden.\nOrder not found."]);
     respond(200, ['ok' => true, 'order' => clean_order_for_customer($updated, false)]);
 }
 
 if ($action === 'status') {
     $id = (int)($_GET['id'] ?? 0);
     $tracking = trim((string)($_GET['tracking'] ?? ''));
-    if ($id <= 0 || $tracking === '') respond(400, ['ok' => false, 'error' => 'Ordergegevens ontbreken.\nOrder details are missing.']);
+    if ($id <= 0 || $tracking === '') respond(400, ['ok' => false, 'error' => "Ordergegevens ontbreken.\nOrder details are missing."]);
 
     // Validate the private tracking token before any provider request.
     $accessGranted = with_state($stateFile, false, function ($state) use ($id, $tracking) {
@@ -519,7 +519,7 @@ if ($action === 'status') {
         }
         return false;
     });
-    if (!$accessGranted) respond(404, ['ok' => false, 'error' => 'Bestelling niet gevonden.\nOrder not found.']);
+    if (!$accessGranted) respond(404, ['ok' => false, 'error' => "Bestelling niet gevonden.\nOrder not found."]);
     tikkie_refresh_one($stateFile, tikkie_config($dataDir), $id);
     $order = with_state($stateFile, false, function ($state) use ($id, $tracking) {
         foreach ($state['orders'] as $order) {
@@ -527,16 +527,16 @@ if ($action === 'status') {
         }
         return null;
     });
-    if (!$order) respond(404, ['ok' => false, 'error' => 'Bestelling niet gevonden.\nOrder not found.']);
+    if (!$order) respond(404, ['ok' => false, 'error' => "Bestelling niet gevonden.\nOrder not found."]);
     respond(200, ['ok' => true, 'order' => clean_order_for_customer($order, false)]);
 }
 
 if ($action === 'cancel') {
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => 'POST vereist.\nPOST required.']);
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => "POST vereist.\nPOST required."]);
     $body = body_json();
     $id = (int)($body['id'] ?? 0);
     $tracking = trim((string)($body['tracking'] ?? ''));
-    if ($id <= 0 || $tracking === '') respond(400, ['ok' => false, 'error' => 'Bestelgegevens ontbreken.\nOrder details are missing.']);
+    if ($id <= 0 || $tracking === '') respond(400, ['ok' => false, 'error' => "Bestelgegevens ontbreken.\nOrder details are missing."]);
 
     $updated = with_state($stateFile, true, function (&$state) use ($id, $tracking) {
         foreach ($state['orders'] as &$order) {
@@ -550,9 +550,9 @@ if ($action === 'cancel') {
         return null;
     });
 
-    if ($updated === false) respond(403, ['ok' => false, 'error' => 'Bestelling kan niet worden geverifieerd.\nThe order could not be verified.']);
-    if ($updated === 'closed') respond(409, ['ok' => false, 'error' => 'Deze bestelling is al afgerond.\nThis order has already been completed.']);
-    if (!$updated) respond(404, ['ok' => false, 'error' => 'Bestelling niet gevonden.\nOrder not found.']);
+    if ($updated === false) respond(403, ['ok' => false, 'error' => "Bestelling kan niet worden geverifieerd.\nThe order could not be verified."]);
+    if ($updated === 'closed') respond(409, ['ok' => false, 'error' => "Deze bestelling is al afgerond.\nThis order has already been completed."]);
+    if (!$updated) respond(404, ['ok' => false, 'error' => "Bestelling niet gevonden.\nOrder not found."]);
     respond(200, ['ok' => true, 'order' => clean_order_for_customer($updated, false)]);
 }
 
@@ -583,7 +583,7 @@ if ($action === 'announcement') {
             'updated' => (string)($a['updated'] ?? ''),
             'ordering_blocked' => !$orderingAllowed,
             'ordering_allowed' => $orderingAllowed,
-            'ordering_message' => $manualBlocked ? 'Vandaag is Rutu BBQ gesloten voor bestellingen.\nRutu BBQ is closed for orders today.' : (string)$scheduleStatus['message'],
+            'ordering_message' => $manualBlocked ? "Vandaag is Rutu BBQ gesloten voor bestellingen.\nRutu BBQ is closed for orders today." : (string)$scheduleStatus['message'],
             'test_order_allowed' => $tester
         ];
     });
@@ -596,14 +596,14 @@ if ($action === 'announcement') {
 }
 
 if ($action === 'business_announcement') {
-    if (!business_authorized($keyFile)) respond(401, ['ok' => false, 'error' => 'Niet geautoriseerd.\nNot authorized.']);
+    if (!business_authorized($keyFile)) respond(401, ['ok' => false, 'error' => "Niet geautoriseerd.\nNot authorized."]);
 
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $announcement = with_state($stateFile, false, fn($state) => $state['announcement'] ?? []);
         respond(200, ['ok' => true, 'announcement' => $announcement]);
     }
 
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => 'GET of POST vereist.\nGET or POST required.\nPOST required.']);
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => "GET of POST vereist.\nGET or POST required."]);
     $body = body_json();
     $title = trim((string)($body['title'] ?? ''));
     $message = trim((string)($body['message'] ?? ''));
@@ -612,16 +612,16 @@ if ($action === 'business_announcement') {
     $active = (bool)($body['active'] ?? false);
 
     if (mb_strlen($title) > 80 || mb_strlen($message) > 600) {
-        respond(400, ['ok' => false, 'error' => 'Mededeling is te lang.\nThe announcement is too long.']);
+        respond(400, ['ok' => false, 'error' => "Mededeling is te lang.\nThe announcement is too long."]);
     }
     if ($from !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) {
-        respond(400, ['ok' => false, 'error' => 'Ongeldige vanaf-datum.\nInvalid start date.']);
+        respond(400, ['ok' => false, 'error' => "Ongeldige vanaf-datum.\nInvalid start date."]);
     }
     if ($until !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $until)) {
-        respond(400, ['ok' => false, 'error' => 'Ongeldige tot-datum.\nInvalid end date.']);
+        respond(400, ['ok' => false, 'error' => "Ongeldige tot-datum.\nInvalid end date."]);
     }
     if ($from !== '' && $until !== '' && $until < $from) {
-        respond(400, ['ok' => false, 'error' => 'Tot-datum ligt vóór vanaf-datum.\nThe end date is before the start date.']);
+        respond(400, ['ok' => false, 'error' => "Tot-datum ligt vóór vanaf-datum.\nThe end date is before the start date."]);
     }
 
     $announcement = with_state($stateFile, true, function (&$state) use ($title, $message, $from, $until, $active) {
@@ -640,17 +640,17 @@ if ($action === 'business_announcement') {
 }
 
 if ($action === 'business_ordering_schedule') {
-    if (!business_authorized($keyFile)) respond(401, ['ok' => false, 'error' => 'Niet geautoriseerd.\nNot authorized.']);
+    if (!business_authorized($keyFile)) respond(401, ['ok' => false, 'error' => "Niet geautoriseerd.\nNot authorized."]);
 
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $schedule = with_state($stateFile, false, fn($state) => normalize_ordering_schedule($state['ordering_schedule'] ?? null));
         respond(200, ['ok' => true, 'schedule' => $schedule, 'current' => ordering_schedule_status($schedule)]);
     }
 
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => 'GET of POST vereist.\nGET or POST required.\nPOST required.']);
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => "GET of POST vereist.\nGET or POST required."]);
     $body = body_json();
     $incoming = is_array($body['schedule'] ?? null) ? $body['schedule'] : null;
-    if ($incoming === null) respond(400, ['ok' => false, 'error' => 'Openingstijden ontbreken.\nOpening hours are missing.']);
+    if ($incoming === null) respond(400, ['ok' => false, 'error' => "Openingstijden ontbreken.\nOpening hours are missing."]);
     $schedule = normalize_ordering_schedule($incoming);
     $schedule['updated'] = gmdate('c');
     with_state($stateFile, true, function (&$state) use ($schedule) {
@@ -661,7 +661,7 @@ if ($action === 'business_ordering_schedule') {
 }
 
 if ($action === 'business_orders') {
-    if (!business_authorized($keyFile)) respond(401, ['ok' => false, 'error' => 'Niet geautoriseerd.\nNot authorized.']);
+    if (!business_authorized($keyFile)) respond(401, ['ok' => false, 'error' => "Niet geautoriseerd.\nNot authorized."]);
     tikkie_refresh_one($stateFile, tikkie_config($dataDir));
     $orders = with_state($stateFile, false, fn($state) => array_map(
         fn($order) => clean_order_for_business($order),
@@ -671,8 +671,8 @@ if ($action === 'business_orders') {
 }
 
 if ($action === 'business_clear_history') {
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => 'POST vereist.\nPOST required.']);
-    if (!business_authorized($keyFile)) respond(401, ['ok' => false, 'error' => 'Niet geautoriseerd.\nNot authorized.']);
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => "POST vereist.\nPOST required."]);
+    if (!business_authorized($keyFile)) respond(401, ['ok' => false, 'error' => "Niet geautoriseerd.\nNot authorized."]);
 
     $count = with_state($stateFile, true, function (&$state) {
         $count = 0;
@@ -689,11 +689,11 @@ if ($action === 'business_clear_history') {
 }
 
 if ($action === 'business_hide_history') {
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => 'POST vereist.\nPOST required.']);
-    if (!business_authorized($keyFile)) respond(401, ['ok' => false, 'error' => 'Niet geautoriseerd.\nNot authorized.']);
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => "POST vereist.\nPOST required."]);
+    if (!business_authorized($keyFile)) respond(401, ['ok' => false, 'error' => "Niet geautoriseerd.\nNot authorized."]);
     $body = body_json();
     $id = (int)($body['id'] ?? 0);
-    if ($id <= 0) respond(400, ['ok' => false, 'error' => 'Bestelnummer ontbreekt.\nOrder number is missing.']);
+    if ($id <= 0) respond(400, ['ok' => false, 'error' => "Bestelnummer ontbreekt.\nOrder number is missing."]);
 
     $updated = with_state($stateFile, true, function (&$state) use ($id) {
         foreach ($state['orders'] as &$order) {
@@ -706,20 +706,20 @@ if ($action === 'business_hide_history') {
         return null;
     });
 
-    if ($updated === false) respond(409, ['ok' => false, 'error' => 'Alleen afgeronde of geweigerde bestellingen kunnen uit de geschiedenis worden verborgen.\nOnly completed or declined orders can be hidden from history.']);
-    if (!$updated) respond(404, ['ok' => false, 'error' => 'Bestelling niet gevonden.\nOrder not found.']);
+    if ($updated === false) respond(409, ['ok' => false, 'error' => "Alleen afgeronde of geweigerde bestellingen kunnen uit de geschiedenis worden verborgen.\nOnly completed or declined orders can be hidden from history."]);
+    if (!$updated) respond(404, ['ok' => false, 'error' => "Bestelling niet gevonden.\nOrder not found."]);
     respond(200, ['ok' => true, 'order' => clean_order_for_business($updated)]);
 }
 
 if ($action === 'business_status') {
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => 'POST vereist.\nPOST required.']);
-    if (!business_authorized($keyFile)) respond(401, ['ok' => false, 'error' => 'Niet geautoriseerd.\nNot authorized.']);
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => "POST vereist.\nPOST required."]);
+    if (!business_authorized($keyFile)) respond(401, ['ok' => false, 'error' => "Niet geautoriseerd.\nNot authorized."]);
     $body = body_json();
     $id = (int)($body['id'] ?? 0);
     $status = trim((string)($body['status'] ?? ''));
     $allowed = ['Nieuw', 'In bereiding', 'Klaar', 'Bestelling is onderweg', 'Afgerond', 'Geweigerd', 'Geannuleerd', 'Uitverkocht'];
     if ($id <= 0 || !in_array($status, $allowed, true)) {
-        respond(400, ['ok' => false, 'error' => 'Ongeldige statuswijziging.\nInvalid status change.']);
+        respond(400, ['ok' => false, 'error' => "Ongeldige statuswijziging.\nInvalid status change."]);
     }
 
     $updated = with_state($stateFile, true, function (&$state) use ($id, $status) {
@@ -732,9 +732,9 @@ if ($action === 'business_status') {
         }
         return null;
     });
-    if ($updated === 'delivery_required') respond(409, ['ok' => false, 'error' => 'Deze status is alleen beschikbaar voor bezorgbestellingen.\nThis status is only available for delivery orders.']);
-    if (!$updated) respond(404, ['ok' => false, 'error' => 'Bestelling niet gevonden.\nOrder not found.']);
+    if ($updated === 'delivery_required') respond(409, ['ok' => false, 'error' => "Deze status is alleen beschikbaar voor bezorgbestellingen.\nThis status is only available for delivery orders."]);
+    if (!$updated) respond(404, ['ok' => false, 'error' => "Bestelling niet gevonden.\nOrder not found."]);
     respond(200, ['ok' => true, 'order' => clean_order_for_customer($updated, false)]);
 }
 
-respond(404, ['ok' => false, 'error' => 'Onbekende actie.\nUnknown action.']);
+respond(404, ['ok' => false, 'error' => "Onbekende actie.\nUnknown action."]);
