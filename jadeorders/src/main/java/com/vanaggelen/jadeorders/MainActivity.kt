@@ -176,7 +176,7 @@ class MainActivity : AppCompatActivity() {
     private val uiHandler = Handler(Looper.getMainLooper())
     private val onlineApiBase = "https://rubenvanaggelen.com/rutu-api/index.php"
     @Volatile private var onlineAvailable = false
-    private var onlineText = "Online verbinding controleren…"
+    private var onlineText = "Online verbinding controleren… / Checking online connection…"
     @Volatile private var announcement = Announcement()
     private var lastAnnouncementCheck = 0L
     private var lastStatusRefreshText = "Status wordt automatisch bijgewerkt"
@@ -613,10 +613,10 @@ class MainActivity : AppCompatActivity() {
                 val (code, raw) = onlineJson("GET", "health")
                 val ok = code == 200 && JSONObject(raw).optBoolean("ok")
                 onlineAvailable = ok
-                onlineText = if (ok) "Online bestellen actief • wifi/4G/5G" else "Online bestelserver niet bereikbaar"
+                onlineText = if (ok) "Online bestellen actief • wifi/4G/5G / Online ordering active" else "Online bestelserver niet bereikbaar / Online ordering server unavailable"
             } catch (_: Exception) {
                 onlineAvailable = false
-                onlineText = "Online bestelserver niet bereikbaar"
+                onlineText = "Online bestelserver niet bereikbaar / Online ordering server unavailable"
             }
             if (!silent) runOnUiThread {
                 toast(if (onlineAvailable) bi("Online bestellen is actief ✓", "Online ordering is active ✓") else bi("Geen internetverbinding met Rutu BBQ.", "No internet connection to Rutu BBQ."))
@@ -701,7 +701,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun sendOnlineOrder(items: LinkedHashMap<String, Int>, shownTotal: Double, delivery: Boolean = false, address: String = "", postcode: String = "", paymentMethod: String = "", paymentPhone: String = "") {
         if (items.isEmpty()) return
-        onlineText = "Bestelling veilig verzenden…"
+        onlineText = "Bestelling veilig verzenden… / Sending order securely…"
         refreshRoleScreen()
         val itemJson = JSONObject()
         items.forEach { (name, qty) -> itemJson.put(name, qty) }
@@ -720,7 +720,7 @@ class MainActivity : AppCompatActivity() {
                 if (code !in 200..299 || !json.optBoolean("ok")) {
                     val message = json.optString("error", bi("Bestelling kon niet worden geplaatst.", "Order could not be placed."))
                     runOnUiThread {
-                        onlineText = if (code == 409) "Vandaag gesloten voor bestellingen" else "Verzenden mislukt"
+                        onlineText = if (code == 409) "Vandaag gesloten voor bestellingen / Closed for orders today" else "Verzenden mislukt / Sending failed"
                         toast(message)
                         refreshRoleScreen()
                     }
@@ -735,7 +735,7 @@ class MainActivity : AppCompatActivity() {
                 Store.upsert(this, order)
                 ensureBackgroundOrderStatusService()
                 onlineAvailable = true
-                onlineText = "Online bestellen actief • bestelling ontvangen"
+                onlineText = "Online bestellen actief • bestelling ontvangen / Online ordering active • order received"
                 runOnUiThread {
                     clearCartAfterPlacedOrder()
                     deliverySelected = false
@@ -750,7 +750,7 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (_: Exception) {
                 onlineAvailable = false
-                onlineText = "Online bestelserver niet bereikbaar"
+                onlineText = "Online bestelserver niet bereikbaar / Online ordering server unavailable"
                 runOnUiThread { toast(bi("Bestelling niet verzonden. Je winkelmand blijft bewaard.", "Order was not sent. Your cart has been saved.")); refreshRoleScreen() }
             }
         }.start()
@@ -758,7 +758,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun addToOnlineOrder(order: Order, items: LinkedHashMap<String, Int>) {
         if (items.isEmpty() || order.trackingToken.isBlank()) return
-        onlineText = "Toevoeging veilig verzenden…"
+        onlineText = "Toevoeging veilig verzenden… / Sending addition securely…"
         refreshRoleScreen()
         val itemJson = JSONObject()
         items.forEach { (name, qty) -> itemJson.put(name, qty) }
@@ -769,7 +769,7 @@ class MainActivity : AppCompatActivity() {
                 val json = JSONObject(raw)
                 if (code !in 200..299 || !json.optBoolean("ok")) {
                     val message = json.optString("error", bi("Toevoegen aan je bestelling is niet gelukt.", "Adding items to your order failed."))
-                    runOnUiThread { onlineText = "Toevoegen mislukt"; toast(message); refreshRoleScreen() }
+                    runOnUiThread { onlineText = "Toevoegen mislukt / Adding items failed"; toast(message); refreshRoleScreen() }
                     return@Thread
                 }
                 val o = json.getJSONObject("order")
@@ -783,7 +783,7 @@ class MainActivity : AppCompatActivity() {
                 Store.upsert(this, updated)
                 ensureBackgroundOrderStatusService()
                 onlineAvailable = true
-                onlineText = "Online bestellen actief • toevoeging ontvangen"
+                onlineText = "Online bestellen actief • toevoeging ontvangen / Online ordering active • addition received"
                 runOnUiThread {
                     clearCartAfterPlacedOrder()
                     deliverySelected = false; deliveryAddress = ""; deliveryPostcode = ""; deliveryPaymentMethod = "Cash"; deliveryPaymentPhone = ""
@@ -792,7 +792,7 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (_: Exception) {
                 onlineAvailable = false
-                onlineText = "Online bestelserver niet bereikbaar"
+                onlineText = "Online bestelserver niet bereikbaar / Online ordering server unavailable"
                 runOnUiThread { toast(bi("Toevoeging niet verzonden. Je winkelmand blijft bewaard.", "Addition was not sent. Your cart has been saved.")); refreshRoleScreen() }
             }
         }.start()
@@ -872,7 +872,7 @@ class MainActivity : AppCompatActivity() {
             }
             if (reachedServer) {
                 onlineAvailable = true
-                onlineText = "Online verbonden • status live"
+                onlineText = "Online verbonden • status live / Online connected • live status"
                 lastStatusRefreshText = "Live bijgewerkt: " + java.text.SimpleDateFormat("HH:mm:ss", Locale("nl", "NL")).format(java.util.Date())
             }
             if (changed) runOnUiThread {
@@ -930,7 +930,7 @@ class MainActivity : AppCompatActivity() {
             else -> ""
         }
         val body = listOf(a.message, dates).filter { it.isNotBlank() }.joinToString("\n")
-        hero(if (a.title.isBlank()) "📢 Mededeling van Rutu BBQ" else "📢 " + a.title, body)
+        hero(if (a.title.isBlank()) "📢 Mededeling van Rutu BBQ / Rutu BBQ announcement" else "📢 " + a.title, body)
     }
     private fun cartTotal(): Double = cart.entries.sumOf { (name, qty) ->
         (products.firstOrNull { it.name == name }?.price ?: 0.0) * qty
@@ -984,7 +984,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         eatWellBannerVisible = true
-        hero("Eet smakelijk!", "Uw bestelling is afgegeven.")
+        hero("Eet smakelijk! / Enjoy your meal!", bi("Uw bestelling is afgegeven.", "Your order has been delivered."))
         uiHandler.removeCallbacks(eatWellBannerRefresh)
         uiHandler.postDelayed(eatWellBannerRefresh, remaining + 150L)
     }
@@ -1138,12 +1138,12 @@ class MainActivity : AppCompatActivity() {
     private fun renderCustomer() {
         screen = "customer"; page(true); back { landing() }; logoMark(true); title("Ons menu"); connectionCard()
         section("Online bestellen")
-        centered("Je bestelling gaat via internet naar Rutu BBQ. Hetzelfde wifi-netwerk is niet nodig.", 14f, Color.rgb(210, 199, 182))
+        centered(bi("Je bestelling gaat via internet naar Rutu BBQ. Hetzelfde wifi-netwerk is niet nodig.", "Your order is sent to Rutu BBQ via the internet. You do not need to be on the same Wi-Fi network."), 14f, Color.rgb(210, 199, 182))
         button("Internetverbinding opnieuw controleren", secondary = true) { testOnlineConnection(false) }
         announcementCard()
         showEatWellBannerIfActive()
         if (announcement.orderingBlocked) {
-            hero("Bestellen bij Rutu BBQ", announcement.orderingMessage.ifBlank { "U kunt iedere woensdag van 10:00 tot 18:00 uur bestellen. Wij helpen u graag." })
+            hero("Bestellen bij Rutu BBQ / Order from Rutu BBQ", announcement.orderingMessage.ifBlank { bi("U kunt iedere woensdag van 10:00 tot 18:00 uur bestellen. Wij helpen u graag.", "You can order every Wednesday from 10:00 to 18:00. We are happy to help you.") })
         }
         hero("Van het vuur. Voor jou.", "Kies je favorieten. Met aandacht bereid, vers van het vuur.")
         products.groupBy { it.category }.forEach { (category, items) ->
@@ -1168,8 +1168,8 @@ class MainActivity : AppCompatActivity() {
             section("Openstaand totaal  ${money.format(openOrdersTotal())}")
         }
         if (cart.isEmpty()) {
-            if (openOrders.isEmpty()) hero("Je winkelmand is leeg", "Voeg eerst iets lekkers toe.")
-            else hero("Geen nieuwe items", "Je openstaande bestelling${if (openOrders.size == 1) "" else "en"} blijft hierboven zichtbaar totdat deze is afgerond.")
+            if (openOrders.isEmpty()) hero("Je winkelmand is leeg / Your cart is empty", bi("Voeg eerst iets lekkers toe.", "Add something tasty first."))
+            else hero("Geen nieuwe items / No new items", bi("Je openstaande bestelling${if (openOrders.size == 1) "" else "en"} blijft hierboven zichtbaar totdat deze is afgerond.", "Your open order${if (openOrders.size == 1) "" else "s"} will remain visible above until completed."))
             return
         }
         var total = 0.0
@@ -1187,7 +1187,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (announcement.orderingBlocked && announcement.testOrderAllowed) {
             if (testOrderMode) {
-                hero("Testmodus actief", "Je kunt nu een testbestelling plaatsen.")
+                hero("Testmodus actief / Test mode active", bi("Je kunt nu een testbestelling plaatsen.", "You can now place a test order."))
                 button("Testmodus uitschakelen", secondary = true) {
                     testOrderMode = false
                     testOrderCode = ""
@@ -1201,10 +1201,10 @@ class MainActivity : AppCompatActivity() {
         val addTarget = if (effectiveBlocked) openOrders.firstOrNull { it.trackingToken.isNotBlank() } else null
         if (effectiveBlocked) {
             if (addTarget == null) {
-                hero("Bestellen bij Rutu BBQ", announcement.orderingMessage.ifBlank { "U kunt iedere woensdag van 10:00 tot 18:00 uur bestellen. Wij helpen u graag." } + "\nJe winkelmand blijft bewaard.")
+                hero("Bestellen bij Rutu BBQ / Order from Rutu BBQ", announcement.orderingMessage.ifBlank { bi("U kunt iedere woensdag van 10:00 tot 18:00 uur bestellen. Wij helpen u graag.", "You can order every Wednesday from 10:00 to 18:00. We are happy to help you.") } + "\n" + bi("Je winkelmand blijft bewaard.", "Your cart has been saved."))
                 return
             }
-            hero("Toevoegen aan bestelling #${addTarget.id}", "Omdat je al een openstaande bestelling hebt, mag je hier nog producten aan toevoegen. Er wordt geen nieuwe bestelling aangemaakt.")
+            hero("Toevoegen aan bestelling #${addTarget.id} / Add to order #${addTarget.id}", bi("Omdat je al een openstaande bestelling hebt, mag je hier nog producten aan toevoegen. Er wordt geen nieuwe bestelling aangemaakt.", "Because you already have an open order, you can add products to it here. No new order will be created."))
             section("Toevoeging  ${money.format(productTotal)}")
             button("Toevoegen aan bestelling #${addTarget.id}") { addToOnlineOrder(addTarget, LinkedHashMap(cart)) }
             return
@@ -1310,7 +1310,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (announcement.orderingBlocked && !testOrderMode) {
-            hero("Bestellen bij Rutu BBQ", announcement.orderingMessage.ifBlank { "U kunt iedere woensdag van 10:00 tot 18:00 uur bestellen. Wij helpen u graag." } + "\nJe winkelmand blijft bewaard.")
+            hero("Bestellen bij Rutu BBQ / Order from Rutu BBQ", announcement.orderingMessage.ifBlank { bi("U kunt iedere woensdag van 10:00 tot 18:00 uur bestellen. Wij helpen u graag.", "You can order every Wednesday from 10:00 to 18:00. We are happy to help you.") } + "\n" + bi("Je winkelmand blijft bewaard.", "Your cart has been saved."))
         } else {
             button(if (testOrderMode) "Testbestelling plaatsen" else "Bestelling plaatsen") {
                 if (deliverySelected) {
@@ -1340,19 +1340,19 @@ class MainActivity : AppCompatActivity() {
     private fun myOrders(sync: Boolean = true) {
         screen = "orders"; page(true); back { renderCustomer() }; logoMark(true); title("Mijn bestellingen"); connectionCard(); announcementCard()
         if (sync) syncOnlineStatuses()
-        label("🔄 " + lastStatusRefreshText + " • automatisch elke 2 seconden", Color.rgb(24, 31, 25))
+        label("🔄 " + lastStatusRefreshText + " • automatisch elke 2 seconden / updates every 2 seconds", Color.rgb(24, 31, 25))
 
         val allOrders = Store.all(this).reversed()
         val open = allOrders.filter { it.status !in finalCustomerStatuses }
         val history = allOrders.filter { it.status in finalCustomerStatuses }
 
         section("Openstaande bestellingen")
-        if (open.isEmpty()) centered("Geen openstaande bestellingen.", 15f, Color.rgb(210, 199, 182))
+        if (open.isEmpty()) centered(bi("Geen openstaande bestellingen.", "No open orders."), 15f, Color.rgb(210, 199, 182))
         open.forEach { orderView(it, false) }
 
         section("Bestelgeschiedenis")
         if (history.isEmpty()) {
-            centered("Je bestelgeschiedenis is leeg.", 15f, Color.rgb(210, 199, 182))
+            centered(bi("Je bestelgeschiedenis is leeg.", "Your order history is empty."), 15f, Color.rgb(210, 199, 182))
         } else {
             history.forEach { orderView(it, false) }
             button("Wis bestelgeschiedenis", secondary = true) {
