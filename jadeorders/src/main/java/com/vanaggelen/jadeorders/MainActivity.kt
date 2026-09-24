@@ -146,7 +146,7 @@ class MainActivity : AppCompatActivity() {
     private fun ensureCustomerName() {
         if (customerName().isNotBlank()) return
         val input = EditText(this).apply {
-            hint = "Jouw naam"
+            hint = "Jouw naam / Your name"
             setSingleLine(true)
             setPadding(dp(12), dp(8), dp(12), dp(8))
         }
@@ -1027,13 +1027,13 @@ class MainActivity : AppCompatActivity() {
             val openTotal = openOrdersTotal()
             val label = when {
                 newQty > 0 && openCount > 0 ->
-                    "🛒 Winkelmand • $newQty nieuw • ${money.format(newTotal)}   |   📦 $openCount open • ${money.format(openTotal)}"
+                    "🛒 Winkelmand / Cart • $newQty nieuw / new • ${money.format(newTotal)}   |   📦 $openCount open • ${money.format(openTotal)}"
                 newQty > 0 ->
-                    "🛒 Winkelmand • $newQty items • ${money.format(newTotal)}"
+                    "🛒 Winkelmand / Cart • $newQty items • ${money.format(newTotal)}"
                 openCount > 0 ->
-                    "📦 Openstaand • $openCount bestelling${if (openCount == 1) "" else "en"} • $openItems items • ${money.format(openTotal)}"
+                    "📦 Openstaand / Open • $openCount bestelling${if (openCount == 1) "" else "en"} / order${if (openCount == 1) "" else "s"} • $openItems items • ${money.format(openTotal)}"
                 else ->
-                    "🛒 Winkelmand • 0 items • ${money.format(0.0)}"
+                    "🛒 Winkelmand / Cart • 0 items • ${money.format(0.0)}"
             }
             shell.addView(
                 Button(this).apply {
@@ -1089,12 +1089,12 @@ class MainActivity : AppCompatActivity() {
         role = Role.NONE; screen = "landing"; connectedEndpoint = null
         windowsConnected = false; uiHandler.removeCallbacks(windowsPoller)
         nearby.stopAllEndpoints(); nearby.stopAdvertising(); nearby.stopDiscovery()
-        page(showFamilyFooter = true); spacer(8); logoMark(); title("Welkom bij Rutu BBQ")
+        page(showFamilyFooter = true); spacer(8); logoMark(); title("Welkom bij Rutu BBQ / Welcome to Rutu BBQ")
         centered("Made in fire. Unique taste.", 16f, Color.rgb(205, 179, 122)); spacer(34)
         showEatWellBannerIfActive()
-        hero("Fire. Roots. Flavour.", "Kies je favorieten en geniet.")
+        hero("Fire. Roots. Flavour.", bi("Kies je favorieten en geniet.", "Choose your favourites and enjoy."))
         announcementCard()
-        button("Bekijk het menu") { enterCustomer() }
+        button("Bekijk het menu / View the menu") { enterCustomer() }
 
         spacer(20)
         watchEatWellBanner()
@@ -1136,36 +1136,36 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderCustomer() {
-        screen = "customer"; page(true); back { landing() }; logoMark(true); title("Ons menu"); connectionCard()
-        section("Online bestellen")
+        screen = "customer"; page(true); back { landing() }; logoMark(true); title("Ons menu / Our menu"); connectionCard()
+        section("Online bestellen / Order online")
         centered(bi("Je bestelling gaat via internet naar Rutu BBQ. Hetzelfde wifi-netwerk is niet nodig.", "Your order is sent to Rutu BBQ via the internet. You do not need to be on the same Wi-Fi network."), 14f, Color.rgb(210, 199, 182))
-        button("Internetverbinding opnieuw controleren", secondary = true) { testOnlineConnection(false) }
+        button("Internetverbinding opnieuw controleren / Check internet connection again", secondary = true) { testOnlineConnection(false) }
         announcementCard()
         showEatWellBannerIfActive()
         if (announcement.orderingBlocked) {
             hero("Bestellen bij Rutu BBQ / Order from Rutu BBQ", announcement.orderingMessage.ifBlank { bi("U kunt iedere woensdag van 10:00 tot 18:00 uur bestellen. Wij helpen u graag.", "You can order every Wednesday from 10:00 to 18:00. We are happy to help you.") })
         }
-        hero("Van het vuur. Voor jou.", "Kies je favorieten. Met aandacht bereid, vers van het vuur.")
+        hero("Van het vuur. Voor jou. / From the fire. For you.", bi("Kies je favorieten. Met aandacht bereid, vers van het vuur.", "Choose your favourites. Carefully prepared, fresh from the fire."))
         products.groupBy { it.category }.forEach { (category, items) ->
             section(category)
             items.forEach { p ->
                 val qty = cart[p.name] ?: 0
                 card("${p.name}\n${p.description}\n${money.format(p.price)}${if (qty > 0) "   •   $qty× in mand" else ""}") {
-                    button("+ Toevoegen") { cart[p.name] = qty + 1; saveCart(); renderCustomer() }
+                    button("+ Toevoegen / Add") { cart[p.name] = qty + 1; saveCart(); renderCustomer() }
                 }
             }
         }
-        button("🧾 Mijn bestellingen", secondary = true) { myOrders() }
+        button("🧾 Mijn bestellingen / My orders", secondary = true) { myOrders() }
         watchEatWellBanner()
     }
 
     private fun cartScreen() {
-        screen = "cart"; page(true); back { renderCustomer() }; logoMark(true); title("Jouw winkelmand"); connectionCard(); announcementCard()
+        screen = "cart"; page(true); back { renderCustomer() }; logoMark(true); title("Jouw winkelmand / Your cart"); connectionCard(); announcementCard()
         val openOrders = openOrders().reversed()
         if (openOrders.isNotEmpty()) {
-            section("Openstaande bestellingen")
+            section("Openstaande bestellingen / Open orders")
             openOrders.forEach { orderView(it, false) }
-            section("Openstaand totaal  ${money.format(openOrdersTotal())}")
+            section("Openstaand totaal / Open total  ${money.format(openOrdersTotal())}")
         }
         if (cart.isEmpty()) {
             if (openOrders.isEmpty()) hero("Je winkelmand is leeg / Your cart is empty", bi("Voeg eerst iets lekkers toe.", "Add something tasty first."))
@@ -1188,13 +1188,13 @@ class MainActivity : AppCompatActivity() {
         if (announcement.orderingBlocked && announcement.testOrderAllowed) {
             if (testOrderMode) {
                 hero("Testmodus actief / Test mode active", bi("Je kunt nu een testbestelling plaatsen.", "You can now place a test order."))
-                button("Testmodus uitschakelen", secondary = true) {
+                button("Testmodus uitschakelen / Disable test mode", secondary = true) {
                     testOrderMode = false
                     testOrderCode = ""
                     cartScreen()
                 }
             } else {
-                button("Testbestelling plaatsen", secondary = true) { promptForTestOrderCode() }
+                button("Testbestelling plaatsen / Place test order", secondary = true) { promptForTestOrderCode() }
             }
         }
         val effectiveBlocked = announcement.orderingBlocked && !testOrderMode
@@ -1205,12 +1205,12 @@ class MainActivity : AppCompatActivity() {
                 return
             }
             hero("Toevoegen aan bestelling #${addTarget.id} / Add to order #${addTarget.id}", bi("Omdat je al een openstaande bestelling hebt, mag je hier nog producten aan toevoegen. Er wordt geen nieuwe bestelling aangemaakt.", "Because you already have an open order, you can add products to it here. No new order will be created."))
-            section("Toevoeging  ${money.format(productTotal)}")
-            button("Toevoegen aan bestelling #${addTarget.id}") { addToOnlineOrder(addTarget, LinkedHashMap(cart)) }
+            section("Toevoeging / Addition  ${money.format(productTotal)}")
+            button("Toevoegen aan bestelling #${addTarget.id} / Add to order #${addTarget.id}") { addToOnlineOrder(addTarget, LinkedHashMap(cart)) }
             return
         }
         val deliveryCheck = CheckBox(this).apply {
-            text = "Bezorgen"
+            text = "Bezorgen / Delivery"
             textSize = 17f
             setTextColor(Color.WHITE)
             isChecked = deliverySelected
@@ -1231,7 +1231,7 @@ class MainActivity : AppCompatActivity() {
         var shownTotal = productTotal
         if (deliverySelected) {
             val addressInput = EditText(this).apply {
-                hint = "Straat + huisnummer"
+                hint = "Straat + huisnummer / Street + house number"
                 setText(deliveryAddress)
                 setTextColor(Color.WHITE)
                 setHintTextColor(Color.rgb(160, 150, 138))
@@ -1240,7 +1240,7 @@ class MainActivity : AppCompatActivity() {
                 background = rounded(Color.rgb(23, 20, 15), Color.rgb(91, 69, 34))
             }
             val postcodeInput = EditText(this).apply {
-                hint = "Postcode, bijvoorbeeld 1106 AB"
+                hint = "Postcode, bijvoorbeeld 1106 AB / Postcode, for example 1106 AB"
                 setText(deliveryPostcode)
                 setTextColor(Color.WHITE)
                 setHintTextColor(Color.rgb(160, 150, 138))
@@ -1250,7 +1250,7 @@ class MainActivity : AppCompatActivity() {
             }
             root.addView(addressInput, marginParams(0, 0, 0, 8))
             root.addView(postcodeInput, marginParams(0, 0, 0, 8))
-            section("Betaalwijze bij bezorgen")
+            section("Betaalwijze bij bezorgen / Payment method for delivery")
             val paymentOptions = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
             val cashOption = RadioButton(this).apply {
                 id = android.view.View.generateViewId()
@@ -1275,7 +1275,7 @@ class MainActivity : AppCompatActivity() {
             root.addView(paymentOptions, marginParams(0, 0, 0, 8))
             if (deliveryPaymentMethod == "Tikkie") {
                 val phoneInput = EditText(this).apply {
-                    hint = "Mobiel nummer voor Tikkie (06 of +316)"
+                    hint = "Mobiel nummer voor Tikkie / Mobile number for Tikkie (06 or +316)"
                     inputType = InputType.TYPE_CLASS_PHONE
                     setText(deliveryPaymentPhone)
                     setTextColor(Color.WHITE)
@@ -1296,8 +1296,8 @@ class MainActivity : AppCompatActivity() {
                 val valid = validPostcode(deliveryPostcode)
                 val fee = if (valid) deliveryFeeFor(deliveryPostcode) else 0.0
                 shownTotal = productTotal + fee
-                feeText.text = if (valid) "Bezorgkosten ${money.format(fee)} • postcode ${displayPostcode(deliveryPostcode)}" else "Bezorgkosten: ${money.format(2.50)} binnen 1106 • ${money.format(5.00)} daarbuiten"
-                totalText.text = "Totaal  ${money.format(shownTotal)}"
+                feeText.text = if (valid) "Bezorgkosten / Delivery fee ${money.format(fee)} • postcode ${displayPostcode(deliveryPostcode)}" else "Bezorgkosten / Delivery fee: ${money.format(2.50)} binnen / within 1106 • ${money.format(5.00)} daarbuiten / outside"
+                totalText.text = "Totaal / Total  ${money.format(shownTotal)}"
             }
             addressInput.doAfterTextChanged { deliveryAddress = it?.toString().orEmpty() }
             postcodeInput.doAfterTextChanged {
@@ -1306,13 +1306,13 @@ class MainActivity : AppCompatActivity() {
             }
             refreshDeliveryTotals()
         } else {
-            section("Totaal  ${money.format(productTotal)}")
+            section("Totaal / Total  ${money.format(productTotal)}")
         }
 
         if (announcement.orderingBlocked && !testOrderMode) {
             hero("Bestellen bij Rutu BBQ / Order from Rutu BBQ", announcement.orderingMessage.ifBlank { bi("U kunt iedere woensdag van 10:00 tot 18:00 uur bestellen. Wij helpen u graag.", "You can order every Wednesday from 10:00 to 18:00. We are happy to help you.") } + "\n" + bi("Je winkelmand blijft bewaard.", "Your cart has been saved."))
         } else {
-            button(if (testOrderMode) "Testbestelling plaatsen" else "Bestelling plaatsen") {
+            button(if (testOrderMode) "Testbestelling plaatsen / Place test order" else "Bestelling plaatsen / Place order") {
                 if (deliverySelected) {
                     if (deliveryAddress.trim().length < 3) {
                         toast(bi("Vul je straat en huisnummer in.", "Enter your street and house number."))
@@ -1338,7 +1338,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun myOrders(sync: Boolean = true) {
-        screen = "orders"; page(true); back { renderCustomer() }; logoMark(true); title("Mijn bestellingen"); connectionCard(); announcementCard()
+        screen = "orders"; page(true); back { renderCustomer() }; logoMark(true); title("Mijn bestellingen / My orders"); connectionCard(); announcementCard()
         if (sync) syncOnlineStatuses()
         label("🔄 " + lastStatusRefreshText + " • automatisch elke 2 seconden / updates every 2 seconds", Color.rgb(24, 31, 25))
 
@@ -1346,16 +1346,16 @@ class MainActivity : AppCompatActivity() {
         val open = allOrders.filter { it.status !in finalCustomerStatuses }
         val history = allOrders.filter { it.status in finalCustomerStatuses }
 
-        section("Openstaande bestellingen")
+        section("Openstaande bestellingen / Open orders")
         if (open.isEmpty()) centered(bi("Geen openstaande bestellingen.", "No open orders."), 15f, Color.rgb(210, 199, 182))
         open.forEach { orderView(it, false) }
 
-        section("Bestelgeschiedenis")
+        section("Bestelgeschiedenis / Order history")
         if (history.isEmpty()) {
             centered(bi("Je bestelgeschiedenis is leeg.", "Your order history is empty."), 15f, Color.rgb(210, 199, 182))
         } else {
             history.forEach { orderView(it, false) }
-            button("Wis bestelgeschiedenis", secondary = true) {
+            button("Wis bestelgeschiedenis / Clear order history", secondary = true) {
                 AlertDialog.Builder(this)
                     .setTitle("Bestelgeschiedenis wissen? / Clear order history?")
                     .setMessage(bi("Alleen afgesloten bestellingen worden verwijderd. Openstaande bestellingen blijven staan.", "Only closed orders will be removed. Open orders will remain."))
@@ -1430,7 +1430,7 @@ class MainActivity : AppCompatActivity() {
     private fun label(s: String, bg: Int = Color.rgb(23, 20, 15)) { root.addView(TextView(this).apply { text = s; textSize = 14f; setTextColor(Color.WHITE); setPadding(dp(14), dp(12), dp(14), dp(12)); background = rounded(bg, Color.rgb(48, 48, 55)) }, marginParams(0, 0, 0, 12)) }
     private fun button(s: String, secondary: Boolean = false, action: () -> Unit) { root.addView(Button(this).apply { text = s; isAllCaps = false; minHeight = dp(52); textSize = 16f; setTextColor(if (secondary) Color.WHITE else Color.rgb(20, 14, 7)); backgroundTintList = android.content.res.ColorStateList.valueOf(if (secondary) Color.rgb(36, 32, 25) else Color.rgb(229, 184, 92)); setOnClickListener { action() } }, marginParams(0, 10, 0, 0)) }
     private fun LinearLayout.smallButton(s: String, action: () -> Unit) { addView(Button(this@MainActivity).apply { text = s; isAllCaps = false; minHeight = dp(48); setTextColor(Color.rgb(20, 14, 7)); backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(229, 184, 92)); setOnClickListener { action() } }, marginParams(0, 8, 0, 0)) }
-    private fun back(action: () -> Unit) { root.addView(Button(this).apply { text = "← Terug"; setTextColor(Color.WHITE); backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(36, 32, 25)); setOnClickListener { action() } }, marginParams(0, 0, 0, 8)) }
+    private fun back(action: () -> Unit) { root.addView(Button(this).apply { text = "← Terug / Back"; setTextColor(Color.WHITE); backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(36, 32, 25)); setOnClickListener { action() } }, marginParams(0, 0, 0, 8)) }
     private fun spacer(h: Int) { root.addView(TextView(this), LinearLayout.LayoutParams(1, dp(h))) }
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_LONG).show()
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
