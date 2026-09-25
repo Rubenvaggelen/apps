@@ -11,7 +11,7 @@ import java.util.UUID
 /** Stuurt de volledige WAV in één keer naar Groq Whisper Turbo. */
 object GroqVoiceTranscriber {
     private const val TAG = "GroqVoice"
-    private const val MODEL = "whisper-large-v3-turbo"
+    private const val MODEL = "whisper-large-v3"
     private const val TRANSCRIBE_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 
     sealed class Result {
@@ -58,11 +58,12 @@ object GroqVoiceTranscriber {
             writeField(out, boundary, "model", MODEL)
             writeField(out, boundary, "language", "nl")
             writeField(out, boundary, "response_format", "json")
+            writeField(out, boundary, "temperature", "0")
             writeField(
                 out,
                 boundary,
                 "prompt",
-                "Dit is één volledig Nederlands WhatsApp-antwoord. Schrijf alle gesproken woorden van begin tot einde uit, ook na korte pauzes."
+                "Dit is een Nederlands WhatsApp-antwoord dat in een auto is ingesproken. Transcribeer letterlijk en volledig van begin tot einde. Let extra op Nederlandse namen, straatnamen en gewone spreektaal. Sla geen woorden over en vul niets zelf aan."
             )
             out.writeBytes("--$boundary\r\n")
             out.writeBytes("Content-Disposition: form-data; name=\"file\"; filename=\"the_one_voice.wav\"\r\n")

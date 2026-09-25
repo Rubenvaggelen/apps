@@ -152,7 +152,10 @@ class RadioVoiceRecorder {
     }
 
     private fun createRecorder(): Pair<AudioRecord, Int>? {
-        val sampleRates = intArrayOf(8_000, 16_000, 44_100)
+        // 8 kHz werkte op vrijwel elke K2401, maar maakte Whisper merkbaar
+        // onnauwkeuriger. Probeer daarom eerst 16 kHz (spraakstandaard), daarna
+        // 44,1 kHz en gebruik 8 kHz alleen nog als echte hardware-fallback.
+        val sampleRates = intArrayOf(16_000, 44_100, 8_000)
         val sources = intArrayOf(MediaRecorder.AudioSource.VOICE_RECOGNITION, MediaRecorder.AudioSource.MIC)
         for (sampleRate in sampleRates) {
             val min = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
