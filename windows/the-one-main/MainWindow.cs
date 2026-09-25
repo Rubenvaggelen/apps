@@ -187,7 +187,7 @@ public sealed class MainWindow : Window
         {
             // Zelfde iconen als The One Main / The One Car.
             new("notifications", "Meldingen", "notifications", ShowNotifications),
-            new("mail", "Mail & Kalender", "mail", () => BrowserLauncher.OpenChrome(MailUrl)),
+            new("mail", "Mail & Kalender", "mail", ShowMail),
             new("household", "Huishouden", "household", ShowHousehold),
             new("settings", "Instellingen", "settings", ShowSettings),
             new("ask", "Vraag het", "ask", ShowAsk),
@@ -1049,6 +1049,84 @@ public sealed class MainWindow : Window
             Margin = new Thickness(0, 8, 0, 8),
             Child = child
         };
+    }
+
+    private void ShowMail()
+    {
+        _content.Children.Clear();
+
+        var root = new Grid { Background = Bg };
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+        var bar = new DockPanel
+        {
+            Background = Surface,
+            Margin = new Thickness(18, 14, 18, 10),
+            LastChildFill = false
+        };
+
+        var title = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        title.Children.Add(new TextBlock
+        {
+            Text = "THE ONE MAIL",
+            Foreground = Amber,
+            FontSize = 24,
+            FontWeight = FontWeights.Bold
+        });
+        title.Children.Add(new TextBlock
+        {
+            Text = "Inbox, kalender en antwoorden direct in The One Window",
+            Foreground = TextDim,
+            FontSize = 12,
+            Margin = new Thickness(0, 3, 0, 0)
+        });
+        DockPanel.SetDock(title, Dock.Left);
+        bar.Children.Add(title);
+
+        var actions = new WrapPanel
+        {
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var inbox = ActionButton("Inbox", () => { }, 105);
+        var calendar = ActionButton("Kalender", () => { }, 110);
+        var compose = ActionButton("Nieuwe mail", () => { }, 130);
+        var accounts = ActionButton("Accounts", () => { }, 110);
+        var refresh = ActionButton("Vernieuwen", () => { }, 120);
+
+        actions.Children.Add(inbox);
+        actions.Children.Add(calendar);
+        actions.Children.Add(compose);
+        actions.Children.Add(accounts);
+        actions.Children.Add(refresh);
+        DockPanel.SetDock(actions, Dock.Right);
+        bar.Children.Add(actions);
+
+        Grid.SetRow(bar, 0);
+        root.Children.Add(bar);
+
+        var web = EmbeddedMailService.CreateWebView();
+        Grid.SetRow(web, 1);
+        root.Children.Add(web);
+
+        inbox.Click += async (_, _) => await EmbeddedMailService.ShowInboxAsync(web);
+        calendar.Click += async (_, _) => await EmbeddedMailService.ShowCalendarAsync(web);
+        compose.Click += async (_, _) => await EmbeddedMailService.OpenComposeAsync(web);
+        accounts.Click += async (_, _) => await EmbeddedMailService.ShowAccountsAsync(web);
+        refresh.Click += async (_, _) => await EmbeddedMailService.RefreshAsync(web);
+
+        _content.Children.Add(root);
+
+        _ = EmbeddedMailService.InitializeAsync(web).ContinueWith(task =>
+        {
+            if (task.Exception == null) return;
+            Dispatcher.Invoke(() =>
+                MessageBox.Show(
+                    "The One Mail kon niet starten. Controleer of Microsoft Edge WebView2 Runtime op Windows aanwezig is.",
+                    "The One Mail"));
+        });
     }
 
     private void ShowNotifications()
