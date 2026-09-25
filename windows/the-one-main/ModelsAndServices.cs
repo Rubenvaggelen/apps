@@ -9,7 +9,6 @@ public sealed class SettingsData
 {
     public bool AutoStart { get; set; } = true;
     public bool StartMaximized { get; set; } = true;
-    public string GroqApiKey { get; set; } = "";
     public HashSet<string> HiddenTiles { get; set; } = new();
     public List<CustomShortcut> CustomApps { get; set; } = new();
 }
