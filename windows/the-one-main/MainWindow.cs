@@ -1239,7 +1239,7 @@ public sealed class MainWindow : Window
         });
         header.Children.Add(new TextBlock
         {
-            Text = "Zoek op YouTube en speel direct af in The One Window, of zoek hetzelfde nummer meteen op Spotify.",
+            Text = "Zoek en speel muziek van YouTube of Spotify direct binnen The One Window.",
             Foreground = TextDim,
             FontSize = 13,
             Margin = new Thickness(0, 4, 0, 0)
@@ -1460,7 +1460,7 @@ public sealed class MainWindow : Window
 
         searchButton.Click += async (_, _) => await RunSearch();
 
-        spotifyButton.Click += (_, _) =>
+        spotifyButton.Click += async (_, _) =>
         {
             var query = search.Text.Trim();
             if (query.Length == 0)
@@ -1470,9 +1470,30 @@ public sealed class MainWindow : Window
                 return;
             }
 
-            status.Text = "Spotify openen voor “" + query + "”…";
+            spotifyButton.IsEnabled = false;
+            status.Text = "Spotify laden in The One…";
             status.Foreground = Brush("#1ED760");
-            BrowserLauncher.OpenSpotifySearch(query);
+            results.Children.Clear();
+            results.Children.Add(Label(
+                "Spotify staat rechts in het scherm. Je kunt daar je zoekresultaten kiezen en afspelen.",
+                13,
+                TextDim));
+
+            try
+            {
+                nowPlaying.Text = "Spotify  •  " + query;
+                await YouTubeMusicService.OpenSpotifySearchAsync(web, query);
+                status.Text = "Spotify geopend in The One Window";
+            }
+            catch (Exception ex)
+            {
+                status.Text = "Spotify kon niet worden geopend: " + ex.Message;
+                status.Foreground = Amber;
+            }
+            finally
+            {
+                spotifyButton.IsEnabled = true;
+            }
         };
 
         search.KeyDown += async (_, e) =>

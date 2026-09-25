@@ -105,6 +105,19 @@ public static class YouTubeMusicService
         web.CoreWebView2.Settings.IsStatusBarEnabled = false;
         web.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
 
+        // Houd links die normaal een nieuw browservenster openen ook binnen
+        // het Muziek-paneel van The One Window.
+        web.CoreWebView2.NewWindowRequested += (_, e) =>
+        {
+            try
+            {
+                if (Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri))
+                    web.Source = uri;
+            }
+            catch { }
+            e.Handled = true;
+        };
+
         var playerFolder = EnsurePlayerFiles();
         web.CoreWebView2.SetVirtualHostNameToFolderMapping(
             "theone-music.local",
@@ -112,6 +125,20 @@ public static class YouTubeMusicService
             CoreWebView2HostResourceAccessKind.Allow);
 
         web.Source = new Uri("https://theone-music.local/index.html");
+    }
+
+    public static async Task OpenSpotifySearchAsync(WebView2 web, string query)
+    {
+        await InitializeAsync(web);
+        var value = query?.Trim() ?? "";
+        if (value.Length == 0) return;
+
+        // Spotify opent als volledige webplayer in dezelfde WebView2.
+        // Daardoor blijven zoeken, inloggen en afspelen binnen The One Window
+        // in plaats van in Chrome of een los Spotify-venster.
+        web.Source = new Uri(
+            "https://open.spotify.com/search/" +
+            Uri.EscapeDataString(value));
     }
 
     public static Task PlayAsync(WebView2 web, string videoId) =>
