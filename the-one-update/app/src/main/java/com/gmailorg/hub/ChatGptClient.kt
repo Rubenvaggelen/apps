@@ -11,16 +11,16 @@ import java.net.URL
 import kotlin.math.ceil
 
 /**
- * KIE AI client for Vraag het and Recepten.
+ * ChatGPT client for Vraag het and Recepten, transported through KIE.
  *
- * - Vraag het uses Gemini 3 Flash through KIE.
- * - Recepten uses the same endpoint with KIE Google Search grounding first.
+ * - Vraag het uses ChatGPT GPT-5.2 through KIE.
+ * - Recepten uses GPT-5.2 with KIE Web Search grounding first.
  * - If search does not return a complete recipe, a strict non-search fallback
- *   asks Gemini for a complete recipe from culinary knowledge.
+ *   asks ChatGPT for a complete recipe from culinary knowledge.
  */
 object ChatGptClient {
 
-    private const val TAG = "KieAi"
+    private const val TAG = "ChatGptKie"
     private val mainHandler = Handler(Looper.getMainLooper())
 
     sealed class AskOutcome {
@@ -42,11 +42,11 @@ object ChatGptClient {
                 val answer = fetchQuestion(question)
                 mainHandler.post { callback(AskOutcome.Success(answer)) }
             } catch (e: Exception) {
-                Log.e(TAG, "KIE-vraag mislukt", e)
+                Log.e(TAG, "ChatGPT-vraag mislukt", e)
                 val message = e.message ?: "onbekende fout"
                 mainHandler.post { callback(AskOutcome.Error("AI kon niet antwoorden: $message")) }
             }
-        }, "TheOne-KIE").start()
+        }, "TheOne-ChatGPT").start()
     }
 
     fun askRecipe(context: Context, dish: String, callback: (AskOutcome) -> Unit) {
@@ -57,11 +57,11 @@ object ChatGptClient {
                 val answer = fetchRecipe(dish)
                 mainHandler.post { callback(AskOutcome.Success(answer)) }
             } catch (e: Exception) {
-                Log.e(TAG, "KIE-receptzoekactie mislukt", e)
+                Log.e(TAG, "ChatGPT-receptzoekactie mislukt", e)
                 val message = e.message ?: "onbekende fout"
                 mainHandler.post { callback(AskOutcome.Error("Recept kon niet worden opgezocht: $message")) }
             }
-        }, "TheOne-KIE-Recipe").start()
+        }, "TheOne-ChatGPT-Recipe").start()
     }
 
     fun askFitnessRecipe(context: Context, profileSummary: String, callback: (AskOutcome) -> Unit) {
@@ -72,11 +72,11 @@ object ChatGptClient {
                 val answer = fetchFitnessRecipe(profileSummary)
                 mainHandler.post { callback(AskOutcome.Success(answer)) }
             } catch (e: Exception) {
-                Log.e(TAG, "KIE fitnessrecept mislukt", e)
+                Log.e(TAG, "ChatGPT fitnessrecept mislukt", e)
                 val message = e.message ?: "onbekende fout"
                 mainHandler.post { callback(AskOutcome.Error("Recept van de dag kon niet worden gemaakt: $message")) }
             }
-        }, "TheOne-KIE-FitnessRecipe").start()
+        }, "TheOne-ChatGPT-FitnessRecipe").start()
     }
 
     private fun fetchQuestion(question: String): String {
@@ -114,7 +114,7 @@ object ChatGptClient {
 
             Je antwoord MOET exact deze secties bevatten:
             BRON:
-            [naam website en, als gevonden, de URL; anders: KIE Gemini - algemene culinaire kennis]
+            [naam website en, als gevonden, de URL; anders: ChatGPT GPT-5.2 - algemene culinaire kennis]
 
             INGREDIENTEN:
             - [hoeveelheid] [ingrediënt]
@@ -145,14 +145,14 @@ object ChatGptClient {
                 )
             )
             if (isCompleteRecipeAnswer(grounded)) return grounded
-            firstError = Exception("KIE gaf via webzoeking geen volledig recept terug")
+            firstError = Exception("ChatGPT gaf via webzoeking geen volledig recept terug")
         } catch (e: KieHttpException) {
             if (e.statusCode == 401) throw friendlyFinalError(e)
             firstError = e
-            Log.w(TAG, "KIE web-search recept mislukt; gebruik gewone Gemini fallback", e)
+            Log.w(TAG, "ChatGPT web-search recept mislukt; gebruik gewone Gemini fallback", e)
         } catch (e: Exception) {
             firstError = e
-            Log.w(TAG, "KIE web-search recept gaf technische fout; gebruik fallback", e)
+            Log.w(TAG, "ChatGPT web-search recept gaf technische fout; gebruik fallback", e)
         }
 
         val fallbackPrompt = """
@@ -189,12 +189,12 @@ object ChatGptClient {
                 )
             )
             if (isCompleteRecipeAnswer(fallback)) return fallback
-            throw Exception("KIE gaf geen volledig recept terug")
+            throw Exception("ChatGPT gaf geen volledig recept terug")
         } catch (e: Exception) {
             val finalError = if (!e.message.isNullOrBlank()) {
                 e
             } else {
-                firstError ?: Exception("KIE gaf geen volledig recept terug")
+                firstError ?: Exception("ChatGPT gaf geen volledig recept terug")
             }
             throw finalError
         }
@@ -240,9 +240,9 @@ object ChatGptClient {
             if (isCompleteRecipeAnswer(grounded)) return grounded
         } catch (e: KieHttpException) {
             if (e.statusCode == 401) throw friendlyFinalError(e)
-            Log.w(TAG, "KIE fitnessrecept met webzoeking mislukt; gebruik fallback", e)
+            Log.w(TAG, "ChatGPT fitnessrecept met webzoeking mislukt; gebruik fallback", e)
         } catch (e: Exception) {
-            Log.w(TAG, "KIE fitnessrecept met webzoeking gaf fout; gebruik fallback", e)
+            Log.w(TAG, "ChatGPT fitnessrecept met webzoeking gaf fout; gebruik fallback", e)
         }
 
         val fallbackPrompt = """
@@ -274,7 +274,7 @@ object ChatGptClient {
             executeKieRequest(fallbackPrompt, enableGoogleSearch = false, timeoutMs = 55_000)
         )
         if (isCompleteRecipeAnswer(fallback)) return fallback
-        throw Exception("KIE gaf geen volledig fitnessrecept terug")
+        throw Exception("ChatGPT gaf geen volledig fitnessrecept terug")
     }
 
     private fun executeKieRequest(
@@ -298,7 +298,6 @@ object ChatGptClient {
         val requestBody = JSONObject().apply {
             put("messages", messages)
             put("stream", false)
-            put("include_thoughts", false)
             put("reasoning_effort", "low")
             if (enableGoogleSearch) {
                 put(
@@ -309,7 +308,7 @@ object ChatGptClient {
                             put(
                                 "function",
                                 JSONObject().apply {
-                                    put("name", "googleSearch")
+                                    put("name", "web_search")
                                 }
                             )
                         })
@@ -342,13 +341,13 @@ object ChatGptClient {
         if (responseCode !in 200..299) {
             val apiMessage = json.optJSONObject("error")?.optString("message").orEmpty()
             val friendly = when (responseCode) {
-                401 -> "de ingebouwde KIE API-key is ongeldig"
+                401 -> "de ingebouwde AI API-key is ongeldig"
                 429 -> if (retryAfter != null) {
-                    "de KIE API-limiet is bereikt; probeer over ongeveer $retryAfter seconden opnieuw"
+                    "de ChatGPT API-limiet is bereikt; probeer over ongeveer $retryAfter seconden opnieuw"
                 } else {
-                    "de KIE API-limiet is bereikt; probeer het later opnieuw"
+                    "de ChatGPT API-limiet is bereikt; probeer het later opnieuw"
                 }
-                else -> apiMessage.ifBlank { "KIE HTTP $responseCode" }
+                else -> apiMessage.ifBlank { "ChatGPT HTTP $responseCode" }
             }
             throw KieHttpException(responseCode, retryAfter, friendly)
         }
@@ -371,7 +370,7 @@ object ChatGptClient {
             else -> ""
         }
 
-        if (answer.isBlank()) throw Exception("KIE gaf geen antwoordtekst terug")
+        if (answer.isBlank()) throw Exception("ChatGPT gaf geen antwoordtekst terug")
         return answer
     }
 
@@ -413,7 +412,7 @@ object ChatGptClient {
 
     private fun friendlyFinalError(error: KieHttpException): Exception {
         return if (error.statusCode == 429 && error.retryAfterSeconds != null) {
-            Exception("de KIE API-limiet is bereikt; probeer over ongeveer ${error.retryAfterSeconds} seconden opnieuw")
+            Exception("de ChatGPT API-limiet is bereikt; probeer over ongeveer ${error.retryAfterSeconds} seconden opnieuw")
         } else {
             Exception(error.message)
         }
