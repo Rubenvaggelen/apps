@@ -29,9 +29,11 @@ public static class InstallationManager
         if (PathsEqual(currentExe, InstalledExe))
             return false;
 
-        // Eerste run: zet één vaste kopie neer. Vanaf hier werken alle updates
-        // rechtstreeks op dezelfde installatie; opnieuw installeren is niet nodig.
-        File.Copy(currentExe, InstalledExe, overwrite: true);
+        // Eerste run: kopieer de HELE publish-map. WPF self-contained builds
+        // bevatten naast TheOneMain.exe ook native runtimebestanden die nodig zijn
+        // om de app daadwerkelijk te starten.
+        var sourceDirectory = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
+        CopyDirectory(sourceDirectory, InstallDirectory);
         EnsureShortcuts();
 
         Process.Start(new ProcessStartInfo(InstalledExe)
@@ -98,6 +100,22 @@ public static class InstallationManager
             CreateNoWindow = true
         });
         process?.WaitForExit(5000);
+    }
+
+    private static void CopyDirectory(string sourceDirectory, string targetDirectory)
+    {
+        Directory.CreateDirectory(targetDirectory);
+
+        foreach (var sourceFile in Directory.EnumerateFiles(sourceDirectory, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(sourceDirectory, sourceFile);
+            var targetFile = Path.Combine(targetDirectory, relative);
+            var targetParent = Path.GetDirectoryName(targetFile);
+            if (!string.IsNullOrWhiteSpace(targetParent))
+                Directory.CreateDirectory(targetParent);
+
+            File.Copy(sourceFile, targetFile, overwrite: true);
+        }
     }
 
     private static bool PathsEqual(string a, string b) =>
