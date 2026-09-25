@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-windows:
@@ -23,6 +23,18 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Stamp Windows build number
+        shell: pwsh
+        run: |
+          @"
+          namespace TheOneMain.Windows;
+
+          public static class BuildInfo
+          {
+              public const int Version = ${{ github.run_number }};
+          }
+          "@ | Set-Content -Encoding UTF8 .\windows\the-one-main\BuildInfo.cs
+
       - name: Publish single EXE
         shell: pwsh
         run: |
@@ -33,9 +45,20 @@ jobs:
         run: |
           Compress-Archive -Path .\out\the-one-main-windows\* -DestinationPath .\The-One-Main-Windows.zip -Force
 
-      - name: Upload Windows app
+      - name: Upload Windows app artifact
         uses: actions/upload-artifact@v4
         with:
           name: The-One-Main-Windows
           path: The-One-Main-Windows.zip
           if-no-files-found: error
+
+      - name: Publish Windows-only update
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: windows-v${{ github.run_number }}
+          name: "The One Main Windows — build ${{ github.run_number }}"
+          prerelease: true
+          make_latest: false
+          files: The-One-Main-Windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

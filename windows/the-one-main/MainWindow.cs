@@ -638,6 +638,11 @@ public sealed class MainWindow : Window
             MessageBox.Show("Instellingen opgeslagen.", "The One");
         }));
 
+        body.Children.Add(ActionButton("Controleer op Windows-updates", async () =>
+        {
+            await WindowsUpdateService.CheckForUpdateAsync(this, silentIfCurrent: false);
+        }));
+
         body.Children.Add(Label("Verborgen tegels", 19, Amber));
         if (_settings.HiddenTiles.Count == 0)
             body.Children.Add(Label("Geen verborgen tegels.", 14, TextDim));

@@ -3,6 +3,14 @@ name: Build APK
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'app/**'
+      - 'carradio/**'
+      - 'remoteapp/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'gradle.properties'
+      - 'gradle/**'
   workflow_dispatch: {}
 
 permissions:

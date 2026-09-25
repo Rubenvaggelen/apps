@@ -30,3 +30,9 @@ dotnet publish .\TheOneMain.Windows.csproj -c Release -r win-x64 --self-containe
 ```
 
 The executable is created under `bin\Release\net8.0-windows\win-x64\publish\TheOneMain.exe`.
+
+## Updates
+The Windows app has its own in-app update channel.
+Windows builds are published as GitHub prereleases with tags `windows-v<build>`.
+The app checks this channel on startup and can replace its own files after closing, then restart automatically.
+These Windows-only releases are intentionally separate from the Android The One / The One Car release channel.

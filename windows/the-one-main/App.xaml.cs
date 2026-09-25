@@ -10,5 +10,9 @@ public partial class App : Application
         var window = new MainWindow();
         MainWindow = window;
         window.Show();
+
+        // Windows heeft een volledig eigen updatekanaal. Dit raakt The One
+        // Android en The One Car niet.
+        _ = WindowsUpdateService.CheckForUpdateAsync(window, silentIfCurrent: true);
     }
 }
