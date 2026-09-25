@@ -20,6 +20,14 @@ public sealed class RutuCompanyInstall
 
 public static class RutuCompanyAppService
 {
+    private const int SwRestore = 9;
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+
     // Laatste Windows Company Build die binnen het Rutu-project gepubliceerd is.
     public const string LatestKnownVersion = "0.4.30";
 
@@ -63,14 +71,72 @@ public static class RutuCompanyAppService
         if (!install.Found || string.IsNullOrWhiteSpace(install.LauncherPath))
             return;
 
+        OpenImportedPath(install.LauncherPath);
+    }
+
+    public static void OpenImportedPath(string launcherPath)
+    {
+        if (string.IsNullOrWhiteSpace(launcherPath))
+            return;
+
         try
         {
-            Process.Start(new ProcessStartInfo(install.LauncherPath)
+            var executable = ResolveExecutable(launcherPath);
+            if (TryActivateExisting(executable))
+                return;
+
+            Process.Start(new ProcessStartInfo(launcherPath)
             {
                 UseShellExecute = true
             });
         }
         catch { }
+    }
+
+    private static bool TryActivateExisting(string executable)
+    {
+        if (string.IsNullOrWhiteSpace(executable))
+            return false;
+
+        var processName = Path.GetFileNameWithoutExtension(executable);
+        if (string.IsNullOrWhiteSpace(processName))
+            return false;
+
+        try
+        {
+            var currentPid = Environment.ProcessId;
+            var matches = Process.GetProcessesByName(processName)
+                .Where(p => p.Id != currentPid)
+                .ToList();
+
+            if (matches.Count == 0)
+                return false;
+
+            // Electron kan meerdere processen met dezelfde naam hebben.
+            // Gebruik het proces met een echt hoofdvenster en activeer dat.
+            foreach (var process in matches)
+            {
+                try
+                {
+                    process.Refresh();
+                    if (process.MainWindowHandle == IntPtr.Zero)
+                        continue;
+
+                    ShowWindowAsync(process.MainWindowHandle, SwRestore);
+                    SetForegroundWindow(process.MainWindowHandle);
+                    return true;
+                }
+                catch { }
+            }
+
+            // Er draait al een Rutu-proces zonder zichtbaar venster. Start dan
+            // geen tweede instance: die zou opnieuw poort 8765 claimen en EADDRINUSE geven.
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static string? FindShortcut()
