@@ -11,6 +11,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
 namespace TheOneMain.Windows;
@@ -20,14 +21,14 @@ public sealed class MainWindow : Window
     private const string MailUrl = "https://rubenvaggelen.github.io/Gmailorg/";
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(35) };
 
-    private readonly Brush Bg = Brush("#12141C");
-    private readonly Brush Surface = Brush("#1B1F2C");
-    private readonly Brush SurfaceRaised = Brush("#232838");
-    private readonly Brush Line = Brush("#2B3145");
-    private readonly Brush TextMain = Brush("#ECEAE3");
-    private readonly Brush TextDim = Brush("#8C93A8");
-    private readonly Brush Amber = Brush("#E0A458");
-    private readonly Brush Sage = Brush("#6FA287");
+    private readonly Brush Bg = Brush("#05070B");
+    private readonly Brush Surface = Brush("#0B111A");
+    private readonly Brush SurfaceRaised = Brush("#111722");
+    private readonly Brush Line = Brush("#243241");
+    private readonly Brush TextMain = Brush("#F3F8FC");
+    private readonly Brush TextDim = Brush("#9AA6B2");
+    private readonly Brush Amber = Brush("#20B8FF");
+    private readonly Brush Sage = Brush("#39D98A");
 
     private readonly Grid _content = new();
     private readonly TextBlock _clock = new();
@@ -78,73 +79,103 @@ public sealed class MainWindow : Window
 
     private UIElement BuildTopBar()
     {
-        var border = new Border
+        var shell = new Border
         {
             Background = Surface,
-            BorderBrush = Line,
+            BorderBrush = Brush("#16394B"),
             BorderThickness = new Thickness(0, 0, 0, 1),
-            Padding = new Thickness(18, 12, 18, 12)
+            Padding = new Thickness(18, 9, 18, 9),
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Color.FromRgb(32, 184, 255), BlurRadius = 14, Opacity = 0.12, ShadowDepth = 0
+            }
         };
-
         var dock = new DockPanel();
 
-        var home = SmallButton("⌂  Home", ShowHome);
-        DockPanel.SetDock(home, Dock.Left);
-        dock.Children.Add(home);
+        var brand = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        brand.Children.Add(CreateLogo(48));
+        var brandText = new StackPanel { Margin = new Thickness(12,0,0,0), VerticalAlignment = VerticalAlignment.Center };
+        brandText.Children.Add(new TextBlock
+        {
+            Text = "THE ONE", Foreground = Amber, FontSize = 23, FontWeight = FontWeights.Bold, CharacterSpacing = 85
+        });
+        brandText.Children.Add(new TextBlock
+        {
+            Text = "MAIN  •  WINDOWS", Foreground = TextMain, FontSize = 11,
+            FontWeight = FontWeights.SemiBold, CharacterSpacing = 55, Margin = new Thickness(1,2,0,0)
+        });
+        brand.Children.Add(brandText);
+        DockPanel.SetDock(brand, Dock.Left);
+        dock.Children.Add(brand);
 
+        var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        right.Children.Add(new TextBlock
+        {
+            Text = "THE ONE FAMILY", Foreground = Amber, FontSize = 10, FontWeight = FontWeights.Bold,
+            CharacterSpacing = 60, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0,0,18,0)
+        });
         _clock.Foreground = TextDim;
         _clock.FontSize = 14;
         _clock.VerticalAlignment = VerticalAlignment.Center;
-        _clock.Margin = new Thickness(16, 0, 0, 0);
-        DockPanel.SetDock(_clock, Dock.Right);
-        dock.Children.Add(_clock);
+        _clock.Margin = new Thickness(0,0,14,0);
+        right.Children.Add(_clock);
+        right.Children.Add(SmallButton("⌂  Menu", ShowHome));
+        DockPanel.SetDock(right, Dock.Right);
+        dock.Children.Add(right);
 
-        var title = new TextBlock
-        {
-            Text = "THE ONE",
-            Foreground = Amber,
-            FontSize = 30,
-            FontWeight = FontWeights.Bold,
-            FontFamily = new FontFamily("Georgia"),
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            Effect = new System.Windows.Media.Effects.DropShadowEffect
-            {
-                Color = Color.FromRgb(224, 164, 88),
-                BlurRadius = 10,
-                Opacity = 0.35,
-                ShadowDepth = 0
-            }
-        };
-        dock.Children.Add(title);
-
-        border.Child = dock;
-        return border;
+        shell.Child = dock;
+        return shell;
     }
 
     private void ShowHome()
     {
         var outer = new Grid { Background = Bg };
-        var watermark = new TextBlock
-        {
-            Text = "THE ONE",
-            FontFamily = new FontFamily("Georgia"),
-            FontWeight = FontWeights.Bold,
-            FontSize = 120,
-            Foreground = new SolidColorBrush(Color.FromArgb(18, 224, 164, 88)),
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            IsHitTestVisible = false
-        };
+        var watermark = CreateLogo(500, 0.055);
+        watermark.HorizontalAlignment = HorizontalAlignment.Center;
+        watermark.VerticalAlignment = VerticalAlignment.Center;
+        watermark.IsHitTestVisible = false;
         outer.Children.Add(watermark);
 
-        var scroll = new ScrollViewer
+        var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(20,18,20,24) };
+        var page = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, MaxWidth = 1260 };
+
+        var hero = new Border
         {
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Padding = new Thickness(18)
+            Background = Brush("#091018"), BorderBrush = Brush("#16394B"), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(14), Padding = new Thickness(22,16,22,16), Margin = new Thickness(8,0,8,14)
         };
+        var heroRow = new DockPanel();
+        var heroLogo = CreateLogo(74);
+        DockPanel.SetDock(heroLogo, Dock.Left);
+        heroRow.Children.Add(heroLogo);
+        var heroText = new StackPanel { Margin = new Thickness(18,3,0,0), VerticalAlignment = VerticalAlignment.Center };
+        heroText.Children.Add(new TextBlock
+        {
+            Text = "THE ONE MAIN", Foreground = TextMain, FontSize = 30, FontWeight = FontWeights.Bold, CharacterSpacing = 60
+        });
+        heroText.Children.Add(new TextBlock
+        {
+            Text = "Alles op één plek  •  Windows", Foreground = TextDim, FontSize = 14, Margin = new Thickness(0,4,0,0)
+        });
+        heroRow.Children.Add(heroText);
+        var family = new Border
+        {
+            Background = Brush("#0B2533"), BorderBrush = Amber, BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(14), Padding = new Thickness(14,7,14,7), VerticalAlignment = VerticalAlignment.Center
+        };
+        family.Child = new TextBlock
+        {
+            Text = "PART OF THE ONE FAMILY", Foreground = Amber, FontSize = 10,
+            FontWeight = FontWeights.Bold, CharacterSpacing = 55
+        };
+        DockPanel.SetDock(family, Dock.Right);
+        heroRow.Children.Add(family);
+        hero.Child = heroRow;
+        page.Children.Add(hero);
+
         var wrap = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Center };
-        scroll.Content = wrap;
+        page.Children.Add(wrap);
+        scroll.Content = page;
         outer.Children.Add(scroll);
 
         var tiles = new List<TileDef>
@@ -179,6 +210,14 @@ public sealed class MainWindow : Window
         }
 
         wrap.Children.Add(BuildTile("add", "App toevoegen", "+", AddWindowsApp, custom: false, allowHide: false));
+        page.Children.Add(new Border { Height = 1, Background = Brush("#16394B"), Margin = new Thickness(30,20,30,12) });
+        page.Children.Add(new TextBlock
+        {
+            Text = "THE ONE FAMILY  •  MAIN  •  CAR  •  MEDIA  •  REMOTE",
+            Foreground = TextDim, FontSize = 10, FontWeight = FontWeights.SemiBold,
+            CharacterSpacing = 60, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0,0,0,10)
+        });
+
         _content.Children.Clear();
         _content.Children.Add(outer);
     }
@@ -187,38 +226,42 @@ public sealed class MainWindow : Window
     {
         var button = new Button
         {
-            Width = 225,
-            Height = 145,
-            Margin = new Thickness(8),
-            Background = Surface,
-            BorderBrush = Line,
-            BorderThickness = new Thickness(1),
-            Foreground = TextMain,
-            Cursor = Cursors.Hand,
-            Padding = new Thickness(14)
+            Width = 225, Height = 150, Margin = new Thickness(8), Background = Surface,
+            BorderBrush = Brush("#16394B"), BorderThickness = new Thickness(1), Foreground = TextMain,
+            Cursor = Cursors.Hand, Padding = new Thickness(14),
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Colors.Black, BlurRadius = 14, Opacity = 0.35, ShadowDepth = 3
+            }
         };
 
         var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        stack.Children.Add(new TextBlock
+        var badge = new Border
         {
-            Text = icon,
-            FontSize = 38,
-            Foreground = Amber,
-            HorizontalAlignment = HorizontalAlignment.Center,
+            Width = 62, Height = 62, CornerRadius = new CornerRadius(31), Background = Brush("#0B2533"),
+            BorderBrush = Amber, BorderThickness = new Thickness(1.2), HorizontalAlignment = HorizontalAlignment.Center,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Color.FromRgb(32,184,255), BlurRadius = 14, Opacity = 0.28, ShadowDepth = 0
+            }
+        };
+        badge.Child = new TextBlock
+        {
+            Text = icon, FontSize = 29, Foreground = Amber, HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Center,
             FontFamily = new FontFamily("Segoe UI Emoji")
-        });
+        };
+        stack.Children.Add(badge);
         stack.Children.Add(new TextBlock
         {
-            Text = label,
-            FontSize = 15,
-            Foreground = TextMain,
-            TextWrapping = TextWrapping.Wrap,
-            TextAlignment = TextAlignment.Center,
-            Margin = new Thickness(4, 10, 4, 0),
-            MaxWidth = 185
+            Text = label, FontSize = 14.5, FontWeight = FontWeights.SemiBold, Foreground = TextMain,
+            TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center,
+            Margin = new Thickness(4,11,4,0), MaxWidth = 190
         });
         button.Content = stack;
         button.Click += (_, _) => action();
+        button.MouseEnter += (_, _) => { button.Background = SurfaceRaised; button.BorderBrush = Amber; };
+        button.MouseLeave += (_, _) => { button.Background = Surface; button.BorderBrush = Brush("#16394B"); };
 
         if (allowHide)
         {
@@ -226,17 +269,14 @@ public sealed class MainWindow : Window
             var item = new MenuItem { Header = custom ? "Snelkoppeling verwijderen" : "Tegel verbergen" };
             item.Click += (_, _) =>
             {
-                if (custom)
-                    _settings.CustomApps.RemoveAll(x => x.Id == id);
-                else
-                    _settings.HiddenTiles.Add(id);
+                if (custom) _settings.CustomApps.RemoveAll(x => x.Id == id);
+                else _settings.HiddenTiles.Add(id);
                 SaveSettings();
                 ShowHome();
             };
             menu.Items.Add(item);
             button.ContextMenu = menu;
         }
-
         return button;
     }
 
@@ -250,11 +290,12 @@ public sealed class MainWindow : Window
         };
         body.Children.Add(new TextBlock
         {
-            Text = title,
+            Text = title.ToUpperInvariant(),
             Foreground = Amber,
-            FontSize = 30,
-            FontFamily = new FontFamily("Georgia"),
+            FontSize = 28,
+            FontFamily = new FontFamily("Segoe UI"),
             FontWeight = FontWeights.Bold,
+            CharacterSpacing = 55,
             Margin = new Thickness(0, 0, 0, 8)
         });
         if (!string.IsNullOrWhiteSpace(subtitle))
@@ -294,6 +335,15 @@ public sealed class MainWindow : Window
         };
         b.Click += (_, _) => action();
         return b;
+    }
+
+    private Image CreateLogo(double size, double opacity = 1.0)
+    {
+        return new Image
+        {
+            Width = size, Height = size, Opacity = opacity, Stretch = Stretch.Uniform,
+            Source = new BitmapImage(new Uri("pack://application:,,,/Assets/the_one_logo.png", UriKind.Absolute))
+        };
     }
 
     private Button SmallButton(string text, Action action)
