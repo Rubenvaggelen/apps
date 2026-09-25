@@ -155,6 +155,35 @@ public static class BrowserLauncher
         catch { }
     }
 
+    public static void OpenSpotifySearch(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return;
+
+        var encoded = Uri.EscapeDataString(query.Trim());
+
+        try
+        {
+            Process.Start(new ProcessStartInfo("spotify:search:" + encoded)
+            {
+                UseShellExecute = true
+            });
+            return;
+        }
+        catch
+        {
+            // Spotify desktop app is niet geïnstalleerd of niet geregistreerd.
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo("https://open.spotify.com/search/" + encoded)
+            {
+                UseShellExecute = true
+            });
+        }
+        catch { }
+    }
+
     public static void OpenProgram(string path)
     {
         try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); } catch { }

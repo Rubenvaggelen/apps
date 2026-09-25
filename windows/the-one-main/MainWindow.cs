@@ -1239,7 +1239,7 @@ public sealed class MainWindow : Window
         });
         header.Children.Add(new TextBlock
         {
-            Text = "Zoek op YouTube en speel het nummer direct af binnen The One Window.",
+            Text = "Zoek op YouTube en speel direct af in The One Window, of zoek hetzelfde nummer meteen op Spotify.",
             Foreground = TextDim,
             FontSize = 13,
             Margin = new Thickness(0, 4, 0, 0)
@@ -1247,9 +1247,18 @@ public sealed class MainWindow : Window
 
         var searchRow = new DockPanel { Margin = new Thickness(0, 14, 0, 0) };
         var search = Input("Artiest of nummer");
-        var searchButton = ActionButton("Zoeken op YouTube", () => { }, 190);
+
+        var searchButton = ActionButton("▶ YouTube", () => { }, 150);
         DockPanel.SetDock(searchButton, Dock.Right);
         searchRow.Children.Add(searchButton);
+
+        var spotifyButton = ActionButton("● Spotify", () => { }, 140);
+        spotifyButton.Background = Brush("#1DB954");
+        spotifyButton.Foreground = Brushes.White;
+        spotifyButton.BorderBrush = Brush("#1ED760");
+        DockPanel.SetDock(spotifyButton, Dock.Right);
+        searchRow.Children.Add(spotifyButton);
+
         searchRow.Children.Add(search);
         header.Children.Add(searchRow);
 
@@ -1419,6 +1428,22 @@ public sealed class MainWindow : Window
         }
 
         searchButton.Click += async (_, _) => await RunSearch();
+
+        spotifyButton.Click += (_, _) =>
+        {
+            var query = search.Text.Trim();
+            if (query.Length == 0)
+            {
+                status.Text = "Vul eerst een artiest of nummer in.";
+                status.Foreground = Amber;
+                return;
+            }
+
+            status.Text = "Spotify openen voor “" + query + "”…";
+            status.Foreground = Brush("#1ED760");
+            BrowserLauncher.OpenSpotifySearch(query);
+        };
+
         search.KeyDown += async (_, e) =>
         {
             if (e.Key != Key.Enter) return;
