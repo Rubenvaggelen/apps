@@ -100,13 +100,13 @@ class ChatActivity : AppCompatActivity() {
 
         Thread {
             var sent = false
-            repeat(12) { attempt ->
+            for (attempt in 0 until 12) {
                 if (attempt > 0) {
                     try { Thread.sleep(900L) } catch (_: InterruptedException) {}
                 }
                 if (BluetoothListenerService.sendTextReply(contact, text)) {
                     sent = true
-                    return@repeat
+                    break
                 }
             }
 
