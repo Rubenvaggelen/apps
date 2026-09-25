@@ -35,6 +35,22 @@ jobs:
           }
           "@ | Set-Content -Encoding UTF8 .\windows\the-one-main\BuildInfo.cs
 
+      - name: Reuse The One Main YouTube configuration
+        shell: pwsh
+        run: |
+          $source = Get-Content .\the-one-update\app\build.gradle -Raw
+          $match = [regex]::Match($source, "YOUTUBE_API_KEY.*?\?:\s*'([^']+)'", [System.Text.RegularExpressions.RegexOptions]::Singleline)
+          if (-not $match.Success) { throw "YouTube configuration from The One Main not found" }
+          $key = $match.Groups[1].Value
+          @"
+          namespace TheOneMain.Windows;
+
+          public static class BuildSecrets
+          {
+              public const string YouTubeApiKey = "$key";
+          }
+          "@ | Set-Content -Encoding UTF8 .\windows\the-one-main\BuildSecrets.cs
+
       - name: Publish single EXE
         shell: pwsh
         run: |

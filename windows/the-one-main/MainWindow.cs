@@ -189,6 +189,7 @@ public sealed class MainWindow : Window
             new("notifications", "Meldingen", "notifications", ShowNotifications),
             new("mail", "Mail & Kalender", "mail", ShowMail),
             new("household", "Huishouden", "household", ShowHousehold),
+            new("music", "Muziek", "music", ShowMusic),
             new("settings", "Instellingen", "settings", ShowSettings),
             new("ask", "Vraag het", "ask", ShowAsk),
             new("recipes", "Recepten", "recipes", ShowRecipes),
@@ -1218,6 +1219,214 @@ public sealed class MainWindow : Window
         row.Children.Add(ActionButton("The One routeplanner", () => BrowserLauncher.OpenChrome(MailUrl + "#route-standalone")));
         row.Children.Add(ActionButton("Brandstofprijzen", () => BrowserLauncher.OpenChrome("https://www.anwb.nl/auto/brandstof/brandstofprijzen")));
         body.Children.Add(row);
+    }
+
+    private void ShowMusic()
+    {
+        _content.Children.Clear();
+
+        var root = new Grid { Background = Bg, Margin = new Thickness(22, 18, 22, 20) };
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+        var header = new StackPanel { Margin = new Thickness(0, 0, 0, 14) };
+        header.Children.Add(new TextBlock
+        {
+            Text = "MUZIEK",
+            Foreground = Amber,
+            FontSize = 28,
+            FontWeight = FontWeights.Bold
+        });
+        header.Children.Add(new TextBlock
+        {
+            Text = "Zoek op YouTube en speel het nummer direct af binnen The One Window.",
+            Foreground = TextDim,
+            FontSize = 13,
+            Margin = new Thickness(0, 4, 0, 0)
+        });
+
+        var searchRow = new DockPanel { Margin = new Thickness(0, 14, 0, 0) };
+        var search = Input("Artiest of nummer");
+        var searchButton = ActionButton("Zoeken op YouTube", () => { }, 190);
+        DockPanel.SetDock(searchButton, Dock.Right);
+        searchRow.Children.Add(searchButton);
+        searchRow.Children.Add(search);
+        header.Children.Add(searchRow);
+
+        var status = Label("Typ een nummer of artiest om te zoeken.", 12, TextDim);
+        status.Margin = new Thickness(0, 8, 0, 0);
+        header.Children.Add(status);
+
+        Grid.SetRow(header, 0);
+        root.Children.Add(header);
+
+        var body = new Grid();
+        body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.42, GridUnitType.Star) });
+        body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.58, GridUnitType.Star) });
+
+        var resultsScroll = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Margin = new Thickness(0, 0, 10, 0)
+        };
+        var results = new StackPanel();
+        resultsScroll.Content = results;
+        Grid.SetColumn(resultsScroll, 0);
+        body.Children.Add(resultsScroll);
+
+        var playerCard = new Border
+        {
+            Background = Surface,
+            BorderBrush = Brush("#174963"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(18),
+            Margin = new Thickness(10, 0, 0, 0),
+            Padding = new Thickness(12)
+        };
+
+        var playerGrid = new Grid();
+        playerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        playerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+        var nowPlaying = new TextBlock
+        {
+            Text = "Kies links een nummer",
+            Foreground = TextMain,
+            FontSize = 16,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(4, 0, 4, 10),
+            TextWrapping = TextWrapping.Wrap
+        };
+        Grid.SetRow(nowPlaying, 0);
+        playerGrid.Children.Add(nowPlaying);
+
+        var web = YouTubeMusicService.CreatePlayer();
+        Grid.SetRow(web, 1);
+        playerGrid.Children.Add(web);
+
+        playerCard.Child = playerGrid;
+        Grid.SetColumn(playerCard, 1);
+        body.Children.Add(playerCard);
+
+        Grid.SetRow(body, 1);
+        root.Children.Add(body);
+        _content.Children.Add(root);
+
+        async Task RunSearch()
+        {
+            var query = search.Text.Trim();
+            if (query.Length == 0)
+            {
+                status.Text = "Vul eerst een artiest of nummer in.";
+                status.Foreground = Amber;
+                return;
+            }
+
+            searchButton.IsEnabled = false;
+            results.Children.Clear();
+            status.Text = "Zoeken op YouTube…";
+            status.Foreground = TextDim;
+
+            try
+            {
+                var found = await YouTubeMusicService.SearchAsync(query);
+                results.Children.Clear();
+
+                if (found.Count == 0)
+                {
+                    status.Text = "Geen nummers gevonden.";
+                    status.Foreground = Amber;
+                    return;
+                }
+
+                status.Text = $"{found.Count} resultaten gevonden";
+                status.Foreground = Sage;
+
+                foreach (var item in found)
+                {
+                    var captured = item;
+                    var card = new Button
+                    {
+                        Background = Surface,
+                        BorderBrush = Brush("#174963"),
+                        BorderThickness = new Thickness(1),
+                        Padding = new Thickness(12),
+                        Margin = new Thickness(0, 0, 0, 9),
+                        HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                        Cursor = Cursors.Hand,
+                        FocusVisualStyle = null
+                    };
+
+                    var row = new Grid();
+                    row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+                    row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                    var thumb = YouTubeMusicService.CreateThumbnail(captured.ThumbnailUrl);
+                    thumb.Margin = new Thickness(0, 0, 12, 0);
+                    Grid.SetColumn(thumb, 0);
+                    row.Children.Add(thumb);
+
+                    var meta = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+                    meta.Children.Add(new TextBlock
+                    {
+                        Text = captured.Title,
+                        Foreground = TextMain,
+                        FontSize = 14,
+                        FontWeight = FontWeights.SemiBold,
+                        TextWrapping = TextWrapping.Wrap
+                    });
+                    meta.Children.Add(new TextBlock
+                    {
+                        Text = captured.Channel,
+                        Foreground = TextDim,
+                        FontSize = 11,
+                        Margin = new Thickness(0, 5, 0, 0),
+                        TextTrimming = TextTrimming.CharacterEllipsis
+                    });
+                    Grid.SetColumn(meta, 1);
+                    row.Children.Add(meta);
+
+                    card.Content = row;
+                    card.MouseEnter += (_, _) =>
+                    {
+                        card.BorderBrush = Amber;
+                        card.Background = SurfaceRaised;
+                    };
+                    card.MouseLeave += (_, _) =>
+                    {
+                        card.BorderBrush = Brush("#174963");
+                        card.Background = Surface;
+                    };
+
+                    card.Click += async (_, _) =>
+                    {
+                        nowPlaying.Text = $"{captured.Title}  •  {captured.Channel}";
+                        await YouTubeMusicService.PlayAsync(web, captured.VideoId);
+                    };
+
+                    results.Children.Add(card);
+                }
+            }
+            catch (Exception ex)
+            {
+                status.Text = "Zoeken mislukt: " + ex.Message;
+                status.Foreground = Amber;
+            }
+            finally
+            {
+                searchButton.IsEnabled = true;
+            }
+        }
+
+        searchButton.Click += async (_, _) => await RunSearch();
+        search.KeyDown += async (_, e) =>
+        {
+            if (e.Key != Key.Enter) return;
+            e.Handled = true;
+            await RunSearch();
+        };
+
+        _ = YouTubeMusicService.InitializeAsync(web);
     }
 
     private void ShowHousehold()
