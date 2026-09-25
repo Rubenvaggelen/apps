@@ -44,3 +44,7 @@ Daarna maakt de app automatisch:
 - een bureaubladkoppeling: `The One Window`
 
 Vanaf dat moment worden nieuwe Windows-versies alleen als in-app update over deze vaste installatie gezet.
+
+- Startmenu apps can be added directly as dashboard tiles
+- Websites such as YouTube can be added as dashboard tiles
+- Chrome has a dedicated The One styled neon web tile

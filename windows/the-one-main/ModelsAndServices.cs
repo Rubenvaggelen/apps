@@ -19,6 +19,7 @@ public sealed class CustomShortcut
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Label { get; set; } = "";
     public string ExePath { get; set; } = "";
+    public string Url { get; set; } = "";
 }
 
 public sealed class ShoppingItem

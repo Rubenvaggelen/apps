@@ -36,6 +36,7 @@ public sealed class MainWindow : Window
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(20) };
 
     private sealed record TileDef(string Id, string Label, string IconKey, Action Open);
+    private sealed record StartMenuShortcut(string Label, string TargetPath);
 
     public MainWindow()
     {
@@ -195,11 +196,20 @@ public sealed class MainWindow : Window
 
         foreach (var app in _settings.CustomApps.ToList())
         {
+            if (!string.IsNullOrWhiteSpace(app.Url))
+            {
+                var url = app.Url;
+                var iconKey = WebsiteIconKey(url);
+                wrap.Children.Add(BuildTile(app.Id, app.Label, iconKey, () => BrowserLauncher.OpenChrome(url), custom: true));
+                continue;
+            }
+
             if (!File.Exists(app.ExePath)) continue;
-            wrap.Children.Add(BuildTile(app.Id, app.Label, "custom", () => BrowserLauncher.OpenProgram(app.ExePath), custom: true));
+            var target = app.ExePath;
+            wrap.Children.Add(BuildTile(app.Id, app.Label, "custom", () => BrowserLauncher.OpenProgram(target), custom: true));
         }
 
-        wrap.Children.Add(BuildTile("add", "App toevoegen", "add", AddWindowsApp, custom: false, allowHide: false));
+        wrap.Children.Add(BuildTile("add", "Tegel toevoegen", "add", ShowAddTileMenu, custom: false, allowHide: false));
         var footer = new Border
         {
             Background = Brush("#071018"),
@@ -240,22 +250,22 @@ public sealed class MainWindow : Window
             FocusVisualStyle = null
         };
 
+        var isChrome = id == "chrome";
         var tileSurface = new Border
         {
             CornerRadius = new CornerRadius(18),
-            BorderBrush = Brush("#174963"),
-            BorderThickness = new Thickness(1),
+            BorderBrush = isChrome ? Amber : Brush("#174963"),
+            BorderThickness = new Thickness(isChrome ? 1.35 : 1),
             Padding = new Thickness(16),
-            Background = new LinearGradientBrush(
-                Color.FromRgb(11, 22, 32),
-                Color.FromRgb(7, 12, 18),
-                90),
+            Background = isChrome
+                ? new LinearGradientBrush(Color.FromRgb(8, 34, 48), Color.FromRgb(5, 12, 19), 90)
+                : new LinearGradientBrush(Color.FromRgb(11, 22, 32), Color.FromRgb(7, 12, 18), 90),
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Colors.Black,
-                BlurRadius = 18,
-                Opacity = 0.45,
-                ShadowDepth = 4
+                Color = isChrome ? Color.FromRgb(32, 184, 255) : Colors.Black,
+                BlurRadius = isChrome ? 22 : 18,
+                Opacity = isChrome ? 0.28 : 0.45,
+                ShadowDepth = isChrome ? 0 : 4
             }
         };
 
@@ -310,17 +320,16 @@ public sealed class MainWindow : Window
         };
         button.MouseLeave += (_, _) =>
         {
-            tileSurface.BorderBrush = Brush("#174963");
-            tileSurface.Background = new LinearGradientBrush(
-                Color.FromRgb(11, 22, 32),
-                Color.FromRgb(7, 12, 18),
-                90);
+            tileSurface.BorderBrush = isChrome ? Amber : Brush("#174963");
+            tileSurface.Background = isChrome
+                ? new LinearGradientBrush(Color.FromRgb(8, 34, 48), Color.FromRgb(5, 12, 19), 90)
+                : new LinearGradientBrush(Color.FromRgb(11, 22, 32), Color.FromRgb(7, 12, 18), 90);
             tileSurface.Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Colors.Black,
-                BlurRadius = 18,
-                Opacity = 0.45,
-                ShadowDepth = 4
+                Color = isChrome ? Color.FromRgb(32, 184, 255) : Colors.Black,
+                BlurRadius = isChrome ? 22 : 18,
+                Opacity = isChrome ? 0.28 : 0.45,
+                ShadowDepth = isChrome ? 0 : 4
             };
         };
 
@@ -361,7 +370,9 @@ public sealed class MainWindow : Window
             "radio" => CreateResourceTileIcon("ic_home_radio_fancy.png", size),
             "currency" => CreateResourceTileIcon("ic_home_currency_fancy.png", size),
             "music" => CreateResourceTileIcon("ic_home_music_fancy.png", size),
-            "chrome" => CreateFallbackTileIcon("🌐", size),
+            "chrome" => CreateChromeIcon(size),
+            "web" => CreateWebIcon(size, false),
+            "youtube" => CreateWebIcon(size, true),
             _ => CreateFallbackTileIcon("◆", size)
         };
     }
@@ -377,6 +388,145 @@ public sealed class MainWindow : Window
             Source = new BitmapImage(
                 new Uri($"pack://application:,,,/Assets/Icons/{fileName}", UriKind.Absolute))
         };
+    }
+
+    private UIElement CreateChromeIcon(double size)
+    {
+        var root = new Grid
+        {
+            Width = size,
+            Height = size,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+
+        var halo = new System.Windows.Shapes.Ellipse
+        {
+            Fill = new LinearGradientBrush(
+                Color.FromRgb(10, 55, 76),
+                Color.FromRgb(5, 20, 30),
+                90),
+            Stroke = Amber,
+            StrokeThickness = 1.6,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Color.FromRgb(32, 184, 255),
+                BlurRadius = 20,
+                Opacity = 0.42,
+                ShadowDepth = 0
+            }
+        };
+        root.Children.Add(halo);
+
+        var globe = new Grid
+        {
+            Width = size * 0.58,
+            Height = size * 0.58,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        globe.Children.Add(new System.Windows.Shapes.Ellipse
+        {
+            Stroke = Brush("#F3F8FC"),
+            StrokeThickness = 1.6,
+            Fill = Brushes.Transparent
+        });
+        globe.Children.Add(new System.Windows.Shapes.Ellipse
+        {
+            Width = size * 0.22,
+            Stretch = Stretch.Fill,
+            Stroke = Amber,
+            StrokeThickness = 1.4,
+            Fill = Brushes.Transparent,
+            HorizontalAlignment = HorizontalAlignment.Center
+        });
+        globe.Children.Add(new Border
+        {
+            Height = 1.5,
+            Background = Amber,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(3, 0, 3, 0)
+        });
+        root.Children.Add(globe);
+
+        root.Children.Add(new Border
+        {
+            Width = size * 0.12,
+            Height = size * 0.12,
+            CornerRadius = new CornerRadius(size * 0.06),
+            Background = Amber,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Color.FromRgb(32, 184, 255),
+                BlurRadius = 8,
+                Opacity = 0.8,
+                ShadowDepth = 0
+            }
+        });
+
+        return root;
+    }
+
+    private UIElement CreateWebIcon(double size, bool video)
+    {
+        var root = new Grid
+        {
+            Width = size,
+            Height = size,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+
+        root.Children.Add(new System.Windows.Shapes.Ellipse
+        {
+            Fill = new LinearGradientBrush(
+                Color.FromRgb(9, 45, 63),
+                Color.FromRgb(5, 18, 27),
+                90),
+            Stroke = Amber,
+            StrokeThickness = 1.4
+        });
+
+        if (video)
+        {
+            root.Children.Add(VectorPath(
+                "M8,5 L20,12 L8,19 Z",
+                "#F3F8FC",
+                "#20B8FF",
+                0.7,
+                size * 0.48));
+        }
+        else
+        {
+            var globe = new Grid
+            {
+                Width = size * 0.50,
+                Height = size * 0.50,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            globe.Children.Add(new System.Windows.Shapes.Ellipse
+            {
+                Stroke = Brush("#F3F8FC"),
+                StrokeThickness = 1.4
+            });
+            globe.Children.Add(new System.Windows.Shapes.Ellipse
+            {
+                Width = size * 0.18,
+                Stroke = Amber,
+                StrokeThickness = 1.2,
+                HorizontalAlignment = HorizontalAlignment.Center
+            });
+            globe.Children.Add(new Border
+            {
+                Height = 1.3,
+                Background = Amber,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            root.Children.Add(globe);
+        }
+
+        return root;
     }
 
     private UIElement CreateFallbackTileIcon(string glyph, double size)
@@ -1354,21 +1504,200 @@ public sealed class MainWindow : Window
         body.Children.Add(Card(list));
     }
 
-    private void AddWindowsApp()
+    private void ShowAddTileMenu()
     {
-        var dialog = new OpenFileDialog
-        {
-            Title = "Kies een Windows-programma",
-            Filter = "Windows-programma (*.exe)|*.exe",
-            CheckFileExists = true
-        };
-        if (dialog.ShowDialog(this) != true) return;
+        BeginPage(
+            "Tegel toevoegen",
+            "Kies een app uit het Windows-startmenu of voeg een webpagina toe, bijvoorbeeld YouTube.",
+            out var body);
 
-        var label = Path.GetFileNameWithoutExtension(dialog.FileName);
-        if (string.IsNullOrWhiteSpace(label)) label = "App";
-        _settings.CustomApps.Add(new CustomShortcut { Label = label, ExePath = dialog.FileName });
+        body.Children.Add(Label("STARTMENU", 17, Amber));
+        body.Children.Add(Label(
+            "Dit is je echte Windows-startmenu-lijst. Zoek een app en voeg hem direct als tegel toe.",
+            13,
+            TextDim));
+
+        var search = Input("Zoek in Startmenu");
+        body.Children.Add(search);
+
+        var startMenuList = new StackPanel();
+        body.Children.Add(Card(startMenuList));
+
+        var shortcuts = GetStartMenuShortcuts();
+
+        void RenderStartMenu()
+        {
+            startMenuList.Children.Clear();
+            var query = search.Text.Trim();
+
+            var visible = shortcuts
+                .Where(x => query.Length == 0 ||
+                            x.Label.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .Take(100)
+                .ToList();
+
+            if (visible.Count == 0)
+            {
+                startMenuList.Children.Add(Label("Geen Startmenu-apps gevonden.", 14, TextDim));
+                return;
+            }
+
+            foreach (var shortcut in visible)
+            {
+                var captured = shortcut;
+                var row = new DockPanel { Margin = new Thickness(0, 3, 0, 3) };
+
+                var add = SmallButton("Toevoegen", () => AddStartMenuTile(captured));
+                DockPanel.SetDock(add, Dock.Right);
+                row.Children.Add(add);
+
+                var label = Label(captured.Label, 15, TextMain);
+                label.VerticalAlignment = VerticalAlignment.Center;
+                row.Children.Add(label);
+                startMenuList.Children.Add(row);
+            }
+
+            if (shortcuts.Count > visible.Count && query.Length == 0)
+                startMenuList.Children.Add(Label("Typ hierboven om in alle Startmenu-apps te zoeken.", 12, TextDim));
+        }
+
+        search.TextChanged += (_, _) => RenderStartMenu();
+        RenderStartMenu();
+
+        body.Children.Add(new Border
+        {
+            Height = 1,
+            Background = Brush("#16394B"),
+            Margin = new Thickness(0, 24, 0, 18)
+        });
+
+        body.Children.Add(Label("WEBPAGINA", 17, Amber));
+        body.Children.Add(Label(
+            "Voeg een website toe als eigen The One-tegel. YouTube krijgt automatisch een eigen video-icoon.",
+            13,
+            TextDim));
+
+        var websiteName = Input("Naam, bijvoorbeeld YouTube");
+        var websiteUrl = Input("Webadres, bijvoorbeeld youtube.com");
+        body.Children.Add(websiteName);
+        body.Children.Add(websiteUrl);
+
+        var quick = new WrapPanel();
+        quick.Children.Add(ActionButton("YouTube invullen", () =>
+        {
+            websiteName.Text = "YouTube";
+            websiteUrl.Text = "https://www.youtube.com/";
+        }, 170));
+        body.Children.Add(quick);
+
+        body.Children.Add(ActionButton("Webpagina toevoegen", () =>
+        {
+            var raw = websiteUrl.Text.Trim();
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                MessageBox.Show("Vul eerst een webadres in.", "The One Window");
+                return;
+            }
+
+            if (!raw.Contains("://", StringComparison.Ordinal))
+                raw = "https://" + raw;
+
+            if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri) ||
+                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            {
+                MessageBox.Show("Dit is geen geldig webadres.", "The One Window");
+                return;
+            }
+
+            var label = websiteName.Text.Trim();
+            if (string.IsNullOrWhiteSpace(label))
+            {
+                label = uri.Host;
+                if (label.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
+                    label = label[4..];
+            }
+
+            _settings.CustomApps.Add(new CustomShortcut
+            {
+                Label = label,
+                Url = uri.ToString()
+            });
+            SaveSettings();
+            AppStore.AddNotification($"Webtegel '{label}' toegevoegd.");
+            ShowHome();
+        }));
+    }
+
+    private void AddStartMenuTile(StartMenuShortcut shortcut)
+    {
+        if (_settings.CustomApps.Any(x =>
+                string.Equals(x.ExePath, shortcut.TargetPath, StringComparison.OrdinalIgnoreCase)))
+        {
+            MessageBox.Show("Deze Startmenu-app staat al als tegel op je startscherm.", "The One Window");
+            return;
+        }
+
+        _settings.CustomApps.Add(new CustomShortcut
+        {
+            Label = shortcut.Label,
+            ExePath = shortcut.TargetPath
+        });
         SaveSettings();
+        AppStore.AddNotification($"Tegel '{shortcut.Label}' toegevoegd.");
         ShowHome();
+    }
+
+    private static List<StartMenuShortcut> GetStartMenuShortcuts()
+    {
+        var result = new List<StartMenuShortcut>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var folder in new[]
+        {
+            Environment.GetFolderPath(Environment.SpecialFolder.Programs),
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms)
+        })
+        {
+            if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
+                continue;
+
+            List<string> files;
+            try
+            {
+                files = Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
+                    .Where(path =>
+                        path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase) ||
+                        path.EndsWith(".url", StringComparison.OrdinalIgnoreCase) ||
+                        path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (var file in files)
+            {
+                var label = Path.GetFileNameWithoutExtension(file).Trim();
+                if (string.IsNullOrWhiteSpace(label) || !seen.Add(label))
+                    continue;
+
+                result.Add(new StartMenuShortcut(label, file));
+            }
+        }
+
+        return result
+            .OrderBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+    }
+
+    private static string WebsiteIconKey(string url)
+    {
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+            uri.Host.Contains("youtube", StringComparison.OrdinalIgnoreCase))
+            return "youtube";
+
+        return "web";
     }
 
     private async Task<string> CallGroq(string system, string user)
