@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
+using Microsoft.Win32;
 
 namespace TheOneMain.Windows;
 
@@ -75,6 +77,7 @@ public static class InstallationManager
 
             DeleteIfExists(Path.Combine(startMenu, "The One Main.lnk"));
             DeleteIfExists(Path.Combine(desktop, "The One Main.lnk"));
+            RegisterInstalledApp();
             CleanupLegacyInstall();
         }
         catch
@@ -85,26 +88,48 @@ public static class InstallationManager
 
     private static void CreateShortcut(string shortcutPath, string targetPath, string workingDirectory)
     {
-        var escapedShortcut = shortcutPath.Replace("'", "''");
-        var escapedTarget = targetPath.Replace("'", "''");
-        var escapedWork = workingDirectory.Replace("'", "''");
-
-        var command =
-            "$ws = New-Object -ComObject WScript.Shell; " +
-            $"$s = $ws.CreateShortcut('{escapedShortcut}'); " +
-            $"$s.TargetPath = '{escapedTarget}'; " +
-            $"$s.WorkingDirectory = '{escapedWork}'; " +
-            "$s.Description = 'The One Window - The One Family'; " +
-            "$s.Save()";
-
-        using var process = Process.Start(new ProcessStartInfo("powershell.exe")
+        object? shell = null;
+        object? shortcut = null;
+        try
         {
-            Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command \"" +
-                        command.Replace("\"", "\\\"") + "\"",
-            UseShellExecute = false,
-            CreateNoWindow = true
-        });
-        process?.WaitForExit(5000);
+            var shellType = Type.GetTypeFromProgID("WScript.Shell")
+                            ?? throw new InvalidOperationException("Windows Script Host is niet beschikbaar.");
+            shell = Activator.CreateInstance(shellType)
+                    ?? throw new InvalidOperationException("Kan Windows Script Host niet starten.");
+
+            dynamic ws = shell;
+            shortcut = ws.CreateShortcut(shortcutPath);
+            dynamic link = shortcut;
+            link.TargetPath = targetPath;
+            link.WorkingDirectory = workingDirectory;
+            link.Description = "The One Window - Part of The One Family";
+            link.IconLocation = $"{targetPath},0";
+            link.Save();
+        }
+        finally
+        {
+            if (shortcut != null && Marshal.IsComObject(shortcut))
+                Marshal.FinalReleaseComObject(shortcut);
+            if (shell != null && Marshal.IsComObject(shell))
+                Marshal.FinalReleaseComObject(shell);
+        }
+    }
+
+    private static void RegisterInstalledApp()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Uninstall\The One Window");
+            key?.SetValue("DisplayName", "The One Window");
+            key?.SetValue("Publisher", "The One Family");
+            key?.SetValue("DisplayIcon", InstalledExe);
+            key?.SetValue("InstallLocation", InstallDirectory);
+            key?.SetValue("DisplayVersion", BuildInfo.Version.ToString());
+            key?.SetValue("NoModify", 1, RegistryValueKind.DWord);
+            key?.SetValue("NoRepair", 1, RegistryValueKind.DWord);
+        }
+        catch { }
     }
 
     private static void DeleteIfExists(string path)

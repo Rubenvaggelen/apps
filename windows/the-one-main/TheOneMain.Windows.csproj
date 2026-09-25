@@ -6,6 +6,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>TheOneMain</AssemblyName>
+    <AssemblyTitle>The One Window</AssemblyTitle>
+    <Product>The One Window</Product>
+    <Company>The One Family</Company>
     <RootNamespace>TheOneMain.Windows</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <PublishSingleFile>true</PublishSingleFile>
