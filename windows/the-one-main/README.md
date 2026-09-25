@@ -7,10 +7,7 @@ Native Windows rebuild of The One Window.
 - Chrome tile and Chrome-first web launching
 - Auto-start with Windows sign-in
 - Mail & Calendar
-- Route planner
-- Household shopping list
-- Films / Series / Music search shortcuts
-- Parking addresses + end-time reminder
+- Huishouden shopping list synchronized with The One Main and The One Car over the existing The One local-network protocol
 - Ask (Groq key configurable locally)
 - Recipes
 - News

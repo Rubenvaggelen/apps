@@ -175,10 +175,7 @@ public sealed class MainWindow : Window
             // Zelfde iconen als The One Main / The One Car.
             new("notifications", "Meldingen", "notifications", ShowNotifications),
             new("mail", "Mail & Kalender", "mail", () => BrowserLauncher.OpenChrome(MailUrl)),
-            new("route", "Route", "route", ShowRoute),
             new("household", "Huishouden", "household", ShowHousehold),
-            new("movies", "Films, Series & Muziek", "movies", ShowMedia),
-            new("parking", "Parkeren", "parking", ShowParking),
             new("settings", "Instellingen", "settings", ShowSettings),
             new("ask", "Vraag het", "ask", ShowAsk),
             new("recipes", "Recepten", "recipes", ShowRecipes),
@@ -739,84 +736,162 @@ public sealed class MainWindow : Window
 
     private void ShowHousehold()
     {
-        BeginPage("Huishouden", "Dezelfde eenvoudige boodschappenlijst, lokaal opgeslagen op Windows.", out var body);
+        BeginPage(
+            "Huishouden",
+            "Gedeelde boodschappenlijst van The One Window, The One Main en The One Car.",
+            out var body);
+
+        var status = Label("Verbinden met The One Main…", 13, TextDim);
+        body.Children.Add(status);
+
         var input = Input("Nieuw item");
-        var add = ActionButton("Toevoegen", () => { });
+        var add = ActionButton("Toevoegen", () => { }, 150);
+        var refresh = ActionButton("Synchroniseren", () => { }, 150);
+
         var top = new DockPanel();
+        DockPanel.SetDock(refresh, Dock.Right);
         DockPanel.SetDock(add, Dock.Right);
+        top.Children.Add(refresh);
         top.Children.Add(add);
         top.Children.Add(input);
         body.Children.Add(top);
+
         var listPanel = new StackPanel();
         body.Children.Add(Card(listPanel));
+
+        var current = AppStore.Load<List<ShoppingItem>>("shopping.json");
+        var operationRunning = false;
 
         void Render()
         {
             listPanel.Children.Clear();
-            var items = AppStore.Load<List<ShoppingItem>>("shopping.json");
-            if (items.Count == 0) listPanel.Children.Add(Label("Je lijst is leeg.", 14, TextDim));
-            foreach (var item in items)
+
+            if (current.Count == 0)
             {
-                var row = new DockPanel { Margin = new Thickness(0, 3, 0, 3) };
-                var del = SmallButton("Verwijder", () =>
-                {
-                    var current = AppStore.Load<List<ShoppingItem>>("shopping.json");
-                    current.RemoveAll(x => x.Id == item.Id);
-                    AppStore.Save("shopping.json", current);
-                    Render();
-                });
+                listPanel.Children.Add(Label("Je boodschappenlijst is leeg.", 14, TextDim));
+                return;
+            }
+
+            foreach (var item in current)
+            {
+                var captured = item;
+                var row = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
+
+                var del = SmallButton("Verwijder", () => { });
                 DockPanel.SetDock(del, Dock.Right);
                 row.Children.Add(del);
 
                 var check = new CheckBox
                 {
-                    Content = item.Text,
-                    IsChecked = item.Done,
-                    Foreground = item.Done ? TextDim : TextMain,
+                    Content = captured.Text,
+                    IsChecked = captured.Done,
+                    Foreground = captured.Done ? TextDim : TextMain,
                     FontSize = 16,
                     VerticalAlignment = VerticalAlignment.Center
                 };
-                check.Checked += (_, _) =>
-                {
-                    var current = AppStore.Load<List<ShoppingItem>>("shopping.json");
-                    var found = current.FirstOrDefault(x => x.Id == item.Id);
-                    if (found != null) found.Done = true;
-                    AppStore.Save("shopping.json", current);
-                    Render();
-                };
-                check.Unchecked += (_, _) =>
-                {
-                    var current = AppStore.Load<List<ShoppingItem>>("shopping.json");
-                    var found = current.FirstOrDefault(x => x.Id == item.Id);
-                    if (found != null) found.Done = false;
-                    AppStore.Save("shopping.json", current);
-                    Render();
-                };
                 row.Children.Add(check);
                 listPanel.Children.Add(row);
+
+                del.Click += async (_, _) =>
+                {
+                    if (operationRunning) return;
+                    await RunSync(
+                        () => HouseholdSyncClient.RemoveAsync(captured.Id),
+                        "Item verwijderen…");
+                };
+
+                check.Checked += async (_, _) =>
+                {
+                    if (operationRunning || captured.Done) return;
+                    await RunSync(
+                        () => HouseholdSyncClient.ToggleAsync(captured.Id),
+                        "Boodschappenlijst bijwerken…");
+                };
+
+                check.Unchecked += async (_, _) =>
+                {
+                    if (operationRunning || !captured.Done) return;
+                    await RunSync(
+                        () => HouseholdSyncClient.ToggleAsync(captured.Id),
+                        "Boodschappenlijst bijwerken…");
+                };
             }
         }
 
+        async Task RunSync(
+            Func<Task<HouseholdSyncResult>> operation,
+            string busyText,
+            bool clearInputOnSuccess = false)
+        {
+            if (operationRunning) return;
+            operationRunning = true;
+            add.IsEnabled = false;
+            refresh.IsEnabled = false;
+            status.Text = busyText;
+            status.Foreground = TextDim;
 
-        add.Click += (_, _) =>
+            try
+            {
+                var result = await operation();
+                if (result.Connected)
+                {
+                    current = result.Items;
+                    AppStore.Save("shopping.json", current);
+                    status.Text = "✓ Gekoppeld aan The One Main • wijzigingen worden ook naar The One Car gesynchroniseerd";
+                    status.Foreground = Sage;
+                    if (clearInputOnSuccess) input.Clear();
+                    Render();
+                }
+                else
+                {
+                    status.Text = result.Message ??
+                        "Geen verbinding met The One Main. De laatst gesynchroniseerde lijst blijft zichtbaar.";
+                    status.Foreground = Amber;
+                }
+            }
+            catch (Exception ex)
+            {
+                status.Text = "Synchronisatie mislukt: " + ex.Message;
+                status.Foreground = Amber;
+            }
+            finally
+            {
+                operationRunning = false;
+                add.IsEnabled = true;
+                refresh.IsEnabled = true;
+            }
+        }
+
+        add.Click += async (_, _) =>
         {
             var text = input.Text.Trim();
-            if (text.Length == 0) return;
-            var items = AppStore.Load<List<ShoppingItem>>("shopping.json");
-            items.Add(new ShoppingItem { Text = text });
-            AppStore.Save("shopping.json", items);
-            input.Clear();
-            Render();
+            if (text.Length == 0 || operationRunning) return;
+            await RunSync(
+                () => HouseholdSyncClient.AddAsync(text),
+                "Item toevoegen en synchroniseren…",
+                clearInputOnSuccess: true);
         };
 
-        body.Children.Add(ActionButton("Afgeronde items wissen", () =>
+        refresh.Click += async (_, _) =>
         {
-            var items = AppStore.Load<List<ShoppingItem>>("shopping.json");
-            items.RemoveAll(x => x.Done);
-            AppStore.Save("shopping.json", items);
-            Render();
-        }));
+            if (operationRunning) return;
+            await RunSync(
+                HouseholdSyncClient.RefreshAsync,
+                "Synchroniseren met The One Main…");
+        };
+
+        var clearDone = ActionButton("Afgeronde items wissen", () => { });
+        clearDone.Click += async (_, _) =>
+        {
+            if (operationRunning) return;
+            await RunSync(
+                HouseholdSyncClient.ClearDoneAsync,
+                "Afgeronde items wissen…");
+        };
+        body.Children.Add(clearDone);
+
         Render();
+        _ = RunSync(HouseholdSyncClient.RefreshAsync, "Synchroniseren met The One Main…");
     }
 
     private void ShowMedia()
