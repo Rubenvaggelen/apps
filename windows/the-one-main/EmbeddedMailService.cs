@@ -90,9 +90,37 @@ public static class EmbeddedMailService
     '.btn-primary{background:#20B8FF!important;color:#031019!important;}',
     '.btn-ghost{border-color:#24495D!important;}',
     '.message-row:hover{border-color:#20B8FF!important;box-shadow:0 0 22px rgba(32,184,255,.16)!important;}',
+    '#the-one-mail-settings-footer{margin:26px 0 8px;padding:18px;border:1px solid #174963;border-radius:16px;background:#071018;text-align:center;}',
+    '#the-one-mail-settings-footer .the-one-mail-footer-title{color:#9FB2C2;font-size:12px;margin-bottom:10px;}',
+    '#the-one-mail-settings-footer button{min-width:220px;padding:12px 20px;border-radius:12px;border:1px solid #20B8FF;background:#0B2533;color:#F3F8FC;font-weight:700;cursor:pointer;box-shadow:0 0 18px rgba(32,184,255,.12);}',
+    '#the-one-mail-settings-footer button:hover{background:#10384B;box-shadow:0 0 24px rgba(32,184,255,.24);}',
     'h1,h2{font-family:system-ui,sans-serif!important;}'
   ].join('');
   document.head.appendChild(style);
+
+  if (!document.getElementById('the-one-mail-settings-footer')) {
+    const inboxView = document.getElementById('view-inbox');
+    if (inboxView) {
+      const footer = document.createElement('div');
+      footer.id = 'the-one-mail-settings-footer';
+
+      const title = document.createElement('div');
+      title.className = 'the-one-mail-footer-title';
+      title.textContent = 'THE ONE MAIL';
+
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = '⚙  Instellingen';
+      button.addEventListener('click', () => {
+        const settingsTab = document.querySelector('.tab[data-view="settings"]');
+        if (settingsTab) settingsTab.click();
+      });
+
+      footer.appendChild(title);
+      footer.appendChild(button);
+      inboxView.appendChild(footer);
+    }
+  }
 })()
 """;
         await web.CoreWebView2.ExecuteScriptAsync(script);
