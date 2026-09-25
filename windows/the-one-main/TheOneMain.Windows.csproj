@@ -13,4 +13,7 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="Assets\the_one_logo.png" />
+  </ItemGroup>
 </Project>
