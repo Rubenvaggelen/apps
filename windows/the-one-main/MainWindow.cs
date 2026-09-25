@@ -1959,18 +1959,10 @@ public sealed class MainWindow : Window
             13,
             TextDim));
 
-        body.Children.Add(Label("Groq API-key voor Vraag het / Recepten", 13, TextDim));
-        var key = new PasswordBox
-        {
-            Password = _settings.GroqApiKey,
-            Height = 42,
-            Background = SurfaceRaised,
-            Foreground = TextMain,
-            BorderBrush = Line,
-            Padding = new Thickness(10),
-            Margin = new Thickness(0, 5, 0, 15)
-        };
-        body.Children.Add(key);
+        body.Children.Add(Label(
+            "Vraag het en Recepten gebruiken ChatGPT GPT-5.2 via The One. Groq wordt hiervoor niet gebruikt.",
+            13,
+            TextDim));
 
         body.Children.Add(Label(BrowserLauncher.FindChrome() is string c
             ? $"Chrome gevonden: {c}"
@@ -1980,7 +1972,6 @@ public sealed class MainWindow : Window
         {
             _settings.AutoStart = auto.IsChecked == true;
             _settings.StartMaximized = true;
-            _settings.GroqApiKey = key.Password.Trim();
             SaveSettings();
             StartupManager.SetEnabled(_settings.AutoStart);
             AppStore.AddNotification("Instellingen opgeslagen.");
@@ -2008,7 +1999,7 @@ public sealed class MainWindow : Window
 
     private void ShowAsk()
     {
-        BeginPage("Vraag het", "Eén Nederlands antwoord via Groq, net als The One Main.", out var body);
+        BeginPage("Vraag het", "Eén Nederlands antwoord via ChatGPT GPT-5.2, net als The One Main.", out var body);
         var question = Input("Wat wil je vragen?");
         question.AcceptsReturn = true;
         question.TextWrapping = TextWrapping.Wrap;
@@ -2031,20 +2022,15 @@ public sealed class MainWindow : Window
         var ask = ActionButton("Vraag het", () => { });
         body.Children.Add(ask);
         body.Children.Add(answer);
-        body.Children.Add(Label("Bron: Groq", 12, TextDim));
+        body.Children.Add(Label("Bron: ChatGPT GPT-5.2", 12, TextDim));
 
         ask.Click += async (_, _) =>
         {
-            if (string.IsNullOrWhiteSpace(_settings.GroqApiKey))
-            {
-                answer.Text = "Vul eerst je Groq API-key in bij Instellingen.";
-                return;
-            }
             ask.IsEnabled = false;
             answer.Text = "Bezig…";
             try
             {
-                answer.Text = await CallGroq(
+                answer.Text = await CallChatGpt(
                     "Antwoord in het Nederlands. Geef één duidelijk, direct antwoord zonder meerdere keuzemodellen.",
                     question.Text.Trim());
             }
@@ -2084,16 +2070,11 @@ public sealed class MainWindow : Window
 
         generate.Click += async (_, _) =>
         {
-            if (string.IsNullOrWhiteSpace(_settings.GroqApiKey))
-            {
-                result.Text = "Vul eerst je Groq API-key in bij Instellingen.";
-                return;
-            }
             generate.IsEnabled = false;
             result.Text = "Recept maken…";
             try
             {
-                result.Text = await CallGroq(
+                result.Text = await CallChatGpt(
                     "Je bent de receptenfunctie van The One. Geef precies één praktisch Nederlands recept met ingrediënten en werkwijze. Geen keuzelijst.",
                     query.Text.Trim());
             }
@@ -2494,27 +2475,51 @@ public sealed class MainWindow : Window
         return "web";
     }
 
-    private async Task<string> CallGroq(string system, string user)
+    private async Task<string> CallChatGpt(string system, string user)
     {
+        if (string.IsNullOrWhiteSpace(BuildSecrets.KieApiKey))
+            throw new InvalidOperationException("ChatGPT is nog niet gekoppeld aan deze Windows-build.");
+
         var payload = JsonSerializer.Serialize(new
         {
-            model = "llama-3.3-70b-versatile",
-            temperature = 0.25,
             messages = new object[]
             {
-                new { role = "system", content = system },
-                new { role = "user", content = user }
-            }
+                new
+                {
+                    role = "system",
+                    content = new object[] { new { type = "text", text = system } }
+                },
+                new
+                {
+                    role = "user",
+                    content = new object[] { new { type = "text", text = user } }
+                }
+            },
+            reasoning_effort = "low"
         });
 
-        using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.groq.com/openai/v1/chat/completions");
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _settings.GroqApiKey);
+        using var req = new HttpRequestMessage(HttpMethod.Post, BuildSecrets.KieChatUrl);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", BuildSecrets.KieApiKey);
         req.Content = new StringContent(payload, Encoding.UTF8, "application/json");
         using var resp = await Http.SendAsync(req);
         var body = await resp.Content.ReadAsStringAsync();
-        if (!resp.IsSuccessStatusCode) throw new Exception($"Groq HTTP {(int)resp.StatusCode}");
+
         using var doc = JsonDocument.Parse(body);
-        return doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString()?.Trim()
+        if (!resp.IsSuccessStatusCode)
+        {
+            var message = doc.RootElement.TryGetProperty("error", out var error) &&
+                          error.TryGetProperty("message", out var errorMessage)
+                ? errorMessage.GetString()
+                : $"ChatGPT HTTP {(int)resp.StatusCode}";
+            throw new Exception(message);
+        }
+
+        return doc.RootElement
+                   .GetProperty("choices")[0]
+                   .GetProperty("message")
+                   .GetProperty("content")
+                   .GetString()
+                   ?.Trim()
                ?? "Geen antwoord ontvangen.";
     }
 
