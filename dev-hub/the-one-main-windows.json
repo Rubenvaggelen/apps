@@ -1,10 +1,10 @@
 {
   "id": "the-one-main-windows",
-  "name": "The One Main Windows",
+  "name": "The One Window",
   "projectPath": "windows/the-one-main",
   "buildArtifact": "The-One-Main-Windows.zip",
   "updateTagPrefix": "windows-v",
   "updateMode": "in-app",
   "independentFromAndroid": true,
-  "description": "Los Windows-bestand/project voor Dev Hub. Eenmalig installeren/uitpakken; daarna alleen in-app updates."
+  "description": "The One Window voor Windows. Eenmalig installeren/uitpakken; daarna alleen in-app updates."
 }

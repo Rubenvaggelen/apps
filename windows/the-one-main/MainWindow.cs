@@ -42,7 +42,7 @@ public sealed class MainWindow : Window
         _settings = AppStore.Load<SettingsData>("settings.json");
         StartupManager.SetEnabled(_settings.AutoStart);
 
-        Title = "The One";
+        Title = "The One Window";
         Background = Bg;
         Foreground = TextMain;
         Width = 1320;
@@ -73,7 +73,7 @@ public sealed class MainWindow : Window
         _timer.Start();
         _clock.Text = DateTime.Now.ToString("ddd d MMM  HH:mm", new CultureInfo("nl-NL"));
 
-        AppStore.AddNotification("The One Main voor Windows gestart.");
+        AppStore.AddNotification("The One Window gestart.");
         ShowHome();
     }
 
@@ -101,7 +101,7 @@ public sealed class MainWindow : Window
         });
         brandText.Children.Add(new TextBlock
         {
-            Text = "MAIN  •  WINDOWS", Foreground = TextMain, FontSize = 11,
+            Text = "WINDOW", Foreground = TextMain, FontSize = 11,
             FontWeight = FontWeights.SemiBold, Margin = new Thickness(1,2,0,0)
         });
         brand.Children.Add(brandText);
@@ -129,10 +129,14 @@ public sealed class MainWindow : Window
     private void ShowHome()
     {
         var outer = new Grid { Background = Bg };
+        outer.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        outer.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
         var watermark = CreateLogo(500, 0.055);
         watermark.HorizontalAlignment = HorizontalAlignment.Center;
         watermark.VerticalAlignment = VerticalAlignment.Center;
         watermark.IsHitTestVisible = false;
+        Grid.SetRow(watermark, 0);
         outer.Children.Add(watermark);
 
         var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(20,18,20,24) };
@@ -150,31 +154,20 @@ public sealed class MainWindow : Window
         var heroText = new StackPanel { Margin = new Thickness(18,3,0,0), VerticalAlignment = VerticalAlignment.Center };
         heroText.Children.Add(new TextBlock
         {
-            Text = "THE ONE MAIN", Foreground = TextMain, FontSize = 30, FontWeight = FontWeights.Bold
+            Text = "THE ONE WINDOW", Foreground = TextMain, FontSize = 30, FontWeight = FontWeights.Bold
         });
         heroText.Children.Add(new TextBlock
         {
-            Text = "Alles op één plek  •  Windows", Foreground = TextDim, FontSize = 14, Margin = new Thickness(0,4,0,0)
+            Text = "The One Family op Windows", Foreground = TextDim, FontSize = 14, Margin = new Thickness(0,4,0,0)
         });
         heroRow.Children.Add(heroText);
-        var family = new Border
-        {
-            Background = Brush("#0B2533"), BorderBrush = Amber, BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(14), Padding = new Thickness(14,7,14,7), VerticalAlignment = VerticalAlignment.Center
-        };
-        family.Child = new TextBlock
-        {
-            Text = "PART OF THE ONE FAMILY", Foreground = Amber, FontSize = 10,
-            FontWeight = FontWeights.Bold
-        };
-        DockPanel.SetDock(family, Dock.Right);
-        heroRow.Children.Add(family);
         hero.Child = heroRow;
         page.Children.Add(hero);
 
         var wrap = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Center };
         page.Children.Add(wrap);
         scroll.Content = page;
+        Grid.SetRow(scroll, 0);
         outer.Children.Add(scroll);
 
         var tiles = new List<TileDef>
@@ -209,12 +202,26 @@ public sealed class MainWindow : Window
         }
 
         wrap.Children.Add(BuildTile("add", "App toevoegen", "+", AddWindowsApp, custom: false, allowHide: false));
-        page.Children.Add(new Border { Height = 1, Background = Brush("#16394B"), Margin = new Thickness(30,20,30,12) });
-        page.Children.Add(new TextBlock
+        var footer = new Border
         {
-            Text = "THE ONE FAMILY  •  MAIN  •  CAR  •  MEDIA  •  REMOTE",
-            Foreground = TextDim, FontSize = 10, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0,0,0,10)
-        });
+            Background = Brush("#071018"),
+            BorderBrush = Amber,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(18),
+            Margin = new Thickness(6, 4, 6, 8),
+            Padding = new Thickness(16, 8, 16, 8),
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        footer.Child = new TextBlock
+        {
+            Text = "PART OF THE ONE FAMILY",
+            Foreground = Amber,
+            FontSize = 10,
+            FontWeight = FontWeights.Bold,
+            HorizontalAlignment = HorizontalAlignment.Left
+        };
+        Grid.SetRow(footer, 1);
+        outer.Children.Add(footer);
 
         _content.Children.Clear();
         _content.Children.Add(outer);
@@ -224,42 +231,127 @@ public sealed class MainWindow : Window
     {
         var button = new Button
         {
-            Width = 225, Height = 150, Margin = new Thickness(8), Background = Surface,
-            BorderBrush = Brush("#16394B"), BorderThickness = new Thickness(1), Foreground = TextMain,
-            Cursor = Cursors.Hand, Padding = new Thickness(14),
+            Width = 232,
+            Height = 156,
+            Margin = new Thickness(9),
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Foreground = TextMain,
+            Cursor = Cursors.Hand,
+            Padding = new Thickness(0),
+            FocusVisualStyle = null
+        };
+
+        var tileSurface = new Border
+        {
+            CornerRadius = new CornerRadius(18),
+            BorderBrush = Brush("#174963"),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(16),
+            Background = new LinearGradientBrush(
+                Color.FromRgb(11, 22, 32),
+                Color.FromRgb(7, 12, 18),
+                90),
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Colors.Black, BlurRadius = 14, Opacity = 0.35, ShadowDepth = 3
+                Color = Colors.Black,
+                BlurRadius = 18,
+                Opacity = 0.45,
+                ShadowDepth = 4
             }
         };
 
         var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         var badge = new Border
         {
-            Width = 62, Height = 62, CornerRadius = new CornerRadius(31), Background = Brush("#0B2533"),
-            BorderBrush = Amber, BorderThickness = new Thickness(1.2), HorizontalAlignment = HorizontalAlignment.Center,
+            Width = 64,
+            Height = 64,
+            CornerRadius = new CornerRadius(32),
+            Background = new LinearGradientBrush(
+                Color.FromRgb(11, 48, 66),
+                Color.FromRgb(7, 27, 39),
+                90),
+            BorderBrush = Amber,
+            BorderThickness = new Thickness(1.4),
+            HorizontalAlignment = HorizontalAlignment.Center,
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(32,184,255), BlurRadius = 14, Opacity = 0.28, ShadowDepth = 0
+                Color = Color.FromRgb(32, 184, 255),
+                BlurRadius = 18,
+                Opacity = 0.34,
+                ShadowDepth = 0
             }
         };
         badge.Child = new TextBlock
         {
-            Text = icon, FontSize = 29, Foreground = Amber, HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Center,
+            Text = icon,
+            FontSize = 29,
+            Foreground = Amber,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextAlignment = TextAlignment.Center,
             FontFamily = new FontFamily("Segoe UI Emoji")
         };
         stack.Children.Add(badge);
+
         stack.Children.Add(new TextBlock
         {
-            Text = label, FontSize = 14.5, FontWeight = FontWeights.SemiBold, Foreground = TextMain,
-            TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center,
-            Margin = new Thickness(4,11,4,0), MaxWidth = 190
+            Text = label,
+            FontSize = 14.5,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = TextMain,
+            TextWrapping = TextWrapping.Wrap,
+            TextAlignment = TextAlignment.Center,
+            Margin = new Thickness(4, 12, 4, 0),
+            MaxWidth = 192
         });
-        button.Content = stack;
+
+        var accent = new Border
+        {
+            Height = 2,
+            Width = 42,
+            CornerRadius = new CornerRadius(1),
+            Background = Amber,
+            Opacity = 0.75,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 10, 0, 0)
+        };
+        stack.Children.Add(accent);
+
+        tileSurface.Child = stack;
+        button.Content = tileSurface;
         button.Click += (_, _) => action();
-        button.MouseEnter += (_, _) => { button.Background = SurfaceRaised; button.BorderBrush = Amber; };
-        button.MouseLeave += (_, _) => { button.Background = Surface; button.BorderBrush = Brush("#16394B"); };
+
+        button.MouseEnter += (_, _) =>
+        {
+            tileSurface.BorderBrush = Amber;
+            tileSurface.Background = new LinearGradientBrush(
+                Color.FromRgb(12, 39, 54),
+                Color.FromRgb(8, 18, 27),
+                90);
+            tileSurface.Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Color.FromRgb(32, 184, 255),
+                BlurRadius = 24,
+                Opacity = 0.28,
+                ShadowDepth = 0
+            };
+        };
+        button.MouseLeave += (_, _) =>
+        {
+            tileSurface.BorderBrush = Brush("#174963");
+            tileSurface.Background = new LinearGradientBrush(
+                Color.FromRgb(11, 22, 32),
+                Color.FromRgb(7, 12, 18),
+                90);
+            tileSurface.Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Colors.Black,
+                BlurRadius = 18,
+                Opacity = 0.45,
+                ShadowDepth = 4
+            };
+        };
 
         if (allowHide)
         {
@@ -275,6 +367,7 @@ public sealed class MainWindow : Window
             menu.Items.Add(item);
             button.ContextMenu = menu;
         }
+
         return button;
     }
 

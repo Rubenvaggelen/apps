@@ -1,6 +1,6 @@
-# The One Main — Windows
+# The One Window
 
-Native Windows rebuild of The One Main.
+Native Windows rebuild of The One Window.
 
 ## Included
 - The One dashboard style and tile layout
@@ -22,7 +22,7 @@ Native Windows rebuild of The One Main.
 - Hide/restore tiles
 - Local The One notification history
 
-Android The One Main is not modified by this Windows project.
+Android The One Window is not modified by this Windows project.
 
 ## Build
 ```powershell
@@ -39,11 +39,11 @@ These Windows-only releases are intentionally separate from the Android The One 
 
 
 ## Vaste Windows-installatie
-Bij de eerste start kopieert The One Main zichzelf automatisch naar:
-`%LOCALAPPDATA%\Programs\The One Family\The One Main\TheOneMain.exe`
+Bij de eerste start kopieert The One Window zichzelf automatisch naar:
+`%LOCALAPPDATA%\Programs\The One Family\The One Window\TheOneMain.exe`
 
 Daarna maakt de app automatisch:
-- een Startmenu-koppeling: `The One Family > The One Main`
-- een bureaubladkoppeling: `The One Main`
+- een Startmenu-koppeling: `The One Family > The One Window`
+- een bureaubladkoppeling: `The One Window`
 
 Vanaf dat moment worden nieuwe Windows-versies alleen als in-app update over deze vaste installatie gezet.

@@ -6,7 +6,8 @@ namespace TheOneMain.Windows;
 public static class InstallationManager
 {
     private const string FamilyFolder = "The One Family";
-    private const string AppFolder = "The One Main";
+    private const string AppFolder = "The One Window";
+    private const string LegacyAppFolder = "The One Main";
     private const string ExeName = "TheOneMain.exe";
 
     public static string InstallDirectory =>
@@ -63,14 +64,18 @@ public static class InstallationManager
             var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
 
             CreateShortcut(
-                Path.Combine(startMenu, "The One Main.lnk"),
+                Path.Combine(startMenu, "The One Window.lnk"),
                 InstalledExe,
                 InstallDirectory);
 
             CreateShortcut(
-                Path.Combine(desktop, "The One Main.lnk"),
+                Path.Combine(desktop, "The One Window.lnk"),
                 InstalledExe,
                 InstallDirectory);
+
+            DeleteIfExists(Path.Combine(startMenu, "The One Main.lnk"));
+            DeleteIfExists(Path.Combine(desktop, "The One Main.lnk"));
+            CleanupLegacyInstall();
         }
         catch
         {
@@ -89,7 +94,7 @@ public static class InstallationManager
             $"$s = $ws.CreateShortcut('{escapedShortcut}'); " +
             $"$s.TargetPath = '{escapedTarget}'; " +
             $"$s.WorkingDirectory = '{escapedWork}'; " +
-            "$s.Description = 'The One Main - The One Family'; " +
+            "$s.Description = 'The One Window - The One Family'; " +
             "$s.Save()";
 
         using var process = Process.Start(new ProcessStartInfo("powershell.exe")
@@ -100,6 +105,29 @@ public static class InstallationManager
             CreateNoWindow = true
         });
         process?.WaitForExit(5000);
+    }
+
+    private static void DeleteIfExists(string path)
+    {
+        try { if (File.Exists(path)) File.Delete(path); } catch { }
+    }
+
+    private static void CleanupLegacyInstall()
+    {
+        try
+        {
+            var legacy = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Programs",
+                FamilyFolder,
+                LegacyAppFolder);
+
+            var current = Environment.ProcessPath ?? "";
+            if (Directory.Exists(legacy) &&
+                !current.StartsWith(legacy, StringComparison.OrdinalIgnoreCase))
+                Directory.Delete(legacy, recursive: true);
+        }
+        catch { }
     }
 
     private static void CopyDirectory(string sourceDirectory, string targetDirectory)

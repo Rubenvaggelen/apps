@@ -100,7 +100,8 @@ public static class AppStore
 public static class StartupManager
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string ValueName = "The One Main";
+    private const string ValueName = "The One Window";
+    private const string LegacyValueName = "The One Main";
 
     public static void SetEnabled(bool enabled)
     {
@@ -114,6 +115,7 @@ public static class StartupManager
                 if (!string.IsNullOrWhiteSpace(exe)) key?.SetValue(ValueName, $"\"{exe}\"");
             }
             else key?.DeleteValue(ValueName, false);
+            key?.DeleteValue(LegacyValueName, false);
         }
         catch { }
     }
