@@ -152,21 +152,35 @@ public static class RutuCompanyAppService
 
     private static string? FindPortableExecutable()
     {
-        var likelyRoots = new[]
+        var roots = new[]
         {
+            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads"),
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs"),
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)
         };
 
-        foreach (var root in likelyRoots.Where(Directory.Exists))
+        foreach (var root in roots.Where(Directory.Exists))
         {
             try
             {
+                // De Rutu bedrijfsapp is als portable Windows .exe uitgebracht
+                // onder de productnaam "Company Build".
+                var direct = Directory.EnumerateFiles(root, "*.exe", SearchOption.TopDirectoryOnly)
+                    .Select(p => new { Path = p, Score = ScoreName(Path.GetFileNameWithoutExtension(p)) })
+                    .OrderByDescending(x => x.Score)
+                    .FirstOrDefault(x => x.Score > 0);
+                if (direct != null) return direct.Path;
+
                 foreach (var dir in Directory.EnumerateDirectories(root, "*", SearchOption.TopDirectoryOnly))
                 {
-                    if (ScoreName(Path.GetFileName(dir)) <= 0) continue;
+                    if (ScoreName(Path.GetFileName(dir)) <= 0 &&
+                        !Path.GetFileName(dir).Contains("rutu", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
                     var exe = FindRutuExeInDirectory(dir);
                     if (exe != null) return exe;
                 }
@@ -260,6 +274,12 @@ public static class RutuCompanyAppService
     {
         if (string.IsNullOrWhiteSpace(value)) return 0;
         var name = value.ToLowerInvariant();
+
+        // De Rutu Windows-bedrijfsapp heet bewust "Company Build".
+        // Oudere detectie zocht alleen naar "Rutu" en miste daardoor de echte app.
+        if (name.Equals("company build", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("company build ", StringComparison.OrdinalIgnoreCase))
+            return 40;
 
         if (!name.Contains("rutu")) return 0;
 
