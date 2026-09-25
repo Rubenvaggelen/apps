@@ -15,7 +15,7 @@ import androidx.core.content.ContextCompat
 
 /**
  * Recepten-scherm — werkt op precies dezelfde manier als "Vraag het": de
- * ingetypte of ingesproken gerechtnaam wordt als vraag naar KIE Gemini gestuurd,
+ * ingetypte of ingesproken gerechtnaam wordt als vraag naar ChatGPT GPT-5.2 gestuurd,
  * en het antwoord (het recept) wordt getoond. De ingrediënten (herkenbaar
  * aan het "INGREDIENTEN:"/"BEREIDING:"-format dat we in de prompt afdwingen)
  * kunnen met één knop naar de boodschappenlijst gestuurd worden.
