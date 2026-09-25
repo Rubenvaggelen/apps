@@ -12,6 +12,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 
 namespace TheOneMain.Windows;
@@ -210,14 +211,26 @@ public sealed class MainWindow : Window
             if (!string.IsNullOrWhiteSpace(app.Url))
             {
                 var url = app.Url;
-                var iconKey = WebsiteIconKey(url);
-                wrap.Children.Add(BuildTile(app.Id, app.Label, iconKey, () => BrowserLauncher.OpenChrome(url), custom: true));
+                wrap.Children.Add(BuildTile(
+                    app.Id,
+                    app.Label,
+                    WebsiteIconKey(url),
+                    () => BrowserLauncher.OpenChrome(url),
+                    custom: true,
+                    iconOverride: CreateCustomWebsiteIcon(app, 70)));
                 continue;
             }
 
-            if (!File.Exists(app.ExePath)) continue;
+            // Toegevoegde apps blijven permanent als tegel bewaard, ook als Windows
+            // een snelkoppeling tijdelijk niet kan vinden. Alleen de gebruiker kan ze verwijderen.
             var target = app.ExePath;
-            wrap.Children.Add(BuildTile(app.Id, app.Label, "custom", () => BrowserLauncher.OpenProgram(target), custom: true));
+            wrap.Children.Add(BuildTile(
+                app.Id,
+                app.Label,
+                "custom",
+                () => BrowserLauncher.OpenProgram(target),
+                custom: true,
+                iconOverride: CreateCustomAppIcon(app, 70)));
         }
 
         wrap.Children.Add(BuildTile("add", "Tegel toevoegen", "add", ShowAddTileMenu, custom: false, allowHide: false));
@@ -246,7 +259,14 @@ public sealed class MainWindow : Window
         _content.Children.Add(outer);
     }
 
-    private Button BuildTile(string id, string label, string iconKey, Action action, bool custom, bool allowHide = true)
+    private Button BuildTile(
+        string id,
+        string label,
+        string iconKey,
+        Action action,
+        bool custom,
+        bool allowHide = true,
+        UIElement? iconOverride = null)
     {
         var button = new Button
         {
@@ -262,29 +282,34 @@ public sealed class MainWindow : Window
         };
 
         var isChrome = id == "chrome";
+        var isCustom = custom;
         var tileSurface = new Border
         {
             CornerRadius = new CornerRadius(18),
-            BorderBrush = isChrome ? Amber : Brush("#174963"),
-            BorderThickness = new Thickness(isChrome ? 1.35 : 1),
+            BorderBrush = (isChrome || isCustom) ? Amber : Brush("#174963"),
+            BorderThickness = new Thickness((isChrome || isCustom) ? 1.35 : 1),
             Padding = new Thickness(16),
-            Background = isChrome
-                ? new LinearGradientBrush(Color.FromRgb(8, 34, 48), Color.FromRgb(5, 12, 19), 90)
+            Background = (isChrome || isCustom)
+                ? new LinearGradientBrush(Color.FromRgb(8, 31, 44), Color.FromRgb(5, 11, 18), 90)
                 : new LinearGradientBrush(Color.FromRgb(11, 22, 32), Color.FromRgb(7, 12, 18), 90),
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = isChrome ? Color.FromRgb(32, 184, 255) : Colors.Black,
-                BlurRadius = isChrome ? 22 : 18,
-                Opacity = isChrome ? 0.28 : 0.45,
-                ShadowDepth = isChrome ? 0 : 4
+                Color = (isChrome || isCustom) ? Color.FromRgb(32, 184, 255) : Colors.Black,
+                BlurRadius = (isChrome || isCustom) ? 22 : 18,
+                Opacity = (isChrome || isCustom) ? 0.26 : 0.45,
+                ShadowDepth = (isChrome || isCustom) ? 0 : 4
             }
         };
+
+        var tileScale = new ScaleTransform(1.0, 1.0);
+        tileSurface.RenderTransformOrigin = new Point(0.5, 0.5);
+        tileSurface.RenderTransform = tileScale;
 
         var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
 
         // De vaste tegels gebruiken exact dezelfde artwork-assets / vectorvormen
         // als de Android The One Main- en The One Car-tegels.
-        stack.Children.Add(CreateHomeTileIcon(iconKey, 66));
+        stack.Children.Add(iconOverride ?? CreateHomeTileIcon(iconKey, 66));
 
         stack.Children.Add(new TextBlock
         {
@@ -316,6 +341,14 @@ public sealed class MainWindow : Window
 
         button.MouseEnter += (_, _) =>
         {
+            var easeIn = new CubicEase { EasingMode = EasingMode.EaseOut };
+            tileScale.BeginAnimation(
+                ScaleTransform.ScaleXProperty,
+                new DoubleAnimation(1.0, 1.035, TimeSpan.FromMilliseconds(140)) { EasingFunction = easeIn });
+            tileScale.BeginAnimation(
+                ScaleTransform.ScaleYProperty,
+                new DoubleAnimation(1.0, 1.035, TimeSpan.FromMilliseconds(140)) { EasingFunction = easeIn });
+
             tileSurface.BorderBrush = Amber;
             tileSurface.Background = new LinearGradientBrush(
                 Color.FromRgb(12, 39, 54),
@@ -331,16 +364,24 @@ public sealed class MainWindow : Window
         };
         button.MouseLeave += (_, _) =>
         {
-            tileSurface.BorderBrush = isChrome ? Amber : Brush("#174963");
-            tileSurface.Background = isChrome
-                ? new LinearGradientBrush(Color.FromRgb(8, 34, 48), Color.FromRgb(5, 12, 19), 90)
+            var easeOut = new CubicEase { EasingMode = EasingMode.EaseOut };
+            tileScale.BeginAnimation(
+                ScaleTransform.ScaleXProperty,
+                new DoubleAnimation(tileScale.ScaleX, 1.0, TimeSpan.FromMilliseconds(170)) { EasingFunction = easeOut });
+            tileScale.BeginAnimation(
+                ScaleTransform.ScaleYProperty,
+                new DoubleAnimation(tileScale.ScaleY, 1.0, TimeSpan.FromMilliseconds(170)) { EasingFunction = easeOut });
+
+            tileSurface.BorderBrush = (isChrome || isCustom) ? Amber : Brush("#174963");
+            tileSurface.Background = (isChrome || isCustom)
+                ? new LinearGradientBrush(Color.FromRgb(8, 31, 44), Color.FromRgb(5, 11, 18), 90)
                 : new LinearGradientBrush(Color.FromRgb(11, 22, 32), Color.FromRgb(7, 12, 18), 90);
             tileSurface.Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = isChrome ? Color.FromRgb(32, 184, 255) : Colors.Black,
-                BlurRadius = isChrome ? 22 : 18,
-                Opacity = isChrome ? 0.28 : 0.45,
-                ShadowDepth = isChrome ? 0 : 4
+                Color = (isChrome || isCustom) ? Color.FromRgb(32, 184, 255) : Colors.Black,
+                BlurRadius = (isChrome || isCustom) ? 22 : 18,
+                Opacity = (isChrome || isCustom) ? 0.26 : 0.45,
+                ShadowDepth = (isChrome || isCustom) ? 0 : 4
             };
         };
 
@@ -360,6 +401,175 @@ public sealed class MainWindow : Window
         }
 
         return button;
+    }
+
+    private UIElement CreateCustomAppIcon(CustomShortcut app, double size)
+    {
+        var source = CustomTileIconService.TryGetWindowsIcon(app.ExePath);
+        return CreateTheOneLogoBadge(
+            source,
+            app.Label,
+            size,
+            CustomAccentColor(app.Id + app.Label));
+    }
+
+    private UIElement CreateCustomWebsiteIcon(CustomShortcut app, double size)
+    {
+        var accent = CustomAccentColor(app.Url + app.Label);
+        var fallback = WebsiteIconKey(app.Url) switch
+        {
+            "youtube" => CreateWebIcon(size, true),
+            _ => CreateTheOneLogoBadge(null, app.Label, size, accent)
+        };
+
+        var holder = new Grid
+        {
+            Width = size,
+            Height = size,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+        holder.Children.Add(fallback);
+
+        var actual = new Image
+        {
+            Width = size * 0.58,
+            Height = size * 0.58,
+            Stretch = Stretch.Uniform,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        holder.Children.Add(actual);
+
+        _ = LoadWebsiteLogoAsync(app.Url, actual);
+        return holder;
+    }
+
+    private async Task LoadWebsiteLogoAsync(string url, Image image)
+    {
+        try
+        {
+            var source = await CustomTileIconService.GetWebsiteIconAsync(url);
+            if (source == null) return;
+            if (!image.Dispatcher.CheckAccess())
+            {
+                await image.Dispatcher.InvokeAsync(() => image.Source = source);
+                return;
+            }
+            image.Source = source;
+        }
+        catch
+        {
+            // De stijlvolle fallback blijft gewoon zichtbaar.
+        }
+    }
+
+    private UIElement CreateTheOneLogoBadge(ImageSource? source, string label, double size, Color accent)
+    {
+        var root = new Grid
+        {
+            Width = size,
+            Height = size,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+
+        var accentBrush = new SolidColorBrush(accent);
+        accentBrush.Freeze();
+
+        root.Children.Add(new System.Windows.Shapes.Ellipse
+        {
+            Fill = new LinearGradientBrush(
+                Color.FromRgb(7, 28, 40),
+                Color.FromRgb(4, 13, 20),
+                90),
+            Stroke = accentBrush,
+            StrokeThickness = 1.7,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = accent,
+                BlurRadius = 18,
+                Opacity = 0.38,
+                ShadowDepth = 0
+            }
+        });
+
+        root.Children.Add(new System.Windows.Shapes.Ellipse
+        {
+            Margin = new Thickness(size * 0.10),
+            Fill = Brush("#09131D"),
+            Stroke = Brush("#203645"),
+            StrokeThickness = 1
+        });
+
+        if (source != null)
+        {
+            root.Children.Add(new Image
+            {
+                Source = source,
+                Width = size * 0.58,
+                Height = size * 0.58,
+                Stretch = Stretch.Uniform,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+        }
+        else
+        {
+            var initials = MakeInitials(label);
+            root.Children.Add(new TextBlock
+            {
+                Text = initials,
+                Foreground = Brushes.White,
+                FontSize = initials.Length > 1 ? size * 0.27 : size * 0.34,
+                FontWeight = FontWeights.Bold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextAlignment = TextAlignment.Center
+            });
+        }
+
+        root.Children.Add(new Border
+        {
+            Width = size * 0.10,
+            Height = size * 0.10,
+            CornerRadius = new CornerRadius(size * 0.05),
+            Background = accentBrush,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(0, 0, size * 0.05, size * 0.05)
+        });
+
+        return root;
+    }
+
+    private static string MakeInitials(string label)
+    {
+        var parts = (label ?? "")
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 0) return "A";
+        if (parts.Length == 1) return parts[0][..Math.Min(1, parts[0].Length)].ToUpperInvariant();
+        return (parts[0][0].ToString() + parts[1][0]).ToUpperInvariant();
+    }
+
+    private static Color CustomAccentColor(string seed)
+    {
+        var palette = new[]
+        {
+            Color.FromRgb(32, 184, 255),
+            Color.FromRgb(95, 205, 255),
+            Color.FromRgb(88, 166, 255),
+            Color.FromRgb(104, 225, 190),
+            Color.FromRgb(156, 140, 255),
+            Color.FromRgb(255, 167, 92)
+        };
+
+        unchecked
+        {
+            var hash = 17;
+            foreach (var c in seed ?? "")
+                hash = hash * 31 + c;
+            var index = (hash & int.MaxValue) % palette.Length;
+            return palette[index];
+        }
     }
 
     private UIElement CreateHomeTileIcon(string iconKey, double size)
@@ -1514,7 +1724,7 @@ public sealed class MainWindow : Window
     {
         BeginPage(
             "Tegel toevoegen",
-            "Kies een app uit het Windows-startmenu of voeg een webpagina toe, bijvoorbeeld YouTube.",
+            "Kies een app uit het Windows-startmenu of voeg een webpagina toe. Toegevoegde tegels blijven permanent bewaard.",
             out var body);
 
         body.Children.Add(Label("STARTMENU", 17, Amber));

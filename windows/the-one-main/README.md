@@ -48,3 +48,8 @@ Vanaf dat moment worden nieuwe Windows-versies alleen als in-app update over dez
 - Startmenu apps can be added directly as dashboard tiles
 - Websites such as YouTube can be added as dashboard tiles
 - Chrome has a dedicated The One styled neon web tile
+
+- Custom tiles keep their own app-specific Windows icons inside a The One neon badge
+- Website tiles load and cache the site's favicon with a The One styled fallback
+- Custom tiles persist across restarts and in-app updates, even if a shortcut is temporarily unavailable
+- Custom tiles use subtle hover scale/glow animation while preserving The One Family styling
