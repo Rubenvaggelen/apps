@@ -236,7 +236,9 @@ public static class HouseholdSyncClient
 
     private static IEnumerable<IPAddress> DefaultGateways()
     {
+        var result = new List<IPAddress>();
         var seen = new HashSet<string>();
+
         try
         {
             foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
@@ -253,14 +255,13 @@ public static class HouseholdSyncClient
                         continue;
 
                     if (seen.Add(address.ToString()))
-                        yield return address;
+                        result.Add(address);
                 }
             }
         }
-        catch
-        {
-            yield break;
-        }
+        catch { }
+
+        return result;
     }
 
     private static async Task<bool> CanConnectAsync(IPAddress address, int port)
