@@ -97,12 +97,12 @@ public sealed class MainWindow : Window
         var brandText = new StackPanel { Margin = new Thickness(12,0,0,0), VerticalAlignment = VerticalAlignment.Center };
         brandText.Children.Add(new TextBlock
         {
-            Text = "THE ONE", Foreground = Amber, FontSize = 23, FontWeight = FontWeights.Bold, CharacterSpacing = 85
+            Text = "THE ONE", Foreground = Amber, FontSize = 23, FontWeight = FontWeights.Bold
         });
         brandText.Children.Add(new TextBlock
         {
             Text = "MAIN  •  WINDOWS", Foreground = TextMain, FontSize = 11,
-            FontWeight = FontWeights.SemiBold, CharacterSpacing = 55, Margin = new Thickness(1,2,0,0)
+            FontWeight = FontWeights.SemiBold, Margin = new Thickness(1,2,0,0)
         });
         brand.Children.Add(brandText);
         DockPanel.SetDock(brand, Dock.Left);
@@ -111,8 +111,7 @@ public sealed class MainWindow : Window
         var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         right.Children.Add(new TextBlock
         {
-            Text = "THE ONE FAMILY", Foreground = Amber, FontSize = 10, FontWeight = FontWeights.Bold,
-            CharacterSpacing = 60, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0,0,18,0)
+            Text = "THE ONE FAMILY", Foreground = Amber, FontSize = 10, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0,0,18,0)
         });
         _clock.Foreground = TextDim;
         _clock.FontSize = 14;
@@ -151,7 +150,7 @@ public sealed class MainWindow : Window
         var heroText = new StackPanel { Margin = new Thickness(18,3,0,0), VerticalAlignment = VerticalAlignment.Center };
         heroText.Children.Add(new TextBlock
         {
-            Text = "THE ONE MAIN", Foreground = TextMain, FontSize = 30, FontWeight = FontWeights.Bold, CharacterSpacing = 60
+            Text = "THE ONE MAIN", Foreground = TextMain, FontSize = 30, FontWeight = FontWeights.Bold
         });
         heroText.Children.Add(new TextBlock
         {
@@ -166,7 +165,7 @@ public sealed class MainWindow : Window
         family.Child = new TextBlock
         {
             Text = "PART OF THE ONE FAMILY", Foreground = Amber, FontSize = 10,
-            FontWeight = FontWeights.Bold, CharacterSpacing = 55
+            FontWeight = FontWeights.Bold
         };
         DockPanel.SetDock(family, Dock.Right);
         heroRow.Children.Add(family);
@@ -214,8 +213,7 @@ public sealed class MainWindow : Window
         page.Children.Add(new TextBlock
         {
             Text = "THE ONE FAMILY  •  MAIN  •  CAR  •  MEDIA  •  REMOTE",
-            Foreground = TextDim, FontSize = 10, FontWeight = FontWeights.SemiBold,
-            CharacterSpacing = 60, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0,0,0,10)
+            Foreground = TextDim, FontSize = 10, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0,0,0,10)
         });
 
         _content.Children.Clear();
@@ -295,7 +293,6 @@ public sealed class MainWindow : Window
             FontSize = 28,
             FontFamily = new FontFamily("Segoe UI"),
             FontWeight = FontWeights.Bold,
-            CharacterSpacing = 55,
             Margin = new Thickness(0, 0, 0, 8)
         });
         if (!string.IsNullOrWhiteSpace(subtitle))
