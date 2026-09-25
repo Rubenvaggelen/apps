@@ -13,9 +13,34 @@ public static class WindowsUpdateService
     private const string ReleasesUrl = "https://api.github.com/repos/Rubenvaggelen/apps/releases?per_page=50";
     private const string TagPrefix = "windows-v";
     private const string AssetName = "The-One-Main-Windows.zip";
+    private const string CompletedMarkerName = "windows-update-completed.txt";
     private static readonly HttpClient Http = CreateClient();
 
     private sealed record UpdateInfo(int Version, string DownloadUrl);
+
+    public static void ShowCompletedUpdateIfNeeded(Window owner)
+    {
+        try
+        {
+            var marker = Path.Combine(AppStore.BaseDirectory, CompletedMarkerName);
+            if (!File.Exists(marker)) return;
+
+            var version = File.ReadAllText(marker).Trim();
+            File.Delete(marker);
+
+            var label = string.IsNullOrWhiteSpace(version) ? $"build {BuildInfo.Version}" : $"build {version}";
+            AppStore.AddNotification($"Windows-update {label} voltooid.");
+            MessageBox.Show(
+                $"Update klaar ✅\n\nThe One Main is bijgewerkt naar {label}.",
+                "The One Update",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch
+        {
+            // Een bevestigingsmelding mag het starten van The One nooit blokkeren.
+        }
+    }
 
     public static async Task CheckForUpdateAsync(Window owner, bool silentIfCurrent)
     {
@@ -114,13 +139,15 @@ public static class WindowsUpdateService
 
             var sourceDir = Path.GetDirectoryName(newExe)!;
             var updaterPath = Path.Combine(root, "apply-update.ps1");
+            var completionMarker = Path.Combine(AppStore.BaseDirectory, CompletedMarkerName);
             var script = BuildUpdaterScript();
             await File.WriteAllTextAsync(updaterPath, script);
 
             var args =
                 $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{updaterPath}\" " +
                 $"-ProcessId {Environment.ProcessId} -Source \"{sourceDir}\" -Target \"{installDir}\" " +
-                $"-ExeName \"{Path.GetFileName(exePath)}\" -Cleanup \"{root}\"";
+                $"-ExeName \"{Path.GetFileName(exePath)}\" -Cleanup \"{root}\" " +
+                $"-Marker \"{completionMarker}\" -Version {update.Version}";
 
             Process.Start(new ProcessStartInfo("powershell.exe", args)
             {
@@ -146,13 +173,16 @@ param(
   [string]$Source,
   [string]$Target,
   [string]$ExeName,
-  [string]$Cleanup
+  [string]$Cleanup,
+  [string]$Marker,
+  [int]$Version
 )
 $ErrorActionPreference = 'Stop'
 try {
   Wait-Process -Id $ProcessId -ErrorAction SilentlyContinue
   Start-Sleep -Milliseconds 700
   Copy-Item -Path (Join-Path $Source '*') -Destination $Target -Recurse -Force
+  Set-Content -LiteralPath $Marker -Value $Version -Encoding UTF8
   Start-Process -FilePath (Join-Path $Target $ExeName) -WorkingDirectory $Target
 }
 finally {
