@@ -101,7 +101,7 @@ class SettingsActivity : AppCompatActivity() {
         input.visibility = View.GONE
         save.visibility = View.GONE
         clear.visibility = View.GONE
-        status.text = "KIE API actief ✓ — key is ingebouwd in deze build"
+        status.text = "ChatGPT GPT-5.2 actief ✓ via KIE — key is ingebouwd"
         status.setTextColor(ContextCompat.getColor(this, R.color.amber))
     }
 
