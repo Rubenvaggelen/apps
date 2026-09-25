@@ -1354,21 +1354,20 @@ public sealed class MainWindow : Window
                 foreach (var item in found)
                 {
                     var captured = item;
-                    var card = new Button
+                    var card = new Border
                     {
                         Background = Surface,
                         BorderBrush = Brush("#174963"),
                         BorderThickness = new Thickness(1),
                         Padding = new Thickness(12),
                         Margin = new Thickness(0, 0, 0, 9),
-                        HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                        Cursor = Cursors.Hand,
-                        FocusVisualStyle = null
+                        CornerRadius = new CornerRadius(12)
                     };
 
                     var row = new Grid();
                     row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
                     row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                    row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
                     var thumb = YouTubeMusicService.CreateThumbnail(captured.ThumbnailUrl);
                     thumb.Margin = new Thickness(0, 0, 12, 0);
@@ -1395,7 +1394,32 @@ public sealed class MainWindow : Window
                     Grid.SetColumn(meta, 1);
                     row.Children.Add(meta);
 
-                    card.Content = row;
+                    var actions = new StackPanel
+                    {
+                        Orientation = Orientation.Vertical,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Margin = new Thickness(12, 0, 0, 0)
+                    };
+
+                    var play = SmallButton("▶ Afspelen", () => { });
+                    play.MinWidth = 110;
+                    play.Margin = new Thickness(0, 0, 0, 6);
+
+                    var premium = SmallButton("⬇ YouTube Premium", () =>
+                    {
+                        BrowserLauncher.OpenChrome(
+                            "https://www.youtube.com/watch?v=" +
+                            Uri.EscapeDataString(captured.VideoId));
+                    });
+                    premium.MinWidth = 150;
+                    premium.ToolTip = "Opent het officiële YouTube-scherm. Gebruik daar Download met je Premium-account.";
+
+                    actions.Children.Add(play);
+                    actions.Children.Add(premium);
+                    Grid.SetColumn(actions, 2);
+                    row.Children.Add(actions);
+
+                    card.Child = row;
                     card.MouseEnter += (_, _) =>
                     {
                         card.BorderBrush = Amber;
@@ -1407,7 +1431,7 @@ public sealed class MainWindow : Window
                         card.Background = Surface;
                     };
 
-                    card.Click += async (_, _) =>
+                    play.Click += async (_, _) =>
                     {
                         nowPlaying.Text = $"{captured.Title}  •  {captured.Channel}";
                         var selectedIndex = found.IndexOf(captured);
