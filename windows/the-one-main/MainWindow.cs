@@ -1410,7 +1410,14 @@ public sealed class MainWindow : Window
                     card.Click += async (_, _) =>
                     {
                         nowPlaying.Text = $"{captured.Title}  •  {captured.Channel}";
-                        await YouTubeMusicService.PlayAsync(web, captured.VideoId);
+                        var selectedIndex = found.IndexOf(captured);
+                        var queue = found
+                            .Skip(selectedIndex < 0 ? 0 : selectedIndex)
+                            .Select(x => x.VideoId)
+                            .Where(x => !string.IsNullOrWhiteSpace(x))
+                            .ToList();
+
+                        await YouTubeMusicService.PlayQueueAsync(web, queue);
                     };
 
                     results.Children.Add(card);

@@ -114,22 +114,30 @@ public static class YouTubeMusicService
         web.Source = new Uri("https://theone-music.local/index.html");
     }
 
-    public static async Task PlayAsync(WebView2 web, string videoId)
+    public static Task PlayAsync(WebView2 web, string videoId) =>
+        PlayQueueAsync(web, new[] { videoId });
+
+    public static async Task PlayQueueAsync(WebView2 web, IEnumerable<string> videoIds)
     {
         await InitializeAsync(web);
-        if (string.IsNullOrWhiteSpace(videoId)) return;
 
-        var safeId = new string(videoId.Where(c =>
-            char.IsLetterOrDigit(c) || c == '-' || c == '_').ToArray());
+        var queue = videoIds
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => new string(x.Where(c =>
+                char.IsLetterOrDigit(c) || c == '-' || c == '_').ToArray()))
+            .Where(x => x.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .Take(25)
+            .ToList();
 
-        if (safeId.Length == 0) return;
+        if (queue.Count == 0) return;
 
-        // YouTube error 153 ontstaat wanneer een embed zonder geldige verwijzer/origin
-        // wordt geopend. De lokale virtuele HTTPS-host geeft de speler wél een echte
-        // origin en referer, terwijl alles in The One Window blijft.
+        // De geselecteerde video start direct. Daarna gebruikt de interne YouTube
+        // playlist automatisch de volgende zoekresultaten zonder terug te gaan
+        // naar de resultatenlijst of een nieuw venster te openen.
+        var encodedQueue = Uri.EscapeDataString(string.Join(",", queue));
         web.Source = new Uri(
-            "https://theone-music.local/player.html?v=" +
-            Uri.EscapeDataString(safeId));
+            "https://theone-music.local/player.html?q=" + encodedQueue);
     }
 
     private static string EnsurePlayerFiles()
@@ -169,20 +177,43 @@ iframe{display:block;width:100%;height:100%;border:0;background:#05070B}
 </style>
 </head>
 <body>
-<iframe id="player"
-  title="YouTube muziekspeler"
-  allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-  allowfullscreen
-  referrerpolicy="strict-origin-when-cross-origin"></iframe>
+<div id="player"></div>
 <script>
-const id = new URLSearchParams(location.search).get('v') || '';
-const safe = /^[A-Za-z0-9_-]+$/.test(id) ? id : '';
-if (safe) {
-  const origin = encodeURIComponent(location.origin);
-  document.getElementById('player').src =
-    'https://www.youtube.com/embed/' + encodeURIComponent(safe) +
-    '?autoplay=1&rel=0&modestbranding=1&playsinline=1&origin=' + origin;
+const raw = new URLSearchParams(location.search).get('q') || '';
+const queue = raw
+  .split(',')
+  .map(v => v.trim())
+  .filter(v => /^[A-Za-z0-9_-]+$/.test(v))
+  .slice(0, 25);
+
+function onYouTubeIframeAPIReady() {
+  if (!queue.length) return;
+
+  new YT.Player('player', {
+    width: '100%',
+    height: '100%',
+    playerVars: {
+      autoplay: 1,
+      rel: 0,
+      modestbranding: 1,
+      playsinline: 1,
+      origin: location.origin
+    },
+    events: {
+      onReady: event => {
+        event.target.loadPlaylist({
+          playlist: queue,
+          index: 0,
+          startSeconds: 0
+        });
+      }
+    }
+  });
 }
+
+const api = document.createElement('script');
+api.src = 'https://www.youtube.com/iframe_api';
+document.head.appendChild(api);
 </script>
 </body>
 </html>
