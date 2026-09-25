@@ -36,3 +36,14 @@ The Windows app has its own in-app update channel.
 Windows builds are published as GitHub prereleases with tags `windows-v<build>`.
 The app checks this channel on startup and can replace its own files after closing, then restart automatically.
 These Windows-only releases are intentionally separate from the Android The One / The One Car release channel.
+
+
+## Vaste Windows-installatie
+Bij de eerste start kopieert The One Main zichzelf automatisch naar:
+`%LOCALAPPDATA%\Programs\The One Family\The One Main\TheOneMain.exe`
+
+Daarna maakt de app automatisch:
+- een Startmenu-koppeling: `The One Family > The One Main`
+- een bureaubladkoppeling: `The One Main`
+
+Vanaf dat moment worden nieuwe Windows-versies alleen als in-app update over deze vaste installatie gezet.
