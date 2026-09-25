@@ -226,11 +226,21 @@ public sealed class MainWindow : Window
             // Toegevoegde apps blijven permanent als tegel bewaard, ook als Windows
             // een snelkoppeling tijdelijk niet kan vinden. Alleen de gebruiker kan ze verwijderen.
             var target = app.ExePath;
+            var isRutuCompany =
+                app.Id == "rutu-bbq-bedrijf-windows" ||
+                app.Label.Contains("Rutu", StringComparison.OrdinalIgnoreCase);
+
             wrap.Children.Add(BuildTile(
                 app.Id,
                 app.Label,
                 "custom",
-                () => BrowserLauncher.OpenProgram(target),
+                () =>
+                {
+                    if (isRutuCompany)
+                        RutuCompanyAppService.OpenImportedPath(target);
+                    else
+                        BrowserLauncher.OpenProgram(target);
+                },
                 custom: true,
                 iconOverride: CreateCustomAppIcon(app, 70)));
         }
