@@ -40,6 +40,13 @@ public sealed class MainWindow : Window
     // Daardoor blijven de zoeklijst, de gekozen clip en de WebView-speler behouden
     // wanneer de gebruiker naar het hoofdmenu of een andere tegel gaat.
     private Grid? _musicPage;
+    private Grid? _musicPlayerGrid;
+    private Microsoft.Web.WebView2.Wpf.WebView2? _musicWebView;
+    private Border? _musicHomeOverlay;
+    private TextBlock? _musicHomeNowPlaying;
+    private string _musicNowPlayingTitle = "Muziek";
+    private bool _musicSessionActive;
+    private bool _musicOverlayFaded;
 
     private sealed record TileDef(string Id, string Label, string IconKey, Action Open);
     private sealed record StartMenuShortcut(string Label, string TargetPath);
@@ -91,6 +98,7 @@ public sealed class MainWindow : Window
         _timer.Start();
         _clock.Text = DateTime.Now.ToString("ddd d MMM  HH:mm", new CultureInfo("nl-NL"));
 
+        PreviewMouseMove += (_, _) => UpdateMusicHomeOverlayFade();
         AppStore.AddNotification("The One Window gestart.");
         ShowHome();
     }
@@ -273,8 +281,147 @@ public sealed class MainWindow : Window
         Grid.SetRow(footer, 1);
         outer.Children.Add(footer);
 
+        if (_musicSessionActive && _musicWebView != null)
+            AttachMusicPlayerToHome(outer);
+
         _content.Children.Clear();
         _content.Children.Add(outer);
+    }
+
+    private void AttachMusicPlayerToMusicPage()
+    {
+        if (_musicWebView == null || _musicPlayerGrid == null)
+            return;
+
+        if (_musicWebView.Parent is Panel parent)
+            parent.Children.Remove(_musicWebView);
+
+        _musicHomeOverlay = null;
+        _musicHomeNowPlaying = null;
+        _musicOverlayFaded = false;
+
+        _musicWebView.IsHitTestVisible = true;
+        _musicWebView.Visibility = Visibility.Visible;
+        _musicWebView.Opacity = 1.0;
+
+        if (!_musicPlayerGrid.Children.Contains(_musicWebView))
+        {
+            Grid.SetRow(_musicWebView, 1);
+            _musicPlayerGrid.Children.Add(_musicWebView);
+        }
+    }
+
+    private void AttachMusicPlayerToHome(Grid outer)
+    {
+        if (_musicWebView == null)
+            return;
+
+        if (_musicWebView.Parent is Panel parent)
+            parent.Children.Remove(_musicWebView);
+
+        var overlay = new Border
+        {
+            Width = 500,
+            Height = 315,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(0, 0, 24, 54),
+            Background = Brush("#F0091018"),
+            BorderBrush = Amber,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(16),
+            Padding = new Thickness(10),
+            Opacity = 0.96,
+            IsHitTestVisible = false,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Color.FromRgb(32, 184, 255),
+                BlurRadius = 22,
+                Opacity = 0.24,
+                ShadowDepth = 0
+            }
+        };
+
+        var shell = new Grid();
+        shell.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        shell.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+        var title = new TextBlock
+        {
+            Text = _musicNowPlayingTitle,
+            Foreground = TextMain,
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Margin = new Thickness(4, 0, 4, 8)
+        };
+        _musicHomeNowPlaying = title;
+        shell.Children.Add(title);
+
+        var playerSlot = new Grid { ClipToBounds = true };
+        Grid.SetRow(playerSlot, 1);
+        shell.Children.Add(playerSlot);
+
+        _musicWebView.IsHitTestVisible = false;
+        _musicWebView.Visibility = Visibility.Visible;
+        _musicWebView.Opacity = 1.0;
+        playerSlot.Children.Add(_musicWebView);
+
+        overlay.Child = shell;
+        _musicHomeOverlay = overlay;
+        _musicOverlayFaded = false;
+
+        Grid.SetRowSpan(overlay, 2);
+        Panel.SetZIndex(overlay, 200);
+        outer.Children.Add(overlay);
+    }
+
+    private void UpdateMusicHomeOverlayFade()
+    {
+        if (_musicHomeOverlay == null ||
+            _musicWebView == null ||
+            !_musicHomeOverlay.IsVisible ||
+            !_musicHomeOverlay.IsLoaded)
+            return;
+
+        Point p;
+        try
+        {
+            p = Mouse.GetPosition(_musicHomeOverlay);
+        }
+        catch
+        {
+            return;
+        }
+
+        var inside =
+            p.X >= 0 &&
+            p.Y >= 0 &&
+            p.X <= _musicHomeOverlay.ActualWidth &&
+            p.Y <= _musicHomeOverlay.ActualHeight;
+
+        if (inside == _musicOverlayFaded)
+            return;
+
+        _musicOverlayFaded = inside;
+
+        if (inside)
+        {
+            // WebView2 is een native child window en ondersteunt WPF-opacity niet
+            // betrouwbaar. Verberg alleen de videolaag, en fade de The One-kaart.
+            // De audio/sessie blijft actief en muisklikken gaan door naar de tegel eronder.
+            _musicWebView.Visibility = Visibility.Hidden;
+            _musicHomeOverlay.BeginAnimation(
+                OpacityProperty,
+                new DoubleAnimation(0.14, TimeSpan.FromMilliseconds(130)));
+        }
+        else
+        {
+            _musicWebView.Visibility = Visibility.Visible;
+            _musicHomeOverlay.BeginAnimation(
+                OpacityProperty,
+                new DoubleAnimation(0.96, TimeSpan.FromMilliseconds(150)));
+        }
     }
 
     private void EnsureRutuCompanyImported()
@@ -1230,6 +1377,8 @@ public sealed class MainWindow : Window
     {
         if (_musicPage != null)
         {
+            AttachMusicPlayerToMusicPage();
+
             if (_musicPage.Parent is Panel oldParent)
                 oldParent.Children.Remove(_musicPage);
 
@@ -1326,6 +1475,8 @@ public sealed class MainWindow : Window
         playerGrid.Children.Add(nowPlaying);
 
         var web = YouTubeMusicService.CreatePlayer();
+        _musicWebView = web;
+        _musicPlayerGrid = playerGrid;
         Grid.SetRow(web, 1);
         playerGrid.Children.Add(web);
 
@@ -1451,7 +1602,12 @@ public sealed class MainWindow : Window
 
                     play.Click += async (_, _) =>
                     {
-                        nowPlaying.Text = $"{captured.Title}  •  {captured.Channel}";
+                        _musicNowPlayingTitle = $"{captured.Title}  •  {captured.Channel}";
+                        _musicSessionActive = true;
+                        nowPlaying.Text = _musicNowPlayingTitle;
+                        if (_musicHomeNowPlaying != null)
+                            _musicHomeNowPlaying.Text = _musicNowPlayingTitle;
+
                         var selectedIndex = found.IndexOf(captured);
                         var queue = found
                             .Skip(selectedIndex < 0 ? 0 : selectedIndex)
@@ -1499,7 +1655,12 @@ public sealed class MainWindow : Window
 
             try
             {
-                nowPlaying.Text = "Spotify  •  " + query;
+                _musicNowPlayingTitle = "Spotify  •  " + query;
+                _musicSessionActive = true;
+                nowPlaying.Text = _musicNowPlayingTitle;
+                if (_musicHomeNowPlaying != null)
+                    _musicHomeNowPlaying.Text = _musicNowPlayingTitle;
+
                 await YouTubeMusicService.OpenSpotifySearchAsync(web, query);
                 status.Text = "Spotify geopend in The One Window";
             }
