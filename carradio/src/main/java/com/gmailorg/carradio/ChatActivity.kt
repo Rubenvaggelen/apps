@@ -34,6 +34,7 @@ class ChatActivity : AppCompatActivity() {
     private lateinit var voiceButton: Button
     private val voiceRecorder = RadioVoiceRecorder()
     private var receivedVoicePlayer: MediaPlayer? = null
+    @Volatile private var typedSendInProgress = false
     private var chatVoiceDucked = false
     private var recordingDucked = false
     private val duckHandler = Handler(Looper.getMainLooper())
@@ -76,10 +77,51 @@ class ChatActivity : AppCompatActivity() {
 
     private fun sendTyped() {
         val text = input.text.toString().trim()
-        if (text.isBlank()) return
-        val ok = BluetoothListenerService.sendTextReply(contact, text)
-        if (ok) input.text.clear()
-        else Toast.makeText(this, "Geen live verbinding met je telefoon", Toast.LENGTH_SHORT).show()
+        if (text.isBlank() || typedSendInProgress) return
+
+        // Probeer eerst direct. Als de Wi-Fi/hotspot-link net opnieuw aan het
+        // verbinden is, mag een getypt bericht niet meteen verloren gaan.
+        if (BluetoothListenerService.sendTextReply(contact, text)) {
+            input.text.clear()
+            status.text = "Bericht verzonden naar telefoon…"
+            return
+        }
+
+        typedSendInProgress = true
+        status.text = "Telefoonverbinding herstellen • bericht blijft klaarstaan…"
+
+        try {
+            ContextCompat.startForegroundService(
+                this,
+                Intent(this, BluetoothListenerService::class.java)
+            )
+        } catch (_: Exception) {
+        }
+
+        Thread {
+            var sent = false
+            repeat(12) { attempt ->
+                if (attempt > 0) {
+                    try { Thread.sleep(900L) } catch (_: InterruptedException) {}
+                }
+                if (BluetoothListenerService.sendTextReply(contact, text)) {
+                    sent = true
+                    return@repeat
+                }
+            }
+
+            runOnUiThread {
+                typedSendInProgress = false
+                if (sent) {
+                    // Alleen wissen als de gebruiker intussen niet alweer verder typte.
+                    if (input.text.toString().trim() == text) input.text.clear()
+                    status.text = "Bericht verzonden naar telefoon…"
+                } else {
+                    status.text = "Geen live verbinding met je telefoon"
+                    Toast.makeText(this, "Geen live verbinding met je telefoon", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }.start()
     }
 
     private fun ensureMicThenRecord() {
