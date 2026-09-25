@@ -1,67 +1,180 @@
 <!doctype html>
 <html lang="nl">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Rutu BBQ — Bedrijf</title>
-  <link rel="stylesheet" href="brand.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Rutu BBQ Bedrijf</title>
+<style>
+:root{color-scheme:dark;--gold:#e5b85c;--light:#f4d593;--muted:#bdb2a1;--line:#463820;--panel:#17140f}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top left,#251809 0,transparent 55%),#090807;color:#f8f2e8;font:16px/1.5 system-ui,sans-serif;position:relative;min-height:100vh}body::before{content:"";position:fixed;inset:0;background:url('assets/rutu-logo.png') center 52%/min(72vw,520px) auto no-repeat;opacity:.08;pointer-events:none;z-index:0}.wrap{position:relative;z-index:1}
+header{position:sticky;top:0;z-index:10;padding:14px 16px;background:#0a0908f2;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{font:700 22px Georgia,serif;letter-spacing:1.5px;color:var(--light)}.tag,.hint,.meta{color:var(--muted);font-size:13px}.brand-block{display:flex;align-items:center;gap:10px;min-width:0}.brand-logo{width:48px;height:48px;object-fit:contain;border-radius:12px;flex-shrink:0}.hero-logo{display:block;width:min(150px,40vw);height:auto;margin:0 auto 14px;object-fit:contain}@media(max-width:420px){header{gap:8px;padding:12px}.brand{font-size:19px}.brand-logo{width:42px;height:42px}}
+.wrap{padding:18px 14px 30px;max-width:1000px;margin:auto}.hero,.panel,.order{background:linear-gradient(145deg,#201a12,var(--panel));border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}
+h1,h2,h3{font-family:Georgia,serif;color:var(--light);font-weight:500}h1{font-size:28px;margin:0 0 8px}h2{font-size:22px;margin:8px 0 14px}.eyebrow{font-size:11px;letter-spacing:2px;color:var(--gold);font-weight:700;text-transform:uppercase}
+button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:10px 14px;font-weight:700;font-size:14px;cursor:pointer}.gold{background:var(--gold);color:#211507}.green{background:#224934;color:#dcffe9;border-color:#407e5b}.red{background:#49221e;color:#ffddd6;border-color:#87483f}.gray{background:#242019;color:var(--light);border-color:var(--line)}.orange{background:#d49d3e;color:#1f1407}
+.badge{background:#3b2b11;color:var(--light);border:1px solid #85652a;border-radius:100px;padding:8px 13px;min-height:0}
+.summary{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:14px 0}.summary div{background:#17140f;border:1px solid var(--line);border-radius:12px;padding:12px}.summary b{display:block;color:var(--light);font-size:22px}.summary .summary-link{display:block;width:100%;text-align:left;background:#17140f;border:1px solid var(--line);border-radius:12px;padding:12px;color:#f8f2e8;font:inherit}.summary .summary-link:active,.summary .summary-link:focus-visible{border-color:var(--gold);outline:2px solid var(--gold);outline-offset:2px}.orders-screen-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.orders-screen-title h1{margin:0}.orders-screen-title button{flex-shrink:0}.orders-section{margin-top:18px}.history-screen-info{color:var(--muted);margin:0 0 14px}.history-screen-list{display:grid;gap:12px}.history-screen-list .order{margin-bottom:0}
+.order-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.order-total{color:var(--gold);font-weight:700}.status{color:var(--light);font-weight:700;margin:12px 0}.actions{display:flex;gap:8px;flex-wrap:wrap}
+.notice-grid{display:grid;gap:10px}.notice-grid input,.notice-grid textarea,.key-input,.schedule-editor select,.schedule-editor input[type=time]{width:100%;background:#0f0d0a;color:#fff;border:1px solid var(--line);border-radius:10px;padding:12px;font:15px system-ui}.notice-grid textarea{min-height:90px;resize:vertical}.schedule-editor{display:grid;gap:10px;background:#12100d;border:1px solid var(--line);border-radius:12px;padding:12px}.schedule-editor .row label{display:flex;align-items:center;gap:8px;color:var(--light)}.schedule-editor .time-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.schedule-editor .time-grid label{color:var(--muted);font-size:13px}.schedule-editor .time-grid input{margin-top:5px}.row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}.row .grow{flex:1}.empty{text-align:center;padding:28px 16px;color:var(--muted);border:1px dashed var(--line);border-radius:12px}
+.order-modal,.key-modal{display:none;position:fixed;inset:0;background:#000b;z-index:100;align-items:center;justify-content:center;padding:16px}.order-modal.open,.key-modal.open{display:flex}.modal-card{width:min(760px,100%);max-height:88vh;overflow:auto;background:linear-gradient(145deg,#201a12,var(--panel));border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 20px 70px #000}.modal-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.modal-head h2{margin:0}.open-orders-list{display:flex;flex-direction:column;gap:12px}.error{color:#ffb4aa}.ok{color:#a8ddb3}.history-row{display:flex;justify-content:space-between;gap:10px;align-items:center;background:#17140f;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:7px}.history-row button{min-height:34px;padding:5px 9px}.the-one-family-footer{display:flex;justify-content:center;align-items:center;gap:9px;margin-top:24px;padding:16px 4px 2px;color:#00a7ff;font-size:13px;font-weight:700;letter-spacing:.025em}.the-one-family-footer img{display:block;width:29px;height:29px;object-fit:contain;flex:0 0 auto}
+.qr-panel{text-align:center}.qr-preview{display:inline-flex;align-items:center;justify-content:center;background:#fff;border:2px solid var(--gold);border-radius:15px;padding:14px;min-width:196px;min-height:196px;cursor:zoom-in}.qr-preview img{display:block;width:164px;height:164px;image-rendering:pixelated;image-rendering:crisp-edges}.qr-preview:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
+.qr-modal{display:none;position:fixed;inset:0;background:#000e;z-index:130;align-items:center;justify-content:center;padding:16px}.qr-modal.open{display:flex}.qr-modal-card{width:min(540px,100%);max-height:95vh;overflow:auto;background:linear-gradient(145deg,#201a12,var(--panel));border:1px solid var(--gold);border-radius:20px;padding:18px;text-align:center}.qr-modal-card .modal-head{margin-bottom:14px}.qr-enlarged{display:block;width:min(76vw,390px);height:auto;aspect-ratio:1;margin:0 auto;background:#fff;border-radius:12px;padding:16px;image-rendering:pixelated;image-rendering:crisp-edges}
+@media(min-width:760px){.summary{grid-template-columns:repeat(5,1fr)}.notice-grid{grid-template-columns:2fr 1fr 1fr}.notice-grid textarea{grid-column:1/-1}}
+</style>
 </head>
 <body>
 <header>
-  <div class="identity"><img class="brand-logo" src="assets/rutu-logo.png" alt="Rutu BBQ"><div><div class="brand">RUTU BBQ</div><div class="tag">Bedrijfsomgeving</div></div></div>
-  <button class="badge badge-button" id="count" type="button" style="display:none" onclick="openOpenOrders()" aria-label="Bekijk alle openstaande bestellingen">0 nieuw</button>
+  <div class="brand-block"><img class="brand-logo" src="assets/rutu-logo.png" alt="Rutu BBQ-logo" width="48" height="48"><div><div class="brand">RUTU BBQ</div><div class="tag">Bedrijfsapp Windows</div></div></div>
+  <div class="row"><button class="gray" onclick="openKeyModal()">Koppeling</button><button id="count" class="badge" style="display:none" onclick="openOpenOrders()">0 nieuw</button></div>
 </header>
-<main class="wrap">
-  <section class="hero"><p class="eyebrow">RUTU BBQ • MORE THAN FOOD</p><h1>Jouw keuken. Alles in beeld.</h1><p>Ontvang bestellingen, houd klanten op de hoogte en bewaar de volledige bestelgeschiedenis.</p></section>
-  <div class="connect"><b>Online bestellingen</b><div class="ip" id="serverAddress">Online verbinding controleren…</div><div class="hint">Nieuwe bestellingen en statuswijzigingen worden automatisch gesynchroniseerd.</div></div>
-  <section class="notice-admin">
-    <div class="notice-head"><div><p class="eyebrow">KLANTUPDATE</p><h2>Mededeling in de Rutu-app</h2><p class="hint">Gebruik dit voor vakantie, aangepaste openingstijden, feestdagen of andere belangrijke berichten. Op de gekozen kalenderdatum of periode worden bestellingen automatisch geblokkeerd.</p></div><span class="badge" id="noticeState">Geen actieve mededeling</span></div>
-    <div class="notice-grid"><label>Titel<input id="noticeTitle" maxlength="80" placeholder="Bijv. Vakantie"></label><label>Vanaf<input id="noticeFrom" type="date"></label><label>Tot en met<input id="noticeUntil" type="date"></label></div>
-    <label>Bericht<textarea id="noticeMessage" maxlength="600" rows="4" placeholder="Bijv. Wij zijn gesloten van 12 t/m 19 oktober."></textarea></label>
-    <div class="notice-actions"><label class="toggle"><input id="noticeActive" type="checkbox"> Actief tonen aan klanten</label><button class="orange" onclick="saveNotice()">Publiceren</button><button class="gray" onclick="clearNotice()">Verwijderen</button></div>
-    <div class="hint" id="noticeResult"></div>
+<main class="wrap" id="dashboard">
+  <section class="hero"><img class="hero-logo" src="assets/rutu-logo.png" alt="Rutu BBQ" width="150" height="150"><div class="eyebrow">RUTU BBQ • BEDRIJF</div><h1>Jouw keuken. Alles in beeld.</h1><div id="connection" class="hint">Verbinden met online bestellingen…</div><div class="row" style="margin-top:12px"><button type="button" class="gray" onclick="checkBusinessUpdates()">Controleer op updates</button></div></section>
+  <div class="summary" id="summary"></div>
+  <section class="panel"><div class="row"><h2 class="grow">Actieve bestellingen</h2><button class="gray" onclick="manualClearActive()">Handmatig opschonen</button><button class="gray" id="restoreActive" style="display:none" onclick="restoreHiddenActive()">Herstellen</button></div><p class="hint">Opschonen verbergt de actieve lijst alleen op dit apparaat; bestelstatussen blijven ongewijzigd.</p><div id="orders"></div></section>
+  <section class="panel">
+    <div class="eyebrow">BESTELMOMENTEN</div><h2>Open voor bestellingen</h2>
+    <p class="hint">Standaard is alleen woensdag van 10:00 tot 18:00 uur open. Kies een dag in het dropdownmenu om die dag open of dicht te zetten.</p>
+    <div class="schedule-editor">
+      <select id="scheduleDaySelect" onchange="renderSelectedScheduleDay()" aria-label="Kies dag">
+        <option value="1">Maandag</option><option value="2">Dinsdag</option><option value="3" selected>Woensdag</option><option value="4">Donderdag</option><option value="5">Vrijdag</option><option value="6">Zaterdag</option><option value="7">Zondag</option>
+      </select>
+      <div class="row"><label><input id="scheduleDayOpen" type="checkbox"> Deze dag open voor bestellingen</label></div>
+      <div class="time-grid">
+        <label>Vanaf<input id="scheduleDayFrom" type="time" value="10:00"></label>
+        <label>Tot<input id="scheduleDayUntil" type="time" value="18:00"></label>
+      </div>
+      <button class="gold" onclick="saveSchedule()">Deze dag opslaan</button>
+    </div>
+    <div id="scheduleResult" class="hint" style="margin-top:8px"></div>
   </section>
-  <div class="summary" id="summary" aria-live="polite"></div>
-  <h2 class="section-title">Actieve bestellingen</h2>
-  <div id="orders" aria-live="polite"></div>
-  <div class="history-title-row"><h2 class="section-title history-title">Bestelgeschiedenis</h2><button class="gray" onclick="clearHistory()">Wis geschiedenis</button></div>
-  <p class="hint history-hint">Per bestelling zie je bestelnummer, actuele status en bedrag. Met Verwijder blijft daarna alleen het bedrag staan. Wis geschiedenis zet de geschiedenis en teller op nul.</p>
-  <div id="history" aria-live="polite"></div>
-  
+  <section class="panel">
+    <div class="eyebrow">KLANTUPDATE</div><h2>Mededeling in de klantapp</h2>
+    <div class="notice-grid">
+      <input id="noticeTitle" maxlength="80" placeholder="Titel, bijvoorbeeld Vakantie">
+      <input id="noticeFrom" type="date"><input id="noticeUntil" type="date">
+      <textarea id="noticeMessage" maxlength="600" placeholder="Bericht aan klanten"></textarea>
+    </div>
+    <div class="row" style="margin-top:12px"><label class="grow"><input id="noticeActive" type="checkbox"> Actief tonen</label><button class="gold" onclick="saveNotice()">Publiceren</button><button class="gray" onclick="clearNotice()">Verwijderen</button></div>
+    <div id="noticeResult" class="hint"></div>
+  </section>
+  <section class="panel"><div class="row"><h2 class="grow">Bestelgeschiedenis</h2><button class="gold" onclick="openHistoryOrders()">Bekijk geschiedenis</button><button class="gray" onclick="clearHistory()">Wis geschiedenis</button></div><p class="hint">Geschiedenis toont alle bestellingen sinds de laatste wisactie, inclusief bestellingen die de klant heeft geannuleerd.</p><div id="historyResult" class="hint" style="margin:0 0 10px"></div><div id="history"></div></section>
+  <section class="panel qr-panel" aria-labelledby="qrPanelTitle">
+    <div class="eyebrow">DOWNLOAD</div>
+    <h2 id="qrPanelTitle">Android QR-code</h2>
+    <p class="hint">Scan de QR-code om de Rutu BBQ-klantapp op Android te installeren. Tik erop om hem te vergroten.</p>
+    <button type="button" id="qrPreview" class="qr-preview" onclick="openQrModal()" aria-label="Android QR-code vergroten">
+      <img src="assets/rutu-android-qr.png" width="164" height="164" alt="QR-code voor de Android-klantapp">
+    </button>
+  </section>
+  <footer class="the-one-family-footer" aria-label="Part of The One Family">
+    <img src="assets/the-one-logo.png" width="29" height="29" alt="">
+    <span>Part of The One Family</span>
+  </footer>
 </main>
-<div class="order-modal" id="orderModal" onclick="if(event.target===this)closeOrderModal()">
-  <div class="order-modal-card" role="dialog" aria-modal="true" aria-labelledby="orderModalTitle">
-    <div class="order-modal-head"><h2 id="orderModalTitle">Bestelling</h2><button class="gray modal-close" onclick="closeOrderModal()">Sluiten</button></div>
-    <div id="orderModalBody"></div>
+<main class="wrap" id="newOrdersScreen" style="display:none">
+  <section class="hero">
+    <div class="orders-screen-title">
+      <button class="gray" onclick="backToDashboard()">← Terug naar overzicht</button>
+      <h1>Bestellingen</h1>
+    </div>
+    <p class="hint">Nieuwe bestellingen staan bovenaan. Ook de overige actieve bestellingen blijven hieronder zichtbaar.</p>
+  </section>
+  <section class="panel orders-section"><h2 id="newOrdersTitle">Nieuwe bestellingen</h2><div id="focusedNewOrders"></div></section>
+  <section class="panel orders-section" id="otherOrdersSection"><h2>Overige actieve bestellingen</h2><div id="focusedOtherOrders"></div></section>
+</main>
+<main class="wrap" id="historyScreen" style="display:none">
+ <section class="hero"><div class="orders-screen-title"><button class="gray" onclick="backToDashboard()">← Terug naar overzicht</button><h1>Alle bestellingen</h1></div><p class="hint">Volledig bestelarchief, inclusief annuleringen, weigeringen, uitverkochte en afgeronde bestellingen.</p></section>
+ <section class="panel"><div class="row" style="margin-bottom:12px"><p id="historyScreenInfo" class="history-screen-info grow" aria-live="polite"></p><button class="gray" onclick="clearHistory()">Wis geschiedenis</button></div><div id="historyScreenResult" class="hint" style="margin:0 0 10px"></div><div id="fullHistoryList" class="history-screen-list" aria-live="polite"></div></section>
+</main>
+
+<div class="order-modal" id="orderModal" onclick="if(event.target===this)closeOrderModal()"><div class="modal-card"><div class="modal-head"><h2 id="orderModalTitle">Openstaande bestellingen</h2><button class="gray" onclick="closeOrderModal()">Sluiten</button></div><div id="orderModalBody"></div></div></div>
+<div class="qr-modal" id="qrModal" role="dialog" aria-modal="true" aria-labelledby="qrModalTitle" onclick="if(event.target===this)closeQrModal()">
+  <div class="qr-modal-card">
+    <div class="modal-head"><h2 id="qrModalTitle">Android QR-code</h2><button type="button" id="closeQrButton" class="gray" onclick="closeQrModal()">Sluiten</button></div>
+    <img class="qr-enlarged" src="assets/rutu-android-qr.png" alt="Vergrote QR-code voor de Android-klantapp" width="390" height="390">
+    <p class="hint">Scan deze code om de Rutu BBQ-klantapp te installeren.</p>
   </div>
 </div>
-<div class="setup-modal" id="setupModal">
-  <div class="setup-card" role="dialog" aria-modal="true" aria-labelledby="setupTitle">
-    <h2 id="setupTitle">Bedrijfsapp koppelen</h2>
-    <p>Voer één keer de bedrijfskey in. Daarna wordt deze alleen op deze Windows-laptop opgeslagen en hoef je hem niet opnieuw in te voeren.</p>
-    <input id="setupKey" type="password" autocomplete="off" placeholder="Bedrijfskey">
-    <div class="setup-result" id="setupResult"></div>
-    <button class="send" onclick="saveBusinessSetup()">Opslaan en verbinden</button>
-  </div>
-</div>
+<div class="key-modal" id="keyModal"><div class="modal-card"><h2>Bedrijfsapp koppelen</h2><p class="hint">Voer de bedrijfsleutel één keer in. Deze wordt alleen op dit Windows-laptop opgeslagen en staat niet in de APK of Dev Hub.</p><input id="businessKey" class="key-input" type="password" autocomplete="off" placeholder="Bedrijfsleutel"><div id="keyResult" class="hint" style="margin-top:8px"></div><div class="row" style="margin-top:14px"><button class="gold" onclick="saveBusinessKey()">Opslaan en verbinden</button><button class="gray" onclick="closeKeyModal()">Annuleren</button></div></div></div>
+
 <script>
+const API='https://rubenvanaggelen.com/rutu-api/index.php';
 let orders=[];
+function checkBusinessUpdates(){rutu.checkUpdate()}
+let ordersScreenOpen=false;
+let historyScreenOpen=false;
+let historySnapshot=[];
+let orderingSchedule=null;
+const scheduleDayNames=['','Maandag','Dinsdag','Woensdag','Donderdag','Vrijdag','Zaterdag','Zondag'];
+function openQrModal(){
+  const modal=document.getElementById('qrModal');
+  modal.classList.add('open');
+  document.getElementById('closeQrButton').focus();
+}
+function closeQrModal(){
+  const modal=document.getElementById('qrModal');
+  if(!modal.classList.contains('open'))return;
+  modal.classList.remove('open');
+  document.getElementById('qrPreview').focus();
+}
+document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&document.getElementById('qrModal').classList.contains('open')){
+    event.preventDefault();
+    closeQrModal();
+  }
+});
+function openNewOrdersScreen(){
+  const modal=document.getElementById('orderModal');
+  if(modal.classList.contains('open'))closeOrderModal();
+  ordersScreenOpen=true;
+  historyScreenOpen=false;
+  document.getElementById('historyScreen').style.display='none';
+  document.getElementById('dashboard').style.display='none';
+  document.getElementById('newOrdersScreen').style.display='';
+  renderFocusedOrders();
+  window.scrollTo(0,0);
+}
+function backToDashboard(){
+  if(!ordersScreenOpen&&!historyScreenOpen)return;
+  ordersScreenOpen=false;
+  historyScreenOpen=false;
+  document.getElementById('newOrdersScreen').style.display='none';
+  document.getElementById('historyScreen').style.display='none';
+  document.getElementById('dashboard').style.display='';
+  window.scrollTo(0,0);
+}
+function renderFocusedOrders(){
+  if(!ordersScreenOpen)return;
+  const visible=orders.filter(o=>openStatuses(o)&&!hiddenActiveIds.has(o.id));
+  const fresh=visible.filter(o=>o.status==='Nieuw');
+  const other=visible.filter(o=>o.status!=='Nieuw');
+  document.getElementById('newOrdersTitle').textContent='Nieuwe bestellingen ('+fresh.length+')';
+  document.getElementById('focusedNewOrders').innerHTML=fresh.map(orderCard).join('')||'<div class="empty">Geen nieuwe bestellingen.</div>';
+  document.getElementById('focusedOtherOrders').innerHTML=other.map(orderCard).join('')||'<div class="empty">Geen overige actieve bestellingen.</div>';
+  document.getElementById('otherOrdersSection').style.display=other.length?'':'none';
+}
+const finalStatuses=['Afgerond','Uitverkocht','Geweigerd','Geannuleerd'];
+let hiddenActiveIds=new Set();
+try{hiddenActiveIds=new Set(JSON.parse(localStorage.getItem('rutu_hidden_active_orders')||'[]').map(Number))}catch(_){}
+function saveHiddenActive(){localStorage.setItem('rutu_hidden_active_orders',JSON.stringify([...hiddenActiveIds]))}
+function manualClearActive(){const visible=orders.filter(o=>openStatuses(o)&&!hiddenActiveIds.has(o.id));if(!visible.length)return;if(!confirm('Alle zichtbare actieve bestellingen alleen op dit apparaat verbergen? De bestelstatussen veranderen niet. Via Herstellen zijn de bestellingen weer zichtbaar.\n\nHide all visible active orders on this device only? Order statuses will not change. You can restore them using Restore.'))return;visible.forEach(o=>hiddenActiveIds.add(o.id));saveHiddenActive();render()}
+function restoreHiddenActive(){hiddenActiveIds.clear();saveHiddenActive();render()}
 const money=n=>new Intl.NumberFormat('nl-NL',{style:'currency',currency:'EUR'}).format(Number(n||0));
-const esc=s=>String(s??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
-function when(v){if(!v)return '';const d=new Date(v);return Number.isNaN(d.getTime())?esc(v):new Intl.DateTimeFormat('nl-NL',{dateStyle:'medium',timeStyle:'short'}).format(d)}
-async function setStatus(id,status){await rutu.setStatus(id,status)}
-async function hideHistory(id){await rutu.hideHistory(id)}
-async function clearHistory(){if(!confirm('Geschiedenis wissen en teller op nul zetten?'))return;await rutu.clearHistory()}
-function openHistoryOrder(id){const o=orders.find(x=>Number(x.id)===Number(id));if(!o)return;document.getElementById('orderModal').dataset.mode='history';const items=(o.items||[]).map(i=>'<div class="modal-line"><span>'+esc(i.qty)+'× '+esc(i.name)+'</span></div>').join('');const delivery=o.delivery?'<div class="modal-meta"><b>Bezorgen</b> • '+esc(o.address)+' • '+esc(o.postcode)+' • bezorgkosten '+money(o.deliveryFee)+'</div>':'<div class="modal-meta"><b>Afhalen</b></div>';document.getElementById('orderModalTitle').textContent='Bestelling #'+o.id;document.getElementById('orderModalBody').innerHTML='<div class="modal-meta">'+when(o.created)+' • '+esc(o.customer)+'</div>'+delivery+paymentLine(o)+'<div class="modal-items">'+items+'</div><div class="modal-total"><span>Totaal</span><b>'+money(o.total)+'</b></div><div class="modal-status">Status: '+esc(o.status)+'</div>';document.getElementById('orderModal').classList.add('open')}
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const openStatuses=o=>!finalStatuses.includes(o.status);
+async function api(action,method='GET',body=null){
+  return rutu.businessApi(action,method,body);
+}
+function normalize(o){return{id:Number(o.id),items:Object.entries(o.items||{}).map(([name,qty])=>({name,qty:Number(qty)})),total:Number(o.total||0),customer:String(o.customer||'Online klant'),delivery:!!o.delivery,address:String(o.address||''),postcode:String(o.postcode||''),deliveryFee:Number(o.delivery_fee||0),paymentMethod:String(o.payment_method||''),paymentPhone:String(o.payment_phone||''),paymentStatus:String(o.payment_status||''),paymentUrl:String(o.payment_url||''),created:String(o.created||o.created_display||''),status:String(o.status||'Nieuw'),historyHidden:!!o.history_hidden,historyCleared:!!o.history_cleared}}
 function copyPaymentLink(id){
  const o=orders.find(x=>Number(x.id)===Number(id));if(!o||!/^https:\/\/(?:www\.)?tikkie\.me\//.test(o.paymentUrl||''))return;
  const url=o.paymentUrl;
  if(navigator.clipboard&&navigator.clipboard.writeText){
-   navigator.clipboard.writeText(url).then(()=>alert('Tikkie-link gekopieerd ✓')).catch(()=>prompt('Kopieer deze Tikkie-link:',url));
+   navigator.clipboard.writeText(url).then(()=>alert('Tikkie-link gekopieerd ✓\nTikkie link copied ✓')).catch(()=>prompt('Kopieer deze Tikkie-link / Copy this Tikkie link:',url));
  }else{
    const input=document.createElement('textarea');input.value=url;document.body.appendChild(input);input.select();
    const copied=document.execCommand('copy');input.remove();
-   if(copied)alert('Tikkie-link gekopieerd ✓');else prompt('Kopieer deze Tikkie-link:',url);
+   if(copied)alert('Tikkie-link gekopieerd ✓\nTikkie link copied ✓');else prompt('Kopieer deze Tikkie-link / Copy this Tikkie link:',url);
  }
 }
 function paymentLine(o){
@@ -73,47 +186,156 @@ function paymentLine(o){
  (o.paymentMethod==='Tikkie'&&/^https:\/\/(?:www\.)?tikkie\.me\//.test(o.paymentUrl||'')?'<br><button type="button" class="gray" onclick="copyPaymentLink('+Number(o.id)+')">Kopieer Tikkie-link</button>':'')+
  '</div>';
 }
-function isOpenOrder(o){return !['Afgerond','Geweigerd','Geannuleerd','Uitverkocht'].includes(o.status)}
-function openOpenOrders(){if(!orders.some(isOpenOrder))return;const modal=document.getElementById('orderModal');modal.dataset.mode='open-orders';document.getElementById('orderModalTitle').textContent='Openstaande bestellingen';renderOpenOrdersModal();modal.classList.add('open')}
-function renderOpenOrdersModal(){const open=orders.filter(isOpenOrder);document.getElementById('orderModalBody').innerHTML='<div class="open-orders-list">'+(open.map(o=>orderCard(o,false)).join('')||'<div class="empty">Geen openstaande bestellingen.</div>')+'</div>'}
-function closeOrderModal(){const modal=document.getElementById('orderModal');modal.classList.remove('open');modal.dataset.mode=''}
-function actions(o){if(o.status==='Nieuw')return '<button class="green" onclick="setStatus('+o.id+',\'In bereiding\')">Accepteren</button><button class="red" onclick="setStatus('+o.id+',\'Uitverkocht\')">Annuleren • Uitverkocht</button><button class="red" onclick="setStatus('+o.id+',\'Geweigerd\')">Weigeren</button>';if(o.status==='In bereiding')return '<button class="orange" onclick="setStatus('+o.id+',\'Klaar\')">Markeer klaar</button><button class="red" onclick="setStatus('+o.id+',\'Uitverkocht\')">Annuleren • Uitverkocht</button>';if(o.status==='Klaar')return o.delivery?'<button class="orange" onclick="setStatus('+o.id+',\'Bestelling is onderweg\')">Bestelling is onderweg</button><button class="red" onclick="setStatus('+o.id+',\'Uitverkocht\')">Annuleren • Uitverkocht</button>':'<button class="green" onclick="setStatus('+o.id+',\'Afgerond\')">Afronden</button><button class="red" onclick="setStatus('+o.id+',\'Uitverkocht\')">Annuleren • Uitverkocht</button>';if(o.status==='Bestelling is onderweg')return '<button class="green" onclick="setStatus('+o.id+',\'Afgerond\')">Afronden</button>';if(o.status==='Geweigerd'||o.status==='Geannuleerd'||o.status==='Uitverkocht')return '<button class="green" onclick="setStatus('+o.id+',\'Afgerond\')">Afronden</button>';return ''}
-function orderCard(o,isHistory){if(isHistory){if(o.historyHidden)return '<div class="history-row history-amount-only"><b>'+money(o.total)+'</b></div>';return '<div class="history-row"><button class="history-order-link" onclick="openHistoryOrder('+o.id+')">Bestelling #'+esc(o.id)+'</button><b>'+money(o.total)+'</b><span class="history-status">Status: '+esc(o.status)+'</span>'+(isOpenOrder(o)?'':'<button class="history-delete" onclick="hideHistory('+o.id+')">Verwijder</button>')+'</div>'}const items=(o.items||[]).map(i=>esc(i.qty)+'× '+esc(i.name)).join('<br>');const delivery=o.delivery?'<div class="meta"><b>Bezorgen</b> • '+esc(o.address)+' • '+esc(o.postcode)+' • bezorgkosten '+money(o.deliveryFee)+'</div>':'<div class="meta"><b>Afhalen</b></div>';return '<div class="order"><div class="order-head"><b>Bestelling #'+esc(o.id)+'</b><span class="order-total">Totaal bestelling: '+money(o.total)+'</span></div><div class="meta">'+when(o.created)+' • '+esc(o.customer)+'</div>'+delivery+paymentLine(o)+'<div>'+items+'</div><div class="status">Status: '+esc(o.status)+'</div><div class="actions">'+actions(o)+'</div></div>'}
-function render(){const active=orders.filter(isOpenOrder);const history=orders.filter(o=>!o.historyCleared);const openValue=active.filter(o=>!['Geweigerd','Geannuleerd','Uitverkocht'].includes(o.status)).reduce((s,o)=>s+Number(o.total||0),0);const completedValue=history.filter(o=>o.status==='Afgerond').reduce((s,o)=>s+Number(o.total||0),0);const count=orders.filter(o=>o.status==='Nieuw').length;const open=orders.filter(isOpenOrder);const badge=document.getElementById('count');badge.style.display=open.length?'':'none';badge.textContent=count>0?count+' nieuw':open.length+' openstaand';document.getElementById('summary').innerHTML='<span><b>'+count+'</b>Nieuw</span><span><b>'+active.length+'</b>Zichtbaar</span><span><b>'+money(openValue)+'</b>Openstaand</span><span><b>'+money(completedValue)+'</b>Afgeronde omzet</span><span><b>'+history.length+'</b>Geschiedenis</span>';document.getElementById('orders').innerHTML=active.map(o=>orderCard(o,false)).join('')||'<div class="empty">Geen zichtbare bestellingen.</div>';document.getElementById('history').innerHTML=history.map(o=>orderCard(o,true)).join('')||'<div class="empty">Geschiedenis is leeg.</div>';const modal=document.getElementById('orderModal');if(modal.classList.contains('open')&&modal.dataset.mode==='open-orders'){if(open.length)renderOpenOrdersModal();else closeOrderModal()}}
-async function loadNotice(){try{const a=await rutu.getAnnouncement();document.getElementById('noticeTitle').value=a.title||'';document.getElementById('noticeMessage').value=a.message||'';document.getElementById('noticeFrom').value=a.from||'';document.getElementById('noticeUntil').value=a.until||'';document.getElementById('noticeActive').checked=!!a.active;document.getElementById('noticeState').textContent=a.active?'Actief in klantapp':'Niet actief'}catch(e){document.getElementById('noticeResult').textContent='Mededeling kon niet worden geladen.'}}
-async function saveNotice(){const result=document.getElementById('noticeResult');result.textContent='Publiceren…';try{const a=await rutu.setAnnouncement({title:document.getElementById('noticeTitle').value.trim(),message:document.getElementById('noticeMessage').value.trim(),from:document.getElementById('noticeFrom').value,until:document.getElementById('noticeUntil').value,active:document.getElementById('noticeActive').checked});result.textContent='Klantupdate gepubliceerd ✓';document.getElementById('noticeState').textContent=a.active?'Actief in klantapp':'Niet actief'}catch(e){result.textContent='Publiceren mislukt: '+(e.message||e)}}
-async function clearNotice(){document.getElementById('noticeTitle').value='';document.getElementById('noticeMessage').value='';document.getElementById('noticeFrom').value='';document.getElementById('noticeUntil').value='';document.getElementById('noticeActive').checked=false;await saveNotice()}
-async function initBusiness(){
-  try{
-    const info=await rutu.getServerInfo();
-    document.getElementById('serverAddress').textContent=info.cloudConfigured?(info.online?'Online gekoppeld ✓':'Online koppeling wordt opgebouwd…'):'Bedrijfskey nodig';
-    if(!info.cloudConfigured){
-      document.getElementById('setupModal').classList.add('open');
-      setTimeout(()=>document.getElementById('setupKey').focus(),100);
-      return;
-    }
-    orders=await rutu.getOrders();render();await loadNotice();
-  }catch(e){
-    document.getElementById('serverAddress').textContent='Online verbinding mislukt';
-  }
+function when(v){if(!v)return'';const d=new Date(v);return Number.isNaN(d.getTime())?esc(v):new Intl.DateTimeFormat('nl-NL',{dateStyle:'medium',timeStyle:'short'}).format(d)}
+function actionButton(o,label,status,color){
+ return '<button class="'+color+'" onclick="setStatus('+Number(o.id)+',&quot;'+esc(status)+'&quot;)">'+esc(label)+'</button>';
 }
-async function saveBusinessSetup(){
-  const input=document.getElementById('setupKey'),out=document.getElementById('setupResult');
-  const value=input.value.trim();
-  if(!value){out.textContent='Vul de bedrijfskey in.';input.focus();return}
-  out.textContent='Key controleren…';
-  try{
-    await rutu.saveBusinessKey(value);
-    out.textContent='Koppeling gelukt ✓';
-    document.getElementById('setupModal').classList.remove('open');
-    document.getElementById('serverAddress').textContent='Online gekoppeld ✓';
-    orders=await rutu.getOrders();render();await loadNotice();
-  }catch(e){
-    input.value='';out.textContent=e.message||'Koppeling mislukt.';input.focus();
-  }
+function actions(o){
+ const soldOut=actionButton(o,'Annuleren • Uitverkocht','Uitverkocht','red');
+ const sendTikkie=o.delivery&&o.paymentMethod==='Tikkie'
+   ?actionButton(o,'Uw bestelling is onderweg','Bestelling is onderweg','green'):'';
+ if(o.status==='Nieuw')return actionButton(o,'Accepteren','In bereiding','green')+
+   soldOut+actionButton(o,'Weigeren','Geweigerd','red');
+ if(o.status==='In bereiding')return actionButton(o,'Markeer klaar','Klaar','orange')+sendTikkie+soldOut;
+ if(o.status==='Klaar')return o.delivery
+   ?actionButton(o,o.paymentMethod==='Tikkie'?'Uw bestelling is onderweg':'Bestelling is onderweg','Bestelling is onderweg','orange')+soldOut
+   :actionButton(o,'Afronden','Afgerond','green')+soldOut;
+ if(o.status==='Bestelling is onderweg')return actionButton(o,'Afronden','Afgerond','green');
+ return '';
 }
-rutu.onOrdersUpdated(x=>{orders=x;render()});
-initBusiness();
-setInterval(()=>rutu.syncOrders().catch(()=>{}),2500);
+function orderCard(o,readOnly=false){const items=o.items.map(i=>esc(i.qty)+'× '+esc(i.name)).join('<br>');const delivery=o.delivery?'<div class="meta"><b>Bezorgen</b> • '+esc(o.address)+' • '+esc(o.postcode)+' • bezorgkosten '+money(o.deliveryFee)+'</div>':'<div class="meta"><b>Afhalen</b></div>';return '<div class="order"><div class="order-head"><b>Bestelling #'+o.id+'</b><span class="order-total">'+money(o.total)+'</span></div><div class="meta">'+when(o.created)+' • '+esc(o.customer)+'</div>'+delivery+paymentLine(o)+'<div>'+items+'</div><div class="status">Status: '+esc(o.status)+'</div><div class="actions">'+(readOnly?'':actions(o))+'</div></div>'}
+function render(){
+ const open=orders.filter(openStatuses),active=open.filter(o=>!hiddenActiveIds.has(o.id)),history=orders.filter(o=>!o.historyCleared),archive=history,completed=history.filter(o=>o.status==='Afgerond'),newCount=active.filter(o=>o.status==='Nieuw').length;
+ const badge=document.getElementById('count');badge.style.display=active.length?'':'none';badge.textContent=newCount>0?newCount+' nieuw':active.length+' openstaand';document.getElementById('restoreActive').style.display=hiddenActiveIds.size?'':'none';
+ document.getElementById('summary').innerHTML='<button type="button" class="summary-link" onclick="openNewOrdersScreen()" aria-label="Bekijk '+newCount+' nieuwe bestellingen"><b>'+newCount+'</b>Nieuw</button><button type="button" class="summary-link" onclick="openOpenOrders()" aria-label="Bekijk '+active.length+' openstaande bestellingen"><b>'+active.length+'</b>Openstaand</button><div><b>'+money(open.reduce((s,o)=>s+o.total,0))+'</b>Open waarde</div><button type="button" class="summary-link" onclick="openHistoryOrders()" aria-label="Bekijk '+archive.length+' geplaatste bestellingen"><b>'+archive.length+'</b>Geschiedenis</button><div><b>'+money(completed.reduce((s,o)=>s+o.total,0))+'</b>Afgerond</div>';
+ document.getElementById('orders').innerHTML=active.map(orderCard).join('')||'<div class="empty">Geen zichtbare bestellingen.</div>';
+ document.getElementById('history').innerHTML=history.slice().sort((a,b)=>b.id-a.id).map(o=>'<div class="history-row"><button class="gray" onclick="openHistory('+o.id+')">#'+o.id+'</button><span>Status: '+esc(o.status)+'</span><b>'+money(o.total)+'</b></div>').join('')||'<div class="empty">Er zijn nog geen geregistreerde bestellingen.</div>';
+ renderFocusedOrders();
+ if(historyScreenOpen)renderFullHistory();
+ const m=document.getElementById('orderModal');if(m.classList.contains('open')&&m.dataset.mode==='open-orders'){if(active.length)renderOpenOrdersModal();else closeOrderModal();}else if(m.classList.contains('open')&&m.dataset.mode==='history-orders'){renderHistoryOrdersModal();}
+}
+async function sync(){
+ try{
+  const r=await api('business_orders');
+  orders=(r.orders||[]).map(normalize);
+  document.getElementById('connection').innerHTML='<span class="ok">Online gekoppeld ✓ / Connected ✓</span> • automatisch verversen / auto refresh';
+  render();
+ }catch(e){
+  document.getElementById('connection').innerHTML='<span class="error">Verbinding mislukt / Connection failed: '+esc(e.message)+'</span>';
+ }
+}
+async function setStatus(id,status){try{await api('business_status','POST',{id:Number(id),status});await sync()}catch(e){alert(e.message)}}
+function openOpenOrders(){if(!orders.some(o=>openStatuses(o)&&!hiddenActiveIds.has(o.id)))return;const m=document.getElementById('orderModal');m.dataset.mode='open-orders';document.getElementById('orderModalTitle').textContent='Openstaande bestellingen';renderOpenOrdersModal();m.classList.add('open')}
+function renderOpenOrdersModal(){const open=orders.filter(o=>openStatuses(o)&&!hiddenActiveIds.has(o.id));document.getElementById('orderModalBody').innerHTML='<div class="open-orders-list">'+(open.map(orderCard).join('')||'<div class="empty">Geen openstaande bestellingen.</div>')+'</div>'}
+function openHistoryOrders(){
+ const modal=document.getElementById('orderModal');
+ if(modal.classList.contains('open'))closeOrderModal();
+ historySnapshot=orders.filter(o=>!o.historyCleared).slice().sort((a,b)=>b.id-a.id);
+ ordersScreenOpen=false;
+ historyScreenOpen=true;
+ document.getElementById('dashboard').style.display='none';
+ document.getElementById('newOrdersScreen').style.display='none';
+ document.getElementById('historyScreen').style.display='';
+ renderFullHistory();
+ window.scrollTo(0,0);
+}
+function renderFullHistory(){
+ if(!historyScreenOpen)return;
+ const all=historySnapshot;
+ document.getElementById('historyScreenInfo').textContent='Momentopname: '+all.length+' bestelling'+(all.length===1?'':'en')+' • wijzigingen na het openen verschijnen pas wanneer je Geschiedenis opnieuw opent';
+ document.getElementById('fullHistoryList').innerHTML=all.map(o=>orderCard(o,true)).join('')||'<div class="empty">De geschiedenis is leeg.</div>';
+}
+function renderHistoryOrdersModal(){
+ const old=orders;
+ // Het volledige archief blijft leesbaar, ook als een bestelling eerder uit het werklijstje is verborgen of gewist.
+ const cards=old.map(o=>orderCard(o,true)).join('');
+ document.getElementById('orderModalBody').innerHTML='<div class="open-orders-list">'+
+   (cards||'<div class="empty">Er zijn nog geen bestellingen.</div>')+'</div>';
+}
+function openHistory(id){const o=orders.find(x=>x.id===Number(id));if(!o)return;const m=document.getElementById('orderModal');m.dataset.mode='history';document.getElementById('orderModalTitle').textContent='Bestelling #'+o.id;document.getElementById('orderModalBody').innerHTML=orderCard(o,true);m.classList.add('open')}
+function closeOrderModal(){const m=document.getElementById('orderModal');m.classList.remove('open');m.dataset.mode=''}
+async function loadSchedule(){
+ try{
+  const r=await api('business_ordering_schedule');orderingSchedule=r.schedule||null;
+  const select=document.getElementById('scheduleDaySelect');if(select)select.value='3';
+  renderSelectedScheduleDay()
+ }catch(e){document.getElementById('scheduleResult').textContent='Openingstijden konden niet worden geladen / Opening hours could not be loaded: '+e.message}
+}
+function renderSelectedScheduleDay(){
+ if(!orderingSchedule)return;
+ const select=document.getElementById('scheduleDaySelect');if(!select)return;
+ const i=String(select.value||'3'),days=orderingSchedule.days||{},d=days[i]||{open:false,from:'10:00',until:'18:00'};
+ document.getElementById('scheduleDayOpen').checked=!!d.open;
+ document.getElementById('scheduleDayFrom').value=d.from||'10:00';
+ document.getElementById('scheduleDayUntil').value=d.until||'18:00';
+ const out=document.getElementById('scheduleResult');if(out)out.textContent=scheduleDayNames[Number(i)]+(d.open?' is open van '+d.from+' tot '+d.until+' uur / open from '+d.from+' to '+d.until:' is gesloten voor bestellingen / closed for orders');
+}
+async function saveSchedule(){
+ const out=document.getElementById('scheduleResult');if(!orderingSchedule)return;
+ const i=String(document.getElementById('scheduleDaySelect').value||'3');
+ const days=Object.assign({},orderingSchedule.days||{});
+ days[i]={
+  open:document.getElementById('scheduleDayOpen').checked,
+  from:document.getElementById('scheduleDayFrom').value||'10:00',
+  until:document.getElementById('scheduleDayUntil').value||'18:00'
+ };
+ out.textContent=scheduleDayNames[Number(i)]+' opslaan… / saving…';
+ try{
+  const r=await api('business_ordering_schedule','POST',{schedule:{days}});
+  orderingSchedule=r.schedule||{days};renderSelectedScheduleDay();
+  out.textContent=scheduleDayNames[Number(i)]+' opgeslagen ✓ / saved ✓';
+ }catch(e){out.textContent='Opslaan mislukt / Save failed: '+e.message}
+}
+async function loadNotice(){try{const r=await api('business_announcement'),a=r.announcement||{};noticeTitle.value=a.title||'';noticeMessage.value=a.message||'';noticeFrom.value=a.from||'';noticeUntil.value=a.until||'';noticeActive.checked=!!a.active}catch(e){}}
+async function saveNotice(){const out=document.getElementById('noticeResult');out.textContent='Publiceren… / Publishing…';try{await api('business_announcement','POST',{title:noticeTitle.value.trim(),message:noticeMessage.value.trim(),from:noticeFrom.value,until:noticeUntil.value,active:noticeActive.checked});out.textContent='Klantupdate gepubliceerd ✓ / Customer update published ✓'}catch(e){out.textContent='Mislukt / Failed: '+e.message}}
+async function clearNotice(){noticeTitle.value='';noticeMessage.value='';noticeFrom.value='';noticeUntil.value='';noticeActive.checked=false;await saveNotice()}
+async function hideHistory(id){try{await api('business_hide_history','POST',{id:Number(id)});await sync()}catch(e){alert(e.message)}}
+async function clearHistory(){
+ const dashboardOut=document.getElementById('historyResult');
+ const screenOut=document.getElementById('historyScreenResult');
+ if(dashboardOut)dashboardOut.textContent='Geschiedenis wissen… / Clearing history…';
+ if(screenOut)screenOut.textContent='Geschiedenis wissen… / Clearing history…';
+ try{
+  const r=await api('business_clear_history','POST',{});
+  historySnapshot=[];
+  await sync();
+  renderFullHistory();
+  const n=Number(r.cleared||0);
+  const msg=n>0?(n+' bestelling'+(n===1?'':'en')+' uit geschiedenis gewist ✓ / '+n+' order'+(n===1?'':'s')+' cleared from history ✓'):'Geschiedenis is al leeg ✓ / History is already empty ✓';
+  if(dashboardOut)dashboardOut.textContent=msg;
+  if(screenOut)screenOut.textContent=msg;
+ }catch(e){
+  const msg='Wissen mislukt / Clear failed: '+e.message;
+  if(dashboardOut)dashboardOut.textContent=msg;
+  if(screenOut)screenOut.textContent=msg;
+ }
+}
+function openKeyModal(){businessKey.value='';keyResult.textContent='';keyModal.classList.add('open');setTimeout(()=>businessKey.focus(),80)}
+function closeKeyModal(){keyModal.classList.remove('open')}
+async function saveBusinessKey(){
+ const v=businessKey.value.trim();
+ if(!v){keyResult.textContent='Vul een bedrijfsleutel in. / Enter a business key.';return}
+ keyResult.textContent='Controleren… / Checking…';
+ try{
+  await rutu.saveBusinessKey(v);
+  keyResult.textContent='Koppeling gelukt ✓ / Connection successful ✓';
+  businessKey.value='';
+  setTimeout(()=>{keyModal.classList.remove('open');sync();loadNotice();loadSchedule()},300);
+ }catch(e){
+  businessKey.value='';
+  keyResult.textContent='Koppeling mislukt / Connection failed: '+(e.message||e);
+ }
+}
+async function bootstrapBusiness(){
+ try{
+  const info=await rutu.getServerInfo();
+  if(!info.cloudConfigured){document.getElementById('connection').textContent='Niet gekoppeld / Not connected';openKeyModal();return}
+  await sync();await loadNotice();await loadSchedule();
+ }catch(e){
+  document.getElementById('connection').innerHTML='<span class="error">Verbinding mislukt / Connection failed: '+esc(e.message||e)+'</span>';
+ }
+}
+bootstrapBusiness();setInterval(sync,2500);
 </script>
-</body></html>
+</body>
+</html>

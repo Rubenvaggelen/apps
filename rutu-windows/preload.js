@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld('rutu', {
   openBusiness: pin => ipcRenderer.invoke('open-business', pin),
   getServerInfo: () => ipcRenderer.invoke('get-server-info'),
   saveBusinessKey: value => ipcRenderer.invoke('save-business-key', value),
+  businessApi: (action, method = 'GET', body = null) => ipcRenderer.invoke('business-api', { action, method, body }),
+  checkUpdate: () => ipcRenderer.invoke('check-windows-update'),
   getOrders: () => ipcRenderer.invoke('get-orders'),
   syncOrders: () => ipcRenderer.invoke('sync-cloud-orders'),
   getAnnouncement: () => ipcRenderer.invoke('get-business-announcement'),

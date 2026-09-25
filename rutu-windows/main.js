@@ -18,6 +18,21 @@ let cloudTimer = null;
 const WINDOWS_UPDATE_META = 'https://rubenvanaggelen.com/rutu-updates/windows.json';
 let updateCheckRunning = false;
 
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    const win = businessWindow && !businessWindow.isDestroyed()
+      ? businessWindow
+      : BrowserWindow.getAllWindows()[0];
+    if (!win || win.isDestroyed()) return;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  });
+}
+
 function compareVersions(a, b) {
   const pa = String(a || '').split('.').map(x => Number(x) || 0);
   const pb = String(b || '').split('.').map(x => Number(x) || 0);
@@ -30,7 +45,7 @@ function compareVersions(a, b) {
   return 0;
 }
 
-async function checkForWindowsUpdate(parentWindow) {
+async function checkForWindowsUpdate(parentWindow, manual = false) {
   if (updateCheckRunning) return;
   updateCheckRunning = true;
   try {
@@ -38,7 +53,18 @@ async function checkForWindowsUpdate(parentWindow) {
     if (!response.ok) return;
     const meta = await response.json();
     if (!meta || !meta.version || !meta.url) return;
-    if (compareVersions(meta.version, app.getVersion()) <= 0) return;
+    if (compareVersions(meta.version, app.getVersion()) <= 0) {
+      if (manual) {
+        await dialog.showMessageBox(parentWindow, {
+          type: 'info',
+          title: 'Rutu BBQ is bijgewerkt / up to date',
+          message: 'Je gebruikt de nieuwste Windows-versie.',
+          detail: 'Current version: ' + app.getVersion(),
+          buttons: ['OK']
+        });
+      }
+      return;
+    }
 
     const choice = await dialog.showMessageBox(parentWindow, {
       type: 'info',
@@ -282,6 +308,15 @@ function startApiServer() {
       return sendJson(res, 400, { error: String(error.message || error) });
     }
   });
+  apiServer.on('error', error => {
+    if (error && error.code === 'EADDRINUSE') {
+      // Een oudere Company Build kan de lokale legacy-poort nog gebruiken.
+      // De cloud-bedrijfsapp blijft volledig werken zonder tweede listener.
+      apiServer = null;
+      return;
+    }
+    console.error('Rutu local API error', error);
+  });
   apiServer.listen(API_PORT, '0.0.0.0');
 }
 
@@ -350,6 +385,19 @@ app.whenReady().then(() => {
     return { port: API_PORT, addresses: localAddresses(), online: cloudOnline, cloudConfigured: Boolean(cloudConfig), cloudApi: cloudConfig ? cloudConfig.apiBase : DEFAULT_CLOUD_API };
   });
   ipcMain.handle('save-business-key', async (_event, value) => saveBusinessKey(value));
+  ipcMain.handle('business-api', async (_event, request) => {
+    loadCloudConfig();
+    if (!cloudConfig) throw new Error('Bedrijfsleutel ontbreekt / Business key is missing');
+    const action = String(request?.action || '').trim();
+    const method = String(request?.method || 'GET').toUpperCase();
+    const body = request?.body ?? null;
+    if (!action) throw new Error('API-actie ontbreekt');
+    return cloudRequest(action, method, body);
+  });
+  ipcMain.handle('check-windows-update', async event => {
+    const win = BrowserWindow.fromWebContents(event.sender) || businessWindow;
+    return checkForWindowsUpdate(win, true);
+  });
   ipcMain.handle('get-orders', async () => {
     loadCloudConfig();
     if (cloudConfig) await syncCloudOrders();
