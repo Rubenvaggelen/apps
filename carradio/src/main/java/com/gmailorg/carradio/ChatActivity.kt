@@ -12,6 +12,7 @@ import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import androidx.appcompat.app.AlertDialog
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -63,6 +64,7 @@ class ChatActivity : AppCompatActivity() {
         voiceButton = findViewById(R.id.voiceButton)
 
         findViewById<Button>(R.id.sendButton).setOnClickListener { sendTyped() }
+        findViewById<Button>(R.id.emojiButton).setOnClickListener { showEmojiPicker() }
         voiceButton.setOnClickListener {
             if (voiceRecorder.isRecording()) {
                 voiceRecorder.stop()
@@ -73,6 +75,28 @@ class ChatActivity : AppCompatActivity() {
         ConversationStore.markRead(this, contact)
         MessageBus.addDataListener(dataListener)
         MessageBus.addStatusListener(statusListener)
+    }
+
+    private fun showEmojiPicker() {
+        val emojis = arrayOf(
+            "😀", "😂", "😊", "😍", "😘", "😎", "🥳", "😢",
+            "😡", "👍", "👎", "👌", "🙏", "👏", "❤️", "💙",
+            "🔥", "✅", "❌", "🎉", "🚗", "📍", "📞", "💬"
+        )
+        AlertDialog.Builder(this)
+            .setTitle("Kies een icoontje")
+            .setItems(emojis) { _, which ->
+                val emoji = emojis[which]
+                val start = input.selectionStart.coerceAtLeast(0)
+                val end = input.selectionEnd.coerceAtLeast(0)
+                val from = minOf(start, end)
+                val to = maxOf(start, end)
+                input.text.replace(from, to, emoji)
+                input.setSelection((from + emoji.length).coerceAtMost(input.text.length))
+                input.requestFocus()
+            }
+            .setNegativeButton("Sluiten", null)
+            .show()
     }
 
     private fun sendTyped() {

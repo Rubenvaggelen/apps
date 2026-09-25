@@ -53,6 +53,13 @@
             android:paddingHorizontal="12dp"
             android:singleLine="true" />
         <Button
+            android:id="@+id/emojiButton"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:layout_marginStart="8dp"
+            android:text="😊"
+            android:textSize="20sp" />
+        <Button
             android:id="@+id/sendButton"
             android:layout_width="wrap_content"
             android:layout_height="52dp"
