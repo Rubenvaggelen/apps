@@ -5,4 +5,6 @@ namespace TheOneMain.Windows;
 public static class BuildSecrets
 {
     public const string YouTubeApiKey = "";
+    public const string KieApiKey = "";
+    public const string KieChatUrl = "https://api.kie.ai/gpt-5-2/v1/chat/completions";
 }
