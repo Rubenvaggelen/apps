@@ -42,12 +42,20 @@ jobs:
           $match = [regex]::Match($source, "YOUTUBE_API_KEY.*?\?:\s*'([^']+)'", [System.Text.RegularExpressions.RegexOptions]::Singleline)
           if (-not $match.Success) { throw "YouTube configuration from The One Main not found" }
           $key = $match.Groups[1].Value
+
+          $kieSource = Get-Content .\the-one-update\app\src\main\java\com\gmailorg\hub\KieApiConfig.kt -Raw
+          $kieMatch = [regex]::Match($kieSource, 'API_KEY\s*=\s*"([^"]+)"')
+          if (-not $kieMatch.Success) { throw "KIE configuration from The One Main not found" }
+          $kieKey = $kieMatch.Groups[1].Value
+
           @"
           namespace TheOneMain.Windows;
 
           public static class BuildSecrets
           {
               public const string YouTubeApiKey = "$key";
+              public const string KieApiKey = "$kieKey";
+              public const string KieChatUrl = "https://api.kie.ai/gpt-5-2/v1/chat/completions";
           }
           "@ | Set-Content -Encoding UTF8 .\windows\the-one-main\BuildSecrets.cs
 
