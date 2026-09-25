@@ -1,0 +1,41 @@
+name: Build The One Main Windows
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'windows/the-one-main/**'
+      - '.github/workflows/build-the-one-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish single EXE
+        shell: pwsh
+        run: |
+          dotnet publish .\windows\the-one-main\TheOneMain.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o .\out\the-one-main-windows
+
+      - name: Package
+        shell: pwsh
+        run: |
+          Compress-Archive -Path .\out\the-one-main-windows\* -DestinationPath .\The-One-Main-Windows.zip -Force
+
+      - name: Upload Windows app
+        uses: actions/upload-artifact@v4
+        with:
+          name: The-One-Main-Windows
+          path: The-One-Main-Windows.zip
+          if-no-files-found: error

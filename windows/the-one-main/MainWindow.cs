@@ -466,7 +466,7 @@ public sealed class MainWindow : Window
             }
         }
 
-        add.Click -= null;
+
         add.Click += (_, _) =>
         {
             var text = input.Text.Trim();
