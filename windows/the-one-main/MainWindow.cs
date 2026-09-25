@@ -36,6 +36,11 @@ public sealed class MainWindow : Window
     private SettingsData _settings;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(20) };
 
+    // Muziek blijft als één levende sessie bestaan zolang The One Window draait.
+    // Daardoor blijven de zoeklijst, de gekozen clip en de WebView-speler behouden
+    // wanneer de gebruiker naar het hoofdmenu of een andere tegel gaat.
+    private Grid? _musicPage;
+
     private sealed record TileDef(string Id, string Label, string IconKey, Action Open);
     private sealed record StartMenuShortcut(string Label, string TargetPath);
 
@@ -1223,6 +1228,17 @@ public sealed class MainWindow : Window
 
     private void ShowMusic()
     {
+        if (_musicPage != null)
+        {
+            if (_musicPage.Parent is Panel oldParent)
+                oldParent.Children.Remove(_musicPage);
+
+            _content.Children.Clear();
+            _musicPage.Visibility = Visibility.Visible;
+            _content.Children.Add(_musicPage);
+            return;
+        }
+
         _content.Children.Clear();
 
         var root = new Grid { Background = Bg, Margin = new Thickness(22, 18, 22, 20) };
@@ -1319,7 +1335,9 @@ public sealed class MainWindow : Window
 
         Grid.SetRow(body, 1);
         root.Children.Add(body);
-        _content.Children.Add(root);
+
+        _musicPage = root;
+        _content.Children.Add(_musicPage);
 
         async Task RunSearch()
         {
