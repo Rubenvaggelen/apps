@@ -15,5 +15,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Resource Include="Assets\the_one_logo.png" />
+    <Resource Include="Assets\Icons\*.png" />
   </ItemGroup>
 </Project>

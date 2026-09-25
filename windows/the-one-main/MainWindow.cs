@@ -35,7 +35,7 @@ public sealed class MainWindow : Window
     private SettingsData _settings;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(20) };
 
-    private sealed record TileDef(string Id, string Label, string Icon, Action Open);
+    private sealed record TileDef(string Id, string Label, string IconKey, Action Open);
 
     public MainWindow()
     {
@@ -172,36 +172,37 @@ public sealed class MainWindow : Window
 
         var tiles = new List<TileDef>
         {
-            new("notifications", "Meldingen", "🔔", ShowNotifications),
-            new("mail", "Mail & Kalender", "✉", () => BrowserLauncher.OpenChrome(MailUrl)),
-            new("route", "Route", "🗺", ShowRoute),
-            new("household", "Huishouden", "🛒", ShowHousehold),
-            new("movies", "Films, Series & Muziek", "▶", ShowMedia),
-            new("parking", "Parkeren", "🅿", ShowParking),
-            new("settings", "Instellingen", "⚙", ShowSettings),
-            new("ask", "Vraag het", "?", ShowAsk),
-            new("recipes", "Recepten", "🍽", ShowRecipes),
-            new("news", "Nieuws", "📰", ShowNews),
-            new("radio", "Radio", "📻", ShowRadio),
-            new("currency", "Koers (EUR / SRD / USD)", "⇄", ShowCurrency),
-            new("finance", "Financiën", "€", ShowFinance),
-            new("lifestyle", "Lifestyle", "♥", ShowLifestyle),
-            new("chrome", "Chrome", "🌐", () => BrowserLauncher.OpenChrome())
+            // Zelfde iconen als The One Main / The One Car.
+            new("notifications", "Meldingen", "notifications", ShowNotifications),
+            new("mail", "Mail & Kalender", "mail", () => BrowserLauncher.OpenChrome(MailUrl)),
+            new("route", "Route", "route", ShowRoute),
+            new("household", "Huishouden", "household", ShowHousehold),
+            new("movies", "Films, Series & Muziek", "movies", ShowMedia),
+            new("parking", "Parkeren", "parking", ShowParking),
+            new("settings", "Instellingen", "settings", ShowSettings),
+            new("ask", "Vraag het", "ask", ShowAsk),
+            new("recipes", "Recepten", "recipes", ShowRecipes),
+            new("news", "Nieuws", "news", ShowNews),
+            new("radio", "Radio", "radio", ShowRadio),
+            new("currency", "Koers (EUR / SRD / USD)", "currency", ShowCurrency),
+            new("finance", "Financiën", "currency", ShowFinance),
+            new("lifestyle", "Lifestyle", "lifestyle", ShowLifestyle),
+            new("chrome", "Chrome", "chrome", () => BrowserLauncher.OpenChrome())
         };
 
         foreach (var tile in tiles)
         {
             if (_settings.HiddenTiles.Contains(tile.Id)) continue;
-            wrap.Children.Add(BuildTile(tile.Id, tile.Label, tile.Icon, tile.Open, custom: false));
+            wrap.Children.Add(BuildTile(tile.Id, tile.Label, tile.IconKey, tile.Open, custom: false));
         }
 
         foreach (var app in _settings.CustomApps.ToList())
         {
             if (!File.Exists(app.ExePath)) continue;
-            wrap.Children.Add(BuildTile(app.Id, app.Label, "◆", () => BrowserLauncher.OpenProgram(app.ExePath), custom: true));
+            wrap.Children.Add(BuildTile(app.Id, app.Label, "custom", () => BrowserLauncher.OpenProgram(app.ExePath), custom: true));
         }
 
-        wrap.Children.Add(BuildTile("add", "App toevoegen", "+", AddWindowsApp, custom: false, allowHide: false));
+        wrap.Children.Add(BuildTile("add", "App toevoegen", "add", AddWindowsApp, custom: false, allowHide: false));
         var footer = new Border
         {
             Background = Brush("#071018"),
@@ -227,7 +228,7 @@ public sealed class MainWindow : Window
         _content.Children.Add(outer);
     }
 
-    private Button BuildTile(string id, string label, string icon, Action action, bool custom, bool allowHide = true)
+    private Button BuildTile(string id, string label, string iconKey, Action action, bool custom, bool allowHide = true)
     {
         var button = new Button
         {
@@ -262,37 +263,10 @@ public sealed class MainWindow : Window
         };
 
         var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        var badge = new Border
-        {
-            Width = 64,
-            Height = 64,
-            CornerRadius = new CornerRadius(32),
-            Background = new LinearGradientBrush(
-                Color.FromRgb(11, 48, 66),
-                Color.FromRgb(7, 27, 39),
-                90),
-            BorderBrush = Amber,
-            BorderThickness = new Thickness(1.4),
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Effect = new System.Windows.Media.Effects.DropShadowEffect
-            {
-                Color = Color.FromRgb(32, 184, 255),
-                BlurRadius = 18,
-                Opacity = 0.34,
-                ShadowDepth = 0
-            }
-        };
-        badge.Child = new TextBlock
-        {
-            Text = icon,
-            FontSize = 29,
-            Foreground = Amber,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            TextAlignment = TextAlignment.Center,
-            FontFamily = new FontFamily("Segoe UI Emoji")
-        };
-        stack.Children.Add(badge);
+
+        // De vaste tegels gebruiken exact dezelfde artwork-assets / vectorvormen
+        // als de Android The One Main- en The One Car-tegels.
+        stack.Children.Add(CreateHomeTileIcon(iconKey, 66));
 
         stack.Children.Add(new TextBlock
         {
@@ -302,7 +276,7 @@ public sealed class MainWindow : Window
             Foreground = TextMain,
             TextWrapping = TextWrapping.Wrap,
             TextAlignment = TextAlignment.Center,
-            Margin = new Thickness(4, 12, 4, 0),
+            Margin = new Thickness(4, 10, 4, 0),
             MaxWidth = 192
         });
 
@@ -314,7 +288,7 @@ public sealed class MainWindow : Window
             Background = Amber,
             Opacity = 0.75,
             HorizontalAlignment = HorizontalAlignment.Center,
-            Margin = new Thickness(0, 10, 0, 0)
+            Margin = new Thickness(0, 9, 0, 0)
         };
         stack.Children.Add(accent);
 
@@ -370,6 +344,222 @@ public sealed class MainWindow : Window
 
         return button;
     }
+
+    private UIElement CreateHomeTileIcon(string iconKey, double size)
+    {
+        return iconKey switch
+        {
+            "notifications" => CreateAndroidVectorBadge("notifications", size),
+            "route" => CreateAndroidVectorBadge("route", size),
+            "lifestyle" => CreateAndroidVectorBadge("lifestyle", size),
+            "add" => CreateAndroidVectorBadge("add", size),
+            "mail" => CreateResourceTileIcon("ic_home_mail_fancy.png", size),
+            "household" => CreateResourceTileIcon("ic_home_household_fancy.png", size),
+            "movies" => CreateResourceTileIcon("ic_home_movies_fancy.png", size),
+            "parking" => CreateResourceTileIcon("ic_home_parking_fancy.png", size),
+            "settings" => CreateResourceTileIcon("ic_home_settings_fancy.png", size),
+            "ask" => CreateResourceTileIcon("ic_home_ask_fancy.png", size),
+            "recipes" => CreateResourceTileIcon("ic_home_recipes_fancy.png", size),
+            "news" => CreateResourceTileIcon("ic_home_news_fancy.png", size),
+            "radio" => CreateResourceTileIcon("ic_home_radio_fancy.png", size),
+            "currency" => CreateResourceTileIcon("ic_home_currency_fancy.png", size),
+            "music" => CreateResourceTileIcon("ic_home_music_fancy.png", size),
+            "chrome" => CreateFallbackTileIcon("🌐", size),
+            _ => CreateFallbackTileIcon("◆", size)
+        };
+    }
+
+    private Image CreateResourceTileIcon(string fileName, double size)
+    {
+        return new Image
+        {
+            Width = size,
+            Height = size,
+            Stretch = Stretch.Uniform,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Source = new BitmapImage(
+                new Uri($"pack://application:,,,/Assets/Icons/{fileName}", UriKind.Absolute))
+        };
+    }
+
+    private UIElement CreateFallbackTileIcon(string glyph, double size)
+    {
+        var badge = new Border
+        {
+            Width = size,
+            Height = size,
+            CornerRadius = new CornerRadius(size / 2),
+            Background = Brush("#0B2533"),
+            BorderBrush = Amber,
+            BorderThickness = new Thickness(1.2),
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+        badge.Child = new TextBlock
+        {
+            Text = glyph,
+            FontSize = size * 0.43,
+            Foreground = Amber,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextAlignment = TextAlignment.Center,
+            FontFamily = new FontFamily("Segoe UI Emoji")
+        };
+        return badge;
+    }
+
+    private UIElement CreateAndroidVectorBadge(string kind, double size)
+    {
+        var root = new Grid
+        {
+            Width = size,
+            Height = size,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+
+        if (kind == "add")
+        {
+            root.Children.Add(new System.Windows.Shapes.Ellipse
+            {
+                Fill = Brush("#173D2B"),
+                Stroke = Brush("#E0A458"),
+                StrokeThickness = size * 1.5 / 56.0
+            });
+            root.Children.Add(VectorPath(
+                "M19,13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z",
+                "#F4D08A",
+                null,
+                0,
+                size * 28.0 / 56.0));
+            return root;
+        }
+
+        var outer = new LinearGradientBrush
+        {
+            StartPoint = new Point(0, 1),
+            EndPoint = new Point(1, 0)
+        };
+        outer.GradientStops.Add(new GradientStop(ColorFrom("#F7D98B"), 0));
+        outer.GradientStops.Add(new GradientStop(ColorFrom("#D89A3A"), 0.5));
+        outer.GradientStops.Add(new GradientStop(ColorFrom("#8E5B14"), 1));
+        root.Children.Add(new System.Windows.Shapes.Ellipse { Fill = outer });
+
+        var innerGradient = new LinearGradientBrush
+        {
+            StartPoint = new Point(0, 1),
+            EndPoint = new Point(1, 0)
+        };
+        innerGradient.GradientStops.Add(new GradientStop(ColorFrom("#2D5A43"), 0));
+        innerGradient.GradientStops.Add(new GradientStop(ColorFrom("#10251C"), 1));
+        var inset = size * 3.0 / 56.0;
+        root.Children.Add(new System.Windows.Shapes.Ellipse
+        {
+            Margin = new Thickness(inset),
+            Fill = innerGradient,
+            Stroke = Brush("#F4D08A"),
+            StrokeThickness = size / 56.0
+        });
+
+        if (kind == "notifications")
+        {
+            root.Children.Add(VectorPath(
+                "M12,22c1.1,0 2,-0.9 2,-2h-4c0,1.1 0.9,2 2,2zM18,16v-5c0,-3.07 -1.64,-5.64 -4.5,-6.32V4c0,-0.83 -0.67,-1.5 -1.5,-1.5S10.5,3.17 10.5,4v0.68C7.63,5.36 6,7.92 6,11v5l-2,2v1h16v-1l-2,-2z",
+                "#FFF1C7",
+                "#E0A458",
+                0.65,
+                size * 31.0 / 56.0));
+
+            var dotSize = size * 10.0 / 56.0;
+            var dotMargin = size * 4.0 / 56.0;
+            root.Children.Add(new System.Windows.Shapes.Ellipse
+            {
+                Width = dotSize,
+                Height = dotSize,
+                Fill = Brush("#D94B3D"),
+                Stroke = Brush("#FFF1C7"),
+                StrokeThickness = size / 56.0,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, dotMargin, dotMargin, 0)
+            });
+        }
+        else if (kind == "route")
+        {
+            root.Children.Add(VectorPath(
+                "M21.71,11.29l-9,-9a1,1 0,0 0,-1.42 0l-9,9a1,1 0,0 0,0 1.42l9,9a1,1 0,0 0,1.42 0l9,-9a1,1 0,0 0,0 -1.42zM14,14.5V12h-4v3H8v-4a1,1 0,0 1,1 -1h5V7.5l3.5,3.5z",
+                "#FFF1C7",
+                "#E0A458",
+                0.55,
+                size * 32.0 / 56.0));
+        }
+        else if (kind == "lifestyle")
+        {
+            var holder = new Grid
+            {
+                Width = size * 32.0 / 56.0,
+                Height = size * 32.0 / 56.0,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            holder.Children.Add(VectorPathCore(
+                "M12,21s-7.2,-4.35 -9.55,-8.38C0.4,9.1 2.13,5 6.18,5c2.16,0 3.52,1.19 4.32,2.2C11.3,6.19 12.66,5 14.82,5c4.05,0 5.78,4.1 3.73,7.62C16.2,16.65 12,21 12,21z",
+                "#FFF1C7",
+                null,
+                0));
+            holder.Children.Add(VectorPathCore(
+                "M4.4,12h3.1l1.15,-2.5 2.1,5 1.4,-3h2.25",
+                "#10251C",
+                null,
+                0));
+            root.Children.Add(holder);
+        }
+
+        return root;
+    }
+
+    private UIElement VectorPath(string data, string fill, string? stroke, double strokeWidth, double itemSize)
+    {
+        var holder = new Grid
+        {
+            Width = itemSize,
+            Height = itemSize,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        holder.Children.Add(VectorPathCore(data, fill, stroke, strokeWidth));
+        return holder;
+    }
+
+    private UIElement VectorPathCore(string data, string fill, string? stroke, double strokeWidth)
+    {
+        try
+        {
+            var path = new System.Windows.Shapes.Path
+            {
+                Data = Geometry.Parse(data),
+                Fill = Brush(fill),
+                Stroke = string.IsNullOrWhiteSpace(stroke) ? null : Brush(stroke),
+                StrokeThickness = strokeWidth,
+                Stretch = Stretch.Uniform,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch
+            };
+            return path;
+        }
+        catch
+        {
+            return new TextBlock
+            {
+                Text = "•",
+                Foreground = Brush(fill),
+                FontSize = 26,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+        }
+    }
+
+    private static Color ColorFrom(string hex) =>
+        (Color)ColorConverter.ConvertFromString(hex);
 
     private ScrollViewer BeginPage(string title, string? subtitle, out StackPanel body)
     {
