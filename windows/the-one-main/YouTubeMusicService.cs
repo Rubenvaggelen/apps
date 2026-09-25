@@ -34,6 +34,7 @@ public static class YouTubeMusicService
         var url =
             "https://www.googleapis.com/youtube/v3/search" +
             "?part=snippet&type=video&videoCategoryId=10&maxResults=12" +
+            "&videoEmbeddable=true&videoSyndicated=true" +
             "&safeSearch=moderate&q=" + Uri.EscapeDataString(query.Trim()) +
             "&key=" + Uri.EscapeDataString(BuildSecrets.YouTubeApiKey);
 
@@ -102,19 +103,15 @@ public static class YouTubeMusicService
 
         web.CoreWebView2.Settings.AreDevToolsEnabled = false;
         web.CoreWebView2.Settings.IsStatusBarEnabled = false;
-        web.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
+        web.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
 
-        web.NavigateToString("""
-<!doctype html>
-<html>
-<body style="margin:0;background:#05070B;color:#9AA6B2;font-family:Segoe UI,Arial,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh">
-  <div style="text-align:center">
-    <div style="font-size:46px;color:#20B8FF">♫</div>
-    <div style="font-size:18px;margin-top:12px">Kies een nummer uit de zoekresultaten</div>
-  </div>
-</body>
-</html>
-""");
+        var playerFolder = EnsurePlayerFiles();
+        web.CoreWebView2.SetVirtualHostNameToFolderMapping(
+            "theone-music.local",
+            playerFolder,
+            CoreWebView2HostResourceAccessKind.Allow);
+
+        web.Source = new Uri("https://theone-music.local/index.html");
     }
 
     public static async Task PlayAsync(WebView2 web, string videoId)
@@ -127,9 +124,71 @@ public static class YouTubeMusicService
 
         if (safeId.Length == 0) return;
 
+        // YouTube error 153 ontstaat wanneer een embed zonder geldige verwijzer/origin
+        // wordt geopend. De lokale virtuele HTTPS-host geeft de speler wél een echte
+        // origin en referer, terwijl alles in The One Window blijft.
         web.Source = new Uri(
-            "https://www.youtube.com/embed/" + safeId +
-            "?autoplay=1&rel=0&modestbranding=1");
+            "https://theone-music.local/player.html?v=" +
+            Uri.EscapeDataString(safeId));
+    }
+
+    private static string EnsurePlayerFiles()
+    {
+        var folder = Path.Combine(AppStore.BaseDirectory, "youtube-music-player");
+        Directory.CreateDirectory(folder);
+
+        File.WriteAllText(
+            Path.Combine(folder, "index.html"),
+            """
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+html,body{height:100%;margin:0;background:#05070B;color:#9AA6B2;font-family:Segoe UI,Arial,sans-serif}
+body{display:flex;align-items:center;justify-content:center}
+.wrap{text-align:center}.note{font-size:18px;margin-top:12px}.icon{font-size:46px;color:#20B8FF}
+</style>
+</head>
+<body><div class="wrap"><div class="icon">♫</div><div class="note">Kies een nummer uit de zoekresultaten</div></div></body>
+</html>
+""");
+
+        File.WriteAllText(
+            Path.Combine(folder, "player.html"),
+            """
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#05070B}
+iframe{display:block;width:100%;height:100%;border:0;background:#05070B}
+</style>
+</head>
+<body>
+<iframe id="player"
+  title="YouTube muziekspeler"
+  allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+  allowfullscreen
+  referrerpolicy="strict-origin-when-cross-origin"></iframe>
+<script>
+const id = new URLSearchParams(location.search).get('v') || '';
+const safe = /^[A-Za-z0-9_-]+$/.test(id) ? id : '';
+if (safe) {
+  const origin = encodeURIComponent(location.origin);
+  document.getElementById('player').src =
+    'https://www.youtube.com/embed/' + encodeURIComponent(safe) +
+    '?autoplay=1&rel=0&modestbranding=1&playsinline=1&origin=' + origin;
+}
+</script>
+</body>
+</html>
+""");
+
+        return folder;
     }
 
     public static Image CreateThumbnail(string url)
