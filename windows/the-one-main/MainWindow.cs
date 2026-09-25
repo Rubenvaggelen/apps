@@ -302,7 +302,6 @@ public sealed class MainWindow : Window
 
         _musicWebView.IsHitTestVisible = true;
         _musicWebView.Visibility = Visibility.Visible;
-        _musicWebView.Opacity = 1.0;
 
         if (!_musicPlayerGrid.Children.Contains(_musicWebView))
         {
@@ -364,7 +363,6 @@ public sealed class MainWindow : Window
 
         _musicWebView.IsHitTestVisible = false;
         _musicWebView.Visibility = Visibility.Visible;
-        _musicWebView.Opacity = 1.0;
         playerSlot.Children.Add(_musicWebView);
 
         overlay.Child = shell;
