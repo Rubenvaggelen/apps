@@ -69,6 +69,25 @@ public class MainActivity extends Activity {
     private static final String BBB_YOUTUBE = "https://www.youtube.com/watch?v=aqz-KE-bpKQ";
     private static final String NASA_YOUTUBE = "https://www.youtube.com/@NASA/live";
 
+    // Alleen officiële/gratis bronnen. Geen gekopieerde of ongeautoriseerde IPTV-lijsten.
+    private static final FreeTvSource[] FREE_TV_SOURCES = new FreeTvSource[]{
+            new FreeTvSource("NPO 1", "NPO Start", "Nederland • Publiek", "https://npo.nl/start"),
+            new FreeTvSource("NPO 2", "NPO Start", "Nederland • Publiek", "https://npo.nl/start"),
+            new FreeTvSource("NPO 3", "NPO Start", "Nederland • Publiek", "https://npo.nl/start"),
+            new FreeTvSource("NPO 1 Extra", "NPO Start", "Nederland • Extra kanaal", "https://npo.nl/start"),
+            new FreeTvSource("NPO 2 Extra", "NPO Start", "Nederland • Extra kanaal", "https://npo.nl/start"),
+            new FreeTvSource("NPO Politiek & Nieuws", "NPO Start", "Nederland • Nieuws & politiek", "https://npo.nl/start"),
+            new FreeTvSource("Regionale publieke TV", "NPO Start", "Nederland • Regiokanalen", "https://npo.nl/start"),
+            new FreeTvSource("BVN", "BVN", "Nederlandstalig • Wereldwijd", "https://www.bvn.tv/bvnlive/"),
+            new FreeTvSource("Rakuten TV Live", "Rakuten TV", "FAST • Films, series, nieuws, muziek", "https://www.rakuten.tv/nl/live_channels"),
+            new FreeTvSource("Pluto TV Live", "Pluto TV", "FAST • Gratis live kanalen", "https://pluto.tv/nl/live-tv"),
+            new FreeTvSource("France 24 English", "France 24", "Internationaal • Nieuws", "https://www.france24.com/en/live"),
+            new FreeTvSource("DW Live", "Deutsche Welle", "Internationaal • Nieuws", "https://www.dw.com/en/live-tv/s-100825"),
+            new FreeTvSource("Euronews Live", "Euronews", "Europa • Nieuws", "https://www.euronews.com/live"),
+            new FreeTvSource("Al Jazeera English Live", "Al Jazeera", "Internationaal • Nieuws", "https://www.aljazeera.com/live/"),
+            new FreeTvSource("NASA Live", "NASA", "Wetenschap • Live", NASA_YOUTUBE)
+    };
+
     private static final String DEMO_M3U =
             "#EXTM3U\n" +
             "#EXTINF:-1 group-title=\"Live TV\",Apple HLS Test\n" + APPLE_HLS + "\n" +
@@ -768,6 +787,20 @@ public class MainActivity extends Activity {
         content.removeAllViews();
         ScrollView scroll = new ScrollView(this);
         LinearLayout box = baseBox("Live TV", "Je ingestelde bron wordt direct in The One Media Player geladen.");
+
+        Button freeTvSearch = button("🔎 Zoek gratis TV");
+        freeTvSearch.setOnClickListener(v -> showFreeTvSearch());
+        box.addView(freeTvSearch);
+
+        TextView freeTvInfo = text(
+                "Zoek in gratis officiële livestreams en FAST-diensten. The One voegt geen ongeautoriseerde IPTV-streams toe.",
+                13,
+                MUTED,
+                false
+        );
+        freeTvInfo.setPadding(0, dp(8), 0, dp(16));
+        box.addView(freeTvInfo);
+
         addConfiguredSourceSummary(box);
 
         String type = prefs.getString("source_type", "STALKER");
@@ -858,6 +891,119 @@ public class MainActivity extends Activity {
             }
         } finally {
             if (conn != null) conn.disconnect();
+        }
+    }
+
+    private void showFreeTvSearch() {
+        content.removeAllViews();
+
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout box = baseBox(
+                "Gratis TV zoeken",
+                "Zoek gratis legale live TV van officiële omroepen en FAST-diensten."
+        );
+
+        EditText query = PremiumUi.searchField(this, "Zoek zender, land, provider of categorie");
+        box.addView(query, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setPadding(0, dp(12), 0, dp(14));
+
+        Button search = button("Zoeken");
+        Button all = button("Toon alles");
+        actions.addView(search);
+
+        LinearLayout.LayoutParams allLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        allLp.leftMargin = dp(10);
+        actions.addView(all, allLp);
+        box.addView(actions);
+
+        TextView status = text("", 14, BLUE, false);
+        status.setPadding(0, 0, 0, dp(10));
+        box.addView(status);
+
+        LinearLayout results = new LinearLayout(this);
+        results.setOrientation(LinearLayout.VERTICAL);
+        box.addView(results);
+
+        Runnable runSearch = () ->
+                renderFreeTvResults(results, status, query.getText().toString());
+
+        search.setOnClickListener(v -> runSearch.run());
+        all.setOnClickListener(v -> {
+            query.setText("");
+            runSearch.run();
+        });
+        query.setOnEditorActionListener((v, actionId, event) -> {
+            runSearch.run();
+            return true;
+        });
+
+        renderFreeTvResults(results, status, "");
+
+        addInfo(
+                box,
+                "Gratis aanbod en regio-rechten kunnen veranderen. The One opent daarom de officiële livepagina van de aanbieder."
+        );
+
+        scroll.addView(box);
+        content.addView(scroll);
+    }
+
+    private void renderFreeTvResults(LinearLayout results, TextView status, String rawQuery) {
+        results.removeAllViews();
+
+        String query = rawQuery == null ? "" : rawQuery.trim().toLowerCase();
+        int count = 0;
+
+        for (FreeTvSource source : FREE_TV_SOURCES) {
+            String haystack = (
+                    source.name + " " +
+                    source.provider + " " +
+                    source.category
+            ).toLowerCase();
+
+            if (!query.isEmpty() && !haystack.contains(query)) continue;
+
+            count++;
+            LinearLayout card = cardContainer();
+            card.addView(text(source.name, 20, Color.WHITE, true));
+
+            TextView provider = text(
+                    source.provider + " • " + source.category,
+                    14,
+                    MUTED,
+                    false
+            );
+            provider.setPadding(0, dp(5), 0, dp(10));
+            card.addView(provider);
+
+            Button open = button("▶ Open officiële gratis stream");
+            open.setOnClickListener(v -> openExternal(source.url));
+            card.addView(open);
+
+            addCard(results, card);
+        }
+
+        if (count == 0) {
+            status.setText("Geen officiële gratis zender gevonden voor “" + rawQuery.trim() + "”.");
+            TextView tip = text(
+                    "Probeer bijvoorbeeld: NPO, nieuws, Nederland, FAST, BVN, NASA of Rakuten.",
+                    14,
+                    MUTED,
+                    false
+            );
+            tip.setPadding(0, dp(6), 0, dp(12));
+            results.addView(tip);
+        } else {
+            status.setText(count + " gratis officiële bron" + (count == 1 ? "" : "nen") + " gevonden");
         }
     }
 
@@ -1477,6 +1623,20 @@ public class MainActivity extends Activity {
             }
         }
         super.onDestroy();
+    }
+
+    private static class FreeTvSource {
+        final String name;
+        final String provider;
+        final String category;
+        final String url;
+
+        FreeTvSource(String name, String provider, String category, String url) {
+            this.name = name;
+            this.provider = provider;
+            this.category = category;
+            this.url = url;
+        }
     }
 
     private static class SubtitleOption {
