@@ -206,6 +206,48 @@ public sealed class MainWindow : Window
             wrap.Children.Add(BuildTile(tile.Id, tile.Label, tile.IconKey, tile.Open, custom: false));
         }
 
+        var rutu = RutuCompanyAppService.Detect();
+        var rutuStatus = !rutu.Found
+            ? "App niet gevonden"
+            : rutu.VersionKnown
+                ? rutu.IsLatestKnown
+                    ? $"v{rutu.Version} • actueel"
+                    : rutu.IsOutdated
+                        ? $"v{rutu.Version} • update {RutuCompanyAppService.LatestKnownVersion}"
+                        : $"v{rutu.Version}"
+                : "Geïnstalleerd";
+
+        var rutuTile = BuildTile(
+            "rutu-company",
+            "Rutu BBQ Bedrijf",
+            "custom",
+            () =>
+            {
+                if (!rutu.Found)
+                {
+                    MessageBox.Show(
+                        "Rutu BBQ Bedrijf kon niet automatisch worden gevonden in Windows. " +
+                        "De tegel blijft staan en wordt bij de volgende start opnieuw gecontroleerd.",
+                        "The One Window");
+                    return;
+                }
+
+                RutuCompanyAppService.Open(rutu);
+            },
+            custom: true,
+            allowHide: false,
+            iconOverride: CreateTheOneLogoBadge(
+                rutu.Icon,
+                "Rutu BBQ",
+                70,
+                Color.FromRgb(32, 184, 255)),
+            subtitle: rutuStatus);
+
+        rutuTile.ToolTip = rutu.Found
+            ? $"Rutu BBQ Bedrijf • geïnstalleerd {rutu.Version.IfBlank("versie onbekend")} • laatste bekende Windows-versie {RutuCompanyAppService.LatestKnownVersion}"
+            : $"Rutu BBQ Bedrijf • laatste bekende Windows-versie {RutuCompanyAppService.LatestKnownVersion}";
+        wrap.Children.Add(rutuTile);
+
         foreach (var app in _settings.CustomApps.ToList())
         {
             if (!string.IsNullOrWhiteSpace(app.Url))
@@ -266,7 +308,8 @@ public sealed class MainWindow : Window
         Action action,
         bool custom,
         bool allowHide = true,
-        UIElement? iconOverride = null)
+        UIElement? iconOverride = null,
+        string? subtitle = null)
     {
         var button = new Button
         {
@@ -322,6 +365,23 @@ public sealed class MainWindow : Window
             Margin = new Thickness(4, 10, 4, 0),
             MaxWidth = 192
         });
+
+        if (!string.IsNullOrWhiteSpace(subtitle))
+        {
+            stack.Children.Add(new TextBlock
+            {
+                Text = subtitle,
+                FontSize = 10.5,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = subtitle.Contains("update", StringComparison.OrdinalIgnoreCase)
+                    ? Brush("#FFB15A")
+                    : TextDim,
+                TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(4, 4, 4, 0),
+                MaxWidth = 192
+            });
+        }
 
         var accent = new Border
         {
