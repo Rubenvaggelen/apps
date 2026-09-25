@@ -50,8 +50,19 @@ public sealed class MainWindow : Window
         Height = 820;
         MinWidth = 980;
         MinHeight = 650;
+
+        // The One Window opent altijd als echte full-screen dashboard-app.
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        if (_settings.StartMaximized) WindowState = WindowState.Maximized;
+        WindowStyle = WindowStyle.None;
+        ResizeMode = ResizeMode.NoResize;
+        WindowState = WindowState.Maximized;
+
+        StateChanged += (_, _) =>
+        {
+            // Als Windows de app uit full-screen probeert te halen, zet hem direct terug.
+            if (WindowState == WindowState.Normal)
+                WindowState = WindowState.Maximized;
+        };
 
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -1143,7 +1154,7 @@ public sealed class MainWindow : Window
 
     private void ShowSettings()
     {
-        BeginPage("Instellingen", "Windows-instellingen voor The One Main.", out var body);
+        BeginPage("Instellingen", "Windows-instellingen voor The One Window.", out var body);
 
         var auto = new CheckBox
         {
@@ -1155,15 +1166,10 @@ public sealed class MainWindow : Window
         };
         body.Children.Add(auto);
 
-        var max = new CheckBox
-        {
-            Content = "Gemaximaliseerd opstarten",
-            IsChecked = _settings.StartMaximized,
-            Foreground = TextMain,
-            FontSize = 15,
-            Margin = new Thickness(0, 8, 0, 15)
-        };
-        body.Children.Add(max);
+        body.Children.Add(Label(
+            "The One Window opent altijd in volledig scherm.",
+            13,
+            TextDim));
 
         body.Children.Add(Label("Groq API-key voor Vraag het / Recepten", 13, TextDim));
         var key = new PasswordBox
@@ -1185,7 +1191,7 @@ public sealed class MainWindow : Window
         body.Children.Add(ActionButton("Instellingen opslaan", () =>
         {
             _settings.AutoStart = auto.IsChecked == true;
-            _settings.StartMaximized = max.IsChecked == true;
+            _settings.StartMaximized = true;
             _settings.GroqApiKey = key.Password.Trim();
             SaveSettings();
             StartupManager.SetEnabled(_settings.AutoStart);
