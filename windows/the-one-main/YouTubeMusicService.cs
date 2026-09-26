@@ -199,7 +199,7 @@ audio{width:100%}
 <body>
 <div class="card">
   <div class="logo">♫</div>
-  <div class="label">Supremacy mixen • The One Player</div>
+  <div class="label">The One Player</div>
   <audio id="audio" controls autoplay></audio>
 </div>
 <script>
