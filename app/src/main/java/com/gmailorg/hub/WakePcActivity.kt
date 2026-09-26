@@ -20,6 +20,7 @@ import java.security.MessageDigest
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
+// The One WOL build marker
 class WakePcActivity : AppCompatActivity() {
 
     companion object {
