@@ -133,6 +133,43 @@ public static class UsbMusicCloudService
         }
     }
 
+    public static async Task<bool> ValidateUserPinAsync(
+        string pin,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(pin)) return false;
+
+        try
+        {
+            var body = JsonSerializer.Serialize(new { pin = pin.Trim() });
+            using var response = await Http.PostAsync(
+                Endpoint + "?action=login",
+                new StringContent(body, Encoding.UTF8, "application/json"),
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+                return false;
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var json = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+
+            var token = json.RootElement.GetProperty("token").GetString() ?? "";
+            if (string.IsNullOrWhiteSpace(token))
+                return false;
+
+            _token = token;
+            var seconds = json.RootElement.TryGetProperty("expires_in", out var expires)
+                ? expires.GetInt32()
+                : 3600;
+            _tokenValidUntil = DateTime.UtcNow.AddSeconds(Math.Max(60, seconds - 120));
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public static async Task<List<CloudUsbMusicStick>> GetCatalogAsync(
         CancellationToken cancellationToken = default)
     {
