@@ -20,7 +20,7 @@ import java.util.Locale
 import java.util.concurrent.Executors
 
 class SupremacyMixesActivity : AppCompatActivity() {
-    private data class Mix(val title: String, val url: String)
+    private data class Mix(val title: String, val url: String, val genre: String)
     private lateinit var list: LinearLayout
     private lateinit var status: TextView
     private lateinit var progress: ProgressBar
@@ -77,7 +77,10 @@ class SupremacyMixesActivity : AppCompatActivity() {
             runOnUiThread {
                 progress.visibility = View.GONE
                 status.text = if (result.isEmpty()) "Geen mixen gevonden." else ""
-                result.forEach { addRow(it) }
+                result.groupBy { it.genre }.forEach { (genre, mixes) ->
+                    addGenreHeader(genre)
+                    mixes.forEach { addRow(it) }
+                }
             }
         }
     }
@@ -88,7 +91,7 @@ class SupremacyMixesActivity : AppCompatActivity() {
         rx.findAll(html).forEach { m ->
             val url = decode(m.groupValues[1])
             val title = plain(m.groupValues[2])
-            if (title.isNotBlank() && url.startsWith("http")) target.putIfAbsent(key(title), Mix(title, url))
+            if (title.isNotBlank() && url.startsWith("http")) target.putIfAbsent(key(title), Mix(title, url, inferGenre(title)))
         }
     }
 
@@ -104,6 +107,47 @@ class SupremacyMixesActivity : AppCompatActivity() {
                 if (title.isNotBlank() && stream.startsWith("http")) target.putIfAbsent(key(title), Mix(title, stream))
             }
             if (array.length() < 100) break
+        }
+    }
+
+    private fun addGenreHeader(genre: String) {
+        list.addView(TextView(this).apply {
+            text = genre
+            textSize = 20f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(ContextCompat.getColor(context, R.color.amber))
+            setPadding(4.dp, 18.dp, 4.dp, 8.dp)
+        })
+    }
+
+    private fun normalizeGenre(raw: String, title: String): String {
+        val value = raw.trim().lowercase(Locale.ROOT)
+        return when {
+            value.contains("dancehall") -> "Dancehall"
+            value.contains("reggae") -> "Reggae"
+            value.contains("soca") -> "Soca"
+            value.contains("afro") -> "Afrobeats"
+            value.contains("hip") || value.contains("rap") -> "Hip-Hop / R&B"
+            value.contains("r&b") || value.contains("soul") -> "Hip-Hop / R&B"
+            value.contains("pop") -> "Pop"
+            value.contains("house") || value.contains("dance") || value.contains("edm") -> "Dance / House"
+            value.contains("world") -> inferGenre(title)
+            value.isNotBlank() -> raw.trim()
+            else -> inferGenre(title)
+        }
+    }
+
+    private fun inferGenre(title: String): String {
+        val t = title.lowercase(Locale.ROOT)
+        return when {
+            Regex("\\bsoca\\b|trinidad|carnival|power soca|groovy soca").containsMatchIn(t) -> "Soca"
+            Regex("dancehall|bashment|jamaica|jamaican").containsMatchIn(t) -> "Dancehall"
+            Regex("\\breggae\\b|lovers rock|roots").containsMatchIn(t) -> "Reggae"
+            Regex("afrobeats?|afrobeat|amapiano|uganda|ugandan|kenya|kenyan|ghana|nigeria|naija").containsMatchIn(t) -> "Afrobeats"
+            Regex("hip.?hop|rap|r&b|rnb|slow jam|soul").containsMatchIn(t) -> "Hip-Hop / R&B"
+            Regex("house|edm|dance mix|club bangers").containsMatchIn(t) -> "Dance / House"
+            Regex("\\bpop\\b|80s|90s|2000s").containsMatchIn(t) -> "Pop"
+            else -> "Overig"
         }
     }
 
