@@ -18,8 +18,8 @@ public static class SupremacyMusicService
     {
         var map = new Dictionary<string, SupremacyMix>(StringComparer.OrdinalIgnoreCase);
 
-        try { await LoadHearThisAsync(map); } catch { }
         try { await LoadOfficialAsync(map); } catch { }
+        try { await LoadHearThisAsync(map); } catch { }
 
         return map.Values
             .OrderBy(x => x.Genre, StringComparer.CurrentCultureIgnoreCase)
@@ -76,18 +76,20 @@ public static class SupremacyMusicService
 
     private static string NormalizeGenre(string raw, string title)
     {
-        var value = (raw ?? "").Trim();
-        if (value.Length == 0) return InferGenre(title);
+        var original = (raw ?? "").Trim();
+        var value = original.ToLowerInvariant();
 
-        var t = value.ToLowerInvariant();
-        if (t.Contains("soca")) return "Soca";
-        if (t.Contains("dancehall") || t.Contains("bashment")) return "Dancehall";
-        if (t.Contains("reggae") || t.Contains("lovers")) return "Reggae";
-        if (t.Contains("afro") || t.Contains("amapiano")) return "Afrobeats";
-        if (t.Contains("hip") || t.Contains("r&b") || t.Contains("rnb") || t.Contains("soul")) return "Hip-Hop / R&B";
-        if (t.Contains("house") || t.Contains("edm") || t.Contains("dance")) return "Dance / House";
-        if (t.Contains("pop")) return "Pop";
-        return value;
+        if (value.Contains("dancehall")) return "Dancehall";
+        if (value.Contains("reggae")) return "Reggae";
+        if (value.Contains("soca")) return "Soca";
+        if (value.Contains("afro")) return "Afrobeats";
+        if (value.Contains("hip") || value.Contains("rap")) return "Hip-Hop / R&B";
+        if (value.Contains("r&b") || value.Contains("soul")) return "Hip-Hop / R&B";
+        if (value.Contains("pop")) return "Pop";
+        if (value.Contains("house") || value.Contains("dance") || value.Contains("edm")) return "Dance / House";
+        if (value.Contains("world")) return InferGenre(title);
+        if (value.Length > 0) return original;
+        return InferGenre(title);
     }
 
     private static string InferGenre(string title)
@@ -104,5 +106,5 @@ public static class SupremacyMusicService
     }
 
     private static string Key(string title) =>
-        Regex.Replace((title ?? "").ToLowerInvariant(), @"[^a-z0-9]+", "");
+        Regex.Replace((title ?? "").ToLowerInvariant(), @"[^a-z0-9]+", " ").Trim();
 }
