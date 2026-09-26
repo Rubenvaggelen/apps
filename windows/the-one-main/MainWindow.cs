@@ -301,7 +301,7 @@ public sealed class MainWindow : Window
 
             sectionHeader.Child = new TextBlock
             {
-                Text = $"THE ONE {group.Key}",
+                Text = group.Key.ToString(),
                 Foreground = Amber,
                 FontSize = 16,
                 FontWeight = FontWeights.Bold
