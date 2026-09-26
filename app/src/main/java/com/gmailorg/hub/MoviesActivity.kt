@@ -15,6 +15,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 
 class MoviesActivity : AppCompatActivity() {
+    companion object {
+        private const val REQUEST_SUPREMACY = 7001
+    }
 
     private lateinit var titleInput: EditText
     private lateinit var searchButton: View
@@ -35,7 +38,7 @@ class MoviesActivity : AppCompatActivity() {
         resultContainer = findViewById(R.id.movieResultContainer)
         upcomingContainer = findViewById(R.id.upcomingContainer)
 
-        findViewById<View>(R.id.backButton).setOnClickListener { finish() }
+        findViewById<View>(R.id.backButton).setOnClickListener { MenuButtonHelper.goToMenu(this) }
         searchButton.setOnClickListener { searchAll() }
         findViewById<View>(R.id.upcomingLoadButton).setOnClickListener { loadUpcoming() }
         titleInput.setOnEditorActionListener { _, actionId, _ ->
@@ -52,15 +55,25 @@ class MoviesActivity : AppCompatActivity() {
         musicNowPlaying = findViewById(R.id.musicNowPlaying)
         musicWebPlayer = findViewById(R.id.musicWebPlayer)
         configureMusicPlayer()
+        findViewById<View>(R.id.musicPreviousButton).setOnClickListener {
+            musicWebPlayer.evaluateJavascript("window.theOnePrevious && window.theOnePrevious();", null)
+        }
         findViewById<View>(R.id.musicPlayPauseButton).setOnClickListener {
             musicWebPlayer.evaluateJavascript("window.theOneToggle && window.theOneToggle();", null)
+        }
+        findViewById<View>(R.id.musicStopButton).setOnClickListener {
+            musicWebPlayer.evaluateJavascript("window.theOneStop && window.theOneStop();", null)
+            musicNowPlaying.text = "Geen muziek actief"
         }
         findViewById<View>(R.id.musicNextButton).setOnClickListener {
             musicWebPlayer.evaluateJavascript("window.theOneNext && window.theOneNext();", null)
         }
 
         findViewById<View>(R.id.supremacyMixesButton).setOnClickListener {
-            startActivity(Intent(this, SupremacyMixesActivity::class.java))
+            startActivityForResult(
+                Intent(this, SupremacyMixesActivity::class.java),
+                REQUEST_SUPREMACY
+            )
         }
 
     }
@@ -207,8 +220,14 @@ class MoviesActivity : AppCompatActivity() {
                     if (state === YT.PlayerState.PLAYING) player.pauseVideo();
                     else player.playVideo();
                   };
+                  window.theOnePrevious = () => {
+                    if (player && player.previousVideo) player.previousVideo();
+                  };
                   window.theOneNext = () => {
                     if (player && player.nextVideo) player.nextVideo();
+                  };
+                  window.theOneStop = () => {
+                    if (player && player.stopVideo) player.stopVideo();
                   };
                 }
                 const api = document.createElement('script');
@@ -227,8 +246,75 @@ class MoviesActivity : AppCompatActivity() {
             null
         )
     }
+    private fun playSupremacy(title: String, queue: List<String>) {
+        musicNowPlaying.text = "$title  •  Supremacy"
+        val safeQueue = queue
+            .filter { it.startsWith("http://") || it.startsWith("https://") }
+            .take(50)
+        if (safeQueue.isEmpty()) return
+
+        val queueJson = org.json.JSONArray(safeQueue).toString()
+        val html = """
+            <!doctype html>
+            <html>
+            <head>
+              <meta name="viewport" content="width=device-width,initial-scale=1">
+              <style>html,body{width:100%;height:100%;margin:0;background:#05070B;overflow:hidden}</style>
+            </head>
+            <body>
+              <audio id="audio" autoplay></audio>
+              <script>
+                const queue = $queueJson;
+                let index = 0;
+                const audio = document.getElementById('audio');
+                function load(i) {
+                  if (!queue.length) return;
+                  index = Math.max(0, Math.min(i, queue.length - 1));
+                  audio.src = queue[index];
+                  audio.play().catch(()=>{});
+                }
+                audio.addEventListener('ended', () => {
+                  if (index + 1 < queue.length) load(index + 1);
+                });
+                window.theOnePrevious = () => { if (index > 0) load(index - 1); };
+                window.theOneToggle = () => audio.paused ? audio.play() : audio.pause();
+                window.theOneStop = () => { audio.pause(); audio.currentTime = 0; };
+                window.theOneNext = () => { if (index + 1 < queue.length) load(index + 1); };
+                load(0);
+              </script>
+            </body>
+            </html>
+        """.trimIndent()
+
+        musicWebPlayer.loadDataWithBaseURL(
+            "https://supremacysounds.com",
+            html,
+            "text/html",
+            "UTF-8",
+            null
+        )
+    }
+
+    @Deprecated("Deprecated in Android, retained for this in-app player result flow")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_SUPREMACY || resultCode != RESULT_OK || data == null) return
+
+        val title = data.getStringExtra(SupremacyMixesActivity.EXTRA_TITLE) ?: "Supremacy mix"
+        val queue = data.getStringArrayListExtra(SupremacyMixesActivity.EXTRA_QUEUE)
+            ?.filter { it.isNotBlank() }
+            ?: listOfNotNull(data.getStringExtra(SupremacyMixesActivity.EXTRA_URL))
+
+        playSupremacy(title, queue)
+    }
+
+    @Deprecated("Back keeps the player alive and returns to The One menu")
+    override fun onBackPressed() {
+        MenuButtonHelper.goToMenu(this)
+    }
+
     override fun onDestroy() {
-        if (::musicWebPlayer.isInitialized) {
+        if (isFinishing && ::musicWebPlayer.isInitialized) {
             musicWebPlayer.stopLoading()
             musicWebPlayer.destroy()
         }
