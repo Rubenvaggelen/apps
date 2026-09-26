@@ -270,10 +270,12 @@ public sealed class MainWindow : Window
                     iconOverride: CreateCustomAppIcon(captured, 70))));
         }
 
+        orderedTiles.Add((
+            "Tegel toevoegen",
+            () => BuildTile("add", "Tegel toevoegen", "add", ShowAddTileMenu, custom: false, allowHide: false)));
+
         foreach (var entry in orderedTiles.OrderBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase))
             wrap.Children.Add(entry.Build());
-
-        wrap.Children.Add(BuildTile("add", "Tegel toevoegen", "add", ShowAddTileMenu, custom: false, allowHide: false));
         var footer = new Border
         {
             Background = Brush("#071018"),
@@ -299,18 +301,18 @@ public sealed class MainWindow : Window
 
         var power = new Button
         {
-            Content = "⏻",
-            Width = 46,
-            Height = 34,
-            Padding = new Thickness(0),
-            FontSize = 20,
+            Content = "AAN / UIT",
+            Width = 118,
+            Height = 38,
+            Padding = new Thickness(12, 0, 12, 0),
+            FontSize = 12,
             FontWeight = FontWeights.Bold,
             Foreground = Amber,
             Background = Brush("#09131D"),
             BorderBrush = Amber,
-            BorderThickness = new Thickness(1),
+            BorderThickness = new Thickness(1.4),
             Cursor = Cursors.Hand,
-            ToolTip = "Aan/uit"
+            ToolTip = "Slaapstand, opnieuw opstarten of afsluiten"
         };
         power.Click += (_, _) => ShowPowerMenu(power);
         DockPanel.SetDock(power, Dock.Right);
