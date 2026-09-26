@@ -48,6 +48,7 @@ public sealed class MainWindow : Window
     private string _musicNowPlayingTitle = "Muziek";
     private bool _musicSessionActive;
     private bool _musicOverlayFaded;
+    private bool _usbHomeUnlocked;
 
     private sealed record TileDef(string Id, string Label, string IconKey, Action Open);
     private sealed record StartMenuShortcut(string Label, string TargetPath);
@@ -2095,6 +2096,28 @@ public sealed class MainWindow : Window
 
         usbHomeButton.Click += async (_, _) =>
         {
+            if (!_usbHomeUnlocked)
+            {
+                var pin = AskUsbHomePin();
+                if (pin == null) return;
+
+                usbHomeButton.IsEnabled = false;
+                status.Text = "USB thuis ontgrendelen…";
+                status.Foreground = TextDim;
+
+                var valid = await UsbMusicCloudService.ValidateUserPinAsync(pin);
+                usbHomeButton.IsEnabled = true;
+
+                if (!valid)
+                {
+                    status.Text = "Pincode niet juist of server niet bereikbaar.";
+                    status.Foreground = Amber;
+                    return;
+                }
+
+                _usbHomeUnlocked = true;
+            }
+
             usbHomeButton.IsEnabled = false;
             results.Children.Clear();
             status.Text = "USB thuis synchroniseren en laden…";
@@ -2316,6 +2339,103 @@ public sealed class MainWindow : Window
         };
 
         _ = YouTubeMusicService.InitializeAsync(web);
+    }
+
+    private string? AskUsbHomePin()
+    {
+        var input = new PasswordBox
+        {
+            Width = 190,
+            Height = 38,
+            FontSize = 17,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Background = Surface,
+            Foreground = TextMain,
+            BorderBrush = Amber,
+            BorderThickness = new Thickness(1),
+            MaxLength = 12
+        };
+
+        var panel = new StackPanel
+        {
+            Margin = new Thickness(18)
+        };
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "USB thuis",
+            Foreground = Amber,
+            FontSize = 20,
+            FontWeight = FontWeights.Bold
+        });
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Voer de pincode in om je USB-muziek te openen.",
+            Foreground = TextDim,
+            FontSize = 13,
+            Margin = new Thickness(0, 8, 0, 12)
+        });
+
+        panel.Children.Add(input);
+
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 14, 0, 0)
+        };
+
+        var cancel = SmallButton("Annuleren", () => { });
+        var open = SmallButton("Openen", () => { });
+        open.Margin = new Thickness(8, 0, 0, 0);
+
+        buttons.Children.Add(cancel);
+        buttons.Children.Add(open);
+        panel.Children.Add(buttons);
+
+        var dialog = new Window
+        {
+            Owner = this,
+            Width = 360,
+            Height = 230,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ResizeMode = ResizeMode.NoResize,
+            WindowStyle = WindowStyle.None,
+            Background = Bg,
+            Content = new Border
+            {
+                BorderBrush = Amber,
+                BorderThickness = new Thickness(1.2),
+                CornerRadius = new CornerRadius(16),
+                Background = Surface,
+                Child = panel
+            }
+        };
+
+        cancel.Click += (_, _) =>
+        {
+            dialog.DialogResult = false;
+            dialog.Close();
+        };
+
+        open.Click += (_, _) =>
+        {
+            if (string.IsNullOrWhiteSpace(input.Password)) return;
+            dialog.DialogResult = true;
+            dialog.Close();
+        };
+
+        input.KeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Enter || string.IsNullOrWhiteSpace(input.Password)) return;
+            dialog.DialogResult = true;
+            dialog.Close();
+        };
+
+        dialog.Loaded += (_, _) => input.Focus();
+        return dialog.ShowDialog() == true ? input.Password : null;
     }
 
     private void ShowHousehold()
