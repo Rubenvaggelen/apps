@@ -21,7 +21,6 @@ class MoviesActivity : AppCompatActivity() {
     private lateinit var resultContainer: LinearLayout
     private lateinit var upcomingContainer: LinearLayout
     private lateinit var musicResultContainer: LinearLayout
-    private lateinit var cinemaContainer: LinearLayout
     private lateinit var musicPlayerCard: View
     private lateinit var musicNowPlaying: TextView
     private lateinit var musicWebPlayer: WebView
@@ -58,87 +57,6 @@ class MoviesActivity : AppCompatActivity() {
             startActivity(Intent(this, SupremacyMixesActivity::class.java))
         }
 
-        cinemaContainer = findViewById(R.id.cinemaContainer)
-        findViewById<View>(R.id.cinemaLoadButton).setOnClickListener { loadNowPlaying() }
-    }
-
-    private fun loadNowPlaying() {
-        cinemaContainer.removeAllViews()
-        addCinemaStatusLine("Bezig met laden...")
-
-        MovieLookup.fetchNowPlaying { movies, error ->
-            cinemaContainer.removeAllViews()
-            if (error != null) {
-                addCinemaStatusLine(error)
-                return@fetchNowPlaying
-            }
-            if (movies.isEmpty()) {
-                addCinemaStatusLine("Geen films gevonden.")
-                return@fetchNowPlaying
-            }
-            movies.forEach { movie -> addCinemaMovieRow(movie.title) }
-        }
-    }
-
-    private fun addCinemaStatusLine(text: String) {
-        val view = TextView(this).apply {
-            this.text = text
-            setTextColor(ContextCompat.getColor(context, R.color.text_dim))
-            textSize = 13f
-        }
-        cinemaContainer.addView(view)
-    }
-
-    private fun addCinemaMovieRow(title: String) {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, 0, 0, 14)
-        }
-        val titleView = TextView(this).apply {
-            text = title
-            setTextColor(ContextCompat.getColor(context, R.color.text_main))
-            textSize = 14f
-        }
-        row.addView(titleView)
-
-        val buttonRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 4, 0, 0)
-        }
-        val patheButton = android.widget.Button(this).apply {
-            text = "Tickets Pathé"
-            textSize = 12f
-            setPadding(20, 8, 20, 8)
-            setBackgroundColor(ContextCompat.getColor(context, R.color.surface))
-            setTextColor(ContextCompat.getColor(context, R.color.amber))
-            setOnClickListener { openCinemaSearch(isPathe = true, title = title) }
-        }
-        val kinepolisButton = android.widget.Button(this).apply {
-            text = "Tickets Kinepolis"
-            textSize = 12f
-            setPadding(20, 8, 20, 8)
-            setBackgroundColor(ContextCompat.getColor(context, R.color.surface))
-            setTextColor(ContextCompat.getColor(context, R.color.amber))
-            val params = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            params.marginStart = 12
-            layoutParams = params
-            setOnClickListener { openCinemaSearch(isPathe = false, title = title) }
-        }
-        buttonRow.addView(patheButton)
-        buttonRow.addView(kinepolisButton)
-        row.addView(buttonRow)
-
-        cinemaContainer.addView(row)
-    }
-
-    private fun openCinemaSearch(isPathe: Boolean, title: String) {
-        val encoded = Uri.encode(title)
-        val url = if (isPathe) {
-            "https://www.pathe.nl/zoek?q=$encoded"
-        } else {
-            "https://kinepolis.nl/search/site/$encoded"
-        }
-        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     }
 
     private fun searchAll() {
