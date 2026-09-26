@@ -1,6 +1,5 @@
 package com.gmailorg.hub
 
-import android.app.KeyguardManager
 import android.content.Context
 import android.net.wifi.WifiManager
 import android.os.Bundle
@@ -9,7 +8,6 @@ import android.view.View
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -41,16 +39,6 @@ class WakePcActivity : AppCompatActivity() {
         getSharedPreferences("wake_pc_security", Context.MODE_PRIVATE)
     }
 
-    private val confirmDeviceCredential = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == RESULT_OK) {
-            showPinPromptAndWake()
-        } else {
-            Toast.makeText(this, "Beveiligingscontrole geannuleerd.", Toast.LENGTH_SHORT).show()
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_wake_pc)
@@ -71,27 +59,8 @@ class WakePcActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
-            if (keyguard.isDeviceSecure) {
-                val intent = keyguard.createConfirmDeviceCredentialIntent(
-                    "Laptop wakker maken",
-                    "Bevestig eerst je telefoonvergrendeling."
-                )
-                if (intent != null) {
-                    confirmDeviceCredential.launch(intent)
-                } else {
-                    askForPinAndWake(status, wakeButton)
-                }
-            } else {
-                askForPinAndWake(status, wakeButton)
-            }
+            askForPinAndWake(status, wakeButton)
         }
-    }
-
-    private fun showPinPromptAndWake() {
-        val status = findViewById<TextView>(R.id.wakePcStatus)
-        val wakeButton = findViewById<View>(R.id.wakePcButton)
-        askForPinAndWake(status, wakeButton)
     }
 
     private fun askForPinAndWake(status: TextView, wakeButton: View) {
