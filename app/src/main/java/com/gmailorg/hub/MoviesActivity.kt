@@ -202,14 +202,14 @@ class MoviesActivity : AppCompatActivity() {
     }
 
     private fun showMusicResults(results: List<MusicLookup.MusicResult>) {
-        results.forEach { result ->
+        results.forEachIndexed { index, result ->
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(12, 10, 12, 10)
                 background = ContextCompat.getDrawable(context, android.R.drawable.list_selector_background)
                 isClickable = true
                 isFocusable = true
-                setOnClickListener { playVideo(result) }
+                setOnClickListener { playVideo(result, results.drop(index).map { it.videoId }) }
             }
             val titleView = TextView(this).apply {
                 text = result.title
@@ -239,12 +239,19 @@ class MoviesActivity : AppCompatActivity() {
         musicWebPlayer.webChromeClient = WebChromeClient()
     }
 
-    private fun playVideo(result: MusicLookup.MusicResult) {
+    private fun playVideo(result: MusicLookup.MusicResult, queue: List<String>) {
         musicPlayerCard.visibility = View.VISIBLE
         musicNowPlaying.text = result.title +
             if (result.channel.isNotBlank()) "  •  ${result.channel}" else ""
 
-        val videoId = Uri.encode(result.videoId)
+        val cleanQueue = queue
+            .map { id -> id.filter { ch -> ch.isLetterOrDigit() || ch == '-' || ch == '_' } }
+            .filter { it.isNotBlank() }
+            .take(20)
+        val videoId = cleanQueue.firstOrNull()
+            ?: result.videoId.filter { ch -> ch.isLetterOrDigit() || ch == '-' || ch == '_' }
+        val playlist = cleanQueue.drop(1).joinToString(",")
+        val playlistPart = if (playlist.isBlank()) "" else "&playlist=$playlist"
         val html = """
             <!doctype html>
             <html>
@@ -257,7 +264,7 @@ class MoviesActivity : AppCompatActivity() {
             </head>
             <body>
               <iframe
-                src="https://www.youtube.com/embed/$videoId?autoplay=1&playsinline=1&rel=0"
+                src="https://www.youtube.com/embed/$videoId?autoplay=1&playsinline=1&rel=0$playlistPart"
                 allow="autoplay; encrypted-media; picture-in-picture"
                 allowfullscreen>
               </iframe>
