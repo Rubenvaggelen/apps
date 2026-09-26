@@ -20,6 +20,7 @@ namespace TheOneMain.Windows;
 public sealed class MainWindow : Window
 {
     private const string MailUrl = "https://rubenvaggelen.github.io/Gmailorg/";
+    private const string RutuCompanyTileId = "rutu-company";
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(35) };
 
     private readonly Brush Bg = Brush("#05070B");
@@ -54,6 +55,7 @@ public sealed class MainWindow : Window
     public MainWindow()
     {
         _settings = AppStore.Load<SettingsData>("settings.json");
+        MigrateRutuCompanyToFixedTile();
         StartupManager.SetEnabled(_settings.AutoStart);
 
         Title = "The One Windows";
@@ -210,8 +212,6 @@ public sealed class MainWindow : Window
             new("chrome", "Chrome", "chrome", () => BrowserLauncher.OpenChrome())
         };
 
-        EnsureRutuCompanyImported();
-
         // Alle zichtbare vaste én zelf toegevoegde tegels staan samen alfabetisch.
         // "Tegel toevoegen" blijft bewust als laatste staan.
         var orderedTiles = new List<(string Label, Func<Button> Build)>();
@@ -223,6 +223,43 @@ public sealed class MainWindow : Window
             orderedTiles.Add((
                 captured.Label,
                 () => BuildTile(captured.Id, captured.Label, captured.IconKey, captured.Open, custom: false)));
+        }
+
+        if (!_settings.HiddenTiles.Contains(RutuCompanyTileId))
+        {
+            var detectedRutu = RutuCompanyAppService.Detect();
+            if (detectedRutu.Found)
+            {
+                _settings.RutuCompanyPath = !string.IsNullOrWhiteSpace(detectedRutu.ExecutablePath)
+                    ? detectedRutu.ExecutablePath
+                    : detectedRutu.LauncherPath;
+                SaveSettings();
+            }
+
+            var rutuPath = detectedRutu.Found
+                ? (!string.IsNullOrWhiteSpace(detectedRutu.ExecutablePath)
+                    ? detectedRutu.ExecutablePath
+                    : detectedRutu.LauncherPath)
+                : _settings.RutuCompanyPath;
+
+            var rutuIcon = CreateCustomAppIcon(
+                new CustomShortcut
+                {
+                    Id = RutuCompanyTileId,
+                    Label = "Rutu BBQ Bedrijf",
+                    ExePath = rutuPath
+                },
+                48);
+
+            orderedTiles.Add((
+                "Rutu BBQ Bedrijf",
+                () => BuildTile(
+                    RutuCompanyTileId,
+                    "Rutu BBQ Bedrijf",
+                    "custom",
+                    OpenRutuCompany,
+                    custom: false,
+                    iconOverride: rutuIcon)));
         }
 
         foreach (var app in _settings.CustomApps.ToList())
@@ -246,23 +283,13 @@ public sealed class MainWindow : Window
             // Toegevoegde apps blijven permanent als tegel bewaard, ook als Windows
             // een snelkoppeling tijdelijk niet kan vinden. Alleen de gebruiker kan ze verwijderen.
             var target = captured.ExePath;
-            var isRutuCompany =
-                captured.Id == "rutu-bbq-bedrijf-windows" ||
-                captured.Label.Contains("Rutu", StringComparison.OrdinalIgnoreCase);
-
             orderedTiles.Add((
                 captured.Label,
                 () => BuildTile(
                     captured.Id,
                     captured.Label,
                     "custom",
-                    () =>
-                    {
-                        if (isRutuCompany)
-                            RutuCompanyAppService.OpenImportedPath(target);
-                        else
-                            BrowserLauncher.OpenProgram(target);
-                    },
+                    () => BrowserLauncher.OpenProgram(target),
                     custom: true,
                     iconOverride: CreateCustomAppIcon(captured, 48))));
         }
@@ -589,30 +616,74 @@ public sealed class MainWindow : Window
         }
     }
 
-    private void EnsureRutuCompanyImported()
+    private void MigrateRutuCompanyToFixedTile()
     {
-        var install = RutuCompanyAppService.Detect();
-        if (!install.Found || string.IsNullOrWhiteSpace(install.LauncherPath))
-            return;
-
-        var alreadyAdded = _settings.CustomApps.Any(app =>
+        var legacyRutu = _settings.CustomApps.FirstOrDefault(app =>
             app.Id == "rutu-bbq-bedrijf-windows" ||
-            app.Label.Contains("Rutu", StringComparison.OrdinalIgnoreCase) ||
-            (!string.IsNullOrWhiteSpace(app.ExePath) &&
-             string.Equals(app.ExePath, install.LauncherPath, StringComparison.OrdinalIgnoreCase)));
+            app.Label.Equals("Rutu BBQ Bedrijf", StringComparison.OrdinalIgnoreCase) ||
+            app.Label.Equals("Rutu Bedrijf", StringComparison.OrdinalIgnoreCase));
 
-        if (alreadyAdded)
-            return;
+        if (legacyRutu != null && !string.IsNullOrWhiteSpace(legacyRutu.ExePath))
+            _settings.RutuCompanyPath = legacyRutu.ExePath;
 
-        _settings.CustomApps.Add(new CustomShortcut
+        _settings.CustomApps.RemoveAll(app =>
+            app.Id == "rutu-bbq-bedrijf-windows" ||
+            app.Label.Equals("Rutu BBQ Bedrijf", StringComparison.OrdinalIgnoreCase) ||
+            app.Label.Equals("Rutu Bedrijf", StringComparison.OrdinalIgnoreCase));
+
+        var detected = RutuCompanyAppService.Detect();
+        if (detected.Found)
         {
-            Id = "rutu-bbq-bedrijf-windows",
-            Label = "Rutu BBQ Bedrijf",
-            ExePath = install.LauncherPath
-        });
+            _settings.RutuCompanyPath = !string.IsNullOrWhiteSpace(detected.ExecutablePath)
+                ? detected.ExecutablePath
+                : detected.LauncherPath;
+        }
+
         SaveSettings();
-        AppStore.AddNotification("Rutu BBQ Bedrijf toegevoegd aan The One Window.");
     }
+
+    private void OpenRutuCompany()
+    {
+        var detected = RutuCompanyAppService.Detect();
+        if (detected.Found)
+        {
+            _settings.RutuCompanyPath = !string.IsNullOrWhiteSpace(detected.ExecutablePath)
+                ? detected.ExecutablePath
+                : detected.LauncherPath;
+            SaveSettings();
+            RutuCompanyAppService.Open(detected);
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_settings.RutuCompanyPath) &&
+            File.Exists(_settings.RutuCompanyPath))
+        {
+            RutuCompanyAppService.OpenImportedPath(_settings.RutuCompanyPath);
+            return;
+        }
+
+        MessageBox.Show(
+            "Rutu BBQ Bedrijf staat vast in The One Windows, maar de geïnstalleerde app kon nu niet worden gevonden.",
+            "The One Windows");
+    }
+
+    private static string HiddenTileLabel(string id) => id switch
+    {
+        RutuCompanyTileId => "Rutu BBQ Bedrijf",
+        "notifications" => "Meldingen",
+        "mail" => "Mail & Kalender",
+        "household" => "Huishouden",
+        "music" => "Muziek",
+        "settings" => "Instellingen",
+        "ask" => "Vraag het",
+        "recipes" => "Recepten",
+        "news" => "Nieuws",
+        "radio" => "Radio",
+        "currency" => "Koers",
+        "lifestyle" => "Lifestyle",
+        "chrome" => "Chrome",
+        _ => id
+    };
 
     private void ShowPowerMenu(Button anchor)
     {
@@ -2385,7 +2456,7 @@ public sealed class MainWindow : Window
             body.Children.Add(Label("Geen verborgen tegels.", 14, TextDim));
         foreach (var id in _settings.HiddenTiles.ToList())
         {
-            body.Children.Add(ActionButton($"Herstel {id}", () =>
+            body.Children.Add(ActionButton($"Herstel {HiddenTileLabel(id)}", () =>
             {
                 _settings.HiddenTiles.Remove(id);
                 SaveSettings();
