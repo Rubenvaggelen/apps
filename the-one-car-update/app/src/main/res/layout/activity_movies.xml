@@ -174,6 +174,45 @@
                 android:layout_marginHorizontal="16dp"
                 android:layout_marginBottom="16dp" />
 
+            <Button
+                android:id="@+id/supremacyMixesButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginBottom="12dp"
+                android:text="Supremacy mixen"
+                android:backgroundTint="@color/amber"
+                android:textColor="@color/on_amber" />
+
+            <LinearLayout
+                android:id="@+id/musicPlayerCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginBottom="14dp"
+                android:orientation="vertical"
+                android:background="@color/surface"
+                android:padding="12dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/musicNowPlaying"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Kies een nummer"
+                    android:textColor="@color/text_main"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:paddingBottom="8dp" />
+
+                <WebView
+                    android:id="@+id/musicWebPlayer"
+                    android:layout_width="match_parent"
+                    android:layout_height="220dp"
+                    android:background="@color/bg" />
+
+            </LinearLayout>
+
             <LinearLayout
                 android:id="@+id/musicResultContainer"
                 android:layout_width="match_parent"
