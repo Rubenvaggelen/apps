@@ -190,8 +190,11 @@ public sealed class MainWindow : Window
         hero.Child = heroRow;
         page.Children.Add(hero);
 
-        var wrap = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Center };
-        page.Children.Add(wrap);
+        var iconGrid = new Grid
+        {
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+        page.Children.Add(iconGrid);
         scroll.Content = page;
         Grid.SetRow(scroll, 0);
         outer.Children.Add(scroll);
@@ -274,8 +277,30 @@ public sealed class MainWindow : Window
             "Tegel toevoegen",
             () => BuildTile("add", "Tegel toevoegen", "add", ShowAddTileMenu, custom: false, allowHide: false)));
 
-        foreach (var entry in orderedTiles.OrderBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase))
-            wrap.Children.Add(entry.Build());
+        var sortedTiles = orderedTiles
+            .OrderBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
+        // Windows-desktopvolgorde: eerst alfabetisch van boven naar beneden,
+        // daarna pas de volgende kolom.
+        const int rowsPerColumn = 3;
+        var columnCount = (int)Math.Ceiling(sortedTiles.Count / (double)rowsPerColumn);
+
+        for (var row = 0; row < rowsPerColumn; row++)
+            iconGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        for (var column = 0; column < columnCount; column++)
+            iconGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        for (var i = 0; i < sortedTiles.Count; i++)
+        {
+            var tile = sortedTiles[i].Build();
+            var row = i % rowsPerColumn;
+            var column = i / rowsPerColumn;
+            Grid.SetRow(tile, row);
+            Grid.SetColumn(tile, column);
+            iconGrid.Children.Add(tile);
+        }
         var footer = new Border
         {
             Background = Brush("#071018"),
@@ -1516,20 +1541,25 @@ public sealed class MainWindow : Window
         var search = Input("Artiest of nummer");
 
         var searchButton = ActionButton("▶ YouTube", () => { }, 150);
-        DockPanel.SetDock(searchButton, Dock.Right);
-        searchRow.Children.Add(searchButton);
 
         var spotifyButton = ActionButton("● Spotify", () => { }, 140);
         spotifyButton.Background = Brush("#1DB954");
         spotifyButton.Foreground = Brushes.White;
         spotifyButton.BorderBrush = Brush("#1ED760");
-        DockPanel.SetDock(spotifyButton, Dock.Right);
-        searchRow.Children.Add(spotifyButton);
 
         var supremacyButton = ActionButton("♫ Supremacy", () => { }, 150);
-        DockPanel.SetDock(supremacyButton, Dock.Right);
-        searchRow.Children.Add(supremacyButton);
 
+        var sourceButtons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(10, 0, 0, 0)
+        };
+        sourceButtons.Children.Add(searchButton);
+        sourceButtons.Children.Add(spotifyButton);
+        sourceButtons.Children.Add(supremacyButton);
+
+        DockPanel.SetDock(sourceButtons, Dock.Right);
+        searchRow.Children.Add(sourceButtons);
         searchRow.Children.Add(search);
         header.Children.Add(searchRow);
 
