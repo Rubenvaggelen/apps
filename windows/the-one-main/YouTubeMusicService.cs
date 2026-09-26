@@ -167,6 +167,64 @@ public static class YouTubeMusicService
             "https://theone-music.local/player.html?q=" + encodedQueue);
     }
 
+    public static async Task PlayAudioQueueAsync(WebView2 web, IEnumerable<string> urls)
+    {
+        await InitializeAsync(web);
+
+        var queue = urls
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Where(x => Uri.TryCreate(x, UriKind.Absolute, out _))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(50)
+            .ToList();
+
+        if (queue.Count == 0) return;
+
+        var json = JsonSerializer.Serialize(queue);
+        var html = $"""
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+html,body{width:100%;height:100%;margin:0;background:#05070B;color:#f3f8fc;font-family:Segoe UI,Arial,sans-serif}
+body{display:flex;align-items:center;justify-content:center}
+.card{width:min(92%,760px);padding:28px;border:1px solid #174963;border-radius:18px;background:#091018;box-shadow:0 0 28px rgba(32,184,255,.18)}
+.logo{font-size:42px;color:#20B8FF;text-align:center;margin-bottom:18px}.label{text-align:center;color:#9AA6B2;margin-bottom:18px}
+audio{width:100%}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">♫</div>
+  <div class="label">Supremacy mixen • The One Player</div>
+  <audio id="audio" controls autoplay></audio>
+</div>
+<script>
+const queue = {{json}};
+let index = 0;
+const audio = document.getElementById('audio');
+function load(i) {
+  if (!queue.length) return;
+  index = Math.max(0, Math.min(i, queue.length - 1));
+  audio.src = queue[index];
+  audio.play().catch(()=>{});
+}
+audio.addEventListener('ended', () => {
+  if (index + 1 < queue.length) load(index + 1);
+});
+window.theOneToggle = () => audio.paused ? audio.play() : audio.pause();
+window.theOneNext = () => { if (index + 1 < queue.length) load(index + 1); };
+load(0);
+</script>
+</body>
+</html>
+""";
+
+        web.NavigateToString(html);
+    }
+
     public static async Task TogglePlayPauseAsync(WebView2 web)
     {
         await InitializeAsync(web);
