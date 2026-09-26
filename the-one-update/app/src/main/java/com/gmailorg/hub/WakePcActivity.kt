@@ -1,6 +1,8 @@
 package com.gmailorg.hub
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.text.InputType
@@ -14,6 +16,8 @@ import androidx.core.content.ContextCompat
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Socket
 import java.security.MessageDigest
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
@@ -25,6 +29,9 @@ class WakePcActivity : AppCompatActivity() {
         private const val LAPTOP_WIFI_MAC = "04-EC-D8-E5-C7-3E"
         private const val HOME_BROADCAST = "192.168.178.255"
         private const val WOL_PORT = 9
+        private const val LAPTOP_LAN_IP = "192.168.178.193"
+        private const val LAPTOP_TAILSCALE_HOST = "ruben"
+        private const val LAPTOP_CONTROL_PORT = 38491
         private const val HOME_PUBLIC_IPV4 = "213.93.2.233"
         private const val HOME_PUBLIC_PORT = 40009
         private const val PIN_SALT_HEX = "031507ef415e3d21765f1fcc73740631"
@@ -45,6 +52,8 @@ class WakePcActivity : AppCompatActivity() {
 
         val status = findViewById<TextView>(R.id.wakePcStatus)
         val wakeButton = findViewById<View>(R.id.wakePcButton)
+        val sleepButton = findViewById<View>(R.id.sleepPcButton)
+        val remoteButton = findViewById<View>(R.id.remotePcButton)
 
         findViewById<View>(R.id.backButton).setOnClickListener { finish() }
 
@@ -59,6 +68,14 @@ class WakePcActivity : AppCompatActivity() {
             }
 
             askForPinAndWake(status, wakeButton)
+        }
+
+        sleepButton.setOnClickListener {
+            askForPinAndSleep(status, sleepButton)
+        }
+
+        remoteButton.setOnClickListener {
+            openRemoteControl()
         }
     }
 
@@ -134,6 +151,118 @@ class WakePcActivity : AppCompatActivity() {
         }
 
         dialog.show()
+    }
+
+    private fun askForPinAndSleep(status: TextView, sleepButton: View) {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            hint = "Pincode"
+            isSingleLine = true
+            setPadding(28, 12, 28, 12)
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Laptop in slaapstand")
+            .setMessage("Voer je pincode in om Ruben in slaapstand te zetten.")
+            .setView(input)
+            .setNegativeButton("Annuleren", null)
+            .setPositiveButton("Slaapstand", null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val now = System.currentTimeMillis()
+                val lockedUntil = securityPrefs.getLong("locked_until", 0L)
+                if (lockedUntil > now) {
+                    val seconds = ((lockedUntil - now + 999) / 1000).coerceAtLeast(1)
+                    input.error = "Geblokkeerd. Probeer over ongeveer $seconds seconden opnieuw."
+                    return@setOnClickListener
+                }
+
+                val pin = input.text.toString()
+                if (!verifyPin(pin)) {
+                    val attempts = securityPrefs.getInt("failed_attempts", 0) + 1
+                    if (attempts >= MAX_FAILED_ATTEMPTS) {
+                        securityPrefs.edit()
+                            .putInt("failed_attempts", 0)
+                            .putLong("locked_until", now + LOCKOUT_MS)
+                            .apply()
+                        input.error = "Te veel foutieve pogingen. 5 minuten geblokkeerd."
+                    } else {
+                        securityPrefs.edit().putInt("failed_attempts", attempts).apply()
+                        input.error = "Onjuiste pincode. Nog ${MAX_FAILED_ATTEMPTS - attempts} poging(en)."
+                    }
+                    input.text.clear()
+                    return@setOnClickListener
+                }
+
+                securityPrefs.edit()
+                    .putInt("failed_attempts", 0)
+                    .putLong("locked_until", 0L)
+                    .apply()
+
+                dialog.dismiss()
+                sleepButton.isEnabled = false
+                status.setTextColor(ContextCompat.getColor(this, R.color.text_dim))
+                status.text = "Laptop in slaapstand zetten…"
+
+                Thread {
+                    val result = runCatching { sendLaptopCommand("SLEEP", pin) }
+                    runOnUiThread {
+                        sleepButton.isEnabled = true
+                        if (result.isSuccess) {
+                            status.setTextColor(ContextCompat.getColor(this, R.color.amber))
+                            status.text = "Slaapstand verstuurd. De laptop gaat nu slapen."
+                        } else {
+                            status.setTextColor(ContextCompat.getColor(this, R.color.text_dim))
+                            status.text =
+                                "Geen verbinding met de laptop. Thuis: controleer wifi. Buitenshuis: zet Tailscale aan op je telefoon."
+                        }
+                    }
+                }.start()
+            }
+        }
+
+        dialog.show()
+    }
+
+    private fun sendLaptopCommand(command: String, pin: String) {
+        val targets = listOf(LAPTOP_LAN_IP, LAPTOP_TAILSCALE_HOST)
+        var lastError: Throwable? = null
+
+        for (host in targets) {
+            try {
+                Socket().use { socket ->
+                    socket.connect(InetSocketAddress(host, LAPTOP_CONTROL_PORT), 2500)
+                    socket.soTimeout = 3500
+
+                    val writer = socket.getOutputStream().bufferedWriter(Charsets.UTF_8)
+                    val reader = socket.getInputStream().bufferedReader(Charsets.UTF_8)
+                    writer.write("$command $pin\n")
+                    writer.flush()
+
+                    val reply = reader.readLine().orEmpty()
+                    if (reply.startsWith("OK ")) return
+                    if (reply == "ERR AUTH") throw IllegalStateException("Pincode geweigerd")
+                    throw IllegalStateException("Onverwacht antwoord van laptop")
+                }
+            } catch (e: Throwable) {
+                lastError = e
+            }
+        }
+
+        throw lastError ?: IllegalStateException("Laptop niet bereikbaar")
+    }
+
+    private fun openRemoteControl() {
+        val packageName = "com.theone.remote"
+        val launch = packageManager.getLaunchIntentForPackage(packageName)
+        if (launch != null) {
+            startActivity(launch)
+            return
+        }
+
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://rustdesk.com/web/")))
     }
 
     @Suppress("DEPRECATION")
