@@ -15,9 +15,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 
 class MoviesActivity : AppCompatActivity() {
-    companion object {
-        private const val REQUEST_SUPREMACY = 7001
-    }
 
     private lateinit var titleInput: EditText
     private lateinit var searchButton: View
@@ -26,7 +23,10 @@ class MoviesActivity : AppCompatActivity() {
     private lateinit var musicResultContainer: LinearLayout
     private lateinit var musicPlayerCard: View
     private lateinit var musicNowPlaying: TextView
+    private lateinit var musicPlaybackState: TextView
     private lateinit var musicWebPlayer: WebView
+    private var youtubeActive = false
+    private var youtubePlaying = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,29 +53,80 @@ class MoviesActivity : AppCompatActivity() {
         musicResultContainer = findViewById(R.id.musicResultContainer)
         musicPlayerCard = findViewById(R.id.musicPlayerCard)
         musicNowPlaying = findViewById(R.id.musicNowPlaying)
+        musicPlaybackState = findViewById(R.id.musicPlaybackState)
         musicWebPlayer = findViewById(R.id.musicWebPlayer)
         configureMusicPlayer()
         findViewById<View>(R.id.musicPreviousButton).setOnClickListener {
-            musicWebPlayer.evaluateJavascript("window.theOnePrevious && window.theOnePrevious();", null)
+            if (SupremacyPlaybackService.isActive(this)) {
+                sendSupremacyAction(SupremacyPlaybackService.ACTION_PREVIOUS)
+            } else {
+                musicWebPlayer.evaluateJavascript("window.theOnePrevious && window.theOnePrevious();", null)
+            }
         }
         findViewById<View>(R.id.musicPlayPauseButton).setOnClickListener {
-            musicWebPlayer.evaluateJavascript("window.theOneToggle && window.theOneToggle();", null)
+            if (SupremacyPlaybackService.isActive(this)) {
+                sendSupremacyAction(SupremacyPlaybackService.ACTION_TOGGLE)
+            } else if (youtubeActive) {
+                musicWebPlayer.evaluateJavascript("window.theOneToggle && window.theOneToggle();", null)
+                youtubePlaying = !youtubePlaying
+                musicPlaybackState.text = if (youtubePlaying) "Speelt af" else "Gepauzeerd"
+            }
         }
         findViewById<View>(R.id.musicStopButton).setOnClickListener {
-            musicWebPlayer.evaluateJavascript("window.theOneStop && window.theOneStop();", null)
+            if (SupremacyPlaybackService.isActive(this)) {
+                sendSupremacyAction(SupremacyPlaybackService.ACTION_STOP)
+            } else if (youtubeActive) {
+                musicWebPlayer.evaluateJavascript("window.theOneStop && window.theOneStop();", null)
+            }
+            youtubeActive = false
+            youtubePlaying = false
             musicNowPlaying.text = "Geen muziek actief"
+            musicPlaybackState.text = "Gestopt"
         }
         findViewById<View>(R.id.musicNextButton).setOnClickListener {
-            musicWebPlayer.evaluateJavascript("window.theOneNext && window.theOneNext();", null)
+            if (SupremacyPlaybackService.isActive(this)) {
+                sendSupremacyAction(SupremacyPlaybackService.ACTION_NEXT)
+            } else {
+                musicWebPlayer.evaluateJavascript("window.theOneNext && window.theOneNext();", null)
+            }
         }
 
         findViewById<View>(R.id.supremacyMixesButton).setOnClickListener {
-            startActivityForResult(
-                Intent(this, SupremacyMixesActivity::class.java),
-                REQUEST_SUPREMACY
-            )
+            startActivity(Intent(this, SupremacyMixesActivity::class.java))
         }
 
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshCompactPlayer()
+    }
+
+    private fun refreshCompactPlayer() {
+        if (SupremacyPlaybackService.isActive(this)) {
+            musicNowPlaying.text =
+                SupremacyPlaybackService.currentTitle(this) + "  •  Supremacy"
+            musicPlaybackState.text =
+                if (SupremacyPlaybackService.isPlaying(this)) "Speelt af" else "Gepauzeerd"
+            return
+        }
+
+        if (youtubeActive) {
+            musicPlaybackState.text = if (youtubePlaying) "Speelt af" else "Gepauzeerd"
+        } else {
+            musicNowPlaying.text = "Geen muziek actief"
+            musicPlaybackState.text = "Gestopt"
+        }
+    }
+
+    private fun sendSupremacyAction(action: String) {
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, SupremacyPlaybackService::class.java).apply {
+                this.action = action
+            }
+        )
+        musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 150)
     }
 
     private fun searchAll() {
@@ -177,8 +228,11 @@ class MoviesActivity : AppCompatActivity() {
     }
 
     private fun playVideo(result: MusicLookup.MusicResult, queue: List<String>) {
+        youtubeActive = true
+        youtubePlaying = true
         musicNowPlaying.text = result.title +
             if (result.channel.isNotBlank()) "  •  ${result.channel}" else ""
+        musicPlaybackState.text = "Speelt af"
 
         val cleanQueue = queue
             .map { id -> id.filter { ch -> ch.isLetterOrDigit() || ch == '-' || ch == '_' } }
@@ -246,68 +300,6 @@ class MoviesActivity : AppCompatActivity() {
             null
         )
     }
-    private fun playSupremacy(title: String, queue: List<String>) {
-        musicNowPlaying.text = "$title  •  Supremacy"
-        val safeQueue = queue
-            .filter { it.startsWith("http://") || it.startsWith("https://") }
-            .take(50)
-        if (safeQueue.isEmpty()) return
-
-        val queueJson = org.json.JSONArray(safeQueue).toString()
-        val html = """
-            <!doctype html>
-            <html>
-            <head>
-              <meta name="viewport" content="width=device-width,initial-scale=1">
-              <style>html,body{width:100%;height:100%;margin:0;background:#05070B;overflow:hidden}</style>
-            </head>
-            <body>
-              <audio id="audio" autoplay></audio>
-              <script>
-                const queue = $queueJson;
-                let index = 0;
-                const audio = document.getElementById('audio');
-                function load(i) {
-                  if (!queue.length) return;
-                  index = Math.max(0, Math.min(i, queue.length - 1));
-                  audio.src = queue[index];
-                  audio.play().catch(()=>{});
-                }
-                audio.addEventListener('ended', () => {
-                  if (index + 1 < queue.length) load(index + 1);
-                });
-                window.theOnePrevious = () => { if (index > 0) load(index - 1); };
-                window.theOneToggle = () => audio.paused ? audio.play() : audio.pause();
-                window.theOneStop = () => { audio.pause(); audio.currentTime = 0; };
-                window.theOneNext = () => { if (index + 1 < queue.length) load(index + 1); };
-                load(0);
-              </script>
-            </body>
-            </html>
-        """.trimIndent()
-
-        musicWebPlayer.loadDataWithBaseURL(
-            "https://supremacysounds.com",
-            html,
-            "text/html",
-            "UTF-8",
-            null
-        )
-    }
-
-    @Deprecated("Deprecated in Android, retained for this in-app player result flow")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != REQUEST_SUPREMACY || resultCode != RESULT_OK || data == null) return
-
-        val title = data.getStringExtra(SupremacyMixesActivity.EXTRA_TITLE) ?: "Supremacy mix"
-        val queue = data.getStringArrayListExtra(SupremacyMixesActivity.EXTRA_QUEUE)
-            ?.filter { it.isNotBlank() }
-            ?: listOfNotNull(data.getStringExtra(SupremacyMixesActivity.EXTRA_URL))
-
-        playSupremacy(title, queue)
-    }
-
     @Deprecated("Back keeps the player alive and returns to The One menu")
     override fun onBackPressed() {
         MenuButtonHelper.goToMenu(this)
