@@ -103,7 +103,8 @@ public sealed class MainWindow : Window
         _clock.Text = DateTime.Now.ToString("ddd d MMM  HH:mm", new CultureInfo("nl-NL"));
 
         PreviewMouseMove += (_, _) => UpdateMusicHomeOverlayFade();
-        AppStore.AddNotification("The One Window gestart.");
+        AppStore.AddNotification("The One Windows gestart.");
+        UsbMusicCloudService.StartBackgroundSync();
         ShowHome();
     }
 
@@ -1751,7 +1752,7 @@ public sealed class MainWindow : Window
         });
         header.Children.Add(new TextBlock
         {
-            Text = "Zoek en speel muziek van YouTube, Spotify of Supremacy mixen direct binnen The One Window.",
+            Text = "YouTube, Spotify, Supremacy en USB thuis in één muziekspeler.",
             Foreground = TextDim,
             FontSize = 13,
             Margin = new Thickness(0, 4, 0, 0)
@@ -1768,6 +1769,7 @@ public sealed class MainWindow : Window
         spotifyButton.BorderBrush = Brush("#1ED760");
 
         var supremacyButton = ActionButton("♫ Supremacy", () => { }, 150);
+        var usbHomeButton = ActionButton("USB thuis", () => { }, 140);
 
         var sourceButtons = new StackPanel
         {
@@ -1777,6 +1779,7 @@ public sealed class MainWindow : Window
         sourceButtons.Children.Add(searchButton);
         sourceButtons.Children.Add(spotifyButton);
         sourceButtons.Children.Add(supremacyButton);
+        sourceButtons.Children.Add(usbHomeButton);
 
         DockPanel.SetDock(sourceButtons, Dock.Right);
         searchRow.Children.Add(sourceButtons);
@@ -1797,6 +1800,12 @@ public sealed class MainWindow : Window
         var resultsScroll = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            PanningMode = PanningMode.VerticalOnly,
+            PanningDeceleration = 0.0015,
+            PanningRatio = 1.0,
+            IsManipulationEnabled = true,
+            CanContentScroll = false,
             Margin = new Thickness(0, 0, 10, 0)
         };
         var results = new StackPanel();
@@ -2097,6 +2106,147 @@ public sealed class MainWindow : Window
             finally
             {
                 supremacyButton.IsEnabled = true;
+            }
+        };
+
+        usbHomeButton.Click += async (_, _) =>
+        {
+            usbHomeButton.IsEnabled = false;
+            results.Children.Clear();
+            status.Text = "USB thuis synchroniseren en laden…";
+            status.Foreground = TextDim;
+
+            try
+            {
+                await UsbMusicCloudService.SyncNowAsync();
+                var sticks = await UsbMusicCloudService.GetCatalogAsync();
+
+                var available = sticks
+                    .Select(stick => new
+                    {
+                        Stick = stick,
+                        Files = stick.Files
+                            .Where(file => file.Cached)
+                            .OrderBy(file => file.Folder, StringComparer.CurrentCultureIgnoreCase)
+                            .ThenBy(file => file.Name, StringComparer.CurrentCultureIgnoreCase)
+                            .ToList()
+                    })
+                    .Where(x => x.Files.Count > 0)
+                    .ToList();
+
+                if (available.Count == 0)
+                {
+                    status.Text = "Nog geen gesynchroniseerde USB-muziek gevonden.";
+                    status.Foreground = Amber;
+                    results.Children.Add(Label(
+                        "Plaats een USB-stick met muziek in Ruben of Surface. The One synchroniseert hem automatisch.",
+                        13,
+                        TextDim));
+                    return;
+                }
+
+                status.Text = $"{available.Count} USB-bron(nen) beschikbaar";
+                status.Foreground = Sage;
+
+                foreach (var source in available)
+                {
+                    var stick = source.Stick;
+                    var files = source.Files;
+
+                    var stickSection = new Expander
+                    {
+                        Header = $"{stick.DeviceName}  •  {stick.StickName}",
+                        Foreground = TextMain,
+                        Background = Surface,
+                        BorderBrush = Brush("#174963"),
+                        BorderThickness = new Thickness(1),
+                        Margin = new Thickness(0, 0, 0, 8),
+                        Padding = new Thickness(10)
+                    };
+
+                    var stickContent = new StackPanel();
+
+                    foreach (var folderGroup in files
+                        .GroupBy(file => string.IsNullOrWhiteSpace(file.Folder) ? "Hoofdmap" : file.Folder)
+                        .OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase))
+                    {
+                        var folderFiles = folderGroup
+                            .OrderBy(file => file.Name, StringComparer.CurrentCultureIgnoreCase)
+                            .ToList();
+
+                        var folderSection = new Expander
+                        {
+                            Header = $"{folderGroup.Key} ({folderFiles.Count})",
+                            Foreground = TextMain,
+                            Background = Brush("#081019"),
+                            BorderBrush = Brush("#16394B"),
+                            BorderThickness = new Thickness(1),
+                            Margin = new Thickness(0, 4, 0, 4),
+                            Padding = new Thickness(8)
+                        };
+
+                        var tracks = new StackPanel();
+
+                        for (var i = 0; i < folderFiles.Count; i++)
+                        {
+                            var index = i;
+                            var file = folderFiles[i];
+
+                            var row = new DockPanel
+                            {
+                                Margin = new Thickness(0, 4, 0, 4)
+                            };
+
+                            var play = SmallButton("▶ Afspelen", () => { });
+                            play.MinWidth = 105;
+                            DockPanel.SetDock(play, Dock.Right);
+                            row.Children.Add(play);
+
+                            row.Children.Add(new TextBlock
+                            {
+                                Text = file.Name,
+                                Foreground = TextMain,
+                                FontSize = 13,
+                                TextWrapping = TextWrapping.Wrap,
+                                VerticalAlignment = VerticalAlignment.Center,
+                                Margin = new Thickness(0, 0, 12, 0)
+                            });
+
+                            play.Click += async (_, _) =>
+                            {
+                                _musicNowPlayingTitle =
+                                    $"{file.Name}  •  {stick.DeviceName} / {stick.StickName}";
+                                _musicSessionActive = true;
+                                nowPlaying.Text = _musicNowPlayingTitle;
+                                if (_musicHomeNowPlaying != null)
+                                    _musicHomeNowPlaying.Text = _musicNowPlayingTitle;
+
+                                var queue = new List<string>();
+                                foreach (var queued in folderFiles.Skip(index))
+                                    queue.Add(await UsbMusicCloudService.BuildStreamUrlAsync(queued));
+
+                                await YouTubeMusicService.PlayAudioQueueAsync(web, queue);
+                            };
+
+                            tracks.Children.Add(row);
+                        }
+
+                        folderSection.Content = tracks;
+                        stickContent.Children.Add(folderSection);
+                    }
+
+                    stickSection.Content = stickContent;
+                    results.Children.Add(stickSection);
+                }
+            }
+            catch (Exception ex)
+            {
+                status.Text = "USB thuis laden mislukt: " + ex.Message;
+                status.Foreground = Amber;
+            }
+            finally
+            {
+                usbHomeButton.IsEnabled = true;
             }
         };
 
