@@ -84,13 +84,22 @@
         android:orientation="vertical"
         android:background="@color/surface"
         android:padding="12dp"
-        android:visibility="gone">
+        android:visibility="visible">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="THE ONE MEDIA PLAYER"
+            android:textColor="@color/amber"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:paddingBottom="4dp" />
 
         <TextView
             android:id="@+id/musicNowPlaying"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Kies een nummer"
+            android:text="Geen muziek actief"
             android:textColor="@color/text_main"
             android:textSize="15sp"
             android:textStyle="bold"
@@ -101,6 +110,32 @@
             android:layout_width="match_parent"
             android:layout_height="220dp"
             android:background="@color/bg" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:paddingTop="8dp">
+
+            <Button
+                android:id="@+id/musicPlayPauseButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⏯ Play / Pauze"
+                android:backgroundTint="@color/amber"
+                android:textColor="@color/on_amber" />
+
+            <Button
+                android:id="@+id/musicNextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:text="⏭ Volgende"
+                android:backgroundTint="@color/surface"
+                android:textColor="@color/amber" />
+
+        </LinearLayout>
 
     </LinearLayout>
 
