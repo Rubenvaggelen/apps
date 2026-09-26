@@ -63,6 +63,7 @@
         <activity android:name=".CarSettingsActivity" android:screenOrientation="landscape" />
         <activity android:name=".MessageLogActivity" android:screenOrientation="landscape" />
         <activity android:name=".UsbMusicActivity" android:screenOrientation="landscape" />
+        <activity android:name=".SupremacyMixesActivity" android:screenOrientation="landscape" />
         <activity android:name=".RadioStationsActivity" android:screenOrientation="landscape" />
         <activity android:name=".HouseholdCarActivity" android:screenOrientation="landscape" />
         <activity android:name=".ParkingCarActivity" android:screenOrientation="landscape" />
@@ -87,6 +88,11 @@
             android:foregroundServiceType="connectedDevice" />
         <service
             android:name=".UsbPlaybackService"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="mediaPlayback" />
+        <service
+            android:name=".SupremacyPlaybackService"
             android:exported="false"
             android:stopWithTask="false"
             android:foregroundServiceType="mediaPlayback" />
