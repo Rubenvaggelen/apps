@@ -87,15 +87,6 @@
         android:visibility="visible">
 
         <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="THE ONE MEDIA PLAYER"
-            android:textColor="@color/amber"
-            android:textSize="13sp"
-            android:textStyle="bold"
-            android:paddingBottom="4dp" />
-
-        <TextView
             android:id="@+id/musicNowPlaying"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -107,9 +98,10 @@
 
         <WebView
             android:id="@+id/musicWebPlayer"
-            android:layout_width="match_parent"
-            android:layout_height="220dp"
-            android:background="@color/bg" />
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:alpha="0.01"
+            android:visibility="visible" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -119,20 +111,35 @@
             android:paddingTop="8dp">
 
             <Button
+                android:id="@+id/musicPreviousButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⏮ Terug"
+                android:textColor="@color/amber" />
+
+            <Button
                 android:id="@+id/musicPlayPauseButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
                 android:text="⏯ Play / Pauze"
                 android:backgroundTint="@color/amber"
                 android:textColor="@color/on_amber" />
 
             <Button
+                android:id="@+id/musicStopButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="⏹ Stop"
+                android:textColor="@color/amber" />
+
+            <Button
                 android:id="@+id/musicNextButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="10dp"
+                android:layout_marginStart="8dp"
                 android:text="⏭ Volgende"
-                android:backgroundTint="@color/surface"
                 android:textColor="@color/amber" />
 
         </LinearLayout>
