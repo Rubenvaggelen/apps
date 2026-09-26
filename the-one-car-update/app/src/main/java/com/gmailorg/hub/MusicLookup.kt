@@ -10,13 +10,13 @@ import java.net.URLEncoder
 
 /**
  * Zoekt een nummer/artiest op via de YouTube Data API v3 en geeft de eerste
- * 5 resultaten terug. Gebruikt voor de "Muziek zoeken"-sectie onder
+ * maximaal 25 resultaten terug. Gebruikt voor de "Muziek zoeken"-sectie onder
  * Films, Series & Muziek.
  */
 object MusicLookup {
 
     private const val TAG = "MusicLookup"
-    private const val MAX_RESULTS = 10
+    private const val MAX_RESULTS = 25
 
     data class MusicResult(
         val videoId: String,
