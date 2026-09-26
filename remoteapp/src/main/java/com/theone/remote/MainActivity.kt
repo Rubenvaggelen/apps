@@ -22,6 +22,19 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val requestedId = intent.getStringExtra("surface_id").orEmpty().trim()
+        if (requestedId.isNotBlank()) {
+            prefs.edit().putString("surface_id", requestedId).apply()
+            if (intent.getBooleanExtra("auto_connect", false)) {
+                startActivity(
+                    Intent(this, RemoteActivity::class.java)
+                        .putExtra("surface_id", requestedId)
+                )
+                finish()
+                return
+            }
+        }
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
@@ -63,7 +76,7 @@ class MainActivity : AppCompatActivity() {
             textSize = 17f
             inputType = InputType.TYPE_CLASS_TEXT
             setSingleLine(true)
-            setText(prefs.getString("surface_id", "") ?: "")
+            setText(requestedId.ifBlank { prefs.getString("surface_id", "461504832") ?: "461504832" })
             setPadding(dp(18), dp(14), dp(18), dp(14))
             setBackgroundColor(Color.parseColor("#0F1C29"))
         }
