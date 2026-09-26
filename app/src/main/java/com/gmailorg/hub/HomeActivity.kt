@@ -112,6 +112,7 @@ class HomeActivity : AppCompatActivity() {
             HomeTile(id = "currency", type = TileType.CURRENCY, label = "Koers (EUR / SRD / USD)"),
             HomeTile(id = "finance", type = TileType.FINANCE, label = "Financiën"),
             HomeTile(id = "lifestyle", type = TileType.LIFESTYLE, label = "Lifestyle"),
+            HomeTile(id = "remote_pc", type = TileType.REMOTE_PC, label = "Laptop"),
             HomeTile(id = "whatsapp", type = TileType.APP, label = "WhatsApp", packageName = "com.whatsapp"),
             HomeTile(id = "googlehome", type = TileType.APP, label = "Google Home", packageName = "com.google.android.apps.chromecast.app")
         ).filter { tile ->
@@ -143,6 +144,7 @@ class HomeActivity : AppCompatActivity() {
             TileType.FINANCE -> startActivity(Intent(this, FinanceActivity::class.java))
             TileType.LIFESTYLE -> startActivity(Intent(this, LifestyleActivity::class.java))
             TileType.FITNESS -> startActivity(Intent(this, FitnessActivity::class.java))
+            TileType.REMOTE_PC -> startActivity(Intent(this, WakePcActivity::class.java))
             TileType.APP -> launchExternalApp(tile.packageName)
             TileType.ADD_BUTTON -> startActivity(Intent(this, AppPickerActivity::class.java))
         }
@@ -243,6 +245,7 @@ class HomeAdapter(
             TileType.FINANCE -> ContextCompat.getDrawable(context, R.drawable.ic_home_currency_fancy)
             TileType.LIFESTYLE -> ContextCompat.getDrawable(context, R.drawable.ic_home_lifestyle_fancy)
             TileType.FITNESS -> ContextCompat.getDrawable(context, R.drawable.ic_home_fitness_fancy)
+            TileType.REMOTE_PC -> ContextCompat.getDrawable(context, R.drawable.ic_home_remote_pc_fancy)
             TileType.ADD_BUTTON -> ContextCompat.getDrawable(context, R.drawable.ic_home_add_fancy)
             TileType.APP -> try {
                 buildBadgedAppIcon(context, context.packageManager.getApplicationIcon(tile.packageName!!))
