@@ -8,6 +8,9 @@ import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.webkit.WebChromeClient
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 
@@ -19,6 +22,9 @@ class MoviesActivity : AppCompatActivity() {
     private lateinit var upcomingContainer: LinearLayout
     private lateinit var musicResultContainer: LinearLayout
     private lateinit var cinemaContainer: LinearLayout
+    private lateinit var musicPlayerCard: View
+    private lateinit var musicNowPlaying: TextView
+    private lateinit var musicWebPlayer: WebView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,6 +49,11 @@ class MoviesActivity : AppCompatActivity() {
         }
 
         musicResultContainer = findViewById(R.id.musicResultContainer)
+        musicPlayerCard = findViewById(R.id.musicPlayerCard)
+        musicNowPlaying = findViewById(R.id.musicNowPlaying)
+        musicWebPlayer = findViewById(R.id.musicWebPlayer)
+        configureMusicPlayer()
+
         findViewById<View>(R.id.supremacyMixesButton).setOnClickListener {
             startActivity(Intent(this, SupremacyMixesActivity::class.java))
         }
@@ -198,7 +209,7 @@ class MoviesActivity : AppCompatActivity() {
                 background = ContextCompat.getDrawable(context, android.R.drawable.list_selector_background)
                 isClickable = true
                 isFocusable = true
-                setOnClickListener { openVideo(result.videoId) }
+                setOnClickListener { playVideo(result) }
             }
             val titleView = TextView(this).apply {
                 text = result.title
@@ -220,9 +231,55 @@ class MoviesActivity : AppCompatActivity() {
         }
     }
 
-    private fun openVideo(videoId: String) {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$videoId"))
-        startActivity(intent)
+    private fun configureMusicPlayer() {
+        musicWebPlayer.settings.javaScriptEnabled = true
+        musicWebPlayer.settings.domStorageEnabled = true
+        musicWebPlayer.settings.mediaPlaybackRequiresUserGesture = false
+        musicWebPlayer.webViewClient = WebViewClient()
+        musicWebPlayer.webChromeClient = WebChromeClient()
+    }
+
+    private fun playVideo(result: MusicLookup.MusicResult) {
+        musicPlayerCard.visibility = View.VISIBLE
+        musicNowPlaying.text = result.title +
+            if (result.channel.isNotBlank()) "  •  ${result.channel}" else ""
+
+        val videoId = Uri.encode(result.videoId)
+        val html = """
+            <!doctype html>
+            <html>
+            <head>
+              <meta name="viewport" content="width=device-width,initial-scale=1">
+              <style>
+                html,body,#player{width:100%;height:100%;margin:0;background:#05070B;overflow:hidden}
+                iframe{width:100%;height:100%;border:0}
+              </style>
+            </head>
+            <body>
+              <iframe
+                src="https://www.youtube.com/embed/$videoId?autoplay=1&playsinline=1&rel=0"
+                allow="autoplay; encrypted-media; picture-in-picture"
+                allowfullscreen>
+              </iframe>
+            </body>
+            </html>
+        """.trimIndent()
+
+        musicWebPlayer.loadDataWithBaseURL(
+            "https://www.youtube.com",
+            html,
+            "text/html",
+            "UTF-8",
+            null
+        )
+    }
+
+    override fun onDestroy() {
+        if (::musicWebPlayer.isInitialized) {
+            musicWebPlayer.stopLoading()
+            musicWebPlayer.destroy()
+        }
+        super.onDestroy()
     }
 
     private fun addMusicLine(text: String, dim: Boolean = false) {
