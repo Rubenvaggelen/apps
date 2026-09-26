@@ -1,0 +1,77 @@
+name: Deploy The One Remote Relay
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'the-one-remote-server/index.php'
+      - '.github/workflows/deploy-the-one-remote-server.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: the-one-remote-relay
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate PHP
+        run: php -l the-one-remote-server/index.php
+
+      - name: Deploy relay
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "${!name}" || { echo "::error::Missing deployment secret: $name"; exit 1; }
+          done
+
+          keydir=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$keydir"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$keydir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$keydir/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$keydir/askpass"
+          chmod 600 "$keydir/key" "$keydir/known_hosts"
+          chmod 700 "$keydir/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$keydir/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$keydir/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+
+          opts=(-i "$keydir/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$keydir/known_hosts" -o ConnectTimeout=20)
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'mktemp -d "$HOME/.the-one-remote-stage.XXXXXXXX"')
+          scp -O -P "$DEPLOY_PORT" "${opts[@]}" the-one-remote-server/index.php "$remote:$stage/index.php"
+          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "bash -s -- '$stage'" <<'REMOTE'
+          set -euo pipefail
+          stage="$1"
+          target_dir="$HOME/public_html/the-one-remote-api"
+          target="$target_dir/index.php"
+          mkdir -p "$target_dir" "$HOME/.the-one-remote-backups"
+          php -l "$stage/index.php" >/dev/null
+          if [ -f "$target" ]; then
+            backup=$(mktemp -d "$HOME/.the-one-remote-backups/api.XXXXXXXX")
+            cp -p "$target" "$backup/index.php"
+          fi
+          cp "$stage/index.php" "$target.new"
+          chmod 644 "$target.new"
+          mv -f "$target.new" "$target"
+          rm -rf "$stage"
+          REMOTE
+
+          curl -fsS --max-time 15 "https://rubenvanaggelen.com/the-one-remote-api/index.php?action=health" |
+            python3 -c 'import json,sys; x=json.load(sys.stdin); assert x.get("ok") is True and x.get("service") == "The One Remote Relay"'
