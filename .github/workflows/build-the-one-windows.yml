@@ -59,6 +59,57 @@ jobs:
           }
           "@ | Set-Content -Encoding UTF8 .\windows\the-one-main\BuildSecrets.cs
 
+      - name: Generate Windows icon from The One logo
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $sourcePath = (Resolve-Path '.\windows\the-one-main\Assets\the_one_logo.png').Path
+          $iconPath = Join-Path (Split-Path $sourcePath) 'the_one_logo.ico'
+
+          $source = [System.Drawing.Image]::FromFile($sourcePath)
+          $bitmap = New-Object System.Drawing.Bitmap 256, 256
+          $bitmap.SetResolution(96, 96)
+          $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+          $graphics.Clear([System.Drawing.Color]::Transparent)
+          $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+          $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+          $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+
+          $scale = [Math]::Min(256.0 / $source.Width, 256.0 / $source.Height)
+          $w = [int][Math]::Round($source.Width * $scale)
+          $h = [int][Math]::Round($source.Height * $scale)
+          $x = [int]((256 - $w) / 2)
+          $y = [int]((256 - $h) / 2)
+          $graphics.DrawImage($source, $x, $y, $w, $h)
+
+          $pngStream = New-Object System.IO.MemoryStream
+          $bitmap.Save($pngStream, [System.Drawing.Imaging.ImageFormat]::Png)
+          $pngBytes = $pngStream.ToArray()
+
+          $icoStream = New-Object System.IO.MemoryStream
+          $writer = New-Object System.IO.BinaryWriter($icoStream)
+          $writer.Write([uint16]0)
+          $writer.Write([uint16]1)
+          $writer.Write([uint16]1)
+          $writer.Write([byte]0)
+          $writer.Write([byte]0)
+          $writer.Write([byte]0)
+          $writer.Write([byte]0)
+          $writer.Write([uint16]1)
+          $writer.Write([uint16]32)
+          $writer.Write([uint32]$pngBytes.Length)
+          $writer.Write([uint32]22)
+          $writer.Write($pngBytes)
+          $writer.Flush()
+          [System.IO.File]::WriteAllBytes($iconPath, $icoStream.ToArray())
+
+          $writer.Dispose()
+          $icoStream.Dispose()
+          $pngStream.Dispose()
+          $graphics.Dispose()
+          $bitmap.Dispose()
+          $source.Dispose()
+
       - name: Publish single EXE
         shell: pwsh
         run: |
