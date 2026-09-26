@@ -283,7 +283,7 @@ public sealed class MainWindow : Window
 
         // Windows-desktopvolgorde: eerst alfabetisch van boven naar beneden,
         // daarna pas de volgende kolom.
-        const int rowsPerColumn = 3;
+        const int rowsPerColumn = 5;
         var columnCount = (int)Math.Ceiling(sortedTiles.Count / (double)rowsPerColumn);
 
         for (var row = 0; row < rowsPerColumn; row++)
@@ -581,9 +581,9 @@ public sealed class MainWindow : Window
     {
         var button = new Button
         {
-            Width = 232,
-            Height = 156,
-            Margin = new Thickness(9),
+            Width = 170,
+            Height = 112,
+            Margin = new Thickness(8),
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
             BorderThickness = new Thickness(0),
@@ -605,7 +605,7 @@ public sealed class MainWindow : Window
             CornerRadius = new CornerRadius(18),
             BorderBrush = (isChrome || isCustom) ? Amber : Brush("#174963"),
             BorderThickness = new Thickness((isChrome || isCustom) ? 1.35 : 1),
-            Padding = new Thickness(16),
+            Padding = new Thickness(10),
             Background = (isChrome || isCustom)
                 ? new LinearGradientBrush(Color.FromRgb(8, 31, 44), Color.FromRgb(5, 11, 18), 90)
                 : new LinearGradientBrush(Color.FromRgb(11, 22, 32), Color.FromRgb(7, 12, 18), 90),
@@ -626,18 +626,18 @@ public sealed class MainWindow : Window
 
         // De vaste tegels gebruiken exact dezelfde artwork-assets / vectorvormen
         // als de Android The One Main- en The One Car-tegels.
-        stack.Children.Add(iconOverride ?? CreateHomeTileIcon(iconKey, 66));
+        stack.Children.Add(iconOverride ?? CreateHomeTileIcon(iconKey, 48));
 
         stack.Children.Add(new TextBlock
         {
             Text = label,
-            FontSize = 14.5,
+            FontSize = 13.5,
             FontWeight = FontWeights.SemiBold,
             Foreground = TextMain,
             TextWrapping = TextWrapping.Wrap,
             TextAlignment = TextAlignment.Center,
             Margin = new Thickness(4, 10, 4, 0),
-            MaxWidth = 192
+            MaxWidth = 145
         });
 
         var accent = new Border
