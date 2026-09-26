@@ -234,6 +234,7 @@ class SettingsActivity : AppCompatActivity() {
         "currency" to "Koers (EUR / SRD / USD)",
         "finance" to "Financiën",
         "lifestyle" to "Lifestyle",
+        "remote_pc" to "Laptop",
         "whatsapp" to "WhatsApp",
         "googlehome" to "Google Home"
     )
