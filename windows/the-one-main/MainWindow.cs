@@ -3162,20 +3162,26 @@ public sealed class MainWindow : Window
     private static void EnableReliableTouchScrolling(ScrollViewer scroll)
     {
         TouchDevice? activeTouch = null;
-        Point startPoint = default;
-        double startOffset = 0;
-        bool dragging = false;
+        Point touchStartPoint = default;
+        double touchStartOffset = 0;
+        bool touchDragging = false;
+
+        StylusDevice? activeStylus = null;
+        Point stylusStartPoint = default;
+        double stylusStartOffset = 0;
+        bool stylusDragging = false;
+
+        static double ClampOffset(ScrollViewer viewer, double value) =>
+            Math.Max(0, Math.Min(viewer.ScrollableHeight, value));
 
         scroll.PreviewTouchDown += (_, e) =>
         {
             if (activeTouch != null) return;
 
             activeTouch = e.TouchDevice;
-            startPoint = e.GetTouchPoint(scroll).Position;
-            startOffset = scroll.VerticalOffset;
-            dragging = false;
-
-            // Niet afvangen: een korte tik moet gewoon bij Button.Click terechtkomen.
+            touchStartPoint = e.GetTouchPoint(scroll).Position;
+            touchStartOffset = scroll.VerticalOffset;
+            touchDragging = false;
         };
 
         scroll.PreviewTouchMove += (_, e) =>
@@ -3183,21 +3189,18 @@ public sealed class MainWindow : Window
             if (activeTouch != e.TouchDevice) return;
 
             var point = e.GetTouchPoint(scroll).Position;
-            var deltaY = startPoint.Y - point.Y;
+            var deltaY = touchStartPoint.Y - point.Y;
 
-            if (!dragging && Math.Abs(deltaY) >= 8)
+            if (!touchDragging && Math.Abs(deltaY) >= 8)
             {
-                dragging = true;
+                touchDragging = true;
                 e.TouchDevice.Capture(scroll, CaptureMode.SubTree);
             }
 
-            if (!dragging) return;
+            if (!touchDragging) return;
 
-            var target = Math.Max(
-                0,
-                Math.Min(scroll.ScrollableHeight, startOffset + deltaY));
-
-            scroll.ScrollToVerticalOffset(target);
+            scroll.ScrollToVerticalOffset(
+                ClampOffset(scroll, touchStartOffset + deltaY));
             e.Handled = true;
         };
 
@@ -3205,20 +3208,82 @@ public sealed class MainWindow : Window
         {
             if (activeTouch != e.TouchDevice) return;
 
-            if (dragging)
+            if (touchDragging)
                 e.Handled = true;
 
             if (e.TouchDevice.Captured != null)
                 e.TouchDevice.Capture(null);
 
             activeTouch = null;
-            dragging = false;
+            touchDragging = false;
         };
 
         scroll.LostTouchCapture += (_, _) =>
         {
             activeTouch = null;
-            dragging = false;
+            touchDragging = false;
+        };
+
+        // Surface-apparaten leveren vingeraanraking in WPF vaak eerst via
+        // de Stylus/Tablet-laag. Alleen echte touch-tablets gebruiken;
+        // een Surface Pen blijft daardoor normale peninput.
+        scroll.PreviewStylusDown += (_, e) =>
+        {
+            if (e.StylusDevice.TabletDevice.Type != TabletDeviceType.Touch)
+                return;
+            if (activeStylus != null || activeTouch != null)
+                return;
+
+            activeStylus = e.StylusDevice;
+            stylusStartPoint = e.GetPosition(scroll);
+            stylusStartOffset = scroll.VerticalOffset;
+            stylusDragging = false;
+        };
+
+        scroll.PreviewStylusMove += (_, e) =>
+        {
+            if (e.StylusDevice.TabletDevice.Type != TabletDeviceType.Touch)
+                return;
+            if (activeStylus != e.StylusDevice || activeTouch != null)
+                return;
+
+            var point = e.GetPosition(scroll);
+            var deltaY = stylusStartPoint.Y - point.Y;
+
+            if (!stylusDragging && Math.Abs(deltaY) >= 8)
+            {
+                stylusDragging = true;
+                e.StylusDevice.Capture(scroll, CaptureMode.SubTree);
+            }
+
+            if (!stylusDragging) return;
+
+            scroll.ScrollToVerticalOffset(
+                ClampOffset(scroll, stylusStartOffset + deltaY));
+            e.Handled = true;
+        };
+
+        scroll.PreviewStylusUp += (_, e) =>
+        {
+            if (e.StylusDevice.TabletDevice.Type != TabletDeviceType.Touch)
+                return;
+            if (activeStylus != e.StylusDevice)
+                return;
+
+            if (stylusDragging)
+                e.Handled = true;
+
+            if (e.StylusDevice.Captured != null)
+                e.StylusDevice.Capture(null);
+
+            activeStylus = null;
+            stylusDragging = false;
+        };
+
+        scroll.LostStylusCapture += (_, _) =>
+        {
+            activeStylus = null;
+            stylusDragging = false;
         };
     }
 
