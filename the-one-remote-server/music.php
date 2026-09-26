@@ -161,6 +161,89 @@ if ($action === 'status') {
     out(200,['ok'=>true,'cached'=>is_file($files.'/'.key_for($device,$stick,$path).'.bin')]);
 }
 
+if ($action === 'upload-start') {
+    $b=read_json();
+    $device=safe_id((string)($b['device_id'] ?? ''));
+    $stick=safe_id((string)($b['stick_id'] ?? ''));
+    $path=safe_path((string)($b['path'] ?? ''));
+    $sha=strtolower(trim((string)($b['sha256'] ?? '')));
+    if (!preg_match('/^[a-f0-9]{64}$/',$sha)) out(400,['ok'=>false,'error'=>'invalid hash']);
+
+    $part=$files.'/'.key_for($device,$stick,$path).'.'.$sha.'.part';
+    if (@file_put_contents($part, '', LOCK_EX) === false) {
+        out(500,['ok'=>false,'error'=>'cannot start upload']);
+    }
+    @chmod($part,0600);
+    out(200,['ok'=>true,'offset'=>0]);
+}
+
+if ($action === 'upload-chunk') {
+    $b=read_json();
+    $device=safe_id((string)($b['device_id'] ?? ''));
+    $stick=safe_id((string)($b['stick_id'] ?? ''));
+    $path=safe_path((string)($b['path'] ?? ''));
+    $sha=strtolower(trim((string)($b['sha256'] ?? '')));
+    $offset=max(0,(int)($b['offset'] ?? 0));
+    if (!preg_match('/^[a-f0-9]{64}$/',$sha)) out(400,['ok'=>false,'error'=>'invalid hash']);
+
+    $encoded=(string)($b['data'] ?? '');
+    $chunk=base64_decode($encoded,true);
+    if (!is_string($chunk) || $chunk==='') out(400,['ok'=>false,'error'=>'invalid chunk']);
+
+    $part=$files.'/'.key_for($device,$stick,$path).'.'.$sha.'.part';
+    if (!is_file($part)) out(409,['ok'=>false,'error'=>'upload not started']);
+
+    $current=filesize($part);
+    if ($current===false || (int)$current!==$offset) {
+        out(409,['ok'=>false,'error'=>'offset mismatch','expected'=>(int)($current===false?0:$current)]);
+    }
+
+    if (@file_put_contents($part,$chunk,FILE_APPEND|LOCK_EX)===false) {
+        out(500,['ok'=>false,'error'=>'chunk write failed']);
+    }
+
+    out(200,['ok'=>true,'offset'=>$offset+strlen($chunk)]);
+}
+
+if ($action === 'upload-finish') {
+    $b=read_json();
+    $device=safe_id((string)($b['device_id'] ?? ''));
+    $stick=safe_id((string)($b['stick_id'] ?? ''));
+    $path=safe_path((string)($b['path'] ?? ''));
+    $sha=strtolower(trim((string)($b['sha256'] ?? '')));
+    if (!preg_match('/^[a-f0-9]{64}$/',$sha)) out(400,['ok'=>false,'error'=>'invalid hash']);
+
+    $part=$files.'/'.key_for($device,$stick,$path).'.'.$sha.'.part';
+    if (!is_file($part)) out(409,['ok'=>false,'error'=>'upload not started']);
+
+    $actual=hash_file('sha256',$part);
+    if (!is_string($actual) || !hash_equals($sha,strtolower($actual))) {
+        @unlink($part);
+        out(400,['ok'=>false,'error'=>'hash mismatch']);
+    }
+
+    $dest=$files.'/'.key_for($device,$stick,$path).'.bin';
+    if (!@rename($part,$dest)) out(500,['ok'=>false,'error'=>'finalize failed']);
+    @chmod($dest,0600);
+
+    $metaFile=$meta.'/'.$device.'__'.$stick.'.json';
+    $doc=load_json($metaFile);
+    if (isset($doc['files']) && is_array($doc['files'])) {
+        foreach ($doc['files'] as &$row) {
+            if (is_array($row) && (string)($row['path'] ?? '') === $path) {
+                $row['cached']=true;
+                $row['sha256']=$sha;
+                break;
+            }
+        }
+        unset($row);
+        $doc['updated_at']=gmdate('c');
+        save_json($metaFile,$doc);
+    }
+
+    out(200,['ok'=>true]);
+}
+
 if ($action === 'upload') {
     $device=safe_id((string)($_POST['device_id'] ?? ''));
     $stick=safe_id((string)($_POST['stick_id'] ?? ''));
