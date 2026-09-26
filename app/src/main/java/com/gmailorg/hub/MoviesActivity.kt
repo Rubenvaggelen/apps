@@ -15,9 +15,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 
 class MoviesActivity : AppCompatActivity() {
-    companion object {
-        private const val REQUEST_SUPREMACY = 7001
-    }
 
     private lateinit var titleInput: EditText
     private lateinit var searchButton: View
@@ -70,10 +67,7 @@ class MoviesActivity : AppCompatActivity() {
         }
 
         findViewById<View>(R.id.supremacyMixesButton).setOnClickListener {
-            startActivityForResult(
-                Intent(this, SupremacyMixesActivity::class.java),
-                REQUEST_SUPREMACY
-            )
+            startActivity(Intent(this, SupremacyMixesActivity::class.java))
         }
 
     }
@@ -246,68 +240,6 @@ class MoviesActivity : AppCompatActivity() {
             null
         )
     }
-    private fun playSupremacy(title: String, queue: List<String>) {
-        musicNowPlaying.text = "$title  •  Supremacy"
-        val safeQueue = queue
-            .filter { it.startsWith("http://") || it.startsWith("https://") }
-            .take(50)
-        if (safeQueue.isEmpty()) return
-
-        val queueJson = org.json.JSONArray(safeQueue).toString()
-        val html = """
-            <!doctype html>
-            <html>
-            <head>
-              <meta name="viewport" content="width=device-width,initial-scale=1">
-              <style>html,body{width:100%;height:100%;margin:0;background:#05070B;overflow:hidden}</style>
-            </head>
-            <body>
-              <audio id="audio" autoplay></audio>
-              <script>
-                const queue = $queueJson;
-                let index = 0;
-                const audio = document.getElementById('audio');
-                function load(i) {
-                  if (!queue.length) return;
-                  index = Math.max(0, Math.min(i, queue.length - 1));
-                  audio.src = queue[index];
-                  audio.play().catch(()=>{});
-                }
-                audio.addEventListener('ended', () => {
-                  if (index + 1 < queue.length) load(index + 1);
-                });
-                window.theOnePrevious = () => { if (index > 0) load(index - 1); };
-                window.theOneToggle = () => audio.paused ? audio.play() : audio.pause();
-                window.theOneStop = () => { audio.pause(); audio.currentTime = 0; };
-                window.theOneNext = () => { if (index + 1 < queue.length) load(index + 1); };
-                load(0);
-              </script>
-            </body>
-            </html>
-        """.trimIndent()
-
-        musicWebPlayer.loadDataWithBaseURL(
-            "https://supremacysounds.com",
-            html,
-            "text/html",
-            "UTF-8",
-            null
-        )
-    }
-
-    @Deprecated("Deprecated in Android, retained for this in-app player result flow")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != REQUEST_SUPREMACY || resultCode != RESULT_OK || data == null) return
-
-        val title = data.getStringExtra(SupremacyMixesActivity.EXTRA_TITLE) ?: "Supremacy mix"
-        val queue = data.getStringArrayListExtra(SupremacyMixesActivity.EXTRA_QUEUE)
-            ?.filter { it.isNotBlank() }
-            ?: listOfNotNull(data.getStringExtra(SupremacyMixesActivity.EXTRA_URL))
-
-        playSupremacy(title, queue)
-    }
-
     @Deprecated("Back keeps the player alive and returns to The One menu")
     override fun onBackPressed() {
         MenuButtonHelper.goToMenu(this)
