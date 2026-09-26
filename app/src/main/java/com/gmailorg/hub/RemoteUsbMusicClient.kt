@@ -104,11 +104,13 @@ object RemoteUsbMusicClient {
                     val f = fileArray.optJSONObject(j) ?: continue
                     val path = f.optString("path").trim()
                     if (path.isBlank() || !f.optBoolean("cached", false)) continue
+                    val name = f.optString("name", path.substringAfterLast('/')).trim()
+                    if (isMacMetadataFile(path, name)) continue
                     files += RemoteFile(
                         deviceId = deviceId,
                         stickId = stickId,
                         path = path,
-                        name = f.optString("name", path.substringAfterLast('/')).trim(),
+                        name = name,
                         folder = f.optString("folder").trim(),
                         cached = true
                     )
@@ -130,6 +132,22 @@ object RemoteUsbMusicClient {
             compareBy<RemoteStick> { it.deviceName.lowercase() }
                 .thenBy { it.stickName.lowercase() }
         )
+    }
+
+    private fun isMacMetadataFile(path: String, name: String): Boolean {
+        val cleanPath = path.replace('\\', '/')
+        val segments = cleanPath.split('/').filter { it.isNotBlank() }
+        val fileName = name.ifBlank { segments.lastOrNull().orEmpty() }
+
+        if (fileName.startsWith("._")) return true
+        if (fileName.equals(".DS_Store", ignoreCase = true)) return true
+
+        return segments.any { segment ->
+            segment.equals("__MACOSX", ignoreCase = true) ||
+                segment.equals(".Spotlight-V100", ignoreCase = true) ||
+                segment.equals(".Trashes", ignoreCase = true) ||
+                segment.equals(".fseventsd", ignoreCase = true)
+        }
     }
 
     fun streamUrl(context: Context, file: RemoteFile): String {
