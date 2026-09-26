@@ -10,10 +10,12 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
+import android.text.InputType
 import android.os.Looper
 import android.view.DragEvent
 import android.view.LayoutInflater
 import android.view.View
+import android.widget.EditText
 import android.widget.GridLayout
 import android.widget.ImageView
 import android.widget.TextView
@@ -26,6 +28,7 @@ import androidx.core.content.ContextCompat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.Executors
 
 /** K2401 startscherm. De telefoon-home blijft volledig ongewijzigd. */
 class MainActivity : AppCompatActivity() {
@@ -33,6 +36,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tileGrid: GridLayout
     private lateinit var clockText: TextView
     private val handler = Handler(Looper.getMainLooper())
+    private val remoteMusicIo = Executors.newSingleThreadExecutor()
     private val statusListener: (String) -> Unit = { text -> statusText.text = text }
     private val dataListener: () -> Unit = {
         if (!isFinishing && !isDestroyed) buildTiles()
@@ -244,15 +248,160 @@ class MainActivity : AppCompatActivity() {
     private fun showMusicChooser() {
         AlertDialog.Builder(this)
             .setTitle("Muziek")
-            .setItems(arrayOf("📻 Radio", "🔌 USB", "🎧 Supremacy mixen")) { _, which ->
+            .setItems(arrayOf("📻 Radio", "🔌 USB", "🎧 Supremacy mixen", "☁ USB thuis")) { _, which ->
                 when (which) {
                     0 -> openCarRadio()
                     1 -> startActivity(Intent(this, UsbMusicActivity::class.java))
                     2 -> startActivity(Intent(this, SupremacyMixesActivity::class.java))
+                    3 -> openRemoteUsbMusic()
                 }
             }
             .setNegativeButton("Annuleren", null)
             .show()
+    }
+
+    private fun openRemoteUsbMusic() {
+        if (RemoteUsbMusicClient.hasToken(this)) {
+            loadRemoteUsbCatalog()
+        } else {
+            showRemoteUsbPinDialog()
+        }
+    }
+
+    private fun showRemoteUsbPinDialog() {
+        val input = EditText(this).apply {
+            hint = "Pincode"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            gravity = android.view.Gravity.CENTER
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("USB thuis")
+            .setMessage("Voer de pincode in voor je USB-muziek.")
+            .setView(input)
+            .setPositiveButton("Openen", null)
+            .setNegativeButton("Annuleren", null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val pin = input.text.toString().trim()
+                if (pin.isBlank()) return@setOnClickListener
+
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
+                remoteMusicIo.execute {
+                    val ok = try {
+                        RemoteUsbMusicClient.login(this, pin)
+                    } catch (_: Exception) {
+                        false
+                    }
+
+                    runOnUiThread {
+                        if (ok) {
+                            dialog.dismiss()
+                            loadRemoteUsbCatalog()
+                        } else {
+                            input.text.clear()
+                            input.error = "Pincode niet juist of server niet bereikbaar"
+                            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
+                        }
+                    }
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun loadRemoteUsbCatalog() {
+        Toast.makeText(this, "USB thuis laden…", Toast.LENGTH_SHORT).show()
+        remoteMusicIo.execute {
+            try {
+                val sticks = RemoteUsbMusicClient.catalog(this)
+                runOnUiThread {
+                    if (sticks.isEmpty()) {
+                        AlertDialog.Builder(this)
+                            .setTitle("USB thuis")
+                            .setMessage("Nog geen gesynchroniseerde USB-muziek gevonden.")
+                            .setPositiveButton("OK", null)
+                            .show()
+                    } else {
+                        showRemoteStickDialog(sticks)
+                    }
+                }
+            } catch (_: RemoteUsbMusicClient.AuthRequired) {
+                runOnUiThread { showRemoteUsbPinDialog() }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(
+                        this,
+                        e.message ?: "USB thuis kon niet worden geladen",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun showRemoteStickDialog(sticks: List<RemoteUsbMusicClient.RemoteStick>) {
+        AlertDialog.Builder(this)
+            .setTitle("USB thuis")
+            .setItems(sticks.map { it.deviceName + " • " + it.stickName }.toTypedArray()) { _, which ->
+                showRemoteFolderDialog(sticks[which])
+            }
+            .setNegativeButton("Sluiten", null)
+            .show()
+    }
+
+    private fun showRemoteFolderDialog(stick: RemoteUsbMusicClient.RemoteStick) {
+        val groups = stick.files
+            .groupBy { it.folder.ifBlank { "Hoofdmap" } }
+            .toSortedMap(String.CASE_INSENSITIVE_ORDER)
+        val folders = groups.keys.toList()
+
+        AlertDialog.Builder(this)
+            .setTitle(stick.deviceName + " • " + stick.stickName)
+            .setItems(folders.toTypedArray()) { _, which ->
+                val files = groups[folders[which]].orEmpty()
+                    .sortedBy { it.name.lowercase() }
+                showRemoteTrackDialog(stick, folders[which], files)
+            }
+            .setNegativeButton("Sluiten", null)
+            .show()
+    }
+
+    private fun showRemoteTrackDialog(
+        stick: RemoteUsbMusicClient.RemoteStick,
+        folder: String,
+        files: List<RemoteUsbMusicClient.RemoteFile>
+    ) {
+        AlertDialog.Builder(this)
+            .setTitle(folder)
+            .setItems(files.map { it.name }.toTypedArray()) { _, index ->
+                playRemoteUsbFolder(files, index)
+            }
+            .setNegativeButton("Terug") { _, _ -> showRemoteFolderDialog(stick) }
+            .show()
+    }
+
+    private fun playRemoteUsbFolder(
+        files: List<RemoteUsbMusicClient.RemoteFile>,
+        index: Int
+    ) {
+        try {
+            val queue = files.map {
+                UsbPlaybackService.QueueItem(
+                    RemoteUsbMusicClient.streamUrl(this, it),
+                    it.name
+                )
+            }
+            UsbPlaybackService.play(this, queue, index)
+            Toast.makeText(this, "USB thuis speelt af", Toast.LENGTH_SHORT).show()
+        } catch (_: RemoteUsbMusicClient.AuthRequired) {
+            RemoteUsbMusicClient.clearToken(this)
+            showRemoteUsbPinDialog()
+        } catch (e: Exception) {
+            Toast.makeText(this, e.message ?: "Afspelen mislukt", Toast.LENGTH_LONG).show()
+        }
     }
 
     /** Open de fabrieksradio van de head-unit, niet de streamingradio van The One. */
@@ -314,6 +463,12 @@ class MainActivity : AppCompatActivity() {
     private fun cancelStartupGuard() { try { startService(Intent(this, BluetoothListenerService::class.java).apply { action = BluetoothListenerService.ACTION_CANCEL_STARTUP }) } catch (_: Exception) {} }
     override fun onUserInteraction() { super.onUserInteraction(); cancelStartupGuard() }
     override fun onResume() { super.onResume(); statusText.text = MessageBus.currentStatus(); buildTiles() }
-    override fun onDestroy() { MessageBus.removeStatusListener(statusListener); MessageBus.removeDataListener(dataListener); handler.removeCallbacks(clockTick); super.onDestroy() }
+    override fun onDestroy() {
+        remoteMusicIo.shutdownNow()
+        MessageBus.removeStatusListener(statusListener)
+        MessageBus.removeDataListener(dataListener)
+        handler.removeCallbacks(clockTick)
+        super.onDestroy()
+    }
     private val Int.dp: Int get() = (this * resources.displayMetrics.density).toInt()
 }
