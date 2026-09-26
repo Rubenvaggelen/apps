@@ -18,7 +18,7 @@ import java.security.MessageDigest
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
-// The One WOL build marker
+// The One WOL: PIN-beveiligd wakker maken vanuit The One Main
 class WakePcActivity : AppCompatActivity() {
 
     companion object {
