@@ -3171,8 +3171,32 @@ public sealed class MainWindow : Window
         double stylusStartOffset = 0;
         bool stylusDragging = false;
 
+        Point mouseStartPoint = default;
+        double mouseStartOffset = 0;
+        bool mousePressed = false;
+        bool mouseDragging = false;
+
+        var surfaceMouseFallback = Environment.MachineName.Equals(
+            "TABLET-042GE173",
+            StringComparison.OrdinalIgnoreCase);
+
         static double ClampOffset(ScrollViewer viewer, double value) =>
             Math.Max(0, Math.Min(viewer.ScrollableHeight, value));
+
+        static bool IsScrollbarSource(object? source)
+        {
+            if (source is not DependencyObject current) return false;
+
+            while (current != null)
+            {
+                if (current is ScrollBar || current is Thumb)
+                    return true;
+
+                current = VisualTreeHelper.GetParent(current);
+            }
+
+            return false;
+        }
 
         scroll.PreviewTouchDown += (_, e) =>
         {
@@ -3224,9 +3248,6 @@ public sealed class MainWindow : Window
             touchDragging = false;
         };
 
-        // Surface-apparaten leveren vingeraanraking in WPF vaak eerst via
-        // de Stylus/Tablet-laag. Alleen echte touch-tablets gebruiken;
-        // een Surface Pen blijft daardoor normale peninput.
         scroll.PreviewStylusDown += (_, e) =>
         {
             if (e.StylusDevice.TabletDevice.Type != TabletDeviceType.Touch)
@@ -3284,6 +3305,66 @@ public sealed class MainWindow : Window
         {
             activeStylus = null;
             stylusDragging = false;
+        };
+
+        if (!surfaceMouseFallback)
+            return;
+
+        scroll.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            if (IsScrollbarSource(e.OriginalSource))
+                return;
+
+            mousePressed = true;
+            mouseDragging = false;
+            mouseStartPoint = e.GetPosition(scroll);
+            mouseStartOffset = scroll.VerticalOffset;
+        };
+
+        scroll.PreviewMouseMove += (_, e) =>
+        {
+            if (!mousePressed || e.LeftButton != MouseButtonState.Pressed)
+                return;
+
+            var point = e.GetPosition(scroll);
+            var deltaY = mouseStartPoint.Y - point.Y;
+
+            if (!mouseDragging && Math.Abs(deltaY) >= 8)
+            {
+                mouseDragging = true;
+                Mouse.Capture(scroll, CaptureMode.SubTree);
+            }
+
+            if (!mouseDragging)
+                return;
+
+            scroll.ScrollToVerticalOffset(
+                ClampOffset(scroll, mouseStartOffset + deltaY));
+            e.Handled = true;
+        };
+
+        scroll.PreviewMouseLeftButtonUp += (_, e) =>
+        {
+            if (!mousePressed)
+                return;
+
+            if (mouseDragging)
+                e.Handled = true;
+
+            if (Mouse.Captured == scroll)
+                Mouse.Capture(null);
+
+            mousePressed = false;
+            mouseDragging = false;
+        };
+
+        scroll.LostMouseCapture += (_, _) =>
+        {
+            if (!mouseDragging)
+                return;
+
+            mousePressed = false;
+            mouseDragging = false;
         };
     }
 
