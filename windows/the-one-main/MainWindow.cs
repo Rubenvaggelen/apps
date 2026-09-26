@@ -174,11 +174,8 @@ public sealed class MainWindow : Window
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            PanningMode = PanningMode.None,
-            CanContentScroll = false,
             Padding = new Thickness(4, 18, 20, 24)
         };
-        EnableReliableTouchScrolling(scroll);
         var page = new StackPanel
         {
             HorizontalAlignment = HorizontalAlignment.Left,
@@ -1490,12 +1487,9 @@ public sealed class MainWindow : Window
         var scroll = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            PanningMode = PanningMode.None,
-            CanContentScroll = false,
             Content = body,
             Background = Bg
         };
-        EnableReliableTouchScrolling(scroll);
         _content.Children.Clear();
         _content.Children.Add(scroll);
         return scroll;
@@ -1796,9 +1790,6 @@ public sealed class MainWindow : Window
         var resultsScroll = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            PanningMode = PanningMode.None,
-            CanContentScroll = false,
             Margin = new Thickness(0, 0, 10, 0)
         };
         var results = new StackPanel();
@@ -3157,215 +3148,6 @@ public sealed class MainWindow : Window
     {
         var normalized = text.Trim().Replace("€", "").Replace(" ", "").Replace(',', '.');
         return decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out value);
-    }
-
-    private static void EnableReliableTouchScrolling(ScrollViewer scroll)
-    {
-        TouchDevice? activeTouch = null;
-        Point touchStartPoint = default;
-        double touchStartOffset = 0;
-        bool touchDragging = false;
-
-        StylusDevice? activeStylus = null;
-        Point stylusStartPoint = default;
-        double stylusStartOffset = 0;
-        bool stylusDragging = false;
-
-        Point mouseStartPoint = default;
-        double mouseStartOffset = 0;
-        bool mousePressed = false;
-        bool mouseDragging = false;
-
-        var surfaceMouseFallback = Environment.MachineName.Equals(
-            "TABLET-042GE173",
-            StringComparison.OrdinalIgnoreCase);
-
-        static double ClampOffset(ScrollViewer viewer, double value) =>
-            Math.Max(0, Math.Min(viewer.ScrollableHeight, value));
-
-        static bool IsScrollbarSource(object? source)
-        {
-            if (source is not DependencyObject current) return false;
-
-            while (current != null)
-            {
-                if (current is ScrollBar || current is Thumb)
-                    return true;
-
-                current = VisualTreeHelper.GetParent(current);
-            }
-
-            return false;
-        }
-
-        scroll.PreviewTouchDown += (_, e) =>
-        {
-            if (activeTouch != null) return;
-
-            activeTouch = e.TouchDevice;
-            touchStartPoint = e.GetTouchPoint(scroll).Position;
-            touchStartOffset = scroll.VerticalOffset;
-            touchDragging = false;
-        };
-
-        scroll.PreviewTouchMove += (_, e) =>
-        {
-            if (activeTouch != e.TouchDevice) return;
-
-            var point = e.GetTouchPoint(scroll).Position;
-            var deltaY = touchStartPoint.Y - point.Y;
-
-            if (!touchDragging && Math.Abs(deltaY) >= 8)
-            {
-                touchDragging = true;
-                e.TouchDevice.Capture(scroll, CaptureMode.SubTree);
-            }
-
-            if (!touchDragging) return;
-
-            scroll.ScrollToVerticalOffset(
-                ClampOffset(scroll, touchStartOffset + deltaY));
-            e.Handled = true;
-        };
-
-        scroll.PreviewTouchUp += (_, e) =>
-        {
-            if (activeTouch != e.TouchDevice) return;
-
-            if (touchDragging)
-                e.Handled = true;
-
-            if (e.TouchDevice.Captured != null)
-                e.TouchDevice.Capture(null);
-
-            activeTouch = null;
-            touchDragging = false;
-        };
-
-        scroll.LostTouchCapture += (_, _) =>
-        {
-            activeTouch = null;
-            touchDragging = false;
-        };
-
-        scroll.PreviewStylusDown += (_, e) =>
-        {
-            if (e.StylusDevice.TabletDevice.Type != TabletDeviceType.Touch)
-                return;
-            if (activeStylus != null || activeTouch != null)
-                return;
-
-            activeStylus = e.StylusDevice;
-            stylusStartPoint = e.GetPosition(scroll);
-            stylusStartOffset = scroll.VerticalOffset;
-            stylusDragging = false;
-        };
-
-        scroll.PreviewStylusMove += (_, e) =>
-        {
-            if (e.StylusDevice.TabletDevice.Type != TabletDeviceType.Touch)
-                return;
-            if (activeStylus != e.StylusDevice || activeTouch != null)
-                return;
-
-            var point = e.GetPosition(scroll);
-            var deltaY = stylusStartPoint.Y - point.Y;
-
-            if (!stylusDragging && Math.Abs(deltaY) >= 8)
-            {
-                stylusDragging = true;
-                e.StylusDevice.Capture(scroll, CaptureMode.SubTree);
-            }
-
-            if (!stylusDragging) return;
-
-            scroll.ScrollToVerticalOffset(
-                ClampOffset(scroll, stylusStartOffset + deltaY));
-            e.Handled = true;
-        };
-
-        scroll.PreviewStylusUp += (_, e) =>
-        {
-            if (e.StylusDevice.TabletDevice.Type != TabletDeviceType.Touch)
-                return;
-            if (activeStylus != e.StylusDevice)
-                return;
-
-            if (stylusDragging)
-                e.Handled = true;
-
-            if (e.StylusDevice.Captured != null)
-                e.StylusDevice.Capture(null);
-
-            activeStylus = null;
-            stylusDragging = false;
-        };
-
-        scroll.LostStylusCapture += (_, _) =>
-        {
-            activeStylus = null;
-            stylusDragging = false;
-        };
-
-        if (!surfaceMouseFallback)
-            return;
-
-        scroll.PreviewMouseLeftButtonDown += (_, e) =>
-        {
-            if (IsScrollbarSource(e.OriginalSource))
-                return;
-
-            mousePressed = true;
-            mouseDragging = false;
-            mouseStartPoint = e.GetPosition(scroll);
-            mouseStartOffset = scroll.VerticalOffset;
-        };
-
-        scroll.PreviewMouseMove += (_, e) =>
-        {
-            if (!mousePressed || e.LeftButton != MouseButtonState.Pressed)
-                return;
-
-            var point = e.GetPosition(scroll);
-            var deltaY = mouseStartPoint.Y - point.Y;
-
-            if (!mouseDragging && Math.Abs(deltaY) >= 8)
-            {
-                mouseDragging = true;
-                Mouse.Capture(scroll, CaptureMode.SubTree);
-            }
-
-            if (!mouseDragging)
-                return;
-
-            scroll.ScrollToVerticalOffset(
-                ClampOffset(scroll, mouseStartOffset + deltaY));
-            e.Handled = true;
-        };
-
-        scroll.PreviewMouseLeftButtonUp += (_, e) =>
-        {
-            if (!mousePressed)
-                return;
-
-            if (mouseDragging)
-                e.Handled = true;
-
-            if (Mouse.Captured == scroll)
-                Mouse.Capture(null);
-
-            mousePressed = false;
-            mouseDragging = false;
-        };
-
-        scroll.LostMouseCapture += (_, _) =>
-        {
-            if (!mouseDragging)
-                return;
-
-            mousePressed = false;
-            mouseDragging = false;
-        };
     }
 
     private static Brush Brush(string hex) => (Brush)new BrushConverter().ConvertFromString(hex)!;
