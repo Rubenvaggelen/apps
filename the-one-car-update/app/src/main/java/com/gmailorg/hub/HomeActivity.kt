@@ -101,7 +101,6 @@ class HomeActivity : AppCompatActivity() {
             HomeTile(id = "news", type = TileType.NEWS, label = "Nieuws"),
             HomeTile(id = "radio", type = TileType.RADIO, label = "Radio"),
             HomeTile(id = "currency", type = TileType.CURRENCY, label = "Koers (EUR / SRD / USD)"),
-            HomeTile(id = "finance", type = TileType.FINANCE, label = "Financiën"),
             HomeTile(id = "whatsapp", type = TileType.APP, label = "WhatsApp", packageName = "com.whatsapp"),
             HomeTile(id = "googlehome", type = TileType.APP, label = "Google Home", packageName = "com.google.android.apps.chromecast.app")
         ).filter { tile ->
