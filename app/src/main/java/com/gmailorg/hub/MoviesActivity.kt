@@ -43,6 +43,9 @@ class MoviesActivity : AppCompatActivity() {
         }
 
         musicResultContainer = findViewById(R.id.musicResultContainer)
+        findViewById<View>(R.id.supremacyMixesButton).setOnClickListener {
+            startActivity(Intent(this, SupremacyMixesActivity::class.java))
+        }
 
         cinemaContainer = findViewById(R.id.cinemaContainer)
         findViewById<View>(R.id.cinemaLoadButton).setOnClickListener { loadNowPlaying() }
