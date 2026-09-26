@@ -3,16 +3,20 @@ package com.gmailorg.hub
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.text.InputType
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import java.util.concurrent.Executors
 
 class MoviesActivity : AppCompatActivity() {
 
@@ -27,6 +31,7 @@ class MoviesActivity : AppCompatActivity() {
     private lateinit var musicWebPlayer: WebView
     private var youtubeActive = false
     private var youtubePlaying = false
+    private val remoteMusicIo = Executors.newSingleThreadExecutor()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -96,7 +101,7 @@ class MoviesActivity : AppCompatActivity() {
         }
 
         findViewById<View>(R.id.remoteUsbMusicButton).setOnClickListener {
-            startActivity(Intent(this, RemoteUsbMusicActivity::class.java))
+            openRemoteUsbMusic()
         }
 
     }
@@ -132,6 +137,169 @@ class MoviesActivity : AppCompatActivity() {
             }
         )
         musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 150)
+    }
+
+    private fun openRemoteUsbMusic() {
+        if (RemoteUsbMusicClient.hasToken(this)) {
+            loadRemoteUsbCatalog()
+        } else {
+            showRemoteUsbPinDialog()
+        }
+    }
+
+    private fun showRemoteUsbPinDialog() {
+        val input = EditText(this).apply {
+            hint = "Pincode"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            gravity = android.view.Gravity.CENTER
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("USB thuis")
+            .setMessage("Voer de pincode in voor je USB-muziek.")
+            .setView(input)
+            .setPositiveButton("Openen", null)
+            .setNegativeButton("Annuleren", null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val pin = input.text.toString().trim()
+                if (pin.isBlank()) return@setOnClickListener
+
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
+                remoteMusicIo.execute {
+                    val ok = try {
+                        RemoteUsbMusicClient.login(this, pin)
+                    } catch (_: Exception) {
+                        false
+                    }
+
+                    runOnUiThread {
+                        if (ok) {
+                            dialog.dismiss()
+                            loadRemoteUsbCatalog()
+                        } else {
+                            input.text.clear()
+                            input.error = "Pincode niet juist of server niet bereikbaar"
+                            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
+                        }
+                    }
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun loadRemoteUsbCatalog() {
+        Toast.makeText(this, "USB thuis laden…", Toast.LENGTH_SHORT).show()
+        remoteMusicIo.execute {
+            try {
+                val sticks = RemoteUsbMusicClient.catalog(this)
+                runOnUiThread {
+                    if (sticks.isEmpty()) {
+                        AlertDialog.Builder(this)
+                            .setTitle("USB thuis")
+                            .setMessage("Nog geen gesynchroniseerde USB-muziek gevonden.")
+                            .setPositiveButton("OK", null)
+                            .show()
+                    } else {
+                        showRemoteStickDialog(sticks)
+                    }
+                }
+            } catch (_: RemoteUsbMusicClient.AuthRequired) {
+                runOnUiThread { showRemoteUsbPinDialog() }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(
+                        this,
+                        e.message ?: "USB thuis kon niet worden geladen",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun showRemoteStickDialog(sticks: List<RemoteUsbMusicClient.RemoteStick>) {
+        val labels = sticks.map { it.deviceName + " • " + it.stickName }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("USB thuis")
+            .setItems(labels) { _, which ->
+                showRemoteFolderDialog(sticks[which])
+            }
+            .setNegativeButton("Sluiten", null)
+            .show()
+    }
+
+    private fun showRemoteFolderDialog(stick: RemoteUsbMusicClient.RemoteStick) {
+        val groups = stick.files
+            .groupBy { it.folder.ifBlank { "Hoofdmap" } }
+            .toSortedMap(String.CASE_INSENSITIVE_ORDER)
+
+        val folders = groups.keys.toList()
+        AlertDialog.Builder(this)
+            .setTitle(stick.deviceName + " • " + stick.stickName)
+            .setItems(folders.toTypedArray()) { _, which ->
+                val folder = folders[which]
+                val files = groups[folder].orEmpty()
+                    .sortedBy { it.name.lowercase() }
+                showRemoteTrackDialog(stick, folder, files)
+            }
+            .setNegativeButton("Terug") { _, _ -> showRemoteStickDialog(listOf(stick)) }
+            .show()
+    }
+
+    private fun showRemoteTrackDialog(
+        stick: RemoteUsbMusicClient.RemoteStick,
+        folder: String,
+        files: List<RemoteUsbMusicClient.RemoteFile>
+    ) {
+        AlertDialog.Builder(this)
+            .setTitle(folder)
+            .setItems(files.map { it.name }.toTypedArray()) { _, index ->
+                playRemoteUsbFolder(stick, files, index)
+            }
+            .setNegativeButton("Terug") { _, _ -> showRemoteFolderDialog(stick) }
+            .show()
+    }
+
+    private fun playRemoteUsbFolder(
+        stick: RemoteUsbMusicClient.RemoteStick,
+        files: List<RemoteUsbMusicClient.RemoteFile>,
+        index: Int
+    ) {
+        try {
+            musicWebPlayer.evaluateJavascript("window.theOneStop && window.theOneStop();", null)
+            youtubeActive = false
+            youtubePlaying = false
+
+            val urls = ArrayList(files.map { RemoteUsbMusicClient.streamUrl(this, it) })
+            val titles = ArrayList(files.map { it.name })
+
+            ContextCompat.startForegroundService(
+                this,
+                Intent(this, SupremacyPlaybackService::class.java).apply {
+                    action = SupremacyPlaybackService.ACTION_PLAY
+                    putStringArrayListExtra(SupremacyPlaybackService.EXTRA_QUEUE_URLS, urls)
+                    putStringArrayListExtra(SupremacyPlaybackService.EXTRA_QUEUE_TITLES, titles)
+                    putExtra(SupremacyPlaybackService.EXTRA_INDEX, index)
+                    putExtra(
+                        SupremacyPlaybackService.EXTRA_SOURCE,
+                        "USB thuis • " + stick.deviceName
+                    )
+                }
+            )
+
+            musicNowPlaying.text = files[index].name + "  •  USB thuis"
+            musicPlaybackState.text = "Laden…"
+            musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 500)
+        } catch (_: RemoteUsbMusicClient.AuthRequired) {
+            RemoteUsbMusicClient.clearToken(this)
+            showRemoteUsbPinDialog()
+        } catch (e: Exception) {
+            Toast.makeText(this, e.message ?: "Afspelen mislukt", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun searchAll() {
@@ -233,6 +401,9 @@ class MoviesActivity : AppCompatActivity() {
     }
 
     private fun playVideo(result: MusicLookup.MusicResult, queue: List<String>) {
+        if (SupremacyPlaybackService.isActive(this)) {
+            sendSupremacyAction(SupremacyPlaybackService.ACTION_STOP)
+        }
         youtubeActive = true
         youtubePlaying = true
         musicNowPlaying.text = result.title +
@@ -311,6 +482,7 @@ class MoviesActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        remoteMusicIo.shutdownNow()
         if (isFinishing && ::musicWebPlayer.isInitialized) {
             musicWebPlayer.stopLoading()
             musicWebPlayer.destroy()
