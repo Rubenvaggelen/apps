@@ -79,8 +79,7 @@ class SupremacyMixesActivity : AppCompatActivity() {
                 progress.visibility = View.GONE
                 status.text = if (result.isEmpty()) "Geen mixen gevonden." else ""
                 result.groupBy { it.genre }.forEach { (genre, mixes) ->
-                    addGenreHeader(genre)
-                    mixes.forEach { addRow(it) }
+                    addGenreSection(genre, mixes)
                 }
             }
         }
@@ -111,14 +110,34 @@ class SupremacyMixesActivity : AppCompatActivity() {
         }
     }
 
-    private fun addGenreHeader(genre: String) {
-        list.addView(TextView(this).apply {
-            text = genre
-            textSize = 20f
-            setTypeface(typeface, Typeface.BOLD)
+    private fun addGenreSection(genre: String, mixes: List<Mix>) {
+        val header = Button(this).apply {
+            text = "▶ $genre (${mixes.size})"
+            textSize = 18f
+            isAllCaps = false
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
             setTextColor(ContextCompat.getColor(context, R.color.amber))
-            setPadding(4.dp, 18.dp, 4.dp, 8.dp)
+            setBackgroundColor(ContextCompat.getColor(context, R.color.surface))
+            setPadding(14.dp, 12.dp, 14.dp, 12.dp)
+        }
+        val child = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+        var populated = false
+        header.setOnClickListener {
+            if (!populated) {
+                mixes.forEach { addRowTo(child, it) }
+                populated = true
+            }
+            val opening = child.visibility != View.VISIBLE
+            child.visibility = if (opening) View.VISIBLE else View.GONE
+            header.text = (if (opening) "▼ " else "▶ ") + "$genre (${mixes.size})"
+        }
+        list.addView(header, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = 8.dp
         })
+        list.addView(child)
     }
 
     private fun normalizeGenre(raw: String, title: String): String {
@@ -152,7 +171,7 @@ class SupremacyMixesActivity : AppCompatActivity() {
         }
     }
 
-    private fun addRow(mix: Mix) {
+    private fun addRowTo(parent: LinearLayout, mix: Mix) {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -170,8 +189,8 @@ class SupremacyMixesActivity : AppCompatActivity() {
             setBackgroundColor(ContextCompat.getColor(context, R.color.amber))
             setOnClickListener { play(mix) }
         })
-        list.addView(row)
-        list.addView(View(this).apply { setBackgroundColor(ContextCompat.getColor(context, R.color.surface)) },
+        parent.addView(row)
+        parent.addView(View(this).apply { setBackgroundColor(ContextCompat.getColor(context, R.color.surface)) },
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1.dp))
     }
 
