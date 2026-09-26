@@ -22,6 +22,7 @@
         <package android:name="nl.amsterdam.app" />
         <package android:name="com.android.vending" />
         <package android:name="com.waze" />
+        <package android:name="com.theone.remote" />
     </queries>
 
     <application
