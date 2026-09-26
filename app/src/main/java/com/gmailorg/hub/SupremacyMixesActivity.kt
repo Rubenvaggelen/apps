@@ -20,11 +20,6 @@ import java.util.Locale
 import java.util.concurrent.Executors
 
 class SupremacyMixesActivity : AppCompatActivity() {
-    companion object {
-        const val EXTRA_TITLE = "supremacy_title"
-        const val EXTRA_URL = "supremacy_url"
-        const val EXTRA_QUEUE = "supremacy_queue"
-    }
     private data class Mix(val title: String, val url: String, val genre: String)
     private lateinit var list: LinearLayout
     private lateinit var status: TextView
@@ -137,9 +132,7 @@ class SupremacyMixesActivity : AppCompatActivity() {
         var populated = false
         header.setOnClickListener {
             if (!populated) {
-                mixes.forEachIndexed { index, mix ->
-                    addRowTo(child, mix, mixes, index)
-                }
+                mixes.forEach { addRowTo(child, it) }
                 populated = true
             }
             val opening = child.visibility != View.VISIBLE
@@ -183,7 +176,7 @@ class SupremacyMixesActivity : AppCompatActivity() {
         }
     }
 
-    private fun addRowTo(parent: LinearLayout, mix: Mix, queue: List<Mix>, index: Int) {
+    private fun addRowTo(parent: LinearLayout, mix: Mix) {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -199,23 +192,19 @@ class SupremacyMixesActivity : AppCompatActivity() {
             text = "▶ Afspelen"
             setTextColor(ContextCompat.getColor(context, R.color.on_amber))
             setBackgroundColor(ContextCompat.getColor(context, R.color.amber))
-            setOnClickListener { selectForMainPlayer(mix, queue.drop(index)) }
+            setOnClickListener { play(mix) }
         })
         parent.addView(row)
         parent.addView(View(this).apply { setBackgroundColor(ContextCompat.getColor(context, R.color.surface)) },
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1.dp))
     }
 
-    private fun selectForMainPlayer(mix: Mix, queue: List<Mix>) {
-        setResult(RESULT_OK, Intent().apply {
-            putExtra(EXTRA_TITLE, mix.title)
-            putExtra(EXTRA_URL, mix.url)
-            putStringArrayListExtra(
-                EXTRA_QUEUE,
-                ArrayList(queue.map { it.url }.filter { it.isNotBlank() })
-            )
+    private fun play(mix: Mix) {
+        ContextCompat.startForegroundService(this, Intent(this, SupremacyPlaybackService::class.java).apply {
+            action = SupremacyPlaybackService.ACTION_PLAY
+            putExtra(SupremacyPlaybackService.EXTRA_TITLE, mix.title)
+            putExtra(SupremacyPlaybackService.EXTRA_URL, mix.url)
         })
-        finish()
     }
 
     private fun getText(url: String): String {
