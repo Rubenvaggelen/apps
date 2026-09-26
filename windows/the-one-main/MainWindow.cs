@@ -174,12 +174,11 @@ public sealed class MainWindow : Window
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            PanningMode = PanningMode.VerticalOnly,
-            PanningDeceleration = 0.0015,
-            PanningRatio = 1.0,
+            PanningMode = PanningMode.None,
             CanContentScroll = false,
             Padding = new Thickness(4, 18, 20, 24)
         };
+        EnableReliableTouchScrolling(scroll);
         var page = new StackPanel
         {
             HorizontalAlignment = HorizontalAlignment.Left,
@@ -1491,13 +1490,12 @@ public sealed class MainWindow : Window
         var scroll = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            PanningMode = PanningMode.VerticalOnly,
-            PanningDeceleration = 0.0015,
-            PanningRatio = 1.0,
+            PanningMode = PanningMode.None,
             CanContentScroll = false,
             Content = body,
             Background = Bg
         };
+        EnableReliableTouchScrolling(scroll);
         _content.Children.Clear();
         _content.Children.Add(scroll);
         return scroll;
@@ -1799,9 +1797,7 @@ public sealed class MainWindow : Window
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            PanningMode = PanningMode.VerticalOnly,
-            PanningDeceleration = 0.0015,
-            PanningRatio = 1.0,
+            PanningMode = PanningMode.None,
             CanContentScroll = false,
             Margin = new Thickness(0, 0, 10, 0)
         };
@@ -3154,6 +3150,69 @@ public sealed class MainWindow : Window
     {
         var normalized = text.Trim().Replace("€", "").Replace(" ", "").Replace(',', '.');
         return decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out value);
+    }
+
+    private static void EnableReliableTouchScrolling(ScrollViewer scroll)
+    {
+        TouchDevice? activeTouch = null;
+        Point startPoint = default;
+        double startOffset = 0;
+        bool dragging = false;
+
+        scroll.PreviewTouchDown += (_, e) =>
+        {
+            if (activeTouch != null) return;
+
+            activeTouch = e.TouchDevice;
+            startPoint = e.GetTouchPoint(scroll).Position;
+            startOffset = scroll.VerticalOffset;
+            dragging = false;
+
+            // Niet afvangen: een korte tik moet gewoon bij Button.Click terechtkomen.
+        };
+
+        scroll.PreviewTouchMove += (_, e) =>
+        {
+            if (activeTouch != e.TouchDevice) return;
+
+            var point = e.GetTouchPoint(scroll).Position;
+            var deltaY = startPoint.Y - point.Y;
+
+            if (!dragging && Math.Abs(deltaY) >= 8)
+            {
+                dragging = true;
+                e.TouchDevice.Capture(scroll, CaptureMode.SubTree);
+            }
+
+            if (!dragging) return;
+
+            var target = Math.Max(
+                0,
+                Math.Min(scroll.ScrollableHeight, startOffset + deltaY));
+
+            scroll.ScrollToVerticalOffset(target);
+            e.Handled = true;
+        };
+
+        scroll.PreviewTouchUp += (_, e) =>
+        {
+            if (activeTouch != e.TouchDevice) return;
+
+            if (dragging)
+                e.Handled = true;
+
+            if (e.TouchDevice.Captured != null)
+                e.TouchDevice.Capture(null);
+
+            activeTouch = null;
+            dragging = false;
+        };
+
+        scroll.LostTouchCapture += (_, _) =>
+        {
+            activeTouch = null;
+            dragging = false;
+        };
     }
 
     private static Brush Brush(string hex) => (Brush)new BrushConverter().ConvertFromString(hex)!;
