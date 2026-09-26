@@ -1506,7 +1506,7 @@ public sealed class MainWindow : Window
         });
         header.Children.Add(new TextBlock
         {
-            Text = "Zoek en speel muziek van YouTube of Spotify direct binnen The One Window.",
+            Text = "Zoek en speel muziek van YouTube, Spotify of Supremacy mixen direct binnen The One Window.",
             Foreground = TextDim,
             FontSize = 13,
             Margin = new Thickness(0, 4, 0, 0)
@@ -1525,6 +1525,10 @@ public sealed class MainWindow : Window
         spotifyButton.BorderBrush = Brush("#1ED760");
         DockPanel.SetDock(spotifyButton, Dock.Right);
         searchRow.Children.Add(spotifyButton);
+
+        var supremacyButton = ActionButton("♫ Supremacy", () => { }, 150);
+        DockPanel.SetDock(supremacyButton, Dock.Right);
+        searchRow.Children.Add(supremacyButton);
 
         searchRow.Children.Add(search);
         header.Children.Add(searchRow);
@@ -1735,6 +1739,116 @@ public sealed class MainWindow : Window
         }
 
         searchButton.Click += async (_, _) => await RunSearch();
+
+        supremacyButton.Click += async (_, _) =>
+        {
+            supremacyButton.IsEnabled = false;
+            results.Children.Clear();
+            status.Text = "Supremacy mixen laden…";
+            status.Foreground = TextDim;
+
+            try
+            {
+                var mixes = await SupremacyMusicService.LoadAsync();
+                results.Children.Clear();
+
+                if (mixes.Count == 0)
+                {
+                    status.Text = "Geen Supremacy mixen gevonden.";
+                    status.Foreground = Amber;
+                    return;
+                }
+
+                status.Text = $"{mixes.Count} Supremacy mixen geladen";
+                status.Foreground = Sage;
+
+                foreach (var group in mixes
+                    .GroupBy(x => x.Genre)
+                    .OrderBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase))
+                {
+                    var genreMixes = group
+                        .OrderBy(x => x.Title, StringComparer.CurrentCultureIgnoreCase)
+                        .ToList();
+
+                    var section = new Expander
+                    {
+                        Header = $"{group.Key} ({genreMixes.Count})",
+                        Foreground = TextMain,
+                        Background = Surface,
+                        BorderBrush = Brush("#174963"),
+                        BorderThickness = new Thickness(1),
+                        Margin = new Thickness(0, 0, 0, 8),
+                        Padding = new Thickness(10)
+                    };
+
+                    var children = new StackPanel();
+                    var populated = false;
+
+                    section.Expanded += (_, _) =>
+                    {
+                        if (populated) return;
+                        populated = true;
+
+                        for (var i = 0; i < genreMixes.Count; i++)
+                        {
+                            var index = i;
+                            var mix = genreMixes[i];
+
+                            var row = new DockPanel
+                            {
+                                Margin = new Thickness(0, 4, 0, 4)
+                            };
+
+                            var play = SmallButton("▶ Afspelen", () => { });
+                            play.MinWidth = 105;
+                            DockPanel.SetDock(play, Dock.Right);
+                            row.Children.Add(play);
+
+                            row.Children.Add(new TextBlock
+                            {
+                                Text = mix.Title,
+                                Foreground = TextMain,
+                                FontSize = 13,
+                                TextWrapping = TextWrapping.Wrap,
+                                VerticalAlignment = VerticalAlignment.Center,
+                                Margin = new Thickness(0, 0, 12, 0)
+                            });
+
+                            play.Click += async (_, _) =>
+                            {
+                                _musicNowPlayingTitle = $"{mix.Title}  •  Supremacy mixen";
+                                _musicSessionActive = true;
+                                nowPlaying.Text = _musicNowPlayingTitle;
+                                if (_musicHomeNowPlaying != null)
+                                    _musicHomeNowPlaying.Text = _musicNowPlayingTitle;
+
+                                var queue = genreMixes
+                                    .Skip(index)
+                                    .Select(x => x.Url)
+                                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                                    .ToList();
+
+                                await YouTubeMusicService.PlayAudioQueueAsync(web, queue);
+                            };
+
+                            children.Children.Add(row);
+                        }
+                    };
+
+                    section.Content = children;
+                    results.Children.Add(section);
+                }
+            }
+            catch (Exception ex)
+            {
+                status.Text = "Supremacy laden mislukt: " + ex.Message;
+                status.Foreground = Amber;
+            }
+            finally
+            {
+                supremacyButton.IsEnabled = true;
+            }
+        };
 
         spotifyButton.Click += async (_, _) =>
         {
