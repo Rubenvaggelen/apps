@@ -158,15 +158,24 @@ public sealed class MainWindow : Window
         outer.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         outer.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        var watermark = CreateLogo(560, 0.12);
+        var watermark = CreateLogo(660, 0.18);
         watermark.HorizontalAlignment = HorizontalAlignment.Center;
         watermark.VerticalAlignment = VerticalAlignment.Center;
         watermark.IsHitTestVisible = false;
         Grid.SetRow(watermark, 0);
         outer.Children.Add(watermark);
 
-        var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(20,18,20,24) };
-        var page = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, MaxWidth = 1260 };
+        var scroll = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Padding = new Thickness(4, 18, 20, 24)
+        };
+        var page = new StackPanel
+        {
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(0)
+        };
 
         var iconList = new StackPanel
         {
@@ -223,7 +232,7 @@ public sealed class MainWindow : Window
                         WebsiteIconKey(url),
                         () => BrowserLauncher.OpenChrome(url),
                         custom: true,
-                        iconOverride: CreateCustomWebsiteIcon(captured, 70))));
+                        iconOverride: CreateCustomWebsiteIcon(captured, 48))));
                 continue;
             }
 
@@ -248,7 +257,7 @@ public sealed class MainWindow : Window
                             BrowserLauncher.OpenProgram(target);
                     },
                     custom: true,
-                    iconOverride: CreateCustomAppIcon(captured, 70))));
+                    iconOverride: CreateCustomAppIcon(captured, 48))));
         }
 
         orderedTiles.Add((
@@ -284,7 +293,7 @@ public sealed class MainWindow : Window
                 BorderBrush = Amber,
                 BorderThickness = new Thickness(0, 0, 0, 1),
                 Padding = new Thickness(10, 8, 18, 8),
-                Margin = new Thickness(8, 0, 8, 7),
+                Margin = new Thickness(0, 0, 8, 7),
                 MinWidth = 170
             };
 
@@ -589,7 +598,7 @@ public sealed class MainWindow : Window
         {
             Width = 170,
             Height = 112,
-            Margin = new Thickness(8),
+            Margin = new Thickness(0, 6, 8, 6),
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
             BorderThickness = new Thickness(0),
@@ -604,23 +613,22 @@ public sealed class MainWindow : Window
             }
         };
 
-        var isChrome = id == "chrome";
-        var isCustom = custom;
         var tileSurface = new Border
         {
             CornerRadius = new CornerRadius(18),
-            BorderBrush = (isChrome || isCustom) ? Amber : Brush("#174963"),
-            BorderThickness = new Thickness((isChrome || isCustom) ? 1.35 : 1),
+            BorderBrush = Brush("#174963"),
+            BorderThickness = new Thickness(1),
             Padding = new Thickness(10),
-            Background = (isChrome || isCustom)
-                ? new LinearGradientBrush(Color.FromRgb(8, 31, 44), Color.FromRgb(5, 11, 18), 90)
-                : new LinearGradientBrush(Color.FromRgb(11, 22, 32), Color.FromRgb(7, 12, 18), 90),
+            Background = new LinearGradientBrush(
+                Color.FromRgb(11, 22, 32),
+                Color.FromRgb(7, 12, 18),
+                90),
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = (isChrome || isCustom) ? Color.FromRgb(32, 184, 255) : Colors.Black,
-                BlurRadius = (isChrome || isCustom) ? 22 : 18,
-                Opacity = (isChrome || isCustom) ? 0.26 : 0.45,
-                ShadowDepth = (isChrome || isCustom) ? 0 : 4
+                Color = Colors.Black,
+                BlurRadius = 18,
+                Opacity = 0.45,
+                ShadowDepth = 4
             }
         };
 
@@ -695,16 +703,17 @@ public sealed class MainWindow : Window
                 ScaleTransform.ScaleYProperty,
                 new DoubleAnimation(tileScale.ScaleY, 1.0, TimeSpan.FromMilliseconds(170)) { EasingFunction = easeOut });
 
-            tileSurface.BorderBrush = (isChrome || isCustom) ? Amber : Brush("#174963");
-            tileSurface.Background = (isChrome || isCustom)
-                ? new LinearGradientBrush(Color.FromRgb(8, 31, 44), Color.FromRgb(5, 11, 18), 90)
-                : new LinearGradientBrush(Color.FromRgb(11, 22, 32), Color.FromRgb(7, 12, 18), 90);
+            tileSurface.BorderBrush = Brush("#174963");
+            tileSurface.Background = new LinearGradientBrush(
+                Color.FromRgb(11, 22, 32),
+                Color.FromRgb(7, 12, 18),
+                90);
             tileSurface.Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = (isChrome || isCustom) ? Color.FromRgb(32, 184, 255) : Colors.Black,
-                BlurRadius = (isChrome || isCustom) ? 22 : 18,
-                Opacity = (isChrome || isCustom) ? 0.26 : 0.45,
-                ShadowDepth = (isChrome || isCustom) ? 0 : 4
+                Color = Colors.Black,
+                BlurRadius = 18,
+                Opacity = 0.45,
+                ShadowDepth = 4
             };
         };
 
