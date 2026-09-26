@@ -53,23 +53,61 @@ class MoviesActivity : AppCompatActivity() {
         musicWebPlayer = findViewById(R.id.musicWebPlayer)
         configureMusicPlayer()
         findViewById<View>(R.id.musicPreviousButton).setOnClickListener {
-            musicWebPlayer.evaluateJavascript("window.theOnePrevious && window.theOnePrevious();", null)
+            if (SupremacyPlaybackService.isActive(this)) {
+                sendSupremacyAction(SupremacyPlaybackService.ACTION_PREVIOUS)
+            } else {
+                musicWebPlayer.evaluateJavascript("window.theOnePrevious && window.theOnePrevious();", null)
+            }
         }
         findViewById<View>(R.id.musicPlayPauseButton).setOnClickListener {
-            musicWebPlayer.evaluateJavascript("window.theOneToggle && window.theOneToggle();", null)
+            if (SupremacyPlaybackService.isActive(this)) {
+                sendSupremacyAction(SupremacyPlaybackService.ACTION_TOGGLE)
+            } else {
+                musicWebPlayer.evaluateJavascript("window.theOneToggle && window.theOneToggle();", null)
+            }
         }
         findViewById<View>(R.id.musicStopButton).setOnClickListener {
-            musicWebPlayer.evaluateJavascript("window.theOneStop && window.theOneStop();", null)
+            if (SupremacyPlaybackService.isActive(this)) {
+                sendSupremacyAction(SupremacyPlaybackService.ACTION_STOP)
+            } else {
+                musicWebPlayer.evaluateJavascript("window.theOneStop && window.theOneStop();", null)
+            }
             musicNowPlaying.text = "Geen muziek actief"
         }
         findViewById<View>(R.id.musicNextButton).setOnClickListener {
-            musicWebPlayer.evaluateJavascript("window.theOneNext && window.theOneNext();", null)
+            if (SupremacyPlaybackService.isActive(this)) {
+                sendSupremacyAction(SupremacyPlaybackService.ACTION_NEXT)
+            } else {
+                musicWebPlayer.evaluateJavascript("window.theOneNext && window.theOneNext();", null)
+            }
         }
 
         findViewById<View>(R.id.supremacyMixesButton).setOnClickListener {
             startActivity(Intent(this, SupremacyMixesActivity::class.java))
         }
 
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshCompactPlayer()
+    }
+
+    private fun refreshCompactPlayer() {
+        if (SupremacyPlaybackService.isActive(this)) {
+            musicNowPlaying.text =
+                SupremacyPlaybackService.currentTitle(this) + "  •  Supremacy"
+        }
+    }
+
+    private fun sendSupremacyAction(action: String) {
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, SupremacyPlaybackService::class.java).apply {
+                this.action = action
+            }
+        )
+        musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 150)
     }
 
     private fun searchAll() {
