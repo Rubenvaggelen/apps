@@ -83,18 +83,59 @@
         android:layout_marginBottom="14dp"
         android:orientation="vertical"
         android:background="@color/surface"
-        android:padding="12dp"
-        android:visibility="visible">
+        android:padding="12dp">
 
-        <TextView
-            android:id="@+id/musicNowPlaying"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Geen muziek actief"
-            android:textColor="@color/text_main"
-            android:textSize="15sp"
-            android:textStyle="bold"
-            android:paddingBottom="8dp" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <ImageView
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:src="@mipmap/ic_launcher"
+                android:contentDescription="The One"
+                android:scaleType="fitCenter" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="12dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="The One"
+                    android:textColor="@color/amber"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/musicNowPlaying"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Geen muziek actief"
+                    android:textColor="@color/text_main"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:maxLines="2"
+                    android:ellipsize="end"
+                    android:paddingTop="2dp" />
+
+                <TextView
+                    android:id="@+id/musicPlaybackState"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Gestopt"
+                    android:textColor="@color/text_dim"
+                    android:textSize="12sp"
+                    android:paddingTop="2dp" />
+
+            </LinearLayout>
+        </LinearLayout>
 
         <WebView
             android:id="@+id/musicWebPlayer"
@@ -105,41 +146,46 @@
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="44dp"
             android:orientation="horizontal"
             android:gravity="center"
-            android:paddingTop="8dp">
+            android:layout_marginTop="6dp">
 
             <Button
                 android:id="@+id/musicPreviousButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="⏮ Terug"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:text="⏮"
+                android:textSize="18sp"
                 android:textColor="@color/amber" />
 
             <Button
                 android:id="@+id/musicPlayPauseButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:text="⏯ Play / Pauze"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:text="⏯"
+                android:textSize="18sp"
                 android:backgroundTint="@color/amber"
                 android:textColor="@color/on_amber" />
 
             <Button
                 android:id="@+id/musicStopButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:text="⏹ Stop"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:text="⏹"
+                android:textSize="18sp"
                 android:textColor="@color/amber" />
 
             <Button
                 android:id="@+id/musicNextButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:text="⏭ Volgende"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:text="⏭"
+                android:textSize="18sp"
                 android:textColor="@color/amber" />
 
         </LinearLayout>
