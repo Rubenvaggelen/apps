@@ -190,11 +190,11 @@ public sealed class MainWindow : Window
         hero.Child = heroRow;
         page.Children.Add(hero);
 
-        var iconGrid = new Grid
+        var iconList = new StackPanel
         {
-            HorizontalAlignment = HorizontalAlignment.Center
+            HorizontalAlignment = HorizontalAlignment.Left
         };
-        page.Children.Add(iconGrid);
+        page.Children.Add(iconList);
         scroll.Content = page;
         Grid.SetRow(scroll, 0);
         outer.Children.Add(scroll);
@@ -281,26 +281,15 @@ public sealed class MainWindow : Window
             .OrderBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
 
-        // Windows-desktopvolgorde: eerst alfabetisch van boven naar beneden,
-        // daarna pas de volgende kolom.
-        const int rowsPerColumn = 5;
-        var columnCount = (int)Math.Ceiling(sortedTiles.Count / (double)rowsPerColumn);
-
-        for (var row = 0; row < rowsPerColumn; row++)
-            iconGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-        for (var column = 0; column < columnCount; column++)
-            iconGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        for (var i = 0; i < sortedTiles.Count; i++)
+        // Eén verticale alfabetische lijst, zoals gevraagd:
+        // eerst C-items onder elkaar, daarna D/E/F enzovoort.
+        foreach (var entry in sortedTiles)
         {
-            var tile = sortedTiles[i].Build();
-            var row = i % rowsPerColumn;
-            var column = i / rowsPerColumn;
-            Grid.SetRow(tile, row);
-            Grid.SetColumn(tile, column);
-            iconGrid.Children.Add(tile);
+            var tile = entry.Build();
+            tile.HorizontalAlignment = HorizontalAlignment.Left;
+            iconList.Children.Add(tile);
         }
+
         var footer = new Border
         {
             Background = Brush("#071018"),
