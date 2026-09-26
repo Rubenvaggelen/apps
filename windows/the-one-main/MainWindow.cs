@@ -328,37 +328,84 @@ public sealed class MainWindow : Window
         };
         var footerRow = new DockPanel { LastChildFill = true };
 
+        var powerGlow = new Border
+        {
+            CornerRadius = new CornerRadius(16),
+            BorderBrush = Amber,
+            BorderThickness = new Thickness(1.3),
+            Background = new LinearGradientBrush(
+                Color.FromRgb(8, 31, 44),
+                Color.FromRgb(5, 11, 18),
+                90),
+            Padding = new Thickness(14, 8, 14, 8),
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Color.FromRgb(32, 184, 255),
+                BlurRadius = 22,
+                Opacity = 0.32,
+                ShadowDepth = 0
+            }
+        };
+
+        var powerLabel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        powerLabel.Children.Add(new TextBlock
+        {
+            Text = "⏻",
+            Foreground = Amber,
+            FontSize = 20,
+            FontWeight = FontWeights.Bold,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, -1, 9, 0)
+        });
+        powerLabel.Children.Add(new TextBlock
+        {
+            Text = "AAN / UIT",
+            Foreground = TextMain,
+            FontSize = 12,
+            FontWeight = FontWeights.Bold,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        powerGlow.Child = powerLabel;
+
+        var power = new Button
+        {
+            Content = powerGlow,
+            Width = 140,
+            Height = 48,
+            Padding = new Thickness(0),
+            Margin = new Thickness(0),
+            Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Cursor = Cursors.Hand,
+            FocusVisualStyle = null,
+            OverridesDefaultStyle = true,
+            Template = new ControlTemplate(typeof(Button))
+            {
+                VisualTree = new FrameworkElementFactory(typeof(ContentPresenter))
+            },
+            ToolTip = "Slaapstand, opnieuw opstarten of afsluiten"
+        };
+        power.Click += (_, _) => ShowPowerMenu(power);
+        DockPanel.SetDock(power, Dock.Left);
+        footerRow.Children.Add(power);
+
         var familyText = new TextBlock
         {
             Text = "PART OF THE ONE FAMILY",
             Foreground = Amber,
             FontSize = 10,
             FontWeight = FontWeights.Bold,
-            VerticalAlignment = VerticalAlignment.Center
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(14, 0, 0, 0)
         };
         DockPanel.SetDock(familyText, Dock.Left);
         footerRow.Children.Add(familyText);
 
-        var power = new Button
-        {
-            Content = "AAN / UIT",
-            Width = 118,
-            Height = 38,
-            Padding = new Thickness(12, 0, 12, 0),
-            FontSize = 12,
-            FontWeight = FontWeights.Bold,
-            Foreground = Amber,
-            Background = Brush("#09131D"),
-            BorderBrush = Amber,
-            BorderThickness = new Thickness(1.4),
-            Cursor = Cursors.Hand,
-            ToolTip = "Slaapstand, opnieuw opstarten of afsluiten"
-        };
-        power.Click += (_, _) => ShowPowerMenu(power);
-        DockPanel.SetDock(power, Dock.Right);
-        footerRow.Children.Add(power);
-
-        // Vult bewust het midden zodat de power-knop altijd strak rechts blijft staan.
         footerRow.Children.Add(new Border());
 
         footer.Child = footerRow;
