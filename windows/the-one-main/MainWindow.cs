@@ -50,6 +50,13 @@ public sealed class MainWindow : Window
     private bool _musicOverlayFaded;
     private bool _usbHomeUnlocked;
 
+    private Grid? _mailPage;
+    private Microsoft.Web.WebView2.Wpf.WebView2? _mailWebView;
+    private readonly DispatcherTimer _mailRefreshTimer = new()
+    {
+        Interval = TimeSpan.FromMinutes(2)
+    };
+
     private sealed record TileDef(string Id, string Label, string IconKey, Action Open);
     private sealed record StartMenuShortcut(string Label, string TargetPath);
 
@@ -102,6 +109,13 @@ public sealed class MainWindow : Window
         };
         _timer.Start();
         _clock.Text = DateTime.Now.ToString("ddd d MMM  HH:mm", new CultureInfo("nl-NL"));
+
+        _mailRefreshTimer.Tick += async (_, _) =>
+        {
+            if (_mailWebView == null || !_mailWebView.IsVisible) return;
+            try { await EmbeddedMailService.RefreshAsync(_mailWebView); } catch { }
+        };
+        _mailRefreshTimer.Start();
 
         PreviewMouseMove += (_, _) => UpdateMusicHomeOverlayFade();
         AppStore.AddNotification("The One Windows gestart.");
@@ -1592,6 +1606,19 @@ public sealed class MainWindow : Window
 
     private void ShowMail()
     {
+        if (_mailPage != null && _mailWebView != null)
+        {
+            if (_mailPage.Parent is Panel oldParent)
+                oldParent.Children.Remove(_mailPage);
+
+            _content.Children.Clear();
+            _mailPage.Visibility = Visibility.Visible;
+            _content.Children.Add(_mailPage);
+
+            _ = EmbeddedMailService.RefreshAsync(_mailWebView);
+            return;
+        }
+
         _content.Children.Clear();
 
         var root = new Grid { Background = Bg };
@@ -1615,7 +1642,7 @@ public sealed class MainWindow : Window
         });
         title.Children.Add(new TextBlock
         {
-            Text = "Inbox, kalender en antwoorden direct in The One Window",
+            Text = "Inbox, kalender en antwoorden direct in The One Windows",
             Foreground = TextDim,
             FontSize = 12,
             Margin = new Thickness(0, 3, 0, 0)
@@ -1647,16 +1674,23 @@ public sealed class MainWindow : Window
         root.Children.Add(bar);
 
         var web = EmbeddedMailService.CreateWebView();
+        _mailWebView = web;
+
         Grid.SetRow(web, 1);
         root.Children.Add(web);
 
-        inbox.Click += async (_, _) => await EmbeddedMailService.ShowInboxAsync(web);
+        inbox.Click += async (_, _) =>
+        {
+            await EmbeddedMailService.ShowInboxAsync(web);
+            await EmbeddedMailService.RefreshAsync(web);
+        };
         calendar.Click += async (_, _) => await EmbeddedMailService.ShowCalendarAsync(web);
         compose.Click += async (_, _) => await EmbeddedMailService.OpenComposeAsync(web);
         accounts.Click += async (_, _) => await EmbeddedMailService.ShowAccountsAsync(web);
         refresh.Click += async (_, _) => await EmbeddedMailService.RefreshAsync(web);
 
-        _content.Children.Add(root);
+        _mailPage = root;
+        _content.Children.Add(_mailPage);
 
         _ = EmbeddedMailService.InitializeAsync(web).ContinueWith(task =>
         {
