@@ -52,6 +52,12 @@ class MoviesActivity : AppCompatActivity() {
         musicNowPlaying = findViewById(R.id.musicNowPlaying)
         musicWebPlayer = findViewById(R.id.musicWebPlayer)
         configureMusicPlayer()
+        findViewById<View>(R.id.musicPlayPauseButton).setOnClickListener {
+            musicWebPlayer.evaluateJavascript("window.theOneToggle && window.theOneToggle();", null)
+        }
+        findViewById<View>(R.id.musicNextButton).setOnClickListener {
+            musicWebPlayer.evaluateJavascript("window.theOneNext && window.theOneNext();", null)
+        }
 
         findViewById<View>(R.id.supremacyMixesButton).setOnClickListener {
             startActivity(Intent(this, SupremacyMixesActivity::class.java))
@@ -158,7 +164,6 @@ class MoviesActivity : AppCompatActivity() {
     }
 
     private fun playVideo(result: MusicLookup.MusicResult, queue: List<String>) {
-        musicPlayerCard.visibility = View.VISIBLE
         musicNowPlaying.text = result.title +
             if (result.channel.isNotBlank()) "  •  ${result.channel}" else ""
 
@@ -166,10 +171,8 @@ class MoviesActivity : AppCompatActivity() {
             .map { id -> id.filter { ch -> ch.isLetterOrDigit() || ch == '-' || ch == '_' } }
             .filter { it.isNotBlank() }
             .take(20)
-        val videoId = cleanQueue.firstOrNull()
-            ?: result.videoId.filter { ch -> ch.isLetterOrDigit() || ch == '-' || ch == '_' }
-        val playlist = cleanQueue.drop(1).joinToString(",")
-        val playlistPart = if (playlist.isBlank()) "" else "&playlist=$playlist"
+
+        val queueJson = org.json.JSONArray(cleanQueue).toString()
         val html = """
             <!doctype html>
             <html>
@@ -177,15 +180,41 @@ class MoviesActivity : AppCompatActivity() {
               <meta name="viewport" content="width=device-width,initial-scale=1">
               <style>
                 html,body,#player{width:100%;height:100%;margin:0;background:#05070B;overflow:hidden}
-                iframe{width:100%;height:100%;border:0}
               </style>
             </head>
             <body>
-              <iframe
-                src="https://www.youtube.com/embed/$videoId?autoplay=1&playsinline=1&rel=0$playlistPart"
-                allow="autoplay; encrypted-media; picture-in-picture"
-                allowfullscreen>
-              </iframe>
+              <div id="player"></div>
+              <script>
+                const queue = $queueJson;
+                let player;
+                function onYouTubeIframeAPIReady() {
+                  if (!queue.length) return;
+                  player = new YT.Player('player', {
+                    width: '100%',
+                    height: '100%',
+                    playerVars: { autoplay: 1, playsinline: 1, rel: 0, modestbranding: 1 },
+                    events: {
+                      onReady: e => e.target.loadPlaylist({
+                        playlist: queue,
+                        index: 0,
+                        startSeconds: 0
+                      })
+                    }
+                  });
+                  window.theOneToggle = () => {
+                    if (!player || !player.getPlayerState) return;
+                    const state = player.getPlayerState();
+                    if (state === YT.PlayerState.PLAYING) player.pauseVideo();
+                    else player.playVideo();
+                  };
+                  window.theOneNext = () => {
+                    if (player && player.nextVideo) player.nextVideo();
+                  };
+                }
+                const api = document.createElement('script');
+                api.src = 'https://www.youtube.com/iframe_api';
+                document.head.appendChild(api);
+              </script>
             </body>
             </html>
         """.trimIndent()
@@ -198,7 +227,6 @@ class MoviesActivity : AppCompatActivity() {
             null
         )
     }
-
     override fun onDestroy() {
         if (::musicWebPlayer.isInitialized) {
             musicWebPlayer.stopLoading()
