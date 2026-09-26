@@ -181,7 +181,7 @@ public static class YouTubeMusicService
         if (queue.Count == 0) return;
 
         var json = JsonSerializer.Serialize(queue);
-        var html = $"""
+        var html = """
 <!doctype html>
 <html lang="nl">
 <head>
@@ -191,7 +191,8 @@ public static class YouTubeMusicService
 html,body{width:100%;height:100%;margin:0;background:#05070B;color:#f3f8fc;font-family:Segoe UI,Arial,sans-serif}
 body{display:flex;align-items:center;justify-content:center}
 .card{width:min(92%,760px);padding:28px;border:1px solid #174963;border-radius:18px;background:#091018;box-shadow:0 0 28px rgba(32,184,255,.18)}
-.logo{font-size:42px;color:#20B8FF;text-align:center;margin-bottom:18px}.label{text-align:center;color:#9AA6B2;margin-bottom:18px}
+.logo{font-size:42px;color:#20B8FF;text-align:center;margin-bottom:18px}
+.label{text-align:center;color:#9AA6B2;margin-bottom:18px}
 audio{width:100%}
 </style>
 </head>
@@ -202,7 +203,7 @@ audio{width:100%}
   <audio id="audio" controls autoplay></audio>
 </div>
 <script>
-const queue = {{json}};
+const queue = __QUEUE__;
 let index = 0;
 const audio = document.getElementById('audio');
 function load(i) {
@@ -220,7 +221,7 @@ load(0);
 </script>
 </body>
 </html>
-""";
+""".Replace("__QUEUE__", json);
 
         web.NavigateToString(html);
     }
