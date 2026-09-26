@@ -191,6 +191,36 @@ public static class UsbMusicCloudService
             "&path=" + Uri.EscapeDataString(NormalizePath(file.Path));
     }
 
+    public static async Task<(bool Ok, string Message)> ProbeStreamAsync(
+        CloudUsbMusicFile file,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var url = await BuildStreamUrlAsync(file, cancellationToken);
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Range = new RangeHeaderValue(0, 0);
+
+            using var response = await Http.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.OK ||
+                response.StatusCode == System.Net.HttpStatusCode.PartialContent)
+            {
+                return (true, $"HTTP {(int)response.StatusCode}");
+            }
+
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            return (false, $"HTTP {(int)response.StatusCode}: {body}");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
     private static async Task<int> SyncDriveAsync(
         DriveInfo drive,
         Dictionary<string, CloudUsbMusicFile> existing,
