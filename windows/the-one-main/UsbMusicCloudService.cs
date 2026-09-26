@@ -42,6 +42,11 @@ public static class UsbMusicCloudService
     };
 
     private static readonly SemaphoreSlim SyncGate = new(1, 1);
+    private static readonly string DiagnosticLog = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "The One Family",
+        "The One Windows",
+        "usb-music-sync.log");
     private static readonly HashSet<string> AudioExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".mp3", ".m4a", ".aac", ".ogg", ".oga", ".opus", ".flac", ".wav", ".wma"
@@ -55,6 +60,7 @@ public static class UsbMusicCloudService
     public static void StartBackgroundSync()
     {
         if (_backgroundCts != null) return;
+        Log("Background sync gestart.");
         _backgroundCts = new CancellationTokenSource();
         _ = Task.Run(() => BackgroundLoopAsync(_backgroundCts.Token));
     }
@@ -68,12 +74,14 @@ public static class UsbMusicCloudService
                 var signature = BuildDriveSignature();
                 if (!string.Equals(signature, _lastDriveSignature, StringComparison.Ordinal))
                 {
+                    Log("USB-wijziging gedetecteerd. Synchronisatie starten.");
                     await SyncNowAsync(cancellationToken);
                     _lastDriveSignature = signature;
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                Log("Achtergrondsync fout: " + ex.GetType().Name + " - " + ex.Message);
                 // Netwerk of USB mag The One Windows nooit blokkeren.
             }
 
@@ -94,6 +102,7 @@ public static class UsbMusicCloudService
         try
         {
             var drives = ReadyUsbDrives().ToList();
+            Log($"Verwijderbare USB-drives gevonden: {drives.Count}.");
             if (drives.Count == 0) return 0;
 
             var catalog = await GetCatalogAsync(cancellationToken);
@@ -204,6 +213,8 @@ public static class UsbMusicCloudService
             .ThenBy(file => file.FullName, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
 
+        Log($"{deviceName} / {stickName}: {files.Count} audiobestanden gevonden in {scanRoot}.");
+
         if (files.Count == 0)
         {
             await SendManifestAsync(
@@ -237,6 +248,7 @@ public static class UsbMusicCloudService
 
         await SendManifestAsync(
             deviceId, deviceName, stickId, stickName, provisional, cancellationToken);
+        Log($"{deviceName} / {stickName}: voorlopige catalogus gepubliceerd.");
 
         var finalManifest = new List<LocalManifestFile>(files.Count);
         var uploaded = 0;
@@ -283,6 +295,8 @@ public static class UsbMusicCloudService
                     file.FullName,
                     cancellationToken);
                 uploaded++;
+                if (uploaded == 1 || uploaded % 25 == 0)
+                    Log($"{deviceName} / {stickName}: {uploaded} bestand(en) geüpload.");
             }
         }
 
@@ -389,6 +403,7 @@ public static class UsbMusicCloudService
         using var json = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
 
         _token = json.RootElement.GetProperty("token").GetString() ?? "";
+        Log("Muziekserver autorisatie gelukt.");
         var seconds = json.RootElement.TryGetProperty("expires_in", out var expires)
             ? expires.GetInt32()
             : 3600;
@@ -508,6 +523,24 @@ public static class UsbMusicCloudService
             machine.Contains("SURFACE", StringComparison.OrdinalIgnoreCase))
             return "Surface";
         return machine;
+    }
+
+    private static void Log(string message)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(DiagnosticLog);
+            if (!string.IsNullOrWhiteSpace(dir))
+                Directory.CreateDirectory(dir);
+
+            File.AppendAllText(
+                DiagnosticLog,
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}");
+        }
+        catch
+        {
+            // Diagnostiek mag de muziekfunctie nooit blokkeren.
+        }
     }
 
     private static string NormalizePath(string path) =>
