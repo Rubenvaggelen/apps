@@ -193,6 +193,7 @@ if ($action === 'sync') {
             'folder'=>dirname($path)==='.'?'':dirname($path),
             'size'=>max(0,(int)($item['size'] ?? 0)),
             'sha256'=>$sha,
+            'modified'=>trim((string)($item['modified'] ?? '')),
             'cached'=>is_file($files.'/'.key_for($device,$stick,$path).'.bin')
         ];
     }
