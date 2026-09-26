@@ -611,14 +611,46 @@ public sealed class MainWindow : Window
 
     private void ShowPowerMenu(Button anchor)
     {
-        var menu = new ContextMenu
+        var popup = new Popup
         {
             PlacementTarget = anchor,
-            Placement = PlacementMode.Top
+            Placement = PlacementMode.Top,
+            StaysOpen = false,
+            AllowsTransparency = true,
+            PopupAnimation = PopupAnimation.Fade
         };
 
-        var sleep = new MenuItem { Header = "Slaapstand" };
-        sleep.Click += (_, _) =>
+        var panel = new StackPanel
+        {
+            MinWidth = 220
+        };
+
+        Button PowerOption(string label, Action action)
+        {
+            var b = new Button
+            {
+                Content = label,
+                Height = 46,
+                Margin = new Thickness(0, 0, 0, 8),
+                Padding = new Thickness(14, 0, 14, 0),
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                Background = Brush("#09131D"),
+                Foreground = TextMain,
+                BorderBrush = Amber,
+                BorderThickness = new Thickness(1),
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                Cursor = Cursors.Hand
+            };
+            b.Click += (_, _) =>
+            {
+                popup.IsOpen = false;
+                action();
+            };
+            return b;
+        }
+
+        panel.Children.Add(PowerOption("☾  Slaapstand", () =>
         {
             try
             {
@@ -631,21 +663,35 @@ public sealed class MainWindow : Window
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Slaapstand kon niet worden gestart: " + ex.Message, "The One");
+                MessageBox.Show("Slaapstand kon niet worden gestart: " + ex.Message, "The One Windows");
             }
+        }));
+
+        panel.Children.Add(PowerOption("↻  Opnieuw opstarten",
+            () => RunPowerCommand("/r /t 0", "opnieuw opstarten")));
+
+        panel.Children.Add(PowerOption("⏻  Afsluiten",
+            () => RunPowerCommand("/s /t 0", "afsluiten")));
+
+        popup.Child = new Border
+        {
+            Background = Brush("#F2070D13"),
+            BorderBrush = Amber,
+            BorderThickness = new Thickness(1.2),
+            CornerRadius = new CornerRadius(18),
+            Padding = new Thickness(12),
+            Margin = new Thickness(0, 0, 0, 10),
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Color.FromRgb(32, 184, 255),
+                BlurRadius = 24,
+                Opacity = 0.34,
+                ShadowDepth = 0
+            },
+            Child = panel
         };
 
-        var restart = new MenuItem { Header = "Opnieuw opstarten" };
-        restart.Click += (_, _) => RunPowerCommand("/r /t 0", "opnieuw opstarten");
-
-        var shutdown = new MenuItem { Header = "Afsluiten" };
-        shutdown.Click += (_, _) => RunPowerCommand("/s /t 0", "afsluiten");
-
-        menu.Items.Add(sleep);
-        menu.Items.Add(restart);
-        menu.Items.Add(new Separator());
-        menu.Items.Add(shutdown);
-        menu.IsOpen = true;
+        popup.IsOpen = true;
     }
 
     private static void RunPowerCommand(string arguments, string action)
