@@ -167,6 +167,18 @@ public static class YouTubeMusicService
             "https://theone-music.local/player.html?q=" + encodedQueue);
     }
 
+    public static async Task TogglePlayPauseAsync(WebView2 web)
+    {
+        await InitializeAsync(web);
+        await web.ExecuteScriptAsync("window.theOneToggle && window.theOneToggle()");
+    }
+
+    public static async Task NextAsync(WebView2 web)
+    {
+        await InitializeAsync(web);
+        await web.ExecuteScriptAsync("window.theOneNext && window.theOneNext()");
+    }
+
     private static string EnsurePlayerFiles()
     {
         var folder = Path.Combine(AppStore.BaseDirectory, "youtube-music-player");
@@ -216,7 +228,7 @@ const queue = raw
 function onYouTubeIframeAPIReady() {
   if (!queue.length) return;
 
-  new YT.Player('player', {
+  window.theOnePlayer = new YT.Player('player', {
     width: '100%',
     height: '100%',
     playerVars: {
@@ -236,6 +248,19 @@ function onYouTubeIframeAPIReady() {
       }
     }
   });
+
+  window.theOneToggle = () => {
+    const p = window.theOnePlayer;
+    if (!p || !p.getPlayerState) return;
+    const state = p.getPlayerState();
+    if (state === YT.PlayerState.PLAYING) p.pauseVideo();
+    else p.playVideo();
+  };
+
+  window.theOneNext = () => {
+    const p = window.theOnePlayer;
+    if (p && p.nextVideo) p.nextVideo();
+  };
 }
 
 const api = document.createElement('script');
