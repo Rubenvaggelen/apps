@@ -202,7 +202,7 @@ if ($action === 'sync') {
         if (!is_array($item)) continue;
         $path=safe_path((string)($item['path'] ?? ''));
         $sha=strtolower(trim((string)($item['sha256'] ?? '')));
-        if (!preg_match('/^[a-f0-9]{64}$/',$sha)) continue;
+        if ($sha !== '' && !preg_match('/^[a-f0-9]{64}$/',$sha)) continue;
         $rows[]=[
             'path'=>$path,
             'name'=>basename($path),
