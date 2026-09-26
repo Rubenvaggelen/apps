@@ -209,7 +209,6 @@ public sealed class MainWindow : Window
             new("news", "Nieuws", "news", ShowNews),
             new("radio", "Radio", "radio", ShowRadio),
             new("currency", "Koers (EUR / SRD / USD)", "currency", ShowCurrency),
-            new("finance", "Financiën", "currency", ShowFinance),
             new("lifestyle", "Lifestyle", "lifestyle", ShowLifestyle),
             new("chrome", "Chrome", "chrome", () => BrowserLauncher.OpenChrome())
         };
