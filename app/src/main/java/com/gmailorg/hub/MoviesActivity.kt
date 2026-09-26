@@ -23,7 +23,10 @@ class MoviesActivity : AppCompatActivity() {
     private lateinit var musicResultContainer: LinearLayout
     private lateinit var musicPlayerCard: View
     private lateinit var musicNowPlaying: TextView
+    private lateinit var musicPlaybackState: TextView
     private lateinit var musicWebPlayer: WebView
+    private var youtubeActive = false
+    private var youtubePlaying = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,6 +53,7 @@ class MoviesActivity : AppCompatActivity() {
         musicResultContainer = findViewById(R.id.musicResultContainer)
         musicPlayerCard = findViewById(R.id.musicPlayerCard)
         musicNowPlaying = findViewById(R.id.musicNowPlaying)
+        musicPlaybackState = findViewById(R.id.musicPlaybackState)
         musicWebPlayer = findViewById(R.id.musicWebPlayer)
         configureMusicPlayer()
         findViewById<View>(R.id.musicPreviousButton).setOnClickListener {
@@ -62,17 +66,22 @@ class MoviesActivity : AppCompatActivity() {
         findViewById<View>(R.id.musicPlayPauseButton).setOnClickListener {
             if (SupremacyPlaybackService.isActive(this)) {
                 sendSupremacyAction(SupremacyPlaybackService.ACTION_TOGGLE)
-            } else {
+            } else if (youtubeActive) {
                 musicWebPlayer.evaluateJavascript("window.theOneToggle && window.theOneToggle();", null)
+                youtubePlaying = !youtubePlaying
+                musicPlaybackState.text = if (youtubePlaying) "Speelt af" else "Gepauzeerd"
             }
         }
         findViewById<View>(R.id.musicStopButton).setOnClickListener {
             if (SupremacyPlaybackService.isActive(this)) {
                 sendSupremacyAction(SupremacyPlaybackService.ACTION_STOP)
-            } else {
+            } else if (youtubeActive) {
                 musicWebPlayer.evaluateJavascript("window.theOneStop && window.theOneStop();", null)
             }
+            youtubeActive = false
+            youtubePlaying = false
             musicNowPlaying.text = "Geen muziek actief"
+            musicPlaybackState.text = "Gestopt"
         }
         findViewById<View>(R.id.musicNextButton).setOnClickListener {
             if (SupremacyPlaybackService.isActive(this)) {
@@ -97,6 +106,16 @@ class MoviesActivity : AppCompatActivity() {
         if (SupremacyPlaybackService.isActive(this)) {
             musicNowPlaying.text =
                 SupremacyPlaybackService.currentTitle(this) + "  •  Supremacy"
+            musicPlaybackState.text =
+                if (SupremacyPlaybackService.isPlaying(this)) "Speelt af" else "Gepauzeerd"
+            return
+        }
+
+        if (youtubeActive) {
+            musicPlaybackState.text = if (youtubePlaying) "Speelt af" else "Gepauzeerd"
+        } else {
+            musicNowPlaying.text = "Geen muziek actief"
+            musicPlaybackState.text = "Gestopt"
         }
     }
 
@@ -209,8 +228,11 @@ class MoviesActivity : AppCompatActivity() {
     }
 
     private fun playVideo(result: MusicLookup.MusicResult, queue: List<String>) {
+        youtubeActive = true
+        youtubePlaying = true
         musicNowPlaying.text = result.title +
             if (result.channel.isNotBlank()) "  •  ${result.channel}" else ""
+        musicPlaybackState.text = "Speelt af"
 
         val cleanQueue = queue
             .map { id -> id.filter { ch -> ch.isLetterOrDigit() || ch == '-' || ch == '_' } }
