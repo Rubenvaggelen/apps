@@ -199,7 +199,11 @@ public static class UsbMusicCloudService
             ? preferred
             : drive.RootDirectory.FullName;
 
-        var files = EnumerateAudioFiles(scanRoot).ToList();
+        var files = EnumerateAudioFiles(scanRoot)
+            .OrderBy(file => file.Length)
+            .ThenBy(file => file.FullName, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
         if (files.Count == 0)
         {
             await SendManifestAsync(
@@ -208,8 +212,34 @@ public static class UsbMusicCloudService
             return 0;
         }
 
-        var manifest = new List<LocalManifestFile>(files.Count);
-        var uploadPlan = new List<(FileInfo File, string Relative, string Sha)>();
+        // Toon de stick en mapstructuur direct, nog vóór de lange hash/uploadfase.
+        var provisional = new List<LocalManifestFile>(files.Count);
+        foreach (var file in files)
+        {
+            var relative = NormalizePath(Path.GetRelativePath(scanRoot, file.FullName));
+            var modified = file.LastWriteTimeUtc.ToString("O");
+            var lookup = $"{deviceId}|{stickId}|{relative}";
+
+            var knownSha = existing.TryGetValue(lookup, out var old) &&
+                           old!.Size == file.Length &&
+                           string.Equals(old.Modified, modified, StringComparison.Ordinal)
+                ? old.Sha256
+                : "";
+
+            provisional.Add(new LocalManifestFile
+            {
+                Path = relative,
+                Size = file.Length,
+                Sha256 = knownSha,
+                Modified = modified
+            });
+        }
+
+        await SendManifestAsync(
+            deviceId, deviceName, stickId, stickName, provisional, cancellationToken);
+
+        var finalManifest = new List<LocalManifestFile>(files.Count);
+        var uploaded = 0;
 
         foreach (var file in files)
         {
@@ -235,7 +265,7 @@ public static class UsbMusicCloudService
                 !old!.Cached ||
                 !string.Equals(old.Sha256, sha, StringComparison.OrdinalIgnoreCase);
 
-            manifest.Add(new LocalManifestFile
+            finalManifest.Add(new LocalManifestFile
             {
                 Path = relative,
                 Size = file.Length,
@@ -244,27 +274,20 @@ public static class UsbMusicCloudService
             });
 
             if (needsUpload)
-                uploadPlan.Add((file, relative, sha));
+            {
+                await UploadAsync(
+                    deviceId,
+                    stickId,
+                    relative,
+                    sha,
+                    file.FullName,
+                    cancellationToken);
+                uploaded++;
+            }
         }
 
-        // Publiceer de mapstructuur eerst. Hierdoor verschijnt de stick direct
-        // in USB thuis; bestanden worden één voor één beschikbaar zodra de upload klaar is.
         await SendManifestAsync(
-            deviceId, deviceName, stickId, stickName, manifest, cancellationToken);
-
-        var uploaded = 0;
-        foreach (var item in uploadPlan)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            await UploadAsync(
-                deviceId,
-                stickId,
-                item.Relative,
-                item.Sha,
-                item.File.FullName,
-                cancellationToken);
-            uploaded++;
-        }
+            deviceId, deviceName, stickId, stickName, finalManifest, cancellationToken);
 
         return uploaded;
     }
