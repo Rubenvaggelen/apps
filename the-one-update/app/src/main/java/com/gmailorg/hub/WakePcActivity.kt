@@ -1,5 +1,6 @@
 package com.gmailorg.hub
 
+import android.app.KeyguardManager
 import android.content.Context
 import android.net.wifi.WifiManager
 import android.os.Bundle
@@ -8,13 +9,15 @@ import android.view.View
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
-import java.security.MessageDigest
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.PBEKeySpec
 
 class WakePcActivity : AppCompatActivity() {
 
@@ -23,7 +26,25 @@ class WakePcActivity : AppCompatActivity() {
         private const val LAPTOP_WIFI_MAC = "04-EC-D8-E5-C7-3E"
         private const val HOME_BROADCAST = "192.168.178.255"
         private const val WOL_PORT = 9
-        private const val WAKE_PIN_SHA256 = "2c17079b4da72e80c1875f7d2feefe79322a71544c5de1c838ee0230f3598312"
+        private const val PIN_SALT_HEX = "031507ef415e3d21765f1fcc73740631"
+        private const val PIN_PBKDF2_HEX = "57eb95e2c96251b01c5447420126c61d9cccbec1efdc0c392141412bb9c0ad82"
+        private const val PBKDF2_ITERATIONS = 120_000
+        private const val MAX_FAILED_ATTEMPTS = 3
+        private const val LOCKOUT_MS = 5 * 60 * 1000L
+    }
+
+    private val securityPrefs by lazy {
+        getSharedPreferences("wake_pc_security", Context.MODE_PRIVATE)
+    }
+
+    private val confirmDeviceCredential = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            showPinPromptAndWake()
+        } else {
+            Toast.makeText(this, "Beveiligingscontrole geannuleerd.", Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,8 +58,36 @@ class WakePcActivity : AppCompatActivity() {
         findViewById<View>(R.id.backButton).setOnClickListener { finish() }
 
         wakeButton.setOnClickListener {
-            askForPinAndWake(status, wakeButton)
+            val lockedUntil = securityPrefs.getLong("locked_until", 0L)
+            val now = System.currentTimeMillis()
+            if (lockedUntil > now) {
+                val seconds = ((lockedUntil - now + 999) / 1000).coerceAtLeast(1)
+                status.setTextColor(ContextCompat.getColor(this, R.color.text_dim))
+                status.text = "Te veel foutieve pogingen. Probeer over ongeveer $seconds seconden opnieuw."
+                return@setOnClickListener
+            }
+
+            val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+            if (keyguard.isDeviceSecure) {
+                val intent = keyguard.createConfirmDeviceCredentialIntent(
+                    "Laptop wakker maken",
+                    "Bevestig eerst je telefoonvergrendeling."
+                )
+                if (intent != null) {
+                    confirmDeviceCredential.launch(intent)
+                } else {
+                    askForPinAndWake(status, wakeButton)
+                }
+            } else {
+                askForPinAndWake(status, wakeButton)
+            }
         }
+    }
+
+    private fun showPinPromptAndWake() {
+        val status = findViewById<TextView>(R.id.wakePcStatus)
+        val wakeButton = findViewById<View>(R.id.wakePcButton)
+        askForPinAndWake(status, wakeButton)
     }
 
     private fun askForPinAndWake(status: TextView, wakeButton: View) {
@@ -59,10 +108,34 @@ class WakePcActivity : AppCompatActivity() {
 
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                if (sha256(input.text.toString()) != WAKE_PIN_SHA256) {
-                    input.error = "Onjuiste pincode"
+                val lockedUntil = securityPrefs.getLong("locked_until", 0L)
+                val now = System.currentTimeMillis()
+                if (lockedUntil > now) {
+                    val seconds = ((lockedUntil - now + 999) / 1000).coerceAtLeast(1)
+                    input.error = "Geblokkeerd. Probeer over ongeveer $seconds seconden opnieuw."
                     return@setOnClickListener
                 }
+
+                if (!verifyPin(input.text.toString())) {
+                    val attempts = securityPrefs.getInt("failed_attempts", 0) + 1
+                    if (attempts >= MAX_FAILED_ATTEMPTS) {
+                        securityPrefs.edit()
+                            .putInt("failed_attempts", 0)
+                            .putLong("locked_until", now + LOCKOUT_MS)
+                            .apply()
+                        input.error = "Te veel foutieve pogingen. 5 minuten geblokkeerd."
+                    } else {
+                        securityPrefs.edit().putInt("failed_attempts", attempts).apply()
+                        input.error = "Onjuiste pincode. Nog ${MAX_FAILED_ATTEMPTS - attempts} poging(en)."
+                    }
+                    input.text.clear()
+                    return@setOnClickListener
+                }
+
+                securityPrefs.edit()
+                    .putInt("failed_attempts", 0)
+                    .putLong("locked_until", 0L)
+                    .apply()
 
                 dialog.dismiss()
                 wakeButton.isEnabled = false
@@ -149,10 +222,30 @@ class WakePcActivity : AppCompatActivity() {
         ).joinToString(".")
     }
 
-    private fun sha256(value: String): String =
-        MessageDigest.getInstance("SHA-256")
-            .digest(value.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
+    private fun verifyPin(value: String): Boolean {
+        val salt = PIN_SALT_HEX.hexToBytes()
+        val spec = PBEKeySpec(value.toCharArray(), salt, PBKDF2_ITERATIONS, 256)
+        val derived = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            .generateSecret(spec)
+            .encoded
+        spec.clearPassword()
+
+        val expected = PIN_PBKDF2_HEX.hexToBytes()
+        if (derived.size != expected.size) return false
+
+        var diff = 0
+        for (i in derived.indices) {
+            diff = diff or (derived[i].toInt() xor expected[i].toInt())
+        }
+        return diff == 0
+    }
+
+    private fun String.hexToBytes(): ByteArray {
+        require(length % 2 == 0)
+        return ByteArray(length / 2) { index ->
+            substring(index * 2, index * 2 + 2).toInt(16).toByte()
+        }
+    }
 
     private fun parseMac(value: String): ByteArray {
         val parts = value.split("-", ":")
