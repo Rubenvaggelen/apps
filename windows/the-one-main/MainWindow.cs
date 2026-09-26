@@ -158,7 +158,7 @@ public sealed class MainWindow : Window
         outer.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         outer.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        var watermark = CreateLogo(500, 0.055);
+        var watermark = CreateLogo(560, 0.12);
         watermark.HorizontalAlignment = HorizontalAlignment.Center;
         watermark.VerticalAlignment = VerticalAlignment.Center;
         watermark.IsHitTestVisible = false;
@@ -167,28 +167,6 @@ public sealed class MainWindow : Window
 
         var scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(20,18,20,24) };
         var page = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, MaxWidth = 1260 };
-
-        var hero = new Border
-        {
-            Background = Brush("#091018"), BorderBrush = Brush("#16394B"), BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(14), Padding = new Thickness(22,16,22,16), Margin = new Thickness(8,0,8,14)
-        };
-        var heroRow = new DockPanel();
-        var heroLogo = CreateLogo(74);
-        DockPanel.SetDock(heroLogo, Dock.Left);
-        heroRow.Children.Add(heroLogo);
-        var heroText = new StackPanel { Margin = new Thickness(18,3,0,0), VerticalAlignment = VerticalAlignment.Center };
-        heroText.Children.Add(new TextBlock
-        {
-            Text = "THE ONE WINDOW", Foreground = TextMain, FontSize = 30, FontWeight = FontWeights.Bold
-        });
-        heroText.Children.Add(new TextBlock
-        {
-            Text = "The One Family op Windows", Foreground = TextDim, FontSize = 14, Margin = new Thickness(0,4,0,0)
-        });
-        heroRow.Children.Add(heroText);
-        hero.Child = heroRow;
-        page.Children.Add(hero);
 
         var iconList = new StackPanel
         {
@@ -281,13 +259,53 @@ public sealed class MainWindow : Window
             .OrderBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
 
-        // Eén verticale alfabetische lijst, zoals gevraagd:
-        // eerst C-items onder elkaar, daarna D/E/F enzovoort.
-        foreach (var entry in sortedTiles)
+        // Groepeer apps per beginletter. Elke letter krijgt een eigen
+        // The One-kop en daaronder de apps verticaal in alfabetische volgorde.
+        var groupedTiles = sortedTiles
+            .GroupBy(entry =>
+            {
+                var label = (entry.Label ?? string.Empty).Trim();
+                var first = label.FirstOrDefault(char.IsLetterOrDigit);
+                return first == default ? '#' : char.ToUpper(first, CultureInfo.CurrentCulture);
+            })
+            .OrderBy(group => group.Key);
+
+        foreach (var group in groupedTiles)
         {
-            var tile = entry.Build();
-            tile.HorizontalAlignment = HorizontalAlignment.Left;
-            iconList.Children.Add(tile);
+            var section = new StackPanel
+            {
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(0, 0, 0, 18)
+            };
+
+            var sectionHeader = new Border
+            {
+                Background = Brush("#091018"),
+                BorderBrush = Amber,
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Padding = new Thickness(10, 8, 18, 8),
+                Margin = new Thickness(8, 0, 8, 7),
+                MinWidth = 170
+            };
+
+            sectionHeader.Child = new TextBlock
+            {
+                Text = $"THE ONE {group.Key}",
+                Foreground = Amber,
+                FontSize = 16,
+                FontWeight = FontWeights.Bold,
+                CharacterSpacing = 70
+            };
+            section.Children.Add(sectionHeader);
+
+            foreach (var entry in group)
+            {
+                var tile = entry.Build();
+                tile.HorizontalAlignment = HorizontalAlignment.Left;
+                section.Children.Add(tile);
+            }
+
+            iconList.Children.Add(section);
         }
 
         var footer = new Border
