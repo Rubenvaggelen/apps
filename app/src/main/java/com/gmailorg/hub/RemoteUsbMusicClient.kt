@@ -11,9 +11,8 @@ import java.nio.charset.StandardCharsets
 
 object RemoteUsbMusicClient {
     private const val ENDPOINT = "https://rubenvanaggelen.com/the-one-remote-api/music.php"
-    private const val PREFS = "remote_usb_music"
-    private const val KEY_TOKEN = "token"
-    private const val KEY_EXPIRES = "expires"
+    @Volatile private var sessionToken = ""
+    @Volatile private var sessionExpires = 0L
 
     class AuthRequired : Exception()
 
@@ -34,14 +33,12 @@ object RemoteUsbMusicClient {
         val files: List<RemoteFile>
     )
 
-    fun hasToken(context: Context): Boolean {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        return prefs.getString(KEY_TOKEN, "").orEmpty().isNotBlank() &&
-            System.currentTimeMillis() < prefs.getLong(KEY_EXPIRES, 0L)
-    }
+    fun hasToken(context: Context): Boolean =
+        sessionToken.isNotBlank() && System.currentTimeMillis() < sessionExpires
 
     fun clearToken(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+        sessionToken = ""
+        sessionExpires = 0L
     }
 
     fun login(context: Context, pin: String): Boolean {
@@ -64,13 +61,9 @@ object RemoteUsbMusicClient {
         if (token.isBlank()) return false
 
         val seconds = json.optLong("expires_in", 3600L)
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString(KEY_TOKEN, token)
-            .putLong(
-                KEY_EXPIRES,
-                System.currentTimeMillis() + (seconds.coerceAtLeast(120L) - 60L) * 1000L
-            )
-            .apply()
+        sessionToken = token
+        sessionExpires =
+            System.currentTimeMillis() + (seconds.coerceAtLeast(120L) - 60L) * 1000L
         return true
     }
 
@@ -153,10 +146,7 @@ object RemoteUsbMusicClient {
             clearToken(context)
             throw AuthRequired()
         }
-        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_TOKEN, "")
-            .orEmpty()
-            .ifBlank { throw AuthRequired() }
+        return sessionToken.ifBlank { throw AuthRequired() }
     }
 
     private fun enc(value: String): String =
