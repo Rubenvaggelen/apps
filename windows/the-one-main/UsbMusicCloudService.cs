@@ -316,37 +316,81 @@ public static class UsbMusicCloudService
     {
         await EnsureTokenAsync(cancellationToken);
 
-        using var form = new MultipartFormDataContent();
-        form.Add(new StringContent(deviceId), "device_id");
-        form.Add(new StringContent(stickId), "stick_id");
-        form.Add(new StringContent(relativePath), "path");
-        form.Add(new StringContent(sha256), "sha256");
+        async Task<JsonDocument> PostJsonAsync(string action, object body)
+        {
+            var json = JsonSerializer.Serialize(body);
+            using var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                Endpoint + "?action=" + action)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _token);
+
+            using var response = await Http.SendAsync(request, cancellationToken);
+            var payload = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                throw new HttpRequestException(
+                    $"USB upload {action} gaf {(int)response.StatusCode}: {payload}");
+
+            return JsonDocument.Parse(payload);
+        }
+
+        using (await PostJsonAsync("upload-start", new
+        {
+            device_id = deviceId,
+            stick_id = stickId,
+            path = relativePath,
+            sha256 = sha256
+        }))
+        {
+        }
+
+        const int chunkSize = 512 * 1024;
+        var buffer = new byte[chunkSize];
+        long offset = 0;
 
         await using var source = new FileStream(
             filePath,
             FileMode.Open,
             FileAccess.Read,
             FileShare.ReadWrite,
-            1024 * 1024,
+            chunkSize,
             useAsync: true);
 
-        using var fileContent = new StreamContent(source);
-        fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-        form.Add(fileContent, "file", Path.GetFileName(filePath));
-
-        using var request = new HttpRequestMessage(
-            HttpMethod.Post,
-            Endpoint + "?action=upload")
+        while (true)
         {
-            Content = form
-        };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _token);
+            var read = await source.ReadAsync(
+                buffer.AsMemory(0, buffer.Length),
+                cancellationToken);
 
-        using var response = await Http.SendAsync(
-            request,
-            HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken);
-        response.EnsureSuccessStatusCode();
+            if (read <= 0)
+                break;
+
+            var encoded = Convert.ToBase64String(buffer, 0, read);
+
+            using var result = await PostJsonAsync("upload-chunk", new
+            {
+                device_id = deviceId,
+                stick_id = stickId,
+                path = relativePath,
+                sha256 = sha256,
+                offset = offset,
+                data = encoded
+            });
+
+            offset += read;
+        }
+
+        using (await PostJsonAsync("upload-finish", new
+        {
+            device_id = deviceId,
+            stick_id = stickId,
+            path = relativePath,
+            sha256 = sha256
+        }))
+        {
+        }
     }
 
     private static async Task SendManifestAsync(
