@@ -52,10 +52,16 @@ object MenuButtonHelper {
 
     fun goToMenu(activity: Activity) {
         val intent = Intent(activity, HomeActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            flags = if (activity is MoviesActivity) {
+                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+            } else {
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            }
         }
         activity.startActivity(intent)
-        activity.finish()
+        if (activity !is MoviesActivity) {
+            activity.finish()
+        }
     }
 
     private fun Int.dp(activity: Activity): Int =
