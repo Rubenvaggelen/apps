@@ -171,6 +171,11 @@ public sealed class MainWindow : Window
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            PanningMode = PanningMode.VerticalOnly,
+            PanningDeceleration = 0.0015,
+            PanningRatio = 1.0,
+            IsManipulationEnabled = true,
+            CanContentScroll = false,
             Padding = new Thickness(4, 18, 20, 24)
         };
         var page = new StackPanel
@@ -1415,6 +1420,11 @@ public sealed class MainWindow : Window
         var scroll = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            PanningMode = PanningMode.VerticalOnly,
+            PanningDeceleration = 0.0015,
+            PanningRatio = 1.0,
+            IsManipulationEnabled = true,
+            CanContentScroll = false,
             Content = body,
             Background = Bg
         };
