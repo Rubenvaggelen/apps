@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.security.MessageDigest
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
@@ -177,32 +178,49 @@ class WakePcActivity : AppCompatActivity() {
         val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
         val lock = wifi.createMulticastLock("the-one-wol").apply {
             setReferenceCounted(false)
-            acquire()
+            runCatching { acquire() }
         }
 
         try {
-            val targets = linkedSetOf<String>()
-            dynamicBroadcast(wifi)?.let { targets.add(it) }
-            targets.add(HOME_BROADCAST)
-            targets.add("255.255.255.255")
-
             DatagramSocket().use { socket ->
                 socket.broadcast = true
                 repeat(3) {
-                    for (target in targets) {
-                        val packet = DatagramPacket(
-                            payload,
-                            payload.size,
-                            InetAddress.getByName(target),
-                            WOL_PORT
-                        )
-                        socket.send(packet)
+                    val localTargets = linkedSetOf<String>()
+                    dynamicBroadcast(wifi)?.let { localTargets.add(it) }
+                    localTargets.add(HOME_BROADCAST)
+                    localTargets.add("255.255.255.255")
+
+                    for (target in localTargets) {
+                        runCatching {
+                            socket.send(
+                                DatagramPacket(
+                                    payload,
+                                    payload.size,
+                                    InetAddress.getByName(target),
+                                    WOL_PORT
+                                )
+                            )
+                        }
                     }
+
+                    // Voor 5G / buitenhuis. De Ziggo-router moet extern UDP
+                    // HOME_PUBLIC_PORT doorsturen naar 192.168.178.193:9.
+                    runCatching {
+                        socket.send(
+                            DatagramPacket(
+                                payload,
+                                payload.size,
+                                InetAddress.getByName(HOME_PUBLIC_IPV4),
+                                HOME_PUBLIC_PORT
+                            )
+                        )
+                    }
+
                     Thread.sleep(120)
                 }
             }
         } finally {
-            if (lock.isHeld) lock.release()
+            if (lock.isHeld) runCatching { lock.release() }
         }
     }
 
@@ -246,6 +264,11 @@ class WakePcActivity : AppCompatActivity() {
             substring(index * 2, index * 2 + 2).toInt(16).toByte()
         }
     }
+
+    private fun sha256(value: String): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
 
     private fun parseMac(value: String): ByteArray {
         val parts = value.split("-", ":")
