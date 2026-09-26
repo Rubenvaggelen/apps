@@ -95,6 +95,10 @@ class MoviesActivity : AppCompatActivity() {
             startActivity(Intent(this, SupremacyMixesActivity::class.java))
         }
 
+        findViewById<View>(R.id.remoteUsbMusicButton).setOnClickListener {
+            startActivity(Intent(this, RemoteUsbMusicActivity::class.java))
+        }
+
     }
 
     override fun onResume() {
@@ -105,7 +109,8 @@ class MoviesActivity : AppCompatActivity() {
     private fun refreshCompactPlayer() {
         if (SupremacyPlaybackService.isActive(this)) {
             musicNowPlaying.text =
-                SupremacyPlaybackService.currentTitle(this) + "  •  Supremacy"
+                SupremacyPlaybackService.currentTitle(this) + "  •  " +
+                    SupremacyPlaybackService.currentSource(this)
             musicPlaybackState.text =
                 if (SupremacyPlaybackService.isPlaying(this)) "Speelt af" else "Gepauzeerd"
             return
