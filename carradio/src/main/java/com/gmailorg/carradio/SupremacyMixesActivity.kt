@@ -103,7 +103,12 @@ class SupremacyMixesActivity : AppCompatActivity() {
                 val o = array.getJSONObject(i)
                 val title = o.optString("title").trim()
                 val stream = o.optString("stream_url").trim()
-                if (title.isNotBlank() && stream.startsWith("http")) target.putIfAbsent(key(title), Mix(title, stream))
+                val genre = normalizeGenre(o.optString("genre"), title)
+                if (title.isNotBlank() && stream.startsWith("http")) {
+                    val k = key(title)
+                    val existing = target[k]
+                    if (existing == null || existing.genre == "Overig") target[k] = Mix(title, stream, genre)
+                }
             }
             if (array.length() < 100) break
         }
