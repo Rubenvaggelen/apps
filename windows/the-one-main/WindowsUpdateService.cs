@@ -31,7 +31,7 @@ public static class WindowsUpdateService
             var label = string.IsNullOrWhiteSpace(version) ? $"build {BuildInfo.Version}" : $"build {version}";
             AppStore.AddNotification($"Windows-update {label} voltooid.");
             MessageBox.Show(
-                $"Update klaar ✅\n\nThe One Window is bijgewerkt naar {label}.",
+                $"Update klaar ✅\n\nThe One Windows is bijgewerkt naar {label}.",
                 "The One Update",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
@@ -55,7 +55,7 @@ public static class WindowsUpdateService
             }
 
             var answer = MessageBox.Show(
-                $"Nieuwe The One Window-update beschikbaar.\n\n" +
+                $"Nieuwe The One Windows-update beschikbaar.\n\n" +
                 $"Huidig: build {BuildInfo.Version}\nNieuw: build {update.Version}\n\n" +
                 "Nu bijwerken? De app start daarna automatisch opnieuw.",
                 "The One Update",
@@ -162,7 +162,7 @@ public static class WindowsUpdateService
         catch
         {
             owner.IsEnabled = true;
-            owner.Title = "The One Window";
+            owner.Title = "The One Windows";
             throw;
         }
     }
