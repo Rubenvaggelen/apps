@@ -27,6 +27,8 @@ class WakePcActivity : AppCompatActivity() {
         private const val LAPTOP_WIFI_MAC = "04-EC-D8-E5-C7-3E"
         private const val HOME_BROADCAST = "192.168.178.255"
         private const val WOL_PORT = 9
+        private const val HOME_PUBLIC_IPV4 = "213.93.2.233"
+        private const val HOME_PUBLIC_PORT = 40009
         private const val PIN_SALT_HEX = "031507ef415e3d21765f1fcc73740631"
         private const val PIN_PBKDF2_HEX = "57eb95e2c96251b01c5447420126c61d9cccbec1efdc0c392141412bb9c0ad82"
         private const val PBKDF2_ITERATIONS = 120_000
