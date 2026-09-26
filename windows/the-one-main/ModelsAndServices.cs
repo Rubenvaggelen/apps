@@ -11,6 +11,7 @@ public sealed class SettingsData
     public bool StartMaximized { get; set; } = true;
     public HashSet<string> HiddenTiles { get; set; } = new();
     public List<CustomShortcut> CustomApps { get; set; } = new();
+    public string RutuCompanyPath { get; set; } = "";
 }
 
 public sealed class CustomShortcut
