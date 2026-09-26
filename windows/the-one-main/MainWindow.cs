@@ -177,7 +177,6 @@ public sealed class MainWindow : Window
             PanningMode = PanningMode.VerticalOnly,
             PanningDeceleration = 0.0015,
             PanningRatio = 1.0,
-            IsManipulationEnabled = true,
             CanContentScroll = false,
             Padding = new Thickness(4, 18, 20, 24)
         };
@@ -1495,7 +1494,6 @@ public sealed class MainWindow : Window
             PanningMode = PanningMode.VerticalOnly,
             PanningDeceleration = 0.0015,
             PanningRatio = 1.0,
-            IsManipulationEnabled = true,
             CanContentScroll = false,
             Content = body,
             Background = Bg
@@ -1804,7 +1802,6 @@ public sealed class MainWindow : Window
             PanningMode = PanningMode.VerticalOnly,
             PanningDeceleration = 0.0015,
             PanningRatio = 1.0,
-            IsManipulationEnabled = true,
             CanContentScroll = false,
             Margin = new Thickness(0, 0, 10, 0)
         };
