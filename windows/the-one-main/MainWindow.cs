@@ -2124,12 +2124,11 @@ public sealed class MainWindow : Window
                             .ThenBy(file => file.Name, StringComparer.CurrentCultureIgnoreCase)
                             .ToList()
                     })
-                    .Where(x => x.Files.Count > 0)
                     .ToList();
 
                 if (available.Count == 0)
                 {
-                    status.Text = "Nog geen gesynchroniseerde USB-muziek gevonden.";
+                    status.Text = "Nog geen USB-stick gevonden.";
                     status.Foreground = Amber;
                     results.Children.Add(Label(
                         "Plaats een USB-stick met muziek in Ruben of Surface. The One synchroniseert hem automatisch.",
@@ -2158,6 +2157,14 @@ public sealed class MainWindow : Window
                     };
 
                     var stickContent = new StackPanel();
+
+                    if (files.Count == 0)
+                    {
+                        stickContent.Children.Add(Label(
+                            "Synchroniseren… De eerste nummers verschijnen automatisch zodra ze klaar zijn.",
+                            13,
+                            TextDim));
+                    }
 
                     foreach (var folderGroup in files
                         .GroupBy(file => string.IsNullOrWhiteSpace(file.Folder) ? "Hoofdmap" : file.Folder)
