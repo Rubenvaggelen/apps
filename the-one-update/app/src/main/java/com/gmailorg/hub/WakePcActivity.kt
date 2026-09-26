@@ -258,6 +258,8 @@ class WakePcActivity : AppCompatActivity() {
         val packageName = "com.theone.remote"
         val launch = packageManager.getLaunchIntentForPackage(packageName)
         if (launch != null) {
+            launch.putExtra("surface_id", "461504832")
+            launch.putExtra("auto_connect", true)
             startActivity(launch)
             return
         }
