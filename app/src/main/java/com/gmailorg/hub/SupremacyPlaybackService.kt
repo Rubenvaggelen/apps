@@ -16,6 +16,7 @@ import androidx.core.app.NotificationCompat
 class SupremacyPlaybackService : Service() {
     private var player: MediaPlayer? = null
     private var currentTitle = "Supremacy mixen"
+    private var currentSource = "Supremacy"
     private var titles = arrayListOf<String>()
     private var urls = arrayListOf<String>()
     private var index = 0
@@ -44,6 +45,7 @@ class SupremacyPlaybackService : Service() {
             ACTION_PREVIOUS -> previous()
 
             ACTION_PLAY -> {
+                currentSource = intent.getStringExtra(EXTRA_SOURCE).orEmpty().ifBlank { "Supremacy" }
                 val incomingUrls = intent.getStringArrayListExtra(EXTRA_QUEUE_URLS)
                 val incomingTitles = intent.getStringArrayListExtra(EXTRA_QUEUE_TITLES)
                 val startIndex = intent.getIntExtra(EXTRA_INDEX, 0)
@@ -193,6 +195,7 @@ class SupremacyPlaybackService : Service() {
             .putBoolean(KEY_ACTIVE, active)
             .putBoolean(KEY_PLAYING, playing)
             .putString(KEY_TITLE, currentTitle)
+            .putString(KEY_SOURCE, currentSource)
             .apply()
     }
 
@@ -221,6 +224,7 @@ class SupremacyPlaybackService : Service() {
         const val EXTRA_QUEUE_TITLES = "queue_titles"
         const val EXTRA_QUEUE_URLS = "queue_urls"
         const val EXTRA_INDEX = "queue_index"
+        const val EXTRA_SOURCE = "source"
 
         private const val CHANNEL = "supremacy_mixes"
         private const val NOTIFICATION_ID = 2407
@@ -228,6 +232,7 @@ class SupremacyPlaybackService : Service() {
         private const val KEY_ACTIVE = "active"
         private const val KEY_PLAYING = "playing"
         private const val KEY_TITLE = "title"
+        private const val KEY_SOURCE = "source"
 
         fun isActive(context: Context): Boolean =
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -241,5 +246,10 @@ class SupremacyPlaybackService : Service() {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getString(KEY_TITLE, "Geen muziek actief")
                 ?: "Geen muziek actief"
+
+        fun currentSource(context: Context): String =
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_SOURCE, "Supremacy")
+                ?: "Supremacy"
     }
 }
