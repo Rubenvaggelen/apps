@@ -110,7 +110,6 @@ class HomeActivity : AppCompatActivity() {
             HomeTile(id = "news", type = TileType.NEWS, label = "Nieuws"),
             HomeTile(id = "radio", type = TileType.RADIO, label = "Radio"),
             HomeTile(id = "currency", type = TileType.CURRENCY, label = "Koers (EUR / SRD / USD)"),
-            HomeTile(id = "finance", type = TileType.FINANCE, label = "Financiën"),
             HomeTile(id = "lifestyle", type = TileType.LIFESTYLE, label = "Lifestyle"),
             HomeTile(id = "remote_pc", type = TileType.REMOTE_PC, label = "Laptop"),
             HomeTile(id = "whatsapp", type = TileType.APP, label = "WhatsApp", packageName = "com.whatsapp"),
