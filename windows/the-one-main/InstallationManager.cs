@@ -66,15 +66,17 @@ public static class InstallationManager
             var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
 
             CreateShortcut(
-                Path.Combine(startMenu, "The One Window.lnk"),
+                Path.Combine(startMenu, "The One Windows.lnk"),
                 InstalledExe,
                 InstallDirectory);
 
             CreateShortcut(
-                Path.Combine(desktop, "The One Window.lnk"),
+                Path.Combine(desktop, "The One Windows.lnk"),
                 InstalledExe,
                 InstallDirectory);
 
+            DeleteIfExists(Path.Combine(startMenu, "The One Window.lnk"));
+            DeleteIfExists(Path.Combine(desktop, "The One Window.lnk"));
             DeleteIfExists(Path.Combine(startMenu, "The One Main.lnk"));
             DeleteIfExists(Path.Combine(desktop, "The One Main.lnk"));
             RegisterInstalledApp();
@@ -102,7 +104,7 @@ public static class InstallationManager
             dynamic link = shortcut;
             link.TargetPath = targetPath;
             link.WorkingDirectory = workingDirectory;
-            link.Description = "The One Window - Part of The One Family";
+            link.Description = "The One Windows - Part of The One Family";
             link.IconLocation = $"{targetPath},0";
             link.Save();
         }
@@ -121,7 +123,7 @@ public static class InstallationManager
         {
             using var key = Registry.CurrentUser.CreateSubKey(
                 @"Software\Microsoft\Windows\CurrentVersion\Uninstall\The One Window");
-            key?.SetValue("DisplayName", "The One Window");
+            key?.SetValue("DisplayName", "The One Windows");
             key?.SetValue("Publisher", "The One Family");
             key?.SetValue("DisplayIcon", InstalledExe);
             key?.SetValue("InstallLocation", InstallDirectory);
