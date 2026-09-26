@@ -286,7 +286,7 @@ public sealed class MainWindow : Window
             Padding = new Thickness(16, 8, 16, 8),
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
-        var footerRow = new DockPanel();
+        var footerRow = new DockPanel { LastChildFill = true };
 
         var familyText = new TextBlock
         {
@@ -317,6 +317,9 @@ public sealed class MainWindow : Window
         power.Click += (_, _) => ShowPowerMenu(power);
         DockPanel.SetDock(power, Dock.Right);
         footerRow.Children.Add(power);
+
+        // Vult bewust het midden zodat de power-knop altijd strak rechts blijft staan.
+        footerRow.Children.Add(new Border());
 
         footer.Child = footerRow;
         Grid.SetRow(footer, 1);
@@ -557,11 +560,17 @@ public sealed class MainWindow : Window
             Height = 156,
             Margin = new Thickness(9),
             Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
             BorderThickness = new Thickness(0),
             Foreground = TextMain,
             Cursor = Cursors.Hand,
             Padding = new Thickness(0),
-            FocusVisualStyle = null
+            FocusVisualStyle = null,
+            OverridesDefaultStyle = true,
+            Template = new ControlTemplate(typeof(Button))
+            {
+                VisualTree = new FrameworkElementFactory(typeof(ContentPresenter))
+            }
         };
 
         var isChrome = id == "chrome";
