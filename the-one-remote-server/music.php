@@ -50,7 +50,16 @@ function safe_id(string $v): string {
 }
 function safe_path(string $v): string {
     $v = ltrim(preg_replace('#/+#', '/', str_replace('\\', '/', trim($v))) ?? '', '/');
-    if ($v === '' || str_contains($v, '..') || strlen($v) > 500) out(400, ['ok'=>false,'error'=>'invalid path']);
+    if ($v === '' || strlen($v) > 500 || str_contains($v, "\0")) {
+        out(400, ['ok'=>false,'error'=>'invalid path']);
+    }
+
+    foreach (explode('/', $v) as $segment) {
+        if ($segment === '..' || $segment === '.') {
+            out(400, ['ok'=>false,'error'=>'invalid path']);
+        }
+    }
+
     return $v;
 }
 function key_for(string $device, string $stick, string $path): string {
