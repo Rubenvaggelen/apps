@@ -63,6 +63,26 @@
             android:backgroundTint="@color/amber"
             android:textStyle="bold" />
 
+        <Button
+            android:id="@+id/sleepPcButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="12dp"
+            android:text="Laptop in slaapstand"
+            android:textColor="@color/text_main"
+            android:backgroundTint="@color/surface"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/remotePcButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="12dp"
+            android:text="Op afstand verbinden"
+            android:textColor="@color/text_main"
+            android:backgroundTint="@color/surface"
+            android:textStyle="bold" />
+
         <TextView
             android:id="@+id/wakePcStatus"
             android:layout_width="match_parent"
@@ -76,7 +96,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="22dp"
-            android:text="Wake-on-LAN werkt direct wanneer The One Main het thuisnetwerk kan bereiken."
+            android:text="Wakker maken werkt via Wake-on-LAN. Slaapstand werkt thuis direct en buitenshuis via Tailscale. Op afstand verbinden opent The One Remote."
             android:textColor="@color/text_dim"
             android:textSize="13sp" />
     </LinearLayout>
