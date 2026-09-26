@@ -254,7 +254,6 @@ class SettingsActivity : AppCompatActivity() {
         "news" to "Nieuws",
         "radio" to "Radio",
         "currency" to "Koers (EUR / SRD / USD)",
-        "finance" to "Financiën",
         "whatsapp" to "WhatsApp",
         "googlehome" to "Google Home"
     )
@@ -264,7 +263,7 @@ class SettingsActivity : AppCompatActivity() {
         val emptyState = findViewById<TextView>(R.id.hiddenTilesEmptyState)
         container.removeAllViews()
 
-        val hiddenIds = HiddenTilesStore.getAllHidden().toList()
+        val hiddenIds = HiddenTilesStore.getAllHidden().filterNot { it == "finance" }
         emptyState.visibility = if (hiddenIds.isEmpty()) View.VISIBLE else View.GONE
 
         hiddenIds.forEach { id ->
