@@ -44,7 +44,7 @@ public static class UsbMusicCloudService
     private static readonly SemaphoreSlim SyncGate = new(1, 1);
     private static readonly HashSet<string> AudioExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".mp3", ".m4a", ".aac", ".ogg", ".oga", ".opus", ".flac", ".wav", ".wma", ".mp4"
+        ".mp3", ".m4a", ".aac", ".ogg", ".oga", ".opus", ".flac", ".wav", ".wma"
     };
 
     private static CancellationTokenSource? _backgroundCts;
