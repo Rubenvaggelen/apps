@@ -293,8 +293,7 @@ public sealed class MainWindow : Window
                 Text = $"THE ONE {group.Key}",
                 Foreground = Amber,
                 FontSize = 16,
-                FontWeight = FontWeights.Bold,
-                CharacterSpacing = 70
+                FontWeight = FontWeights.Bold
             };
             section.Children.Add(sectionHeader);
 
