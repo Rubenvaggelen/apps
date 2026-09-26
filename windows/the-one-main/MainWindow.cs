@@ -57,6 +57,8 @@ public sealed class MainWindow : Window
         StartupManager.SetEnabled(_settings.AutoStart);
 
         Title = "The One Window";
+        Icon = new BitmapImage(
+            new Uri("pack://application:,,,/Assets/the_one_logo.png", UriKind.Absolute));
         Background = Bg;
         Foreground = TextMain;
         Width = 1320;
@@ -330,14 +332,14 @@ public sealed class MainWindow : Window
 
         var powerGlow = new Border
         {
-            CornerRadius = new CornerRadius(16),
+            CornerRadius = new CornerRadius(22),
             BorderBrush = Amber,
-            BorderThickness = new Thickness(1.3),
+            BorderThickness = new Thickness(1.2),
             Background = new LinearGradientBrush(
                 Color.FromRgb(8, 31, 44),
                 Color.FromRgb(5, 11, 18),
                 90),
-            Padding = new Thickness(14, 8, 14, 8),
+            Padding = new Thickness(16, 7, 18, 7),
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
                 Color = Color.FromRgb(32, 184, 255),
@@ -352,15 +354,44 @@ public sealed class MainWindow : Window
             Orientation = Orientation.Horizontal,
             VerticalAlignment = VerticalAlignment.Center
         };
-        powerLabel.Children.Add(new TextBlock
+
+        var powerIcon = new Grid
         {
-            Text = "⏻",
-            Foreground = Amber,
-            FontSize = 20,
-            FontWeight = FontWeights.Bold,
+            Width = 28,
+            Height = 28,
+            Margin = new Thickness(0, 0, 10, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        powerIcon.Children.Add(new System.Windows.Shapes.Ellipse
+        {
+            Width = 24,
+            Height = 24,
+            Stroke = Amber,
+            StrokeThickness = 2.2,
+            Fill = Brush("#081821"),
+            HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, -1, 9, 0)
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Color.FromRgb(32, 184, 255),
+                BlurRadius = 14,
+                Opacity = 0.55,
+                ShadowDepth = 0
+            }
         });
+        powerIcon.Children.Add(new System.Windows.Shapes.Line
+        {
+            X1 = 14,
+            Y1 = 2,
+            X2 = 14,
+            Y2 = 13,
+            Stroke = Amber,
+            StrokeThickness = 2.8,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round
+        });
+
+        powerLabel.Children.Add(powerIcon);
         powerLabel.Children.Add(new TextBlock
         {
             Text = "AAN / UIT",
@@ -374,8 +405,8 @@ public sealed class MainWindow : Window
         var power = new Button
         {
             Content = powerGlow,
-            Width = 140,
-            Height = 48,
+            Width = 156,
+            Height = 50,
             Padding = new Thickness(0),
             Margin = new Thickness(0),
             Background = Brushes.Transparent,
