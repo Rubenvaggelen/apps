@@ -2205,18 +2205,44 @@ public sealed class MainWindow : Window
 
                             play.Click += async (_, _) =>
                             {
-                                _musicNowPlayingTitle =
-                                    $"{file.Name}  •  {stick.DeviceName} / {stick.StickName}";
-                                _musicSessionActive = true;
-                                nowPlaying.Text = _musicNowPlayingTitle;
-                                if (_musicHomeNowPlaying != null)
-                                    _musicHomeNowPlaying.Text = _musicNowPlayingTitle;
+                                play.IsEnabled = false;
+                                status.Text = "USB-stream controleren…";
+                                status.Foreground = TextDim;
 
-                                var queue = new List<string>();
-                                foreach (var queued in folderFiles.Skip(index))
-                                    queue.Add(await UsbMusicCloudService.BuildStreamUrlAsync(queued));
+                                try
+                                {
+                                    var probe = await UsbMusicCloudService.ProbeStreamAsync(file);
+                                    if (!probe.Ok)
+                                    {
+                                        status.Text = "USB-stream kan niet worden afgespeeld: " + probe.Message;
+                                        status.Foreground = Amber;
+                                        return;
+                                    }
 
-                                await YouTubeMusicService.PlayAudioQueueAsync(web, queue);
+                                    _musicNowPlayingTitle =
+                                        $"{file.Name}  •  {stick.DeviceName} / {stick.StickName}";
+                                    _musicSessionActive = true;
+                                    nowPlaying.Text = _musicNowPlayingTitle;
+                                    if (_musicHomeNowPlaying != null)
+                                        _musicHomeNowPlaying.Text = _musicNowPlayingTitle;
+
+                                    var queue = new List<string>();
+                                    foreach (var queued in folderFiles.Skip(index))
+                                        queue.Add(await UsbMusicCloudService.BuildStreamUrlAsync(queued));
+
+                                    NativeUsbAudioPlayer.PlayQueue(queue);
+                                    status.Text = "Speelt af via USB thuis";
+                                    status.Foreground = Sage;
+                                }
+                                catch (Exception ex)
+                                {
+                                    status.Text = "USB afspelen mislukt: " + ex.Message;
+                                    status.Foreground = Amber;
+                                }
+                                finally
+                                {
+                                    play.IsEnabled = true;
+                                }
                             };
 
                             tracks.Children.Add(row);
