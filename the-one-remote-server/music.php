@@ -174,6 +174,22 @@ if ($action === 'upload') {
     $dest=$files.'/'.key_for($device,$stick,$path).'.bin';
     if (!@move_uploaded_file($tmp,$dest)) out(500,['ok'=>false,'error'=>'upload failed']);
     @chmod($dest,0600);
+
+    $metaFile=$meta.'/'.$device.'__'.$stick.'.json';
+    $doc=load_json($metaFile);
+    if (isset($doc['files']) && is_array($doc['files'])) {
+        foreach ($doc['files'] as &$row) {
+            if (is_array($row) && (string)($row['path'] ?? '') === $path) {
+                $row['cached']=true;
+                $row['sha256']=$sha;
+                break;
+            }
+        }
+        unset($row);
+        $doc['updated_at']=gmdate('c');
+        save_json($metaFile,$doc);
+    }
+
     out(200,['ok'=>true]);
 }
 
