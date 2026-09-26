@@ -213,50 +213,65 @@ public sealed class MainWindow : Window
             new("chrome", "Chrome", "chrome", () => BrowserLauncher.OpenChrome())
         };
 
+        EnsureRutuCompanyImported();
+
+        // Alle zichtbare vaste én zelf toegevoegde tegels staan samen alfabetisch.
+        // "Tegel toevoegen" blijft bewust als laatste staan.
+        var orderedTiles = new List<(string Label, Func<Button> Build)>();
+
         foreach (var tile in tiles)
         {
             if (_settings.HiddenTiles.Contains(tile.Id)) continue;
-            wrap.Children.Add(BuildTile(tile.Id, tile.Label, tile.IconKey, tile.Open, custom: false));
+            var captured = tile;
+            orderedTiles.Add((
+                captured.Label,
+                () => BuildTile(captured.Id, captured.Label, captured.IconKey, captured.Open, custom: false)));
         }
-
-        EnsureRutuCompanyImported();
 
         foreach (var app in _settings.CustomApps.ToList())
         {
-            if (!string.IsNullOrWhiteSpace(app.Url))
+            var captured = app;
+            if (!string.IsNullOrWhiteSpace(captured.Url))
             {
-                var url = app.Url;
-                wrap.Children.Add(BuildTile(
-                    app.Id,
-                    app.Label,
-                    WebsiteIconKey(url),
-                    () => BrowserLauncher.OpenChrome(url),
-                    custom: true,
-                    iconOverride: CreateCustomWebsiteIcon(app, 70)));
+                var url = captured.Url;
+                orderedTiles.Add((
+                    captured.Label,
+                    () => BuildTile(
+                        captured.Id,
+                        captured.Label,
+                        WebsiteIconKey(url),
+                        () => BrowserLauncher.OpenChrome(url),
+                        custom: true,
+                        iconOverride: CreateCustomWebsiteIcon(captured, 70))));
                 continue;
             }
 
             // Toegevoegde apps blijven permanent als tegel bewaard, ook als Windows
             // een snelkoppeling tijdelijk niet kan vinden. Alleen de gebruiker kan ze verwijderen.
-            var target = app.ExePath;
+            var target = captured.ExePath;
             var isRutuCompany =
-                app.Id == "rutu-bbq-bedrijf-windows" ||
-                app.Label.Contains("Rutu", StringComparison.OrdinalIgnoreCase);
+                captured.Id == "rutu-bbq-bedrijf-windows" ||
+                captured.Label.Contains("Rutu", StringComparison.OrdinalIgnoreCase);
 
-            wrap.Children.Add(BuildTile(
-                app.Id,
-                app.Label,
-                "custom",
-                () =>
-                {
-                    if (isRutuCompany)
-                        RutuCompanyAppService.OpenImportedPath(target);
-                    else
-                        BrowserLauncher.OpenProgram(target);
-                },
-                custom: true,
-                iconOverride: CreateCustomAppIcon(app, 70)));
+            orderedTiles.Add((
+                captured.Label,
+                () => BuildTile(
+                    captured.Id,
+                    captured.Label,
+                    "custom",
+                    () =>
+                    {
+                        if (isRutuCompany)
+                            RutuCompanyAppService.OpenImportedPath(target);
+                        else
+                            BrowserLauncher.OpenProgram(target);
+                    },
+                    custom: true,
+                    iconOverride: CreateCustomAppIcon(captured, 70))));
         }
+
+        foreach (var entry in orderedTiles.OrderBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase))
+            wrap.Children.Add(entry.Build());
 
         wrap.Children.Add(BuildTile("add", "Tegel toevoegen", "add", ShowAddTileMenu, custom: false, allowHide: false));
         var footer = new Border
@@ -269,14 +284,39 @@ public sealed class MainWindow : Window
             Padding = new Thickness(16, 8, 16, 8),
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
-        footer.Child = new TextBlock
+        var footerRow = new DockPanel();
+
+        var familyText = new TextBlock
         {
             Text = "PART OF THE ONE FAMILY",
             Foreground = Amber,
             FontSize = 10,
             FontWeight = FontWeights.Bold,
-            HorizontalAlignment = HorizontalAlignment.Left
+            VerticalAlignment = VerticalAlignment.Center
         };
+        DockPanel.SetDock(familyText, Dock.Left);
+        footerRow.Children.Add(familyText);
+
+        var power = new Button
+        {
+            Content = "⏻",
+            Width = 46,
+            Height = 34,
+            Padding = new Thickness(0),
+            FontSize = 20,
+            FontWeight = FontWeights.Bold,
+            Foreground = Amber,
+            Background = Brush("#09131D"),
+            BorderBrush = Amber,
+            BorderThickness = new Thickness(1),
+            Cursor = Cursors.Hand,
+            ToolTip = "Aan/uit"
+        };
+        power.Click += (_, _) => ShowPowerMenu(power);
+        DockPanel.SetDock(power, Dock.Right);
+        footerRow.Children.Add(power);
+
+        footer.Child = footerRow;
         Grid.SetRow(footer, 1);
         outer.Children.Add(footer);
 
@@ -444,6 +484,60 @@ public sealed class MainWindow : Window
         });
         SaveSettings();
         AppStore.AddNotification("Rutu BBQ Bedrijf toegevoegd aan The One Window.");
+    }
+
+    private void ShowPowerMenu(Button anchor)
+    {
+        var menu = new ContextMenu
+        {
+            PlacementTarget = anchor,
+            Placement = PlacementMode.Top
+        };
+
+        var sleep = new MenuItem { Header = "Slaapstand" };
+        sleep.Click += (_, _) =>
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(
+                    "rundll32.exe",
+                    "powrprof.dll,SetSuspendState 0,1,0")
+                {
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Slaapstand kon niet worden gestart: " + ex.Message, "The One");
+            }
+        };
+
+        var restart = new MenuItem { Header = "Opnieuw opstarten" };
+        restart.Click += (_, _) => RunPowerCommand("/r /t 0", "opnieuw opstarten");
+
+        var shutdown = new MenuItem { Header = "Afsluiten" };
+        shutdown.Click += (_, _) => RunPowerCommand("/s /t 0", "afsluiten");
+
+        menu.Items.Add(sleep);
+        menu.Items.Add(restart);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(shutdown);
+        menu.IsOpen = true;
+    }
+
+    private static void RunPowerCommand(string arguments, string action)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo("shutdown.exe", arguments)
+            {
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Windows kon niet {action}: {ex.Message}", "The One");
+        }
     }
 
     private Button BuildTile(
