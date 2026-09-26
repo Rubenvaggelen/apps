@@ -156,9 +156,12 @@
                 android:layout_width="0dp"
                 android:layout_height="44dp"
                 android:layout_weight="1"
-                android:text="← Terug"
+                android:text="Terug"
                 android:textSize="12sp"
-                android:textColor="@color/amber" />
+                android:textColor="@color/amber"
+                android:drawableStart="@drawable/ic_media_previous_the_one"
+                android:drawablePadding="4dp"
+                android:gravity="center" />
 
             <Button
                 android:id="@+id/musicPlayPauseButton"
@@ -184,9 +187,12 @@
                 android:layout_width="0dp"
                 android:layout_height="44dp"
                 android:layout_weight="1"
-                android:text="Volgende →"
+                android:text="Volgende"
                 android:textSize="12sp"
-                android:textColor="@color/amber" />
+                android:textColor="@color/amber"
+                android:drawableEnd="@drawable/ic_media_next_the_one"
+                android:drawablePadding="4dp"
+                android:gravity="center" />
 
         </LinearLayout>
 
