@@ -56,7 +56,7 @@ public sealed class MainWindow : Window
         _settings = AppStore.Load<SettingsData>("settings.json");
         StartupManager.SetEnabled(_settings.AutoStart);
 
-        Title = "The One Window";
+        Title = "The One Windows";
         Icon = new BitmapImage(
             new Uri("pack://application:,,,/Assets/the_one_logo.png", UriKind.Absolute));
         Background = Bg;
@@ -129,7 +129,7 @@ public sealed class MainWindow : Window
         });
         brandText.Children.Add(new TextBlock
         {
-            Text = "WINDOW", Foreground = TextMain, FontSize = 11,
+            Text = "WINDOWS", Foreground = TextMain, FontSize = 11,
             FontWeight = FontWeights.SemiBold, Margin = new Thickness(1,2,0,0)
         });
         brand.Children.Add(brandText);
