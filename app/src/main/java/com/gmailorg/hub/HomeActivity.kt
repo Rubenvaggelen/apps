@@ -132,7 +132,9 @@ class HomeActivity : AppCompatActivity() {
             TileType.MAIL -> openMailInCustomTab()
             TileType.ROUTE -> startActivity(Intent(this, RouteHubActivity::class.java))
             TileType.HOUSEHOLD -> startActivity(Intent(this, HouseholdActivity::class.java))
-            TileType.MOVIES -> startActivity(Intent(this, MoviesActivity::class.java))
+            TileType.MOVIES -> startActivity(Intent(this, MoviesActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+            })
             TileType.PARKING -> startActivity(Intent(this, ParkingActivity::class.java))
             TileType.SETTINGS -> startActivity(Intent(this, SettingsActivity::class.java))
             TileType.ASK -> startActivity(Intent(this, AskActivity::class.java))
