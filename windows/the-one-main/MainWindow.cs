@@ -615,7 +615,7 @@ public sealed class MainWindow : Window
             });
             usbVisual.Children.Add(new TextBlock
             {
-                Text = "USB THUIS",
+                Text = "SHARED MEDIA",
                 Foreground = TextMain,
                 FontSize = 17,
                 FontWeight = FontWeights.Bold,
@@ -1941,7 +1941,7 @@ public sealed class MainWindow : Window
         });
         header.Children.Add(new TextBlock
         {
-            Text = "YouTube, Spotify, The One Mixes en USB thuis in één muziekspeler.",
+            Text = "YouTube, Spotify, The One Mixes en Shared Media in één muziekspeler.",
             Foreground = TextDim,
             FontSize = 13,
             Margin = new Thickness(0, 4, 0, 0)
@@ -1965,7 +1965,7 @@ public sealed class MainWindow : Window
 
         var supremacyButton = ActionButton("♫ THE ONE MIXES", () => { }, 150);
         supremacyButton.Foreground = Gold;
-        var usbHomeButton = ActionButton("USB THUIS", () => { }, 140);
+        var usbHomeButton = ActionButton("SHARED MEDIA", () => { }, 140);
         usbHomeButton.Foreground = Gold;
 
         var sourceButtons = new StackPanel
@@ -2680,7 +2680,7 @@ public sealed class MainWindow : Window
                 if (pin == null) return;
 
                 usbHomeButton.IsEnabled = false;
-                status.Text = "USB thuis ontgrendelen…";
+                status.Text = "Shared Media ontgrendelen…";
                 status.Foreground = TextDim;
 
                 var valid = await UsbMusicCloudService.ValidateUserPinAsync(pin);
@@ -2698,7 +2698,7 @@ public sealed class MainWindow : Window
 
             usbHomeButton.IsEnabled = false;
             results.Children.Clear();
-            status.Text = "USB thuis synchroniseren en laden…";
+            status.Text = "Shared Media synchroniseren en laden…";
             status.Foreground = TextDim;
 
             try
@@ -2871,7 +2871,7 @@ public sealed class MainWindow : Window
             }
             catch (Exception ex)
             {
-                status.Text = "USB thuis laden mislukt: " + ex.Message;
+                status.Text = "Shared Media laden mislukt: " + ex.Message;
                 status.Foreground = Amber;
             }
             finally
@@ -2935,7 +2935,7 @@ public sealed class MainWindow : Window
     }
 
     private string? AskUsbHomePin(
-        string title = "USB thuis",
+        string title = "Shared Media",
         string message = "Voer de pincode in om je USB-muziek te openen.",
         string actionLabel = "Openen")
     {
