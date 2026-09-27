@@ -216,7 +216,9 @@ audio.addEventListener('ended', () => {
   if (index + 1 < queue.length) load(index + 1);
 });
 window.theOneToggle = () => audio.paused ? audio.play() : audio.pause();
+window.theOnePrevious = () => { if (index > 0) load(index - 1); else { audio.currentTime = 0; audio.play().catch(()=>{}); } };
 window.theOneNext = () => { if (index + 1 < queue.length) load(index + 1); };
+window.theOneStop = () => { audio.pause(); audio.currentTime = 0; };
 load(0);
 </script>
 </body>
@@ -232,10 +234,22 @@ load(0);
         await web.ExecuteScriptAsync("window.theOneToggle && window.theOneToggle()");
     }
 
+    public static async Task PreviousAsync(WebView2 web)
+    {
+        await InitializeAsync(web);
+        await web.ExecuteScriptAsync("window.theOnePrevious && window.theOnePrevious()");
+    }
+
     public static async Task NextAsync(WebView2 web)
     {
         await InitializeAsync(web);
         await web.ExecuteScriptAsync("window.theOneNext && window.theOneNext()");
+    }
+
+    public static async Task StopAsync(WebView2 web)
+    {
+        await InitializeAsync(web);
+        await web.ExecuteScriptAsync("window.theOneStop && window.theOneStop()");
     }
 
     private static string EnsurePlayerFiles()
@@ -316,9 +330,19 @@ function onYouTubeIframeAPIReady() {
     else p.playVideo();
   };
 
+  window.theOnePrevious = () => {
+    const p = window.theOnePlayer;
+    if (p && p.previousVideo) p.previousVideo();
+  };
+
   window.theOneNext = () => {
     const p = window.theOnePlayer;
     if (p && p.nextVideo) p.nextVideo();
+  };
+
+  window.theOneStop = () => {
+    const p = window.theOnePlayer;
+    if (p && p.stopVideo) p.stopVideo();
   };
 }
 
