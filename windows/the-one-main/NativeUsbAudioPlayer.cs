@@ -8,12 +8,14 @@ public static class NativeUsbAudioPlayer
     private static readonly object Gate = new();
     private static List<string> _queue = new();
     private static int _index = -1;
+    private static bool _isPlaying;
 
     static NativeUsbAudioPlayer()
     {
         Player.MediaEnded += (_, _) => Next();
         Player.MediaFailed += (_, e) =>
         {
+            _isPlaying = false;
             LastError = e.ErrorException?.Message ?? "Afspelen mislukt";
             PlaybackFailed?.Invoke(LastError);
         };
@@ -48,9 +50,17 @@ public static class NativeUsbAudioPlayer
         lock (Gate)
         {
             if (_index < 0) return;
-            // MediaPlayer exposeert geen betrouwbare IsPaused-property.
-            // Toggle wordt daarom door Windows voorlopig als Play hervatten gebruikt.
-            Player.Play();
+
+            if (_isPlaying)
+            {
+                Player.Pause();
+                _isPlaying = false;
+            }
+            else
+            {
+                Player.Play();
+                _isPlaying = true;
+            }
         }
     }
 
@@ -62,6 +72,7 @@ public static class NativeUsbAudioPlayer
             Player.Close();
             _queue.Clear();
             _index = -1;
+            _isPlaying = false;
         }
     }
 
@@ -94,6 +105,7 @@ public static class NativeUsbAudioPlayer
         Player.Close();
         Player.Open(new Uri(url, UriKind.Absolute));
         Player.Play();
+        _isPlaying = true;
         TrackChanged?.Invoke(url);
     }
 }
