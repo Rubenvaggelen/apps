@@ -67,7 +67,7 @@ class ParkingCarActivity : AppCompatActivity() {
         ParkingMirrorStore.items(this).forEach { item ->
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 4.dp, 0, 4.dp) }
             val text = TextView(this).apply {
-                this.text = item.address; setTextColor(ContextCompat.getColor(context, R.color.text_main)); textSize = 17f
+                this.text = item.address; setTextColor(ContextCompat.getColor(context, R.color.text_main)); textSize = 25.5f
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
             val del = Button(this).apply { this.text = "Verwijder"; setOnClickListener { BluetoothListenerService.parkingRemove(item.id) } }
