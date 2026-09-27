@@ -29,8 +29,9 @@ public sealed class MainWindow : Window
     private readonly Brush Line = Brush("#243241");
     private readonly Brush TextMain = Brush("#F3F8FC");
     private readonly Brush TextDim = Brush("#9AA6B2");
-    private readonly Brush Amber = Brush("#20B8FF");
-    private readonly Brush Gold = Brush("#20B8FF");
+    private readonly Brush FamilyBlue = Brush("#20B8FF");
+    private readonly Brush Amber = FamilyBlue;
+    private readonly Brush Gold = Brush("#D8A451");
     private readonly Brush Sage = Brush("#39D98A");
 
     private readonly Grid _content = new();
@@ -136,7 +137,7 @@ public sealed class MainWindow : Window
             Padding = new Thickness(18, 9, 18, 9),
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(45, 120, 156), BlurRadius = 14, Opacity = 0.12, ShadowDepth = 0
+                Color = Color.FromRgb(32, 184, 255), BlurRadius = 14, Opacity = 0.12, ShadowDepth = 0
             }
         };
         var dock = new DockPanel();
@@ -160,7 +161,7 @@ public sealed class MainWindow : Window
         var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         right.Children.Add(new TextBlock
         {
-            Text = "THE ONE FAMILY", Foreground = Gold, FontSize = 10, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0,0,18,0)
+            Text = "THE ONE FAMILY", Foreground = FamilyBlue, FontSize = 10, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0,0,18,0)
         });
         _clock.Foreground = TextDim;
         _clock.FontSize = 14;
@@ -393,7 +394,7 @@ public sealed class MainWindow : Window
             Padding = new Thickness(16, 7, 18, 7),
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(45, 120, 156),
+                Color = Color.FromRgb(32, 184, 255),
                 BlurRadius = 22,
                 Opacity = 0.32,
                 ShadowDepth = 0
@@ -424,7 +425,7 @@ public sealed class MainWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(45, 120, 156),
+                Color = Color.FromRgb(32, 184, 255),
                 BlurRadius = 14,
                 Opacity = 0.55,
                 ShadowDepth = 0
@@ -479,7 +480,7 @@ public sealed class MainWindow : Window
         var familyText = new TextBlock
         {
             Text = "PART OF THE ONE FAMILY",
-            Foreground = Gold,
+            Foreground = FamilyBlue,
             FontSize = 10,
             FontWeight = FontWeights.Bold,
             VerticalAlignment = VerticalAlignment.Center,
@@ -547,7 +548,7 @@ public sealed class MainWindow : Window
             IsHitTestVisible = true,
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(45, 120, 156),
+                Color = Color.FromRgb(32, 184, 255),
                 BlurRadius = 28,
                 Opacity = 0.34,
                 ShadowDepth = 0
@@ -713,7 +714,7 @@ public sealed class MainWindow : Window
             FontWeight = FontWeights.SemiBold,
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(45, 120, 156),
+                Color = Color.FromRgb(32, 184, 255),
                 BlurRadius = 10,
                 Opacity = 0.16,
                 ShadowDepth = 0
@@ -923,7 +924,7 @@ public sealed class MainWindow : Window
             Margin = new Thickness(0, 0, 0, 10),
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(45, 120, 156),
+                Color = Color.FromRgb(32, 184, 255),
                 BlurRadius = 24,
                 Opacity = 0.34,
                 ShadowDepth = 0
@@ -1051,7 +1052,7 @@ public sealed class MainWindow : Window
                 90);
             tileSurface.Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(45, 120, 156),
+                Color = Color.FromRgb(32, 184, 255),
                 BlurRadius = 24,
                 Opacity = 0.28,
                 ShadowDepth = 0
@@ -1250,7 +1251,7 @@ public sealed class MainWindow : Window
     {
         var palette = new[]
         {
-            Color.FromRgb(45, 120, 156),
+            Color.FromRgb(32, 184, 255),
             Color.FromRgb(95, 205, 255),
             Color.FromRgb(88, 166, 255),
             Color.FromRgb(104, 225, 190),
@@ -1326,7 +1327,7 @@ public sealed class MainWindow : Window
             StrokeThickness = 1.6,
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(45, 120, 156),
+                Color = Color.FromRgb(32, 184, 255),
                 BlurRadius = 20,
                 Opacity = 0.42,
                 ShadowDepth = 0
@@ -1375,7 +1376,7 @@ public sealed class MainWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(45, 120, 156),
+                Color = Color.FromRgb(32, 184, 255),
                 BlurRadius = 8,
                 Opacity = 0.8,
                 ShadowDepth = 0
@@ -1688,7 +1689,7 @@ public sealed class MainWindow : Window
             FontWeight = FontWeights.SemiBold,
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(45, 120, 156),
+                Color = Color.FromRgb(32, 184, 255),
                 BlurRadius = 12,
                 Opacity = 0.18,
                 ShadowDepth = 0
@@ -1770,7 +1771,7 @@ public sealed class MainWindow : Window
             Margin = new Thickness(0, 8, 0, 8),
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(45, 120, 156),
+                Color = Color.FromRgb(32, 184, 255),
                 BlurRadius = 16,
                 Opacity = 0.13,
                 ShadowDepth = 0
@@ -2044,7 +2045,7 @@ public sealed class MainWindow : Window
             Padding = new Thickness(14),
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(45, 120, 156),
+                Color = Color.FromRgb(32, 184, 255),
                 BlurRadius = 20,
                 Opacity = 0.2,
                 ShadowDepth = 0
