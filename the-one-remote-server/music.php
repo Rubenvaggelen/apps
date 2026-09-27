@@ -179,9 +179,10 @@ if ($action === 'catalog') {
         $v=load_json($f);
         if ($v===[]) continue;
 
-        // Oude metadata zonder online-veld blijft zichtbaar tot de eerste
-        // aanwezigheidssync van het bijbehorende Windows-apparaat.
-        $online = !array_key_exists('online',$v) || (bool)$v['online'];
+        // Oude metadata zonder online-veld heeft geen betrouwbare
+        // aanwezigheidsstatus en wordt daarom als offline behandeld.
+        // Zodra een aangesloten stick opnieuw synchroniseert, zet sync online=true.
+        $online = array_key_exists('online',$v) && (bool)$v['online'];
         if (!$includeInactive && !$online) continue;
 
         $sticks[]=$v;
