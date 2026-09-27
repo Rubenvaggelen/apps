@@ -406,10 +406,29 @@ public static class UsbMusicCloudService
             return 0;
         }
 
-        // Publiceer nooit meer een voorlopige catalogus met lege hashes.
-        // Zo kan een reboot, stationsletterwissel of mislukte upload een eerder
-        // geldige Shared Media-bibliotheek niet meer leeg overschrijven.
-        // We bouwen eerst de volledige manifeststatus op en publiceren pas daarna.
+        // Publiceer eerst snel alleen de actuele paden/metadata.
+        // sync-batch vervangt de servercatalogus pas na de laatste batch,
+        // dus dit kan de bibliotheek niet half/leeg achterlaten.
+        var recoveryManifest = files.Select(file =>
+        {
+            var relative = NormalizePath(Path.GetRelativePath(scanRoot, file.FullName));
+            var tags = metadata[file.FullName];
+            return new LocalManifestFile
+            {
+                Path = relative,
+                Size = file.Length,
+                Sha256 = "",
+                Modified = file.LastWriteTimeUtc.ToString("O"),
+                Title = tags.Title,
+                Artist = tags.Artist,
+                Album = tags.Album
+            };
+        }).ToList();
+
+        await SendManifestAsync(
+            deviceId, deviceName, stickId, stickName,
+            recoveryManifest, cancellationToken);
+        Log($"{deviceName} / {stickName}: snelle herstelcatalogus gepubliceerd.");
 
         var finalManifest = new LocalManifestFile[files.Count];
 
