@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.LayerDrawable
 import android.net.Uri
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -16,6 +17,7 @@ import android.os.Looper
 import android.os.Environment
 import android.view.DragEvent
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
@@ -27,6 +29,7 @@ import android.widget.FrameLayout
 import android.widget.GridLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -59,6 +62,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var carAudioPlayPause: TextView
     private lateinit var carAudioNext: TextView
     private lateinit var carAudioStop: TextView
+    private lateinit var carVolumeDown: TextView
+    private lateinit var carVolumeUp: TextView
+    private lateinit var carVolumeSeek: SeekBar
+    private lateinit var audioManager: AudioManager
     private var youtubeFullscreen = false
     private var youtubeFaded = false
     private var youtubeCustomView: View? = null
@@ -142,6 +149,11 @@ class MainActivity : AppCompatActivity() {
         carAudioPlayPause = findViewById(R.id.carAudioPlayPause)
         carAudioNext = findViewById(R.id.carAudioNext)
         carAudioStop = findViewById(R.id.carAudioStop)
+        carVolumeDown = findViewById(R.id.carVolumeDown)
+        carVolumeUp = findViewById(R.id.carVolumeUp)
+        carVolumeSeek = findViewById(R.id.carVolumeSeek)
+        audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+        configureCarVolume()
         configureCarAudioPlayer()
         configureYoutubeOverlay()
         MessageBus.addStatusListener(statusListener)
@@ -307,6 +319,59 @@ class MainActivity : AppCompatActivity() {
             openUrl(url.toString())
         }
     }
+    private fun configureCarVolume() {
+        val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        carVolumeSeek.max = maxVolume.coerceAtLeast(1)
+        refreshCarVolume()
+
+        carVolumeDown.setOnClickListener {
+            audioManager.adjustStreamVolume(
+                AudioManager.STREAM_MUSIC,
+                AudioManager.ADJUST_LOWER,
+                AudioManager.FLAG_SHOW_UI
+            )
+            refreshCarVolume()
+        }
+
+        carVolumeUp.setOnClickListener {
+            audioManager.adjustStreamVolume(
+                AudioManager.STREAM_MUSIC,
+                AudioManager.ADJUST_RAISE,
+                AudioManager.FLAG_SHOW_UI
+            )
+            refreshCarVolume()
+        }
+
+        carVolumeSeek.setOnSeekBarChangeListener(
+            object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(
+                    seekBar: SeekBar?,
+                    progress: Int,
+                    fromUser: Boolean
+                ) {
+                    if (fromUser) {
+                        audioManager.setStreamVolume(
+                            AudioManager.STREAM_MUSIC,
+                            progress,
+                            AudioManager.FLAG_SHOW_UI
+                        )
+                    }
+                }
+
+                override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+                override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                    refreshCarVolume()
+                }
+            }
+        )
+    }
+
+    private fun refreshCarVolume() {
+        if (!::audioManager.isInitialized || !::carVolumeSeek.isInitialized) return
+        carVolumeSeek.progress =
+            audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+    }
+
     private fun configureCarAudioPlayer() {
         carAudioPrevious.setOnClickListener {
             UsbPlaybackService.previous(this)
@@ -1049,10 +1114,19 @@ class MainActivity : AppCompatActivity() {
     }
     private fun cancelStartupGuard() { try { startService(Intent(this, BluetoothListenerService::class.java).apply { action = BluetoothListenerService.ACTION_CANCEL_STARTUP }) } catch (_: Exception) {} }
     override fun onUserInteraction() { super.onUserInteraction(); cancelStartupGuard() }
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (CarMediaKeyHandler.handle(this, event)) {
+            refreshCarAudioPlayer()
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onResume() {
         super.onResume()
         statusText.text = MessageBus.currentStatus()
         buildTiles()
+        refreshCarVolume()
         handler.removeCallbacks(carAudioRefresh)
         carAudioRefresh.run()
     }
