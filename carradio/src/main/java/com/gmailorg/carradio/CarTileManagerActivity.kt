@@ -54,7 +54,7 @@ class CarTileManagerActivity : AppCompatActivity() {
             container.addView(TextView(this).apply {
                 text = "Geen extra apps toegevoegd."
                 setTextColor(ContextCompat.getColor(context, R.color.text_dim))
-                textSize = 16f
+                textSize = 24.0f
                 setPadding(0, 8, 0, 8)
             })
         } else {
@@ -75,7 +75,7 @@ class CarTileManagerActivity : AppCompatActivity() {
     private fun sectionTitle(textValue: String) = TextView(this).apply {
         text = textValue
         setTextColor(ContextCompat.getColor(context, R.color.amber))
-        textSize = 18f
+        textSize = 27.0f
         setPadding(0, 18, 0, 8)
     }
 }
