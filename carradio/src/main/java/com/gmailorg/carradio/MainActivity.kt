@@ -698,8 +698,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         val listView = android.widget.ListView(this)
-        listView.divider =
-            ContextCompat.getDrawable(this, R.color.line)
+        listView.divider = android.graphics.drawable.ColorDrawable(
+            ContextCompat.getColor(this, R.color.line)
+        )
         listView.dividerHeight = 1
 
         listView.adapter = object : android.widget.BaseAdapter() {
