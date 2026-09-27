@@ -747,7 +747,7 @@ class MoviesActivity : AppCompatActivity() {
             val number = TextView(this).apply {
                 text = (index + 1).toString().padStart(2, '0')
                 textSize = 12f
-                setTextColor(Color.parseColor("#4B9FC0"))
+                setTextColor(Color.parseColor("#20B8FF"))
                 gravity = android.view.Gravity.CENTER
             }
             row.addView(
@@ -803,7 +803,7 @@ class MoviesActivity : AppCompatActivity() {
             val play = TextView(this).apply {
                 text = "▶"
                 textSize = 19f
-                setTextColor(Color.parseColor("#4B9FC0"))
+                setTextColor(Color.parseColor("#20B8FF"))
                 gravity = android.view.Gravity.CENTER
                 contentDescription = "Speel ${file.name} af"
                 setPadding(
@@ -854,7 +854,7 @@ class MoviesActivity : AppCompatActivity() {
                 trackNumbers[index].text =
                     if (isCurrent) "♪" else (index + 1).toString().padStart(2, '0')
                 trackNumbers[index].setTextColor(
-                    Color.parseColor(if (isCurrent) "#D8A451" else "#4B9FC0")
+                    Color.parseColor(if (isCurrent) "#D8A451" else "#20B8FF")
                 )
                 trackTitles[index].text =
                     (if (isCurrent) "▶ NU • " else "") +
@@ -868,7 +868,7 @@ class MoviesActivity : AppCompatActivity() {
                     else android.graphics.Typeface.NORMAL
                 )
                 trackPlayButtons[index].setTextColor(
-                    Color.parseColor(if (isCurrent) "#D8A451" else "#4B9FC0")
+                    Color.parseColor(if (isCurrent) "#D8A451" else "#20B8FF")
                 )
                 trackRows[index].contentDescription =
                     if (isCurrent) "Nu actief: ${cleanUsbTrackTitle(file.displayName)}"
