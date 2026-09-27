@@ -384,7 +384,8 @@ if ($action === 'sync-batch') {
         out(400,['ok'=>false,'error'=>'invalid batch']);
     }
 
-    $tmpMeta=$meta.'/'.$device.'__'.$stick.'.sync.json';
+    $syncId=safe_id((string)($b['sync_id'] ?? 'default'));
+    $tmpMeta=$meta.'/'.$device.'__'.$stick.'__'.$syncId.'.sync.json';
     if ($batchIndex===0) {
         $doc=[
             'device_id'=>$device,
