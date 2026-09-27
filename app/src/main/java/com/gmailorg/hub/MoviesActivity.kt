@@ -284,6 +284,11 @@ class MoviesActivity : AppCompatActivity() {
             .distinctBy { it.lowercase() }
             .sortedWith(String.CASE_INSENSITIVE_ORDER)
 
+        if (normalized.isNotBlank() && childFolders.isEmpty() && directFiles.isNotEmpty()) {
+            showRemoteTrackDialog(stick, normalized, directFiles)
+            return
+        }
+
         val labels = buildList {
             childFolders.forEach { add("📁 " + it.substringAfterLast('/')) }
             directFiles.forEach { add("🎵 " + cleanUsbTrackTitle(it.name)) }
@@ -340,11 +345,21 @@ class MoviesActivity : AppCompatActivity() {
             setPadding(18, 8, 18, 8)
         }
 
+        val density = resources.displayMetrics.density
+        val downloadWidth = (58 * density).toInt()
+        val playWidth = (62 * density).toInt()
+        val actionGap = (14 * density).toInt()
+
         files.forEachIndexed { index, file ->
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
-                setPadding(8, 8, 8, 8)
+                setPadding(
+                    (8 * density).toInt(),
+                    (6 * density).toInt(),
+                    (8 * density).toInt(),
+                    (6 * density).toInt()
+                )
             }
 
             val number = TextView(this).apply {
@@ -355,7 +370,7 @@ class MoviesActivity : AppCompatActivity() {
             }
             row.addView(
                 number,
-                LinearLayout.LayoutParams(48, LinearLayout.LayoutParams.WRAP_CONTENT)
+                LinearLayout.LayoutParams((42 * density).toInt(), LinearLayout.LayoutParams.WRAP_CONTENT)
             )
 
             val title = TextView(this).apply {
@@ -364,7 +379,12 @@ class MoviesActivity : AppCompatActivity() {
                 setTextColor(Color.WHITE)
                 maxLines = 2
                 ellipsize = android.text.TextUtils.TruncateAt.END
-                setPadding(10, 16, 12, 16)
+                setPadding(
+                    (8 * density).toInt(),
+                    (14 * density).toInt(),
+                    (10 * density).toInt(),
+                    (14 * density).toInt()
+                )
                 setOnClickListener {
                     playRemoteUsbFolder(stick, files, index, normalized)
                 }
@@ -375,38 +395,48 @@ class MoviesActivity : AppCompatActivity() {
             )
 
             val download = TextView(this).apply {
-                text = "↓ Download"
-                textSize = 13f
+                text = "↓"
+                textSize = 21f
                 setTextColor(Color.parseColor("#D8A451"))
                 gravity = android.view.Gravity.CENTER
                 contentDescription = "Download ${file.name}"
-                setBackgroundResource(R.drawable.bg_the_one_gold_outline)
-                setPadding(14, 12, 14, 12)
+                setPadding(
+                    (12 * density).toInt(),
+                    (12 * density).toInt(),
+                    (12 * density).toInt(),
+                    (12 * density).toInt()
+                )
                 setOnClickListener { requestRemoteUsbDownload(file) }
             }
             row.addView(
                 download,
-                LinearLayout.LayoutParams(110, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    marginStart = 10
-                    marginEnd = 16
-                }
+                LinearLayout.LayoutParams(downloadWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
+            )
+
+            row.addView(
+                View(this),
+                LinearLayout.LayoutParams(actionGap, 1)
             )
 
             val play = TextView(this).apply {
                 text = "▶"
-                textSize = 18f
-                setTextColor(Color.WHITE)
+                textSize = 19f
+                setTextColor(Color.parseColor("#4B9FC0"))
                 gravity = android.view.Gravity.CENTER
                 contentDescription = "Speel ${file.name} af"
-                setBackgroundResource(R.drawable.bg_the_one_blue_button)
-                setPadding(18, 12, 18, 12)
+                setPadding(
+                    (12 * density).toInt(),
+                    (12 * density).toInt(),
+                    (12 * density).toInt(),
+                    (12 * density).toInt()
+                )
                 setOnClickListener {
                     playRemoteUsbFolder(stick, files, index, normalized)
                 }
             }
             row.addView(
                 play,
-                LinearLayout.LayoutParams(68, LinearLayout.LayoutParams.WRAP_CONTENT)
+                LinearLayout.LayoutParams(playWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
             )
 
             trackList.addView(
@@ -433,13 +463,18 @@ class MoviesActivity : AppCompatActivity() {
             addView(trackList)
         }
 
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle(if (normalized.isBlank()) "Hoofdmap" else normalized)
             .setView(scroll)
             .setNegativeButton("← 1 stap terug") { _, _ ->
                 showRemoteFolderLevel(stick, parentRemoteFolder(normalized))
             }
-            .show()
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
+                .setTextColor(Color.parseColor("#D8A451"))
+        }
+        dialog.show()
     }
 
     private fun requestRemoteUsbDownload(file: RemoteUsbMusicClient.RemoteFile) {
