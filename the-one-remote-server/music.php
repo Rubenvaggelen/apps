@@ -71,17 +71,25 @@ function b64ud(string $v): string|false {
     return base64_decode(strtr($v, '-_', '+/'), true);
 }
 function secret(string $file): string { return trim((string)file_get_contents($file)); }
-function token_new(string $secret): string {
-    $payload = b64u(json_encode(['exp'=>time()+TOKEN_TTL,'scope'=>'music','n'=>bin2hex(random_bytes(8))]));
+function token_new(string $secret, string $scope='music'): string {
+    $payload = b64u(json_encode(['exp'=>time()+TOKEN_TTL,'scope'=>$scope,'n'=>bin2hex(random_bytes(8))]));
     return $payload . '.' . b64u(hash_hmac('sha256', $payload, $secret, true));
 }
-function token_ok(string $token, string $secret): bool {
+function token_scope(string $token, string $secret): string {
     $p = explode('.', $token, 2);
-    if (count($p) !== 2) return false;
-    if (!hash_equals(b64u(hash_hmac('sha256', $p[0], $secret, true)), $p[1])) return false;
+    if (count($p) !== 2) return '';
+    if (!hash_equals(b64u(hash_hmac('sha256', $p[0], $secret, true)), $p[1])) return '';
     $raw = b64ud($p[0]);
     $v = is_string($raw) ? json_decode($raw, true) : null;
-    return is_array($v) && ($v['scope'] ?? '') === 'music' && (int)($v['exp'] ?? 0) >= time();
+    if (!is_array($v) || (int)($v['exp'] ?? 0) < time()) return '';
+    return (string)($v['scope'] ?? '');
+}
+function token_ok(string $token, string $secret): bool {
+    return token_scope($token,$secret) === 'music';
+}
+function token_read_ok(string $token, string $secret): bool {
+    $scope=token_scope($token,$secret);
+    return $scope === 'music' || $scope === 'music-read';
 }
 function bearer(): string {
     $h = trim((string)($_SERVER['HTTP_AUTHORIZATION'] ?? ''));
@@ -126,7 +134,11 @@ function stream_range(string $path, string $name): never {
 $action = (string)($_GET['action'] ?? 'health');
 $sec = secret($secretFile);
 
-if ($action === 'health') out(200, ['ok'=>true,'service'=>'The One Music Cache','version'=>2]);
+if ($action === 'health') out(200, ['ok'=>true,'service'=>'The One Music Cache','version'=>3]);
+
+if ($action === 'browse-login') {
+    out(200,['ok'=>true,'token'=>token_new($sec,'music-read'),'expires_in'=>TOKEN_TTL]);
+}
 
 if ($action === 'login') {
     $ip=(string)($_SERVER['REMOTE_ADDR'] ?? 'unknown');
@@ -145,22 +157,23 @@ if ($action === 'login') {
 
 if ($action === 'stream') {
     $token=trim((string)($_GET['token'] ?? ''));
-    if (!token_ok($token,$sec)) { http_response_code(401); exit; }
+    if (!token_read_ok($token,$sec)) { http_response_code(401); exit; }
     $device=safe_id((string)($_GET['device'] ?? ''));
     $stick=safe_id((string)($_GET['stick'] ?? ''));
     $path=safe_path((string)($_GET['path'] ?? ''));
     stream_range($files.'/'.key_for($device,$stick,$path).'.bin',$path);
 }
 
-require_auth($sec);
-
 if ($action === 'catalog') {
+    if (!token_read_ok(bearer(),$sec)) out(401,['ok'=>false,'error'=>'auth required']);
     $sticks=[];
     foreach (glob($meta.'/*.json') ?: [] as $f) {
         $v=load_json($f); if ($v!==[]) $sticks[]=$v;
     }
     out(200,['ok'=>true,'sticks'=>$sticks]);
 }
+
+require_auth($sec);
 
 if ($action === 'status') {
     $b=read_json();
