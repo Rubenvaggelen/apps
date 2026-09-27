@@ -83,6 +83,16 @@
             android:backgroundTint="@color/surface"
             android:textStyle="bold" />
 
+        <Button
+            android:id="@+id/manageDevicesButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="12dp"
+            android:text="Apparaten beheren"
+            android:textColor="@color/text_main"
+            android:backgroundTint="@color/surface"
+            android:textStyle="bold" />
+
         <TextView
             android:id="@+id/wakePcStatus"
             android:layout_width="match_parent"
