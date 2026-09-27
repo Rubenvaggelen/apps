@@ -6,6 +6,7 @@ on:
     paths:
       - 'the-one-remote-server/index.php'
       - 'the-one-remote-server/music.php'
+      - 'the-one-remote-server/devices.php'
       - '.github/workflows/deploy-the-one-remote-server.yml'
   workflow_dispatch: {}
 
@@ -58,25 +59,31 @@ jobs:
           stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'mktemp -d "$HOME/.the-one-remote-stage.XXXXXXXX"')
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" the-one-remote-server/index.php "$remote:$stage/index.php"
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" the-one-remote-server/music.php "$remote:$stage/music.php"
+          scp -O -P "$DEPLOY_PORT" "${opts[@]}" the-one-remote-server/devices.php "$remote:$stage/devices.php"
           ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "bash -s -- '$stage'" <<'REMOTE'
           set -euo pipefail
           stage="$1"
           target_dir="$HOME/public_html/the-one-remote-api"
           target="$target_dir/index.php"
           music_target="$target_dir/music.php"
+          devices_target="$target_dir/devices.php"
           mkdir -p "$target_dir" "$HOME/.the-one-remote-backups"
           php -l "$stage/index.php" >/dev/null
           php -l "$stage/music.php" >/dev/null
-          if [ -f "$target" ] || [ -f "$music_target" ]; then
+          php -l "$stage/devices.php" >/dev/null
+          if [ -f "$target" ] || [ -f "$music_target" ] || [ -f "$devices_target" ]; then
             backup=$(mktemp -d "$HOME/.the-one-remote-backups/api.XXXXXXXX")
             [ -f "$target" ] && cp -p "$target" "$backup/index.php" || true
             [ -f "$music_target" ] && cp -p "$music_target" "$backup/music.php" || true
+            [ -f "$devices_target" ] && cp -p "$devices_target" "$backup/devices.php" || true
           fi
           cp "$stage/index.php" "$target.new"
           cp "$stage/music.php" "$music_target.new"
-          chmod 644 "$target.new" "$music_target.new"
+          cp "$stage/devices.php" "$devices_target.new"
+          chmod 644 "$target.new" "$music_target.new" "$devices_target.new"
           mv -f "$target.new" "$target"
           mv -f "$music_target.new" "$music_target"
+          mv -f "$devices_target.new" "$devices_target"
           rm -rf "$stage"
           REMOTE
 
@@ -84,3 +91,5 @@ jobs:
             python3 -c 'import json,sys; x=json.load(sys.stdin); assert x.get("ok") is True and x.get("service") == "The One Remote Relay"'
           curl -fsS --max-time 15 "https://rubenvanaggelen.com/the-one-remote-api/music.php?action=health" |
             python3 -c 'import json,sys; x=json.load(sys.stdin); assert x.get("ok") is True and x.get("service") == "The One Music Cache"'
+          curl -fsS --max-time 15 "https://rubenvanaggelen.com/the-one-remote-api/devices.php?action=health" |
+            python3 -c 'import json,sys; x=json.load(sys.stdin); assert x.get("ok") is True and x.get("service") == "The One Main Device Registry"'
