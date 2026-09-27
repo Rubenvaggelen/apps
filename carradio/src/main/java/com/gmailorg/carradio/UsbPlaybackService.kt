@@ -6,14 +6,18 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.media.AudioAttributes
-import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -139,7 +143,7 @@ class UsbPlaybackService : Service() {
         }
     }
 
-    private var player: MediaPlayer? = null
+    private var player: ExoPlayer? = null
     private var queue: List<QueueItem> = emptyList()
     private var index = -1
     @Volatile private var preparing = false
@@ -194,6 +198,7 @@ class UsbPlaybackService : Service() {
         fromRestore: Boolean = false
     ) {
         if (queue.isEmpty()) return
+
         val newIndex = requestedIndex.coerceIn(0, queue.lastIndex)
         val item = queue[newIndex]
         index = newIndex
@@ -201,7 +206,9 @@ class UsbPlaybackService : Service() {
         requestedStartPositionMs = startPositionMs.coerceAtLeast(0)
         requestedAutoStart = autoStart
         restoring = fromRestore
+
         releasePlayer()
+
         lastState = PlaybackState(
             hasTrack = true,
             title = item.title,
@@ -210,54 +217,71 @@ class UsbPlaybackService : Service() {
             isPlaying = false,
             isPreparing = true
         )
-        persistSession(explicitPosition = requestedStartPositionMs, explicitPlaying = autoStart)
+        persistSession(
+            explicitPosition = requestedStartPositionMs,
+            explicitPlaying = autoStart
+        )
         updateNotification()
 
-        val mp = MediaPlayer()
-        player = mp
-        try {
-            mp.setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build()
-            )
-            mp.setDataSource(this, Uri.parse(item.uri))
-            mp.setOnPreparedListener {
-                if (player !== it) return@setOnPreparedListener
-                preparing = false
-                val seekTo = requestedStartPositionMs.coerceAtMost(it.duration.coerceAtLeast(0))
-                if (seekTo > 0) {
-                    try { it.seekTo(seekTo) } catch (_: Exception) {}
+        val exo = ExoPlayer.Builder(this).build()
+        player = exo
+
+        exo.setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                .build(),
+            true
+        )
+        exo.setMediaItem(MediaItem.fromUri(item.uri))
+        if (requestedStartPositionMs > 0) {
+            exo.seekTo(requestedStartPositionMs.toLong())
+        }
+        exo.playWhenReady = autoStart
+        exo.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (player !== exo) return
+
+                when (playbackState) {
+                    Player.STATE_READY -> {
+                        preparing = false
+                        restoring = false
+                        applyDuckingVolume()
+                        updateStateCache()
+                        persistSession()
+                        updateNotification()
+                    }
+
+                    Player.STATE_ENDED -> {
+                        preparing = false
+                        playRelative(+1)
+                    }
                 }
-                if (requestedAutoStart) {
-                    try { it.start() } catch (_: Exception) {}
-                }
-                applyDuckingVolume()
-                restoring = false
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (player !== exo) return
                 updateStateCache()
                 persistSession()
                 updateNotification()
             }
-            mp.setOnCompletionListener {
-                if (player === it) playRelative(+1)
-            }
-            mp.setOnErrorListener { badPlayer, _, _ ->
-                if (player === badPlayer) {
-                    preparing = false
-                    updateStateCache()
-                    updateNotification()
-                    if (restoring) {
-                        // USB kan tijdens vroege boot nog niet gemount zijn. Bewaar de sessie zodat
-                        // UsbMusicActivity later nogmaals kan herstellen zodra de stick beschikbaar is.
-                        restoring = false
-                        stopForeground(Service.STOP_FOREGROUND_REMOVE)
-                        stopSelf()
-                    }
+
+            override fun onPlayerError(error: PlaybackException) {
+                if (player !== exo) return
+                preparing = false
+                updateStateCache()
+                updateNotification()
+
+                if (restoring) {
+                    restoring = false
+                    stopForeground(Service.STOP_FOREGROUND_REMOVE)
+                    stopSelf()
                 }
-                true
             }
-            mp.prepareAsync()
+        })
+
+        try {
+            exo.prepare()
         } catch (_: Exception) {
             preparing = false
             releasePlayer()
@@ -296,15 +320,21 @@ class UsbPlaybackService : Service() {
     }
 
     private fun toggleInternal() {
-        val mp = player
-        if (mp == null) {
-            if (queue.isNotEmpty()) playIndex(if (index in queue.indices) index else 0)
-            else restoreLastSession()
+        val exo = player
+        if (exo == null) {
+            if (queue.isNotEmpty()) {
+                playIndex(if (index in queue.indices) index else 0)
+            } else {
+                restoreLastSession()
+            }
             return
         }
-        try {
-            if (mp.isPlaying) mp.pause() else if (!preparing) mp.start()
-        } catch (_: Exception) {}
+
+        if (exo.isPlaying) {
+            exo.pause()
+        } else {
+            exo.play()
+        }
         updateStateCache()
         persistSession()
         updateNotification()
@@ -318,10 +348,14 @@ class UsbPlaybackService : Service() {
     }
 
     private fun seekInternal(positionMs: Int) {
-        try {
-            val mp = player ?: return
-            if (!preparing) mp.seekTo(positionMs.coerceAtMost(mp.duration.coerceAtLeast(0)))
-        } catch (_: Exception) {}
+        val exo = player ?: return
+        val duration = exo.duration
+        val safePosition = if (duration > 0 && duration != C.TIME_UNSET) {
+            positionMs.toLong().coerceAtMost(duration)
+        } else {
+            positionMs.toLong()
+        }
+        exo.seekTo(safePosition.coerceAtLeast(0L))
         updateStateCache()
         persistSession()
     }
@@ -340,7 +374,6 @@ class UsbPlaybackService : Service() {
     private fun releasePlayer() {
         player?.let {
             try { it.stop() } catch (_: Exception) {}
-            try { it.reset() } catch (_: Exception) {}
             try { it.release() } catch (_: Exception) {}
         }
         player = null
@@ -348,22 +381,28 @@ class UsbPlaybackService : Service() {
 
     private fun applyDuckingVolume() {
         val volume = targetVolume()
-        try { player?.setVolume(volume, volume) } catch (_: Exception) {}
+        try { player?.volume = volume } catch (_: Exception) {}
     }
 
     private fun snapshotInternal(): PlaybackState {
         val item = queue.getOrNull(index)
-        val mp = player
+        val exo = player
         var duration = 0
         var position = requestedStartPositionMs.coerceAtLeast(0)
         var playing = false
-        if (mp != null) {
-            try {
-                duration = if (preparing) 0 else mp.duration.coerceAtLeast(0)
-                position = if (preparing) position else mp.currentPosition.coerceAtLeast(0)
-                playing = !preparing && mp.isPlaying
-            } catch (_: Exception) {}
+
+        if (exo != null) {
+            val rawDuration = exo.duration
+            if (rawDuration > 0 && rawDuration != C.TIME_UNSET) {
+                duration = rawDuration.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            }
+            position = exo.currentPosition
+                .coerceAtLeast(0L)
+                .coerceAtMost(Int.MAX_VALUE.toLong())
+                .toInt()
+            playing = exo.isPlaying
         }
+
         val state = PlaybackState(
             hasTrack = item != null,
             title = item?.title ?: "Geen nummer geselecteerd",
