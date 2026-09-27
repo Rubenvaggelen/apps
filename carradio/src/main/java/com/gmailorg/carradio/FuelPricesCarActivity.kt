@@ -181,7 +181,7 @@ class FuelPricesCarActivity : AppCompatActivity() {
 
         val name = TextView(this).apply {
             text = if (index == 0) "★ ${station.name}" else "${index + 1}. ${station.name}"
-            textSize = 18f
+            textSize = 27.0f
             setTextColor(ContextCompat.getColor(context, R.color.text_main))
             setTypeface(typeface, Typeface.BOLD)
         }
@@ -189,7 +189,7 @@ class FuelPricesCarActivity : AppCompatActivity() {
 
         val price = TextView(this).apply {
             text = String.format(Locale("nl", "NL"), "€ %.3f", station.price)
-            textSize = 22f
+            textSize = 33.0f
             setTextColor(ContextCompat.getColor(context, R.color.amber))
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.END
@@ -203,7 +203,7 @@ class FuelPricesCarActivity : AppCompatActivity() {
                 if (addressText.isNotBlank()) append(addressText).append("\n")
                 append(String.format(Locale("nl", "NL"), "%.1f km afstand • tik om te navigeren", station.distanceKm))
             }
-            textSize = 14f
+            textSize = 21.0f
             setTextColor(ContextCompat.getColor(context, R.color.text_dim))
             setPadding(0, dp(6), 0, 0)
         }.also(card::addView)
