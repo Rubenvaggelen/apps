@@ -40,6 +40,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.text.NumberFormat
 import java.util.Locale
+import java.util.UUID
 
 class MainActivity : AppCompatActivity() {
     private enum class Role { NONE, CUSTOMER, BUSINESS }
@@ -112,6 +113,63 @@ class MainActivity : AppCompatActivity() {
         getSharedPreferences("rutu_customer", Context.MODE_PRIVATE).edit().putString("name", name.trim()).apply()
     }
 
+    private fun rutuDeviceId(): String {
+        val prefs = getSharedPreferences("rutu_device_registry", Context.MODE_PRIVATE)
+        val existing = prefs.getString("device_id", "").orEmpty()
+        if (existing.isNotBlank()) return existing
+        val created = UUID.randomUUID().toString()
+        prefs.edit().putString("device_id", created).apply()
+        return created
+    }
+
+    private fun rutuDeviceBlocked(): Boolean =
+        getSharedPreferences("rutu_device_registry", Context.MODE_PRIVATE)
+            .getBoolean("blocked", false)
+
+    private fun setRutuDeviceBlocked(blocked: Boolean) {
+        getSharedPreferences("rutu_device_registry", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("blocked", blocked)
+            .apply()
+    }
+
+    private fun rutuDeviceName(): String {
+        val manufacturer = Build.MANUFACTURER.orEmpty()
+            .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        val model = Build.MODEL.orEmpty().trim()
+        return listOf(manufacturer, model).filter { it.isNotBlank() }.joinToString(" ").ifBlank { "Android apparaat" }
+    }
+
+    private fun isRutuDeviceAdminName(): Boolean =
+        Regex("^(ruben|leon)(?:\\s|$)", RegexOption.IGNORE_CASE).containsMatchIn(customerName())
+
+    private fun syncRutuDeviceHeartbeat(refreshVisibleScreen: Boolean = false) {
+        Thread {
+            try {
+                val payload = JSONObject()
+                    .put("device_id", rutuDeviceId())
+                    .put("name", rutuDeviceName())
+                    .put("platform", "Android ${Build.VERSION.RELEASE}")
+                    .put("version", BuildConfig.VERSION_CODE.toString())
+                    .put("customer", customerName())
+                val (code, raw) = onlineJson("POST", "device_heartbeat", payload)
+                if (code == 200) {
+                    val blocked = JSONObject(raw).optBoolean("blocked", false)
+                    val changed = blocked != rutuDeviceBlocked()
+                    setRutuDeviceBlocked(blocked)
+                    if (refreshVisibleScreen || changed) runOnUiThread {
+                        when (screen) {
+                            "customer", "cart", "orders" -> renderCustomer()
+                            "landing" -> landing()
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                // Geen blokkadestatus wijzigen als de server tijdelijk niet bereikbaar is.
+            }
+        }.start()
+    }
+
     private fun saveCart() {
         val json = JSONObject()
         cart.forEach { (name, qty) -> if (qty > 0) json.put(name, qty) }
@@ -179,6 +237,7 @@ class MainActivity : AppCompatActivity() {
     private var onlineText = "Online verbinding controleren… / Checking online connection…"
     @Volatile private var announcement = Announcement()
     private var lastAnnouncementCheck = 0L
+    private var lastDeviceHeartbeat = 0L
     private var lastStatusRefreshText = "Status wordt automatisch bijgewerkt"
     private val onlinePoller = object : Runnable {
         override fun run() {
@@ -188,6 +247,10 @@ class MainActivity : AppCompatActivity() {
                 if (now - lastAnnouncementCheck >= 15000L) {
                     lastAnnouncementCheck = now
                     syncAnnouncement(false)
+                }
+                if (now - lastDeviceHeartbeat >= 30000L) {
+                    lastDeviceHeartbeat = now
+                    syncRutuDeviceHeartbeat(false)
                 }
                 uiHandler.postDelayed(this, 2000)
             }
@@ -216,6 +279,7 @@ class MainActivity : AppCompatActivity() {
         restoreCart()
         landing()
         ensureCustomerName()
+        syncRutuDeviceHeartbeat(true)
         syncAnnouncement(true)
         ensureBackgroundOrderStatusService()
         syncOnlineStatuses()
@@ -234,6 +298,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         appInForeground = true
+        syncRutuDeviceHeartbeat(true)
         syncAnnouncement(true)
         val bannerPrefs = getSharedPreferences("rutu_customer_banner", Context.MODE_PRIVATE)
         val bannerUntil = bannerPrefs.getLong("eat_well_until", 0L)
@@ -585,6 +650,7 @@ class MainActivity : AppCompatActivity() {
     private fun onlineUrl(action: String, extra: Map<String, String> = emptyMap()): URL {
         val query = buildList {
             add("action=" + java.net.URLEncoder.encode(action, "UTF-8"))
+            add("device_id=" + java.net.URLEncoder.encode(rutuDeviceId(), "UTF-8"))
             extra.forEach { (k, v) -> add(java.net.URLEncoder.encode(k, "UTF-8") + "=" + java.net.URLEncoder.encode(v, "UTF-8")) }
         }.joinToString("&")
         return URL("$onlineApiBase?$query")
@@ -633,6 +699,193 @@ class MainActivity : AppCompatActivity() {
         }
         try { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
         catch (_: Exception) { toast(bi("Geen app gevonden om de betaallink te openen.", "No app found to open the payment link.")) }
+    }
+
+    private fun promptForRutuDeviceManagerCode() {
+        val input = EditText(this).apply {
+            hint = "Beheercode / Admin code"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            setSingleLine(true)
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Apparatenbeheer / Device management")
+            .setMessage(bi("Voer de beheer/testcode in.", "Enter the admin/test code."))
+            .setView(input)
+            .setNegativeButton("Annuleren", null)
+            .setPositiveButton("Openen", null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val entered = input.text?.toString().orEmpty().trim()
+                if (!Regex("^\\d{5}$").matches(entered)) {
+                    input.error = "Voer de 5-cijferige code in"
+                    return@setOnClickListener
+                }
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
+                Thread {
+                    try {
+                        val payload = JSONObject()
+                            .put("customer", customerName())
+                            .put("code", entered)
+                        val (code, raw) = onlineJson("POST", "test_access", payload)
+                        val ok = code in 200..299 && JSONObject(raw).optBoolean("allowed", false)
+                        runOnUiThread {
+                            if (ok) {
+                                dialog.dismiss()
+                                loadRutuDevices(entered)
+                            } else {
+                                input.error = "Onjuiste code"
+                                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
+                            }
+                        }
+                    } catch (_: Exception) {
+                        runOnUiThread {
+                            toast(bi("Apparatenbeheer kon niet worden geopend.", "Device management could not be opened."))
+                            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
+                        }
+                    }
+                }.start()
+            }
+        }
+        dialog.show()
+    }
+
+    private fun loadRutuDevices(code: String) {
+        Thread {
+            try {
+                val payload = JSONObject()
+                    .put("customer", customerName())
+                    .put("code", code)
+                val (status, raw) = onlineJson("POST", "devices_list", payload)
+                val json = JSONObject(raw)
+                if (status !in 200..299 || !json.optBoolean("ok", false)) {
+                    throw IllegalStateException(json.optString("error", "Serverfout"))
+                }
+                val devices = json.optJSONArray("devices") ?: JSONArray()
+                runOnUiThread { showRutuDevicesDialog(code, devices) }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    toast(bi("Apparaten konden niet worden geladen.", "Devices could not be loaded."))
+                }
+            }
+        }.start()
+    }
+
+    private fun showRutuDevicesDialog(code: String, devices: JSONArray) {
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+        }
+
+        if (devices.length() == 0) {
+            list.addView(TextView(this).apply {
+                text = bi("Nog geen apparaten geregistreerd.", "No devices registered yet.")
+                setTextColor(Color.LTGRAY)
+                textSize = 14f
+                setPadding(dp(8), dp(18), dp(8), dp(18))
+            })
+        }
+
+        for (i in 0 until devices.length()) {
+            val item = devices.optJSONObject(i) ?: continue
+            val deviceId = item.optString("device_id")
+            val name = item.optString("name", "Apparaat")
+            val customer = item.optString("customer", "")
+            val online = item.optBoolean("online", false)
+            var blocked = item.optBoolean("blocked", false)
+            val lastSeen = item.optLong("last_seen", 0L)
+            val platform = item.optString("platform", "")
+
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), dp(12), dp(12), dp(12))
+                background = rounded(Color.rgb(23, 20, 15), Color.rgb(91, 69, 34))
+            }
+
+            val titleView = TextView(this).apply {
+                text = (if (online) "● " else "○ ") + name + if (customer.isBlank()) "" else " • " + customer
+                textSize = 16f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(if (online) Color.rgb(205, 179, 122) else Color.WHITE)
+            }
+            card.addView(titleView)
+
+            val stateView = TextView(this).apply {
+                textSize = 12f
+                setPadding(0, dp(5), 0, dp(8))
+            }
+
+            fun refreshState() {
+                val seen = if (lastSeen > 0L) {
+                    val formatter = java.text.SimpleDateFormat("dd-MM HH:mm", Locale("nl", "NL"))
+                    formatter.format(java.util.Date(lastSeen * 1000L))
+                } else "-"
+                stateView.text =
+                    (if (blocked) "GEBLOKKEERD • " else "") +
+                        (if (online) "Online" else "Offline") +
+                        (if (platform.isBlank()) "" else " • $platform") +
+                        " • Laatst gezien $seen"
+                stateView.setTextColor(if (blocked) Color.rgb(255, 110, 110) else Color.LTGRAY)
+            }
+            refreshState()
+            card.addView(stateView)
+
+            val action = Button(this).apply {
+                text = if (blocked) "Deblokkeren / Unblock" else "Blokkeren / Block"
+                setOnClickListener {
+                    isEnabled = false
+                    val targetBlocked = !blocked
+                    Thread {
+                        try {
+                            val payload = JSONObject()
+                                .put("customer", customerName())
+                                .put("code", code)
+                                .put("device_id", deviceId)
+                                .put("blocked", targetBlocked)
+                            val (status, raw) = onlineJson("POST", "device_set_blocked", payload)
+                            val ok = status in 200..299 && JSONObject(raw).optBoolean("ok", false)
+                            runOnUiThread {
+                                if (ok) {
+                                    blocked = targetBlocked
+                                    text = if (blocked) "Deblokkeren / Unblock" else "Blokkeren / Block"
+                                    refreshState()
+                                    if (deviceId == rutuDeviceId()) setRutuDeviceBlocked(blocked)
+                                    toast(
+                                        if (blocked)
+                                            bi("$name is geblokkeerd.", "$name is blocked.")
+                                        else
+                                            bi("$name is gedeblokkeerd.", "$name is unblocked.")
+                                    )
+                                } else {
+                                    toast(bi("Wijzigen mislukt.", "Change failed."))
+                                }
+                                isEnabled = true
+                            }
+                        } catch (_: Exception) {
+                            runOnUiThread {
+                                toast(bi("Wijzigen mislukt.", "Change failed."))
+                                isEnabled = true
+                            }
+                        }
+                    }.start()
+                }
+            }
+            card.addView(action)
+            list.addView(card, marginParams(0, 5, 0, 8))
+        }
+
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            addView(list)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Rutu Klant apparaten / Rutu Customer devices")
+            .setView(scroll)
+            .setNegativeButton("Sluiten", null)
+            .setNeutralButton("Verversen") { _, _ -> loadRutuDevices(code) }
+            .show()
     }
 
     private fun promptForTestOrderCode() {
@@ -701,6 +954,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun sendOnlineOrder(items: LinkedHashMap<String, Int>, shownTotal: Double, delivery: Boolean = false, address: String = "", postcode: String = "", paymentMethod: String = "", paymentPhone: String = "") {
         if (items.isEmpty()) return
+        if (rutuDeviceBlocked()) {
+            toast(bi("Dit apparaat is geblokkeerd.", "This device is blocked."))
+            renderCustomer()
+            return
+        }
         onlineText = "Bestelling veilig verzenden… / Sending order securely…"
         refreshRoleScreen()
         val itemJson = JSONObject()
@@ -1095,6 +1353,11 @@ class MainActivity : AppCompatActivity() {
         hero("Fire. Roots. Flavour.", bi("Kies je favorieten en geniet.", "Choose your favourites and enjoy."))
         announcementCard()
         button("Bekijk het menu / View the menu") { enterCustomer() }
+        if (isRutuDeviceAdminName()) {
+            button("Apparatenbeheer / Device management", secondary = true) {
+                promptForRutuDeviceManagerCode()
+            }
+        }
 
         spacer(20)
         watchEatWellBanner()
@@ -1136,7 +1399,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderCustomer() {
-        screen = "customer"; page(true); back { landing() }; logoMark(true); title("Ons menu / Our menu"); connectionCard()
+        screen = "customer"; page(true); back { landing() }; logoMark(true); title("Ons menu / Our menu")
+        if (rutuDeviceBlocked()) {
+            hero(
+                "Apparaat geblokkeerd / Device blocked",
+                bi(
+                    "Dit apparaat is geblokkeerd voor Rutu BBQ. Bestellen en synchroniseren zijn uitgeschakeld.",
+                    "This device is blocked for Rutu BBQ. Ordering and syncing are disabled."
+                )
+            )
+            button("Opnieuw controleren / Check again", secondary = true) {
+                syncRutuDeviceHeartbeat(true)
+            }
+            return
+        }
+        connectionCard()
         section("Online bestellen / Order online")
         centered(bi("Je bestelling gaat via internet naar Rutu BBQ. Hetzelfde wifi-netwerk is niet nodig.", "Your order is sent to Rutu BBQ via the internet. You do not need to be on the same Wi-Fi network."), 14f, Color.rgb(210, 199, 182))
         button("Internetverbinding opnieuw controleren / Check internet connection again", secondary = true) { testOnlineConnection(false) }
@@ -1160,6 +1437,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun cartScreen() {
+        if (rutuDeviceBlocked()) {
+            renderCustomer()
+            return
+        }
         screen = "cart"; page(true); back { renderCustomer() }; logoMark(true); title("Jouw winkelmand / Your cart"); connectionCard(); announcementCard()
         val openOrders = openOrders().reversed()
         if (openOrders.isNotEmpty()) {
@@ -1338,6 +1619,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun myOrders(sync: Boolean = true) {
+        if (rutuDeviceBlocked()) {
+            renderCustomer()
+            return
+        }
         screen = "orders"; page(true); back { renderCustomer() }; logoMark(true); title("Mijn bestellingen / My orders"); connectionCard(); announcementCard()
         if (sync) syncOnlineStatuses()
         label("🔄 " + lastStatusRefreshText + " • automatisch elke 2 seconden / updates every 2 seconds", Color.rgb(24, 31, 25))
