@@ -12,6 +12,7 @@ import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import android.webkit.WebChromeClient
@@ -32,9 +33,13 @@ class MoviesActivity : AppCompatActivity() {
     private lateinit var musicPlayerCard: View
     private lateinit var musicNowPlaying: TextView
     private lateinit var musicPlaybackState: TextView
+    private lateinit var musicSeekBar: SeekBar
+    private lateinit var musicTimeText: TextView
     private lateinit var musicWebPlayer: WebView
     private var youtubeActive = false
     private var youtubePlaying = false
+    private var musicSeekDragging = false
+    private var musicSeekDurationMs = 0
     private var currentRemoteUsbStick: RemoteUsbMusicClient.RemoteStick? = null
     private var currentRemoteUsbFolder: String = ""
     private val remoteMusicIo = Executors.newSingleThreadExecutor()
@@ -73,8 +78,11 @@ class MoviesActivity : AppCompatActivity() {
         musicPlayerCard = findViewById(R.id.musicPlayerCard)
         musicNowPlaying = findViewById(R.id.musicNowPlaying)
         musicPlaybackState = findViewById(R.id.musicPlaybackState)
+        musicSeekBar = findViewById(R.id.musicSeekBar)
+        musicTimeText = findViewById(R.id.musicTimeText)
         musicWebPlayer = findViewById(R.id.musicWebPlayer)
         configureMusicPlayer()
+        configureMusicSeekBar()
         musicNowPlaying.setOnClickListener {
             val stick = currentRemoteUsbStick ?: return@setOnClickListener
             showRemoteFolderLevel(stick, currentRemoteUsbFolder, openCurrentFolder = true)
@@ -108,6 +116,7 @@ class MoviesActivity : AppCompatActivity() {
             musicNowPlaying.paintFlags = musicNowPlaying.paintFlags and android.graphics.Paint.UNDERLINE_TEXT_FLAG.inv()
             musicNowPlaying.text = "Geen muziek actief"
             musicPlaybackState.text = "Gestopt"
+            resetMusicSeekUi()
         }
         findViewById<View>(R.id.musicNextButton).setOnClickListener {
             if (SupremacyPlaybackService.isActive(this)) {
@@ -147,14 +156,171 @@ class MoviesActivity : AppCompatActivity() {
                 cleanUsbTrackTitle(SupremacyPlaybackService.currentTitle(this))
             musicPlaybackState.text =
                 if (SupremacyPlaybackService.isPlaying(this)) "Speelt af" else "Gepauzeerd"
+
+            val duration = SupremacyPlaybackService.currentDurationMs()
+            val position = SupremacyPlaybackService.currentPositionMs(this)
+            updateMusicSeekUi(position, duration)
             return
         }
 
         if (youtubeActive) {
             musicPlaybackState.text = if (youtubePlaying) "Speelt af" else "Gepauzeerd"
+            refreshYoutubeSeekUi()
         } else {
             musicNowPlaying.text = "Geen muziek actief"
             musicPlaybackState.text = "Gestopt"
+            resetMusicSeekUi()
+        }
+    }
+
+    private fun configureMusicSeekBar() {
+        musicSeekBar.max = 1000
+        musicSeekBar.setOnSeekBarChangeListener(
+            object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(
+                    seekBar: SeekBar?,
+                    progress: Int,
+                    fromUser: Boolean
+                ) {
+                    if (!fromUser || musicSeekDurationMs <= 0) return
+                    val preview =
+                        (musicSeekDurationMs.toLong() * progress / 1000L)
+                            .coerceAtMost(Int.MAX_VALUE.toLong())
+                            .toInt()
+                    musicTimeText.text =
+                        formatMusicTime(preview) + " / " +
+                            formatMusicTime(musicSeekDurationMs)
+                }
+
+                override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                    musicSeekDragging = true
+                }
+
+                override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                    musicSeekDragging = false
+                    if (musicSeekDurationMs <= 0) return
+
+                    val target =
+                        (musicSeekDurationMs.toLong() *
+                            musicSeekBar.progress / 1000L)
+                            .coerceAtMost(Int.MAX_VALUE.toLong())
+                            .toInt()
+
+                    if (SupremacyPlaybackService.isActive(this@MoviesActivity)) {
+                        SupremacyPlaybackService.seek(
+                            this@MoviesActivity,
+                            target
+                        )
+                    } else if (youtubeActive) {
+                        val seconds = target / 1000.0
+                        musicWebPlayer.evaluateJavascript(
+                            "window.theOneSeek && window.theOneSeek($seconds);",
+                            null
+                        )
+                    }
+                    updateMusicSeekUi(target, musicSeekDurationMs)
+                }
+            }
+        )
+    }
+
+    private fun updateMusicSeekUi(positionMs: Int, durationMs: Int) {
+        val safeDuration = durationMs.coerceAtLeast(0)
+        val safePosition = positionMs.coerceAtLeast(0)
+            .coerceAtMost(
+                if (safeDuration > 0) safeDuration else Int.MAX_VALUE
+            )
+
+        musicSeekDurationMs = safeDuration
+        musicSeekBar.isEnabled = safeDuration > 0
+
+        if (!musicSeekDragging) {
+            musicSeekBar.progress =
+                if (safeDuration > 0) {
+                    ((safePosition.toLong() * 1000L) / safeDuration)
+                        .coerceIn(0L, 1000L)
+                        .toInt()
+                } else {
+                    0
+                }
+
+            musicTimeText.text =
+                formatMusicTime(safePosition) + " / " +
+                    if (safeDuration > 0) {
+                        formatMusicTime(safeDuration)
+                    } else {
+                        "00:00"
+                    }
+        }
+    }
+
+    private fun refreshYoutubeSeekUi() {
+        if (!youtubeActive || musicSeekDragging) return
+
+        musicWebPlayer.evaluateJavascript(
+            "(window.theOnePosition ? window.theOnePosition() : 0).toString()"
+        ) { positionRaw ->
+            val positionSeconds = positionRaw
+                ?.trim()
+                ?.trim('"')
+                ?.toDoubleOrNull()
+                ?: 0.0
+
+            musicWebPlayer.evaluateJavascript(
+                "(window.theOneDuration ? window.theOneDuration() : 0).toString()"
+            ) { durationRaw ->
+                val durationSeconds = durationRaw
+                    ?.trim()
+                    ?.trim('"')
+                    ?.toDoubleOrNull()
+                    ?: 0.0
+
+                val positionMs =
+                    (positionSeconds * 1000.0)
+                        .coerceAtLeast(0.0)
+                        .toInt()
+                val durationMs =
+                    (durationSeconds * 1000.0)
+                        .coerceAtLeast(0.0)
+                        .toInt()
+
+                updateMusicSeekUi(positionMs, durationMs)
+            }
+        }
+    }
+
+    private fun resetMusicSeekUi() {
+        musicSeekDragging = false
+        musicSeekDurationMs = 0
+        if (::musicSeekBar.isInitialized) {
+            musicSeekBar.progress = 0
+            musicSeekBar.isEnabled = false
+        }
+        if (::musicTimeText.isInitialized) {
+            musicTimeText.text = "00:00 / 00:00"
+        }
+    }
+
+    private fun formatMusicTime(milliseconds: Int): String {
+        val totalSeconds = milliseconds.coerceAtLeast(0) / 1000
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+        return if (hours > 0) {
+            String.format(
+                java.util.Locale.ROOT,
+                "%d:%02d:%02d",
+                hours,
+                minutes,
+                seconds
+            )
+        } else {
+            String.format(
+                java.util.Locale.ROOT,
+                "%02d:%02d",
+                minutes,
+                seconds
+            )
         }
     }
 
@@ -766,6 +932,7 @@ class MoviesActivity : AppCompatActivity() {
         musicNowPlaying.text = result.title +
             if (result.channel.isNotBlank()) "  •  ${result.channel}" else ""
         musicPlaybackState.text = "Speelt af"
+        resetMusicSeekUi()
 
         val cleanQueue = queue
             .map { id -> id.filter { ch -> ch.isLetterOrDigit() || ch == '-' || ch == '_' } }
@@ -815,6 +982,17 @@ class MoviesActivity : AppCompatActivity() {
                   };
                   window.theOneStop = () => {
                     if (player && player.stopVideo) player.stopVideo();
+                  };
+                  window.theOneSeek = seconds => {
+                    if (player && player.seekTo) player.seekTo(seconds, true);
+                  };
+                  window.theOnePosition = () => {
+                    if (!player || !player.getCurrentTime) return 0;
+                    return player.getCurrentTime() || 0;
+                  };
+                  window.theOneDuration = () => {
+                    if (!player || !player.getDuration) return 0;
+                    return player.getDuration() || 0;
                   };
                 }
                 const api = document.createElement('script');
