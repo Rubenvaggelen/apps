@@ -810,64 +810,244 @@ class MoviesActivity : AppCompatActivity() {
             return
         }
 
-        val labels = buildList {
-            childFolders.forEach { add("📁 " + it.substringAfterLast('/')) }
-            directFiles.forEach {
-                add(
-                    (if (isRemoteUsbTrackCurrent(stick, it)) "▶ NU • " else "🎵 ") +
-                        cleanUsbTrackTitle(it.displayName)
-                )
-            }
+        val density = resources.displayMetrics.density
+        fun dp(value: Int): Int = (value * density).toInt()
+
+        val dialog = Dialog(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(20), dp(22), dp(18))
+            setBackgroundResource(R.drawable.bg_the_one_panel)
         }
 
-        if (labels.isEmpty()) {
-            val dialog = AlertDialog.Builder(this)
-                .setTitle(if (normalized.isBlank()) stick.deviceName + " • " + stick.stickName else normalized)
-                .setMessage("Deze map bevat geen beschikbare nummers.")
-                .setNegativeButton(
-                    if (normalized.isBlank()) "Sluiten" else "← 1 stap terug"
-                ) { _, _ ->
-                    if (normalized.isNotBlank()) {
-                        showRemoteFolderLevel(stick, parentRemoteFolder(normalized))
-                    }
-                }
-                .create()
-            dialog.setOnShowListener {
-                dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
-                    .setTextColor(Color.parseColor("#D8A451"))
+        panel.addView(
+            TextView(this).apply {
+                text = "THE ONE FAMILY • SHARED MEDIA"
+                textSize = 11f
+                letterSpacing = 0.16f
+                setTextColor(Color.parseColor("#E8AA4E"))
             }
-            dialog.show()
-            return
-        }
-
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(
-                if (normalized.isBlank())
+        )
+        panel.addView(
+            TextView(this).apply {
+                text = if (normalized.isBlank()) {
                     stick.deviceName + " • " + stick.stickName
-                else
-                    normalized
-            )
-            .setItems(labels.toTypedArray()) { _, which ->
-                if (which < childFolders.size) {
-                    showRemoteFolderLevel(stick, childFolders[which])
                 } else {
-                    val index = which - childFolders.size
-                    playRemoteUsbFolder(stick, directFiles, index, normalized)
+                    normalized.substringAfterLast('/')
                 }
+                textSize = 25f
+                setTextColor(Color.parseColor("#F3F8FC"))
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding(0, dp(5), 0, dp(4))
             }
-            .setNegativeButton(
-                if (normalized.isBlank()) "Sluiten" else "← 1 stap terug"
-            ) { _, _ ->
+        )
+        panel.addView(
+            TextView(this).apply {
+                text = if (normalized.isBlank()) {
+                    "Mappen"
+                } else {
+                    normalized
+                }
+                textSize = 13f
+                setTextColor(Color.parseColor("#91A4BD"))
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.START
+                setPadding(0, 0, 0, dp(14))
+            }
+        )
+
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        childFolders.forEach { child ->
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(dp(16), dp(14), dp(14), dp(14))
+                setBackgroundResource(R.drawable.bg_the_one_tile)
+                isClickable = true
+                isFocusable = true
+            }
+            card.addView(
+                TextView(this).apply {
+                    text = "▣"
+                    textSize = 19f
+                    gravity = android.view.Gravity.CENTER
+                    setTextColor(Color.parseColor("#20B8FF"))
+                },
+                LinearLayout.LayoutParams(dp(36), LinearLayout.LayoutParams.WRAP_CONTENT)
+            )
+            card.addView(
+                TextView(this).apply {
+                    text = child.substringAfterLast('/')
+                    textSize = 18f
+                    setTextColor(Color.parseColor("#F3F8FC"))
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                },
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            )
+            card.addView(
+                TextView(this).apply {
+                    text = "›"
+                    textSize = 29f
+                    gravity = android.view.Gravity.CENTER
+                    setTextColor(Color.parseColor("#E8AA4E"))
+                    setPadding(dp(10), 0, 0, 0)
+                }
+            )
+            card.setOnClickListener {
+                dialog.dismiss()
+                showRemoteFolderLevel(stick, child)
+            }
+            list.addView(
+                card,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(10) }
+            )
+        }
+
+        directFiles.forEachIndexed { index, file ->
+            val current = isRemoteUsbTrackCurrent(stick, file)
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(dp(16), dp(13), dp(14), dp(13))
+                setBackgroundResource(R.drawable.bg_the_one_tile)
+                isClickable = true
+                isFocusable = true
+            }
+            row.addView(
+                TextView(this).apply {
+                    text = if (current) "▶" else "♪"
+                    textSize = 17f
+                    gravity = android.view.Gravity.CENTER
+                    setTextColor(Color.parseColor(if (current) "#E8AA4E" else "#20B8FF"))
+                },
+                LinearLayout.LayoutParams(dp(36), LinearLayout.LayoutParams.WRAP_CONTENT)
+            )
+            row.addView(
+                TextView(this).apply {
+                    text = (if (current) "NU • " else "") + cleanUsbTrackTitle(file.displayName)
+                    textSize = 16f
+                    setTextColor(Color.parseColor(if (current) "#E8AA4E" else "#F3F8FC"))
+                    setTypeface(
+                        null,
+                        if (current) android.graphics.Typeface.BOLD
+                        else android.graphics.Typeface.NORMAL
+                    )
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                },
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            )
+            row.addView(
+                TextView(this).apply {
+                    text = "▶"
+                    textSize = 17f
+                    gravity = android.view.Gravity.CENTER
+                    setTextColor(Color.parseColor("#20B8FF"))
+                }
+            )
+            row.setOnClickListener {
+                dialog.dismiss()
+                playRemoteUsbFolder(stick, directFiles, index, normalized)
+            }
+            list.addView(
+                row,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(10) }
+            )
+        }
+
+        if (childFolders.isEmpty() && directFiles.isEmpty()) {
+            list.addView(
+                TextView(this).apply {
+                    text = "Deze map bevat nog geen beschikbare nummers."
+                    textSize = 15f
+                    gravity = android.view.Gravity.CENTER
+                    setTextColor(Color.parseColor("#91A4BD"))
+                    setPadding(dp(16), dp(28), dp(16), dp(28))
+                    setBackgroundResource(R.drawable.bg_the_one_tile)
+                }
+            )
+        }
+
+        panel.addView(
+            ScrollView(this).apply {
+                isFillViewport = true
+                addView(list)
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, dp(12), 0, 0)
+        }
+        val back = TextView(this).apply {
+            text = if (normalized.isBlank()) "SLUITEN" else "← 1 STAP TERUG"
+            textSize = 13f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(Color.parseColor("#E8AA4E"))
+            setBackgroundResource(R.drawable.bg_the_one_gold_outline)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            setOnClickListener {
+                dialog.dismiss()
                 if (normalized.isNotBlank()) {
                     showRemoteFolderLevel(stick, parentRemoteFolder(normalized))
                 }
             }
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
-                .setTextColor(Color.parseColor("#D8A451"))
         }
+        val player = TextView(this).apply {
+            text = "NAAR PLAYER  ›"
+            textSize = 13f
+            gravity = android.view.Gravity.CENTER
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(Color.parseColor("#201505"))
+            setBackgroundResource(R.drawable.bg_the_one_gold_button)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            setOnClickListener {
+                dialog.dismiss()
+            }
+        }
+        actions.addView(
+            back,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = dp(7)
+            }
+        )
+        actions.addView(
+            player,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = dp(7)
+            }
+        )
+        panel.addView(actions)
+
+        dialog.setContentView(panel)
+        dialog.setCanceledOnTouchOutside(true)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        dialog.window?.attributes = dialog.window?.attributes?.apply { dimAmount = 0.72f }
         dialog.show()
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.90f).toInt(),
+            (resources.displayMetrics.heightPixels * 0.86f).toInt()
+        )
     }
 
     private fun showRemoteTrackDialog(
@@ -1077,6 +1257,7 @@ class MoviesActivity : AppCompatActivity() {
         val dialog = AlertDialog.Builder(this)
             .setTitle(if (normalized.isBlank()) "Hoofdmap" else normalized)
             .setView(scroll)
+            .setPositiveButton("NAAR PLAYER", null)
             .setNegativeButton("← 1 stap terug") { _, _ ->
                 showRemoteFolderLevel(stick, parentRemoteFolder(normalized))
             }
@@ -1092,6 +1273,11 @@ class MoviesActivity : AppCompatActivity() {
         }
 
         dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setTextColor(Color.parseColor("#D8A451"))
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                dialog.dismiss()
+            }
             dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
                 .setTextColor(Color.parseColor("#D8A451"))
             refreshPlayingTrackHighlight()
