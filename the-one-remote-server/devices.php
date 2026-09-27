@@ -97,7 +97,7 @@ function clean_device_id(string $value): string {
 $action = (string)($_GET['action'] ?? 'health');
 
 if ($action === 'health') {
-    respond_devices(200, ['ok' => true, 'service' => 'The One Main Device Registry', 'version' => 1]);
+    respond_devices(200, ['ok' => true, 'service' => 'The One Main Device Registry', 'version' => 2]);
 }
 
 $body = devices_body();
@@ -107,12 +107,17 @@ if ($action === 'heartbeat') {
     $state = devices_load($devicesFile);
     $old = is_array($state['devices'][$deviceId] ?? null) ? $state['devices'][$deviceId] : [];
     $name = trim((string)($body['name'] ?? 'Android apparaat'));
+    $personName = trim((string)($body['person_name'] ?? ''));
     $platform = trim((string)($body['platform'] ?? 'Android'));
     $version = trim((string)($body['version'] ?? ''));
+    $storedPersonName = $personName !== ''
+        ? mb_substr($personName, 0, 80)
+        : mb_substr((string)($old['person_name'] ?? ''), 0, 80);
 
     $state['devices'][$deviceId] = [
         'device_id' => $deviceId,
         'name' => mb_substr($name !== '' ? $name : 'Android apparaat', 0, 100),
+        'person_name' => $storedPersonName,
         'platform' => mb_substr($platform !== '' ? $platform : 'Android', 0, 40),
         'version' => mb_substr($version, 0, 40),
         'blocked' => (bool)($old['blocked'] ?? false),
@@ -206,9 +211,13 @@ $state = devices_load($devicesFile);
 
 if ($action === 'list') {
     $now = time();
-    $devices = array_values(array_map(function ($d) use ($now) {
+    $ownerId = devices_owner_id($ownerFile);
+    $devices = array_values(array_map(function ($d) use ($now, $ownerId) {
         $lastSeen = (int)($d['last_seen'] ?? 0);
+        $deviceId = trim((string)($d['device_id'] ?? ''));
         $d['online'] = $lastSeen > 0 && ($now - $lastSeen) <= 90;
+        $d['owner'] = $ownerId !== '' && $deviceId !== '' && hash_equals($ownerId, $deviceId);
+        if (!isset($d['person_name'])) $d['person_name'] = '';
         return $d;
     }, $state['devices']));
     usort($devices, fn($a, $b) => ((int)($b['last_seen'] ?? 0)) <=> ((int)($a['last_seen'] ?? 0)));
