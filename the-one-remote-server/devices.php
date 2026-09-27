@@ -230,6 +230,31 @@ if ($action === 'recover_owner') {
     respond_devices(200, ['ok' => true, 'owner' => true, 'recovered' => true]);
 }
 
+if ($action === 'connection_status') {
+    $requestDeviceId = clean_device_id((string)($body['request_device_id'] ?? ''));
+    $ownerId = devices_owner_id($ownerFile);
+    if ($ownerId === '' || !hash_equals($ownerId, $requestDeviceId)) {
+        respond_devices(403, ['ok' => false, 'error' => 'Owner device required']);
+    }
+
+    $state = devices_load($devicesFile);
+    $now = time();
+    $devices = [];
+    foreach ($state['devices'] as $d) {
+        if (!is_array($d)) continue;
+        $platform = trim((string)($d['platform'] ?? ''));
+        if (stripos($platform, 'Windows') !== 0) continue;
+        $lastSeen = (int)($d['last_seen'] ?? 0);
+        $devices[] = [
+            'device_id' => (string)($d['device_id'] ?? ''),
+            'name' => (string)($d['name'] ?? 'Windows apparaat'),
+            'online' => $lastSeen > 0 && ($now - $lastSeen) <= 70,
+            'last_seen' => $lastSeen
+        ];
+    }
+    respond_devices(200, ['ok' => true, 'devices' => $devices]);
+}
+
 if (!devices_owner_authorized($body, $ownerFile)) {
     usleep(300000);
     respond_devices(403, ['ok' => false, 'error' => 'Owner device required']);
