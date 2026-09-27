@@ -251,7 +251,7 @@ class MainActivity : AppCompatActivity() {
     private fun showMusicChooser() {
         AlertDialog.Builder(this)
             .setTitle("Muziek")
-            .setItems(arrayOf("📻 Radio", "🔌 USB", "🎧 Supremacy mixen", "☁ USB thuis")) { _, which ->
+            .setItems(arrayOf("📻 Radio", "🔌 USB", "🎧 The One Mixes", "☁ USB thuis")) { _, which ->
                 when (which) {
                     0 -> openCarRadio()
                     1 -> startActivity(Intent(this, UsbMusicActivity::class.java))
