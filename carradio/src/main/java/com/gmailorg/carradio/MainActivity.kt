@@ -53,11 +53,26 @@ class MainActivity : AppCompatActivity() {
     private lateinit var youtubeFullscreenButton: TextView
     private lateinit var youtubeMinimizeButton: TextView
     private lateinit var youtubeCloseButton: TextView
+    private lateinit var carAudioPlayer: View
+    private lateinit var carAudioTitle: TextView
+    private lateinit var carAudioPrevious: TextView
+    private lateinit var carAudioPlayPause: TextView
+    private lateinit var carAudioNext: TextView
+    private lateinit var carAudioStop: TextView
     private var youtubeFullscreen = false
     private var youtubeFaded = false
     private var youtubeCustomView: View? = null
     private var youtubeCustomCallback: WebChromeClient.CustomViewCallback? = null
     private val handler = Handler(Looper.getMainLooper())
+    private val carAudioRefresh = object : Runnable {
+        override fun run() {
+            if (!isFinishing && !isDestroyed && ::carAudioPlayer.isInitialized) {
+                refreshCarAudioPlayer()
+                handler.postDelayed(this, 500L)
+            }
+        }
+    }
+
     private val youtubeAutoFade = Runnable {
         if (::youtubeOverlay.isInitialized &&
             youtubeOverlay.visibility == View.VISIBLE &&
@@ -121,6 +136,13 @@ class MainActivity : AppCompatActivity() {
         youtubeFullscreenButton = findViewById(R.id.youtubeFullscreenButton)
         youtubeMinimizeButton = findViewById(R.id.youtubeMinimizeButton)
         youtubeCloseButton = findViewById(R.id.youtubeCloseButton)
+        carAudioPlayer = findViewById(R.id.carAudioPlayer)
+        carAudioTitle = findViewById(R.id.carAudioTitle)
+        carAudioPrevious = findViewById(R.id.carAudioPrevious)
+        carAudioPlayPause = findViewById(R.id.carAudioPlayPause)
+        carAudioNext = findViewById(R.id.carAudioNext)
+        carAudioStop = findViewById(R.id.carAudioStop)
+        configureCarAudioPlayer()
         configureYoutubeOverlay()
         MessageBus.addStatusListener(statusListener)
         MessageBus.addDataListener(dataListener)
@@ -285,6 +307,35 @@ class MainActivity : AppCompatActivity() {
             openUrl(url.toString())
         }
     }
+    private fun configureCarAudioPlayer() {
+        carAudioPrevious.setOnClickListener {
+            UsbPlaybackService.previous(this)
+        }
+        carAudioPlayPause.setOnClickListener {
+            UsbPlaybackService.toggle(this)
+        }
+        carAudioNext.setOnClickListener {
+            UsbPlaybackService.next(this)
+        }
+        carAudioStop.setOnClickListener {
+            UsbPlaybackService.stop(this)
+            carAudioPlayer.postDelayed({ refreshCarAudioPlayer() }, 150L)
+        }
+    }
+
+    private fun refreshCarAudioPlayer() {
+        val state = UsbPlaybackService.snapshot()
+        if (!state.hasTrack) {
+            carAudioPlayer.visibility = View.GONE
+            return
+        }
+
+        carAudioPlayer.visibility = View.VISIBLE
+        carAudioTitle.text = state.title
+        carAudioPlayPause.text =
+            if (state.isPlaying) "⏸" else "▶"
+    }
+
     private fun configureYoutubeOverlay() {
         youtubeWebView.settings.javaScriptEnabled = true
         youtubeWebView.settings.domStorageEnabled = true
@@ -1001,6 +1052,7 @@ class MainActivity : AppCompatActivity() {
         MessageBus.removeStatusListener(statusListener)
         MessageBus.removeDataListener(dataListener)
         handler.removeCallbacks(clockTick)
+        handler.removeCallbacks(carAudioRefresh)
         handler.removeCallbacks(youtubeAutoFade)
         if (::youtubeWebView.isInitialized) {
             youtubeWebView.stopLoading()
