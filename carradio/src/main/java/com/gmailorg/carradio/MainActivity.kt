@@ -1009,75 +1009,191 @@ class MainActivity : AppCompatActivity() {
         stick.files.forEach { file ->
             val folder = file.folder.replace('\\', '/').trim('/')
             when {
-                normalizedPrefix.isBlank() && folder.isBlank() -> {
-                    directFiles += file
-                }
-                normalizedPrefix.isBlank() -> {
-                    childFolders += folder.substringBefore('/')
-                }
-                folder == normalizedPrefix -> {
-                    directFiles += file
-                }
+                normalizedPrefix.isBlank() && folder.isBlank() -> { directFiles += file }
+                normalizedPrefix.isBlank() -> { childFolders += folder.substringBefore('/') }
+                folder == normalizedPrefix -> { directFiles += file }
                 folder.startsWith("$normalizedPrefix/") -> {
                     val rest = folder.removePrefix("$normalizedPrefix/")
                     val child = rest.substringBefore('/')
-                    if (child.isNotBlank()) {
-                        childFolders += "$normalizedPrefix/$child"
-                    }
+                    if (child.isNotBlank()) childFolders += "$normalizedPrefix/$child"
                 }
             }
         }
 
         val folders = childFolders.sortedWith(String.CASE_INSENSITIVE_ORDER)
-        val sortedFiles = directFiles.sortedBy {
-            it.displayName.lowercase(Locale.ROOT)
-        }
+        val sortedFiles = directFiles.sortedBy { it.displayName.lowercase(Locale.ROOT) }
 
         if (folders.isEmpty()) {
-            showRemoteTrackDialog(
-                stick,
-                normalizedPrefix.ifBlank { "Hoofdmap" },
-                sortedFiles
-            )
+            showRemoteTrackDialog(stick, normalizedPrefix.ifBlank { "Hoofdmap" }, sortedFiles)
             return
         }
 
-        val labels = mutableListOf<String>()
-        folders.forEach {
-            labels += "📁 " + it.substringAfterLast('/')
+        val dialog = Dialog(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(28.dp, 22.dp, 28.dp, 20.dp)
+            setBackgroundResource(R.drawable.bg_player_panel)
         }
+
+        panel.addView(TextView(this).apply {
+            text = "THE ONE FAMILY • SHARED MEDIA"
+            textSize = 12f
+            letterSpacing = 0.16f
+            setTextColor(android.graphics.Color.parseColor("#D8A451"))
+        })
+        panel.addView(TextView(this).apply {
+            text = if (normalizedPrefix.isBlank()) stick.deviceName + " • " + stick.stickName else normalizedPrefix.substringAfterLast('/')
+            textSize = 28f
+            setTextColor(android.graphics.Color.WHITE)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(0, 5.dp, 0, 4.dp)
+        })
+        panel.addView(TextView(this).apply {
+            text = if (normalizedPrefix.isBlank()) "Mappen" else normalizedPrefix
+            textSize = 15f
+            setTextColor(android.graphics.Color.parseColor("#91A4BD"))
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.START
+            setPadding(0, 0, 0, 15.dp)
+        })
+
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
+        folders.forEach { folderPath ->
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(18.dp, 14.dp, 16.dp, 14.dp)
+                setBackgroundResource(R.drawable.bg_outline)
+                isClickable = true
+                isFocusable = true
+            }
+            card.addView(TextView(this).apply {
+                text = "▣"
+                textSize = 22f
+                gravity = Gravity.CENTER
+                setTextColor(android.graphics.Color.parseColor("#20B8FF"))
+            }, LinearLayout.LayoutParams(42.dp, LinearLayout.LayoutParams.WRAP_CONTENT))
+            card.addView(TextView(this).apply {
+                text = folderPath.substringAfterLast('/')
+                textSize = 22f
+                setTextColor(android.graphics.Color.WHITE)
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            card.addView(TextView(this).apply {
+                text = "›"
+                textSize = 34f
+                gravity = Gravity.CENTER
+                setTextColor(android.graphics.Color.parseColor("#D8A451"))
+                setPadding(12.dp, 0, 0, 0)
+            })
+            card.setOnClickListener {
+                dialog.dismiss()
+                showRemoteFolderLevel(stick, folderPath)
+            }
+            list.addView(card, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = 11.dp })
+        }
+
         if (sortedFiles.isNotEmpty()) {
-            labels += "🎵 Nummers in deze map (${sortedFiles.size})"
-        }
-
-        val title = if (normalizedPrefix.isBlank()) {
-            stick.deviceName + " • " + stick.stickName
-        } else {
-            normalizedPrefix.substringAfterLast('/')
-        }
-
-        AlertDialog.Builder(this)
-            .setTitle(title)
-            .setItems(labels.toTypedArray()) { _, which ->
-                if (which < folders.size) {
-                    showRemoteFolderLevel(stick, folders[which])
-                } else {
-                    showRemoteTrackDialog(
-                        stick,
-                        normalizedPrefix.ifBlank { "Hoofdmap" },
-                        sortedFiles
-                    )
-                }
+            val trackCard = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(18.dp, 14.dp, 16.dp, 14.dp)
+                setBackgroundResource(R.drawable.bg_outline)
+                isClickable = true
+                isFocusable = true
             }
-            .setNegativeButton(
-                if (normalizedPrefix.isBlank()) "Sluiten" else "Terug"
-            ) { _, _ ->
+            trackCard.addView(TextView(this).apply {
+                text = "♪"
+                textSize = 22f
+                gravity = Gravity.CENTER
+                setTextColor(android.graphics.Color.parseColor("#20B8FF"))
+            }, LinearLayout.LayoutParams(42.dp, LinearLayout.LayoutParams.WRAP_CONTENT))
+            trackCard.addView(TextView(this).apply {
+                text = "Nummers in deze map\n" + sortedFiles.count { it.cached } + " beschikbaar"
+                textSize = 20f
+                setTextColor(android.graphics.Color.WHITE)
+                maxLines = 2
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            trackCard.addView(TextView(this).apply {
+                text = "›"
+                textSize = 34f
+                gravity = Gravity.CENTER
+                setTextColor(android.graphics.Color.parseColor("#D8A451"))
+            })
+            trackCard.setOnClickListener {
+                dialog.dismiss()
+                showRemoteTrackDialog(stick, normalizedPrefix.ifBlank { "Hoofdmap" }, sortedFiles)
+            }
+            list.addView(trackCard, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = 11.dp })
+        }
+
+        panel.addView(android.widget.ScrollView(this).apply {
+            isFillViewport = true
+            addView(list)
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            0,
+            1f
+        ))
+
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, 12.dp, 0, 0)
+        }
+        val back = TextView(this).apply {
+            text = if (normalizedPrefix.isBlank()) "SLUITEN" else "← 1 STAP TERUG"
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTextColor(android.graphics.Color.parseColor("#D8A451"))
+            setBackgroundResource(R.drawable.bg_gold_outline)
+            setPadding(14.dp, 13.dp, 14.dp, 13.dp)
+            setOnClickListener {
+                dialog.dismiss()
                 if (normalizedPrefix.isNotBlank()) {
-                    val parent = normalizedPrefix.substringBeforeLast('/', "")
-                    showRemoteFolderLevel(stick, parent)
+                    showRemoteFolderLevel(stick, normalizedPrefix.substringBeforeLast('/', ""))
                 }
             }
-            .show()
+        }
+        val player = TextView(this).apply {
+            text = "NAAR PLAYER  ›"
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(android.graphics.Color.parseColor("#201505"))
+            setBackgroundResource(R.drawable.bg_amber_button)
+            setPadding(14.dp, 13.dp, 14.dp, 13.dp)
+            setOnClickListener { dialog.dismiss() }
+        }
+        actions.addView(back, LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+        ).apply { marginEnd = 8.dp })
+        actions.addView(player, LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+        ).apply { marginStart = 8.dp })
+        panel.addView(actions)
+
+        dialog.setContentView(panel)
+        dialog.setCanceledOnTouchOutside(true)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        dialog.window?.attributes = dialog.window?.attributes?.apply { dimAmount = 0.72f }
+        dialog.show()
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.86f).toInt(),
+            (resources.displayMetrics.heightPixels * 0.86f).toInt()
+        )
     }
 
     private fun showRemoteTrackDialog(
@@ -1089,6 +1205,7 @@ class MainActivity : AppCompatActivity() {
             AlertDialog.Builder(this)
                 .setTitle(folder)
                 .setMessage("In deze map zijn nog geen afspeelbare nummers gecachet.")
+                .setPositiveButton("NAAR PLAYER", null)
                 .setNegativeButton("Terug") { _, _ ->
                     val parent = folder
                         .takeUnless { it == "Hoofdmap" }
@@ -1231,7 +1348,15 @@ class MainActivity : AppCompatActivity() {
                         )
                         setPadding(16, 12, 16, 12)
                         setOnClickListener {
-                            playRemoteUsbFolder(stick, files, position)
+                            if (isCached) {
+                                playRemoteUsbFolder(stick, files, position)
+                            } else {
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    "Dit nummer wordt nog gesynchroniseerd.",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
                         }
                     },
                     LinearLayout.LayoutParams(
@@ -1248,7 +1373,8 @@ class MainActivity : AppCompatActivity() {
         val dialog = AlertDialog.Builder(this)
             .setTitle(folder)
             .setView(listView)
-            .setNegativeButton("Terug") { _, _ ->
+            .setPositiveButton("NAAR PLAYER", null)
+            .setNegativeButton("← 1 STAP TERUG") { _, _ ->
                 val parent = folder
                     .takeUnless { it == "Hoofdmap" }
                     ?.substringBeforeLast('/', "")
@@ -1267,6 +1393,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setTextColor(android.graphics.Color.parseColor("#D8A451"))
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                dialog.dismiss()
+            }
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
+                .setTextColor(android.graphics.Color.parseColor("#D8A451"))
             listView.layoutParams = listView.layoutParams?.apply {
                 height = (420.dp).coerceAtMost(
                     resources.displayMetrics.heightPixels - 160.dp
