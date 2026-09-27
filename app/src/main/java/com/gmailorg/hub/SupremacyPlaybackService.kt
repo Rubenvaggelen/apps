@@ -19,8 +19,8 @@ import org.json.JSONObject
 
 class SupremacyPlaybackService : Service() {
     private var player: MediaPlayer? = null
-    private var currentTitle = "Supremacy mixen"
-    private var currentSource = "Supremacy"
+    private var currentTitle = "The One Mixes"
+    private var currentSource = "The One Mixes"
     private var titles = arrayListOf<String>()
     private var urls = arrayListOf<String>()
     private var index = 0
@@ -43,7 +43,7 @@ class SupremacyPlaybackService : Service() {
         stateHandler.post(saveTick)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             getSystemService(NotificationManager::class.java).createNotificationChannel(
-                NotificationChannel(CHANNEL, "Supremacy mixen", NotificationManager.IMPORTANCE_LOW)
+                NotificationChannel(CHANNEL, "The One Mixes", NotificationManager.IMPORTANCE_LOW)
             )
         }
     }
@@ -64,7 +64,7 @@ class SupremacyPlaybackService : Service() {
             ACTION_RESTORE_LAST -> restoreLastSession()
 
             ACTION_PLAY -> {
-                currentSource = intent.getStringExtra(EXTRA_SOURCE).orEmpty().ifBlank { "Supremacy" }
+                currentSource = intent.getStringExtra(EXTRA_SOURCE).orEmpty().ifBlank { "The One Mixes" }
                 val incomingUrls = intent.getStringArrayListExtra(EXTRA_QUEUE_URLS)
                 val incomingTitles = intent.getStringArrayListExtra(EXTRA_QUEUE_TITLES)
                 val startIndex = intent.getIntExtra(EXTRA_INDEX, 0)
@@ -73,12 +73,12 @@ class SupremacyPlaybackService : Service() {
                     urls = ArrayList(incomingUrls)
                     titles = ArrayList(
                         incomingTitles?.takeIf { it.size == incomingUrls.size }
-                            ?: incomingUrls.map { "Supremacy mixen" }
+                            ?: incomingUrls.map { "The One Mixes" }
                     )
                     index = startIndex.coerceIn(0, urls.lastIndex)
                 } else {
                     val url = intent.getStringExtra(EXTRA_URL).orEmpty()
-                    val title = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { "Supremacy mixen" }
+                    val title = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { "The One Mixes" }
                     if (url.isBlank()) return START_NOT_STICKY
                     urls = arrayListOf(url)
                     titles = arrayListOf(title)
@@ -99,7 +99,7 @@ class SupremacyPlaybackService : Service() {
 
     private fun startCurrent() {
         if (urls.isEmpty() || index !in urls.indices) return
-        currentTitle = titles.getOrNull(index).orEmpty().ifBlank { "Supremacy mixen" }
+        currentTitle = titles.getOrNull(index).orEmpty().ifBlank { "The One Mixes" }
         startPlayback(urls[index], requestedStartPositionMs, requestedAutoStart)
     }
 
@@ -304,7 +304,7 @@ class SupremacyPlaybackService : Service() {
                 ?: restoredUrls.map { "Muziek" }
         )
         index = prefs.getInt(KEY_INDEX, 0).coerceIn(0, urls.lastIndex)
-        currentSource = prefs.getString(KEY_SOURCE, "Supremacy") ?: "Supremacy"
+        currentSource = prefs.getString(KEY_SOURCE, "The One Mixes") ?: "The One Mixes"
         requestedStartPositionMs = prefs.getInt(KEY_POSITION, 0).coerceAtLeast(0)
         // Herstel altijd gepauzeerd. De gebruiker bepaalt zelf wanneer muziek
         // na het opnieuw openen van The One verder speelt.
@@ -420,7 +420,7 @@ class SupremacyPlaybackService : Service() {
 
         fun currentSource(context: Context): String =
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getString(KEY_SOURCE, "Supremacy")
-                ?: "Supremacy"
+                .getString(KEY_SOURCE, "The One Mixes")
+                ?: "The One Mixes"
     }
 }
