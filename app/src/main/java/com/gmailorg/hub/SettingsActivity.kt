@@ -448,14 +448,18 @@ class SettingsActivity : AppCompatActivity() {
             })
         }
 
+        val currentDeviceId = MainDeviceRegistry.deviceId(this)
+
         devices.forEach { device ->
+            val isCurrentOwnerDevice = device.id == currentDeviceId
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(16, 14, 16, 14)
             }
 
             val title = TextView(this).apply {
-                text = (if (device.online) "●  " else "○  ") + device.name
+                text = (if (device.online) "●  " else "○  ") + device.name +
+                    if (isCurrentOwnerDevice) "  •  Mijn apparaat" else ""
                 textSize = 16f
                 setTextColor(
                     ContextCompat.getColor(
@@ -479,8 +483,16 @@ class SettingsActivity : AppCompatActivity() {
             }
             card.addView(state)
 
-            val action = android.widget.Button(this).apply {
-                text = if (device.blocked) "Deblokkeren" else "Blokkeren"
+            if (isCurrentOwnerDevice) {
+                card.addView(TextView(this).apply {
+                    text = "Eigenaar • kan niet worden geblokkeerd"
+                    textSize = 12f
+                    setTextColor(ContextCompat.getColor(this@SettingsActivity, R.color.amber))
+                    setPadding(0, 4, 0, 6)
+                })
+            } else {
+                val action = android.widget.Button(this).apply {
+                    text = if (device.blocked) "Deblokkeren" else "Blokkeren"
                 setOnClickListener {
                     isEnabled = false
                     val newBlocked = !device.blocked
@@ -516,8 +528,9 @@ class SettingsActivity : AppCompatActivity() {
                         }
                     }.start()
                 }
+                }
+                card.addView(action)
             }
-            card.addView(action)
 
             list.addView(
                 card,
