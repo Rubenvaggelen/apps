@@ -15,9 +15,10 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="USB muziek • mappen"
-            android:textColor="@color/amber"
-            android:textSize="28sp"
+            android:text="USB MUZIEK • MAPPEN"
+            android:textColor="@color/text_main"
+            android:textSize="29sp"
+            android:letterSpacing="0.025"
             android:textStyle="bold" />
         <Button
             android:id="@+id/chooseUsbButton"
@@ -68,7 +69,7 @@
             android:layout_weight="1"
             android:layout_marginStart="10dp"
             android:text="USB /"
-            android:textColor="@color/amber"
+            android:textColor="@color/gold"
             android:textSize="15sp"
             android:textStyle="bold" />
     </LinearLayout>
@@ -78,8 +79,8 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"
         android:orientation="vertical"
-        android:background="@color/surface"
-        android:padding="12dp">
+        android:background="@drawable/bg_player_panel"
+        android:padding="14dp">
         <TextView
             android:id="@+id/nowPlayingText"
             android:layout_width="match_parent"
@@ -115,7 +116,8 @@
                 android:layout_marginEnd="6dp"
                 android:background="@drawable/bg_outline"
                 android:text="⏮ VORIGE"
-                android:textColor="@color/text_main" />
+                android:textColor="@color/text_main"
+                android:textStyle="bold" />
             <Button
                 android:id="@+id/playPauseButton"
                 android:layout_width="0dp"
@@ -124,7 +126,8 @@
                 android:layout_marginHorizontal="6dp"
                 android:background="@drawable/bg_amber_button"
                 android:text="▶ AFSPELEN"
-                android:textColor="@color/on_amber" />
+                android:textColor="@color/on_gold"
+                android:textStyle="bold" />
             <Button
                 android:id="@+id/nextButton"
                 android:layout_width="0dp"
@@ -133,7 +136,8 @@
                 android:layout_marginStart="6dp"
                 android:background="@drawable/bg_outline"
                 android:text="VOLGENDE ⏭"
-                android:textColor="@color/text_main" />
+                android:textColor="@color/text_main"
+                android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>
 
@@ -143,7 +147,7 @@
         android:paddingTop="8dp"
         android:paddingBottom="4dp"
         android:text="USB-STICKS • MAPPEN • NUMMERS"
-        android:textColor="@color/amber"
+        android:textColor="@color/gold"
         android:textSize="14sp"
         android:textStyle="bold" />
 
