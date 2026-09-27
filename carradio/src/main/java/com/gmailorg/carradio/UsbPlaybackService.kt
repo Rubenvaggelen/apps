@@ -431,10 +431,10 @@ class UsbPlaybackService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "USB muziek",
+                "The One Muziek",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Achtergrondweergave van USB-muziek in The One Car"
+                description = "Achtergrondweergave van Shared Media en The One Mixes in The One Car"
                 setSound(null, null)
             }
             (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
