@@ -22,11 +22,11 @@ import androidx.core.content.ContextCompat
 import java.util.Locale
 
 /**
- * Ingebouwde K2401 USB-speler.
+ * Ingebouwde K2401 Shared Media-speler voor USB en SD/microSD.
  *
  * Belangrijk voor deze head-unit:
- * - USB 1 en USB 2 blijven afzonderlijke bronnen.
- * - Eerst wordt een USB-stick gekozen, daarna blader je door de echte mappen.
+ * - USB- en SD/microSD-media blijven afzonderlijke bronnen.
+ * - Eerst wordt een medium gekozen, daarna blader je door de echte mappen.
  * - We gebruiken MediaStore en vallen voor de mapnaam terug op het fysieke DATA-pad,
  *   omdat sommige K2401-ROMs RELATIVE_PATH leeg teruggeven en anders alle nummers
  *   ten onrechte in één platte lijst terechtkomen.
@@ -77,7 +77,7 @@ class UsbMusicActivity : AppCompatActivity() {
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) scanUsbVolumes()
-        else statusText.text = "Geef The One toegang tot audio om USB-muziek te lezen."
+        else statusText.text = "Geef The One toegang tot audio om Shared Media te lezen."
     }
 
     private val progressTick = object : Runnable {
@@ -95,7 +95,7 @@ class UsbMusicActivity : AppCompatActivity() {
             if (state.hasTrack) {
                 nowPlayingText.paintFlags =
                     nowPlayingText.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
-                nowPlayingText.contentDescription = "Tik om de map van dit USB-nummer te openen"
+                nowPlayingText.contentDescription = "Tik om de map van dit Shared Media-nummer te openen"
             } else {
                 nowPlayingText.paintFlags =
                     nowPlayingText.paintFlags and android.graphics.Paint.UNDERLINE_TEXT_FLAG.inv()
@@ -123,7 +123,7 @@ class UsbMusicActivity : AppCompatActivity() {
         refreshButton = findViewById(R.id.refreshUsbButton)
         folderBackButton = findViewById(R.id.folderBackButton)
 
-        chooseUsbButton.text = "USB zoeken"
+        chooseUsbButton.text = "Media zoeken"
         refreshButton.text = "Vernieuwen"
         folderBackButton.text = "← 1 stap terug"
         chooseUsbButton.setOnClickListener { ensurePermissionThenScan() }
@@ -186,15 +186,15 @@ class UsbMusicActivity : AppCompatActivity() {
     }
 
     private fun scanUsbVolumes() {
-        // Alleen de USB-bibliotheek opnieuw scannen. De achtergrondspeler blijft bewust doorlopen.
+        // Alleen externe Shared Media opnieuw scannen. De achtergrondspeler blijft bewust doorlopen.
         allTracks.clear()
         usbVolumes.clear()
         browserEntries.clear()
         currentVolumeKey = null
         currentFolder = ""
         listView.adapter = null
-        statusText.text = "USB wordt gezocht…"
-        pathText.text = "USB"
+        statusText.text = "Shared Media wordt gezocht…"
+        pathText.text = "Shared Media"
         chooseUsbButton.isEnabled = false
         refreshButton.isEnabled = false
 
@@ -218,8 +218,8 @@ class UsbMusicActivity : AppCompatActivity() {
                     }
             }
 
-            // Sommige K2401-ROMs melden USB-opslag niet als een eigen MediaStore-volume.
-            // De legacy-query leest dan de fysieke paden en houdt USB 1/2 alsnog uit elkaar.
+            // Sommige K2401-ROMs melden USB- of SD-opslag niet als een eigen MediaStore-volume.
+            // De legacy-query leest dan de fysieke paden en houdt externe media alsnog uit elkaar.
             if (detectedVolumeKeys.isEmpty() || found.isEmpty()) {
                 queryLegacyRemovable(found)
                 found.mapTo(detectedVolumeKeys) { it.volumeKey }
@@ -233,7 +233,7 @@ class UsbMusicActivity : AppCompatActivity() {
                 .distinct()
                 .sortedWith(String.CASE_INSENSITIVE_ORDER)
 
-            val volumes = orderedKeys.mapIndexed { index, key -> UsbVolume(key, "USB ${index + 1}") }
+            val volumes = orderedKeys.mapIndexed { index, key -> UsbVolume(key, "Media ${index + 1}") }
 
             found.sortWith(
                 compareBy<Track> { it.volumeKey.lowercase(Locale.ROOT) }
@@ -250,9 +250,9 @@ class UsbMusicActivity : AppCompatActivity() {
                 refreshButton.isEnabled = true
 
                 statusText.text = when {
-                    usbVolumes.isEmpty() -> "Geen USB-opslag gevonden. Sluit je USB-stick aan en druk op Vernieuwen."
-                    allTracks.isEmpty() -> "${usbVolumes.size} USB-stick${if (usbVolumes.size == 1) "" else "s"} gevonden, maar nog geen muziekbestanden geïndexeerd."
-                    else -> "${usbVolumes.size} USB-stick${if (usbVolumes.size == 1) "" else "s"} gevonden • ${allTracks.size} nummer${if (allTracks.size == 1) "" else "s"}"
+                    usbVolumes.isEmpty() -> "Geen Shared Media gevonden. Sluit een USB-stick of SD-kaart aan en druk op Vernieuwen."
+                    allTracks.isEmpty() -> "${usbVolumes.size} medium${if (usbVolumes.size == 1) "" else "s"} gevonden, maar nog geen muziekbestanden geïndexeerd."
+                    else -> "${usbVolumes.size} medium${if (usbVolumes.size == 1) "" else "s"} gevonden • ${allTracks.size} nummer${if (allTracks.size == 1) "" else "s"}"
                 }
                 rebuildBrowser()
             }
@@ -268,7 +268,7 @@ class UsbMusicActivity : AppCompatActivity() {
                 val count = allTracks.count { it.volumeKey == volume.key }
                 browserEntries += BrowserEntry(
                     volumeKey = volume.key,
-                    label = "🔌 ${volume.label}  •  $count nummer${if (count == 1) "" else "s"}"
+                    label = "💾 ${volume.label}  •  $count nummer${if (count == 1) "" else "s"}"
                 )
             }
             playbackQueue = emptyList()
@@ -312,7 +312,7 @@ class UsbMusicActivity : AppCompatActivity() {
         }
         playbackQueue = directTracks.sortedBy { it.displayName.lowercase(Locale.ROOT) }
 
-        val volumeLabel = usbVolumes.firstOrNull { it.key == selectedVolume }?.label ?: "USB"
+        val volumeLabel = usbVolumes.firstOrNull { it.key == selectedVolume }?.label ?: "Shared Media"
         pathText.text = if (prefix.isBlank()) "$volumeLabel /" else "$volumeLabel / $prefix"
         folderBackButton.visibility = View.VISIBLE
         listView.adapter = ArrayAdapter(this, R.layout.view_usb_track, R.id.trackName, browserEntries.map { it.label })
@@ -484,7 +484,7 @@ class UsbMusicActivity : AppCompatActivity() {
         return normalizeFolder(clean)
     }
 
-    /** Bepaal welke fysieke USB-stick bij een legacy pad hoort. */
+    /** Bepaal welk fysiek USB- of SD-medium bij een legacy pad hoort. */
     private fun legacyVolumeKey(path: String): String? {
         val clean = path.replace('\\', '/').trim()
         val lower = clean.lowercase(Locale.ROOT)
