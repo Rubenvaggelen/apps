@@ -28,7 +28,15 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:padding="16dp">
+            android:padding="14dp">
+
+            <ImageView
+                android:layout_width="54dp"
+                android:layout_height="54dp"
+                android:layout_marginEnd="12dp"
+                android:src="@drawable/the_one_logo"
+                android:scaleType="fitCenter"
+                android:contentDescription="The One logo" />
 
             <TextView
                 android:id="@+id/appTitle"
@@ -38,12 +46,12 @@
                 android:text="@string/app_name"
                 android:textColor="@color/amber"
                 android:textSize="30sp"
-                android:textStyle="bold" 
-                android:fontFamily="serif" 
-                android:letterSpacing="0.04" 
-                android:shadowColor="#B3E0A458" 
-                android:shadowDx="0" 
-                android:shadowDy="1" 
+                android:textStyle="bold"
+                android:fontFamily="serif"
+                android:letterSpacing="0.04"
+                android:shadowColor="#9920B8FF"
+                android:shadowDx="0"
+                android:shadowDy="0"
                 android:shadowRadius="8" />
 
             <TextView
