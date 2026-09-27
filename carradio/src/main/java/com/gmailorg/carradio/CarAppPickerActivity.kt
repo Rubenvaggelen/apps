@@ -33,7 +33,7 @@ class CarAppPickerActivity : AppCompatActivity() {
             val row = TextView(this).apply {
                 text = label
                 setTextColor(ContextCompat.getColor(context, R.color.text_main))
-                textSize = 18f
+                textSize = 27.0f
                 setPadding(16.dp, 14.dp, 16.dp, 14.dp)
                 setBackgroundResource(R.drawable.bg_outline)
                 setOnClickListener {
