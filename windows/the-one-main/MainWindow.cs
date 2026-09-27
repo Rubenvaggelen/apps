@@ -2867,7 +2867,7 @@ public sealed class MainWindow : Window
             try
             {
                 await UsbMusicCloudService.SyncNowAsync();
-                var sticks = await UsbMusicCloudService.GetCatalogAsync();
+                var sticks = await UsbMusicCloudService.GetCatalogAsync(includeInactive: true);
 
                 var available = sticks
                     .Select(stick => new
