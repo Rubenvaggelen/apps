@@ -1,8 +1,11 @@
 package com.gmailorg.hub
 
+import android.app.DownloadManager
 import android.content.Intent
 import android.graphics.Typeface
+import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import android.text.Html
 import android.view.Gravity
 import android.view.View
@@ -11,6 +14,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import org.json.JSONArray
@@ -48,6 +52,16 @@ class SupremacyMixesActivity : AppCompatActivity() {
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(ContextCompat.getColor(context, R.color.amber))
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        header.addView(TextView(this).apply {
+            text = "NAAR PLAYER  ›"
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(ContextCompat.getColor(context, R.color.on_gold))
+            setBackgroundResource(R.drawable.bg_the_one_gold_button)
+            setPadding(14.dp, 10.dp, 14.dp, 10.dp)
+            setOnClickListener { openPlayer() }
+        })
         root.addView(header)
 
         progress = ProgressBar(this)
@@ -190,15 +204,79 @@ class SupremacyMixesActivity : AppCompatActivity() {
             setTextColor(ContextCompat.getColor(context, R.color.text_main))
             maxLines = 3
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(Button(this).apply {
+        row.addView(TextView(this).apply {
+            text = "↓"
+            textSize = 21f
+            gravity = Gravity.CENTER
+            contentDescription = "Download ${mix.title}"
+            setTextColor(ContextCompat.getColor(context, R.color.gold))
+            setBackgroundResource(R.drawable.bg_the_one_gold_outline)
+            setPadding(12.dp, 10.dp, 12.dp, 10.dp)
+            setOnClickListener { downloadMix(mix) }
+        }, LinearLayout.LayoutParams(52.dp, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            marginEnd = 10.dp
+        })
+        row.addView(TextView(this).apply {
             text = "▶ Afspelen"
-            setTextColor(ContextCompat.getColor(context, R.color.on_amber))
-            setBackgroundColor(ContextCompat.getColor(context, R.color.amber))
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(ContextCompat.getColor(context, R.color.on_gold))
+            setBackgroundResource(R.drawable.bg_the_one_gold_button)
+            setPadding(14.dp, 10.dp, 14.dp, 10.dp)
             setOnClickListener { play(mix, queue, index) }
         })
         parent.addView(row)
         parent.addView(View(this).apply { setBackgroundColor(ContextCompat.getColor(context, R.color.surface)) },
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1.dp))
+    }
+
+    private fun openPlayer() {
+        startActivity(
+            Intent(this, MoviesActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+            }
+        )
+        finish()
+    }
+
+    private fun downloadMix(mix: Mix) {
+        try {
+            val safeBase = mix.title
+                .replace(Regex("""[\\/:*?"<>|]"""), "_")
+                .trim()
+                .ifBlank { "The One Mix" }
+            val fileName =
+                if (safeBase.contains(Regex("""\.[A-Za-z0-9]{2,5}$"""))) safeBase
+                else "$safeBase.mp3"
+
+            val request = DownloadManager.Request(Uri.parse(mix.url))
+                .setTitle(mix.title)
+                .setDescription("The One Mixes")
+                .setNotificationVisibility(
+                    DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
+                )
+                .setDestinationInExternalPublicDir(
+                    Environment.DIRECTORY_DOWNLOADS,
+                    "The One Mixes/$fileName"
+                )
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(true)
+
+            val manager = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+            manager.enqueue(request)
+            Toast.makeText(
+                this,
+                "Download gestart: ${mix.title}",
+                Toast.LENGTH_SHORT
+            ).show()
+        } catch (e: Exception) {
+            Toast.makeText(
+                this,
+                e.message ?: "Download starten mislukt",
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     private fun play(mix: Mix, queue: List<Mix>, index: Int) {
