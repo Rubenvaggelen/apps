@@ -51,6 +51,7 @@ public sealed class MainWindow : Window
     private bool _musicOverlayFaded;
     private bool _nativeUsbMusicActive;
     private bool _usbHomeUnlocked;
+    private Action? _openCurrentUsbFolderAction;
 
     private Grid? _mailPage;
     private Microsoft.Web.WebView2.Wpf.WebView2? _mailWebView;
@@ -581,6 +582,16 @@ public sealed class MainWindow : Window
             Margin = new Thickness(0, 4, 12, 0)
         };
         _musicHomeNowPlaying = title;
+
+        if (_openCurrentUsbFolderAction != null)
+        {
+            title.Cursor = Cursors.Hand;
+            title.ToolTip = "Klik om naar de map van dit nummer te gaan";
+            title.TextDecorations = TextDecorations.Underline;
+            title.MouseLeftButtonUp += (_, _) =>
+                _openCurrentUsbFolderAction?.Invoke();
+        }
+
         titleStack.Children.Add(title);
         header.Children.Add(titleStack);
 
@@ -745,6 +756,7 @@ public sealed class MainWindow : Window
         _musicSessionActive = false;
         _nativeUsbMusicActive = false;
         _musicNowPlayingTitle = "Muziek";
+        _openCurrentUsbFolderAction = null;
 
         if (_musicHomeOverlay?.Parent is Panel parent)
             parent.Children.Remove(_musicHomeOverlay);
@@ -2148,6 +2160,13 @@ public sealed class MainWindow : Window
             nowPlaying.Cursor = Cursors.Arrow;
             nowPlaying.ToolTip = null;
             nowPlaying.TextDecorations = null;
+            _openCurrentUsbFolderAction = null;
+            if (_musicHomeNowPlaying != null)
+            {
+                _musicHomeNowPlaying.Cursor = Cursors.Arrow;
+                _musicHomeNowPlaying.ToolTip = null;
+                _musicHomeNowPlaying.TextDecorations = null;
+            }
             RefreshSharedMediaTrackHighlights();
         }
 
@@ -2494,7 +2513,7 @@ public sealed class MainWindow : Window
             resultsScroll.ScrollToTop();
         }
 
-        nowPlaying.MouseLeftButtonUp += (_, _) =>
+        _openCurrentUsbFolderAction = () =>
         {
             if (currentUsbStick == null || currentUsbFiles == null) return;
 
@@ -2504,9 +2523,16 @@ public sealed class MainWindow : Window
                 : currentUsbFolder;
 
             currentUsbFolder = targetFolder;
+
+            // Ook vanaf de compacte player op het hoofdscherm:
+            // open eerst Muziek en spring daarna naar de map van het actieve nummer.
+            ShowMusic();
             RenderUsbFolder(currentUsbStick, currentUsbFiles, targetFolder);
             RefreshSharedMediaTrackHighlights(bringActiveIntoView: true);
         };
+
+        nowPlaying.MouseLeftButtonUp += (_, _) =>
+            _openCurrentUsbFolderAction?.Invoke();
 
         var playerControls = new StackPanel
         {
