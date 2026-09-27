@@ -167,13 +167,27 @@ class SupremacyPlaybackService : Service() {
                 .build(),
             true
         )
-        exo.setMediaItem(MediaItem.fromUri(url))
-        if (requestedStartPositionMs > 0) {
-            exo.seekTo(requestedStartPositionMs.toLong())
-        }
+
+        // Eén doorlopende playlist voorkomt de harde stop tussen nummers.
+        // ExoPlayer kan het volgende item vooraf voorbereiden en zonder het
+        // volledig opnieuw opbouwen van de speler doorschakelen.
+        val items = urls.map { MediaItem.fromUri(it) }
+        if (items.isEmpty()) return
+        exo.setMediaItems(items)
+        exo.seekTo(index.coerceIn(0, items.lastIndex), requestedStartPositionMs.toLong())
         exo.playWhenReady = autoStart
 
         exo.addListener(object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                if (player !== exo) return
+                index = exo.currentMediaItemIndex.coerceIn(0, urls.lastIndex)
+                requestedStartPositionMs = 0
+                currentTitle = titles.getOrNull(index).orEmpty().ifBlank { "Muziek" }
+                saveState(active = true, playing = exo.isPlaying || exo.playWhenReady)
+                saveSession()
+                updateNotification(if (exo.isPlaying || exo.playWhenReady) "Speelt af" else "Gepauzeerd")
+            }
+
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (player !== exo) return
 
@@ -195,17 +209,10 @@ class SupremacyPlaybackService : Service() {
                     }
 
                     Player.STATE_ENDED -> {
-                        if (index + 1 < urls.size) {
-                            index++
-                            requestedStartPositionMs = 0
-                            requestedAutoStart = true
-                            startCurrent()
-                        } else {
-                            clearSession()
-                            saveState(active = false, playing = false)
-                            stopForeground(STOP_FOREGROUND_REMOVE)
-                            stopSelf()
-                        }
+                        clearSession()
+                        saveState(active = false, playing = false)
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        stopSelf()
                     }
                 }
             }
@@ -252,24 +259,21 @@ class SupremacyPlaybackService : Service() {
     }
 
     private fun next() {
-        if (urls.isEmpty()) return
-        if (index + 1 < urls.size) {
-            index++
-            requestedStartPositionMs = 0
-            requestedAutoStart = true
-            startCurrent()
+        val p = player ?: return
+        if (p.hasNextMediaItem()) {
+            p.seekToNextMediaItem()
+            p.play()
         }
     }
 
     private fun previous() {
-        if (urls.isEmpty()) return
-        if (index > 0) {
-            index--
-            requestedStartPositionMs = 0
-            requestedAutoStart = true
-            startCurrent()
+        val p = player ?: return
+        if (p.currentPosition > 3000L || !p.hasPreviousMediaItem()) {
+            p.seekTo(0L)
+            p.play()
         } else {
-            try { player?.seekTo(0L) } catch (_: Exception) {}
+            p.seekToPreviousMediaItem()
+            p.play()
         }
     }
 
