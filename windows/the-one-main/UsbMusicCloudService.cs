@@ -98,7 +98,7 @@ public static class UsbMusicCloudService
                 var signature = BuildDriveSignature();
                 if (!string.Equals(signature, _lastDriveSignature, StringComparison.Ordinal))
                 {
-                    Log("USB-wijziging gedetecteerd. Synchronisatie starten.");
+                    Log("Shared Media-wijziging gedetecteerd. Synchronisatie starten.");
                     await SyncNowAsync(cancellationToken);
                     _lastDriveSignature = signature;
                 }
@@ -106,7 +106,7 @@ public static class UsbMusicCloudService
             catch (Exception ex)
             {
                 Log("Achtergrondsync fout: " + ex.GetType().Name + " - " + ex.Message);
-                // Netwerk of USB mag The One Windows nooit blokkeren.
+                // Netwerk of Shared Media mag The One Windows nooit blokkeren.
             }
 
             try
@@ -126,7 +126,7 @@ public static class UsbMusicCloudService
         try
         {
             var drives = ReadyUsbDrives().ToList();
-            Log($"Verwijderbare USB-drives gevonden: {drives.Count}.");
+            Log($"Shared Media-drives gevonden: {drives.Count}.");
 
             // Meld altijd welke sticks fysiek aanwezig zijn. Ook een lege lijst
             // is belangrijk: daarmee verdwijnen losgekoppelde sticks uit Shared Media.
@@ -214,7 +214,7 @@ public static class UsbMusicCloudService
             response.EnsureSuccessStatusCode();
         }
 
-        Log($"USB-aanwezigheid gepubliceerd: {drives.Count} actieve stick(s).");
+        Log($"Shared Media-aanwezigheid gepubliceerd: {drives.Count} actieve stick(s).");
     }
 
     public static async Task<bool> ValidateUserPinAsync(
