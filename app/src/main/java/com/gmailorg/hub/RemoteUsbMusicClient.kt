@@ -36,7 +36,8 @@ object RemoteUsbMusicClient {
         val deviceName: String,
         val stickId: String,
         val stickName: String,
-        val files: List<RemoteFile>
+        val files: List<RemoteFile>,
+        val totalFiles: Int
     )
 
     fun hasToken(context: Context): Boolean =
@@ -124,6 +125,7 @@ object RemoteUsbMusicClient {
             val stickName = item.optString("stick_name", "USB").trim().ifBlank { "USB" }
             val files = mutableListOf<RemoteFile>()
             val fileArray = item.optJSONArray("files")
+            val totalFiles = fileArray?.length() ?: 0
 
             if (fileArray != null) {
                 for (j in 0 until fileArray.length()) {
@@ -146,13 +148,14 @@ object RemoteUsbMusicClient {
                 }
             }
 
-            if (files.isNotEmpty()) {
+            if (totalFiles > 0) {
                 result += RemoteStick(
                     deviceId = deviceId,
                     deviceName = deviceName,
                     stickId = stickId,
                     stickName = stickName,
-                    files = files
+                    files = files,
+                    totalFiles = totalFiles
                 )
             }
         }
