@@ -1117,6 +1117,7 @@ class MainActivity : AppCompatActivity() {
                 parent: android.view.ViewGroup?
             ): View {
                 val file = files[position]
+                val isCached = file.cached
                 val isCurrent = isRemoteUsbTrackCurrent(file)
 
                 val row = LinearLayout(this@MainActivity).apply {
@@ -1141,11 +1142,16 @@ class MainActivity : AppCompatActivity() {
                     TextView(this@MainActivity).apply {
                         text =
                             (if (isCurrent) "▶ NU • " else "") +
-                                cleanRemoteUsbTrackTitle(file.displayName)
+                                cleanRemoteUsbTrackTitle(file.displayName) +
+                                if (isCached) "" else "  •  Synchroniseren…"
                         textSize = 24.0f
                         setTextColor(
                             android.graphics.Color.parseColor(
-                                if (isCurrent) "#8A5A0A" else "#101925"
+                                when {
+                                    !isCached -> "#8F9BAD"
+                                    isCurrent -> "#8A5A0A"
+                                    else -> "#101925"
+                                }
                             )
                         )
                         setTypeface(
@@ -1157,7 +1163,15 @@ class MainActivity : AppCompatActivity() {
                         ellipsize = android.text.TextUtils.TruncateAt.END
                         setPadding(8, 14, 14, 14)
                         setOnClickListener {
-                            playRemoteUsbFolder(stick, files, position)
+                            if (isCached) {
+                                playRemoteUsbFolder(stick, files, position)
+                            } else {
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    "Dit nummer wordt nog gesynchroniseerd.",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
                         }
                     },
                     LinearLayout.LayoutParams(
@@ -1169,7 +1183,7 @@ class MainActivity : AppCompatActivity() {
 
                 row.addView(
                     TextView(this@MainActivity).apply {
-                        text = "↓"
+                        text = if (isCached) "↓" else "…"
                         textSize = 30.0f
                         gravity = Gravity.CENTER
                         setTextColor(
@@ -1178,8 +1192,17 @@ class MainActivity : AppCompatActivity() {
                         contentDescription = "Download ${file.name}"
                         setBackgroundResource(R.drawable.bg_gold_outline)
                         setPadding(16, 12, 16, 12)
+                        alpha = if (isCached) 1f else 0.35f
                         setOnClickListener {
-                            requestRemoteUsbDownload(file)
+                            if (isCached) {
+                                requestRemoteUsbDownload(file)
+                            } else {
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    "Download beschikbaar zodra synchronisatie klaar is.",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
                         }
                     },
                     LinearLayout.LayoutParams(
@@ -1193,7 +1216,7 @@ class MainActivity : AppCompatActivity() {
 
                 row.addView(
                     TextView(this@MainActivity).apply {
-                        text = "▶"
+                        text = if (isCached) "▶" else "…"
                         textSize = 28.5f
                         gravity = Gravity.CENTER
                         setTextColor(
@@ -1363,15 +1386,33 @@ class MainActivity : AppCompatActivity() {
         index: Int
     ) {
         try {
-            val queue = files.map {
+            val selectedFile = files.getOrNull(index)
+                ?: throw IllegalArgumentException("Nummer niet gevonden")
+            if (!selectedFile.cached) {
+                Toast.makeText(
+                    this,
+                    "Dit nummer wordt nog gesynchroniseerd.",
+                    Toast.LENGTH_SHORT
+                ).show()
+                return
+            }
+
+            val playableFiles = files.filter { it.cached }
+            val playableIndex = playableFiles.indexOfFirst {
+                it.deviceId == selectedFile.deviceId &&
+                    it.stickId == selectedFile.stickId &&
+                    it.path.equals(selectedFile.path, ignoreCase = true)
+            }.coerceAtLeast(0)
+
+            val queue = playableFiles.map {
                 UsbPlaybackService.QueueItem(
                     RemoteUsbMusicClient.streamUrl(this, it),
                     cleanRemoteUsbTrackTitle(it.displayName)
                 )
             }
             currentFamilyStick = stick
-            currentFamilyFiles = files.toList()
-            UsbPlaybackService.play(this, queue, index)
+            currentFamilyFiles = playableFiles.toList()
+            UsbPlaybackService.play(this, queue, playableIndex)
             Toast.makeText(this, "Shared Media speelt af", Toast.LENGTH_SHORT).show()
         } catch (_: RemoteUsbMusicClient.AuthRequired) {
             RemoteUsbMusicClient.clearToken(this)
