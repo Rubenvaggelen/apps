@@ -1997,6 +1997,232 @@ public sealed class MainWindow : Window
         Grid.SetRow(web, 1);
         playerGrid.Children.Add(web);
 
+        CloudUsbMusicStick? currentUsbStick = null;
+        List<CloudUsbMusicFile>? currentUsbFiles = null;
+        var currentUsbFolder = "";
+
+        static string NormalizeUsbFolder(string? value) =>
+            (value ?? "").Replace('\\', '/').Trim('/');
+
+        static string ParentUsbFolder(string folder)
+        {
+            folder = NormalizeUsbFolder(folder);
+            var slash = folder.LastIndexOf('/');
+            return slash < 0 ? "" : folder[..slash];
+        }
+
+        void ClearUsbFolderJump()
+        {
+            currentUsbStick = null;
+            currentUsbFiles = null;
+            currentUsbFolder = "";
+            nowPlaying.Cursor = Cursors.Arrow;
+            nowPlaying.ToolTip = null;
+            nowPlaying.TextDecorations = null;
+        }
+
+        void SetUsbFolderJump(
+            CloudUsbMusicStick stick,
+            List<CloudUsbMusicFile> files,
+            string folder)
+        {
+            currentUsbStick = stick;
+            currentUsbFiles = files;
+            currentUsbFolder = NormalizeUsbFolder(folder);
+            nowPlaying.Cursor = Cursors.Hand;
+            nowPlaying.ToolTip = "Klik om direct naar deze USB-map te gaan";
+            nowPlaying.TextDecorations = TextDecorations.Underline;
+        }
+
+        async Task PlayUsbFromFolderAsync(
+            CloudUsbMusicStick stick,
+            List<CloudUsbMusicFile> allFiles,
+            string folder,
+            List<CloudUsbMusicFile> folderFiles,
+            int index,
+            Button play)
+        {
+            if (index < 0 || index >= folderFiles.Count) return;
+            var file = folderFiles[index];
+
+            play.IsEnabled = false;
+            status.Text = "USB-stream controleren…";
+            status.Foreground = TextDim;
+
+            try
+            {
+                var probe = await UsbMusicCloudService.ProbeStreamAsync(file);
+                if (!probe.Ok)
+                {
+                    status.Text = "USB-stream kan niet worden afgespeeld: " + probe.Message;
+                    status.Foreground = Amber;
+                    return;
+                }
+
+                NativeUsbAudioPlayer.Stop();
+                _nativeUsbMusicActive = false;
+                _musicNowPlayingTitle =
+                    $"{file.Name}  •  {stick.DeviceName} / {stick.StickName}";
+                _musicSessionActive = true;
+                nowPlaying.Text = _musicNowPlayingTitle;
+                if (_musicHomeNowPlaying != null)
+                    _musicHomeNowPlaying.Text = _musicNowPlayingTitle;
+
+                SetUsbFolderJump(stick, allFiles, folder);
+
+                var queue = new List<string>();
+                foreach (var queued in folderFiles.Skip(index))
+                    queue.Add(await UsbMusicCloudService.BuildStreamUrlAsync(queued));
+
+                await YouTubeMusicService.PlayAudioQueueAsync(web, queue);
+                status.Text = "Speelt af via The One Player";
+                status.Foreground = Sage;
+            }
+            catch (Exception ex)
+            {
+                status.Text = "USB afspelen mislukt: " + ex.Message;
+                status.Foreground = Amber;
+            }
+            finally
+            {
+                play.IsEnabled = true;
+            }
+        }
+
+        void RenderUsbFolder(
+            CloudUsbMusicStick stick,
+            List<CloudUsbMusicFile> allFiles,
+            string folder)
+        {
+            folder = NormalizeUsbFolder(folder);
+            currentUsbFolder = folder;
+            results.Children.Clear();
+
+            var nav = new DockPanel
+            {
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+
+            if (folder.Length > 0)
+            {
+                var back = SmallButton("← 1 stap terug", () => { });
+                back.MinWidth = 125;
+                DockPanel.SetDock(back, Dock.Left);
+                back.Click += (_, _) =>
+                    RenderUsbFolder(stick, allFiles, ParentUsbFolder(folder));
+                nav.Children.Add(back);
+            }
+
+            var location = new TextBlock
+            {
+                Text = folder.Length == 0
+                    ? $"{stick.DeviceName} / {stick.StickName} /"
+                    : $"{stick.DeviceName} / {stick.StickName} / {folder}",
+                Foreground = Amber,
+                FontSize = 14,
+                FontWeight = FontWeights.SemiBold,
+                TextWrapping = TextWrapping.Wrap,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(folder.Length > 0 ? 12 : 0, 4, 0, 4)
+            };
+            nav.Children.Add(location);
+            results.Children.Add(nav);
+
+            var prefix = folder.Length == 0 ? "" : folder + "/";
+            var childFolders = allFiles
+                .Select(file => NormalizeUsbFolder(file.Folder))
+                .Where(path =>
+                    path.Length > folder.Length &&
+                    path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                .Select(path =>
+                {
+                    var remainder = path[prefix.Length..];
+                    var slash = remainder.IndexOf('/');
+                    return slash < 0 ? remainder : remainder[..slash];
+                })
+                .Where(name => name.Length > 0)
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            foreach (var child in childFolders)
+            {
+                var childPath = folder.Length == 0 ? child : folder + "/" + child;
+                var count = allFiles.Count(file =>
+                {
+                    var fileFolder = NormalizeUsbFolder(file.Folder);
+                    return string.Equals(fileFolder, childPath, StringComparison.OrdinalIgnoreCase) ||
+                           fileFolder.StartsWith(childPath + "/", StringComparison.OrdinalIgnoreCase);
+                });
+
+                var openFolder = SmallButton($"📁 {child}  ({count})", () => { });
+                openFolder.HorizontalContentAlignment = HorizontalAlignment.Left;
+                openFolder.Margin = new Thickness(0, 3, 0, 3);
+                openFolder.Click += (_, _) => RenderUsbFolder(stick, allFiles, childPath);
+                results.Children.Add(openFolder);
+            }
+
+            var directTracks = allFiles
+                .Where(file =>
+                    string.Equals(
+                        NormalizeUsbFolder(file.Folder),
+                        folder,
+                        StringComparison.OrdinalIgnoreCase))
+                .OrderBy(file => file.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            if (directTracks.Count == 0 && childFolders.Count == 0)
+            {
+                results.Children.Add(Label("Deze map bevat geen beschikbare nummers.", 13, TextDim));
+                return;
+            }
+
+            for (var i = 0; i < directTracks.Count; i++)
+            {
+                var index = i;
+                var file = directTracks[index];
+
+                var row = new DockPanel
+                {
+                    Margin = new Thickness(0, 4, 0, 4)
+                };
+
+                var play = SmallButton("▶ Afspelen", () => { });
+                play.MinWidth = 105;
+                DockPanel.SetDock(play, Dock.Right);
+                row.Children.Add(play);
+
+                row.Children.Add(new TextBlock
+                {
+                    Text = file.Name,
+                    Foreground = TextMain,
+                    FontSize = 13,
+                    TextWrapping = TextWrapping.Wrap,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 12, 0)
+                });
+
+                play.Click += async (_, _) =>
+                    await PlayUsbFromFolderAsync(
+                        stick,
+                        allFiles,
+                        folder,
+                        directTracks,
+                        index,
+                        play);
+
+                results.Children.Add(row);
+            }
+
+            resultsScroll.ScrollToTop();
+        }
+
+        nowPlaying.MouseLeftButtonUp += (_, _) =>
+        {
+            if (currentUsbStick == null || currentUsbFiles == null) return;
+            RenderUsbFolder(currentUsbStick, currentUsbFiles, currentUsbFolder);
+        };
+
         var playerControls = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -2013,6 +2239,7 @@ public sealed class MainWindow : Window
         stopTrack.Click += async (_, _) =>
         {
             await StopMusicSessionAsync();
+            ClearUsbFolderJump();
             nowPlaying.Text = "Kies links een nummer";
         };
         playerControls.Children.Add(previousTrack);
@@ -2256,6 +2483,7 @@ public sealed class MainWindow : Window
                             {
                                 NativeUsbAudioPlayer.Stop();
                                 _nativeUsbMusicActive = false;
+                                ClearUsbFolderJump();
                                 _musicNowPlayingTitle = $"{mix.Title}  •  Supremacy mixen";
                                 _musicSessionActive = true;
                                 nowPlaying.Text = _musicNowPlayingTitle;
@@ -2447,6 +2675,8 @@ public sealed class MainWindow : Window
                                     if (_musicHomeNowPlaying != null)
                                         _musicHomeNowPlaying.Text = _musicNowPlayingTitle;
 
+                                    SetUsbFolderJump(stick, files, file.Folder);
+
                                     var queue = new List<string>();
                                     foreach (var queued in folderFiles.Skip(index))
                                         queue.Add(await UsbMusicCloudService.BuildStreamUrlAsync(queued));
@@ -2511,6 +2741,7 @@ public sealed class MainWindow : Window
             {
                 NativeUsbAudioPlayer.Stop();
                 _nativeUsbMusicActive = false;
+                ClearUsbFolderJump();
                 _musicNowPlayingTitle = "Spotify  •  " + query;
                 _musicSessionActive = true;
                 nowPlaying.Text = _musicNowPlayingTitle;
