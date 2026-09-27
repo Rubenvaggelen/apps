@@ -451,16 +451,18 @@ class SettingsActivity : AppCompatActivity() {
         val currentDeviceId = MainDeviceRegistry.deviceId(this)
 
         devices.forEach { device ->
-            val isCurrentOwnerDevice = device.id == currentDeviceId
+            val isCurrentDevice = device.id == currentDeviceId
+            val personLabel = device.personName.ifBlank { "Naam nog niet ingevuld" }
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(16, 14, 16, 14)
             }
 
             val title = TextView(this).apply {
-                text = (if (device.online) "●  " else "○  ") + device.name +
-                    if (isCurrentOwnerDevice) "  •  Mijn apparaat" else ""
-                textSize = 16f
+                text = (if (device.online) "●  " else "○  ") + personLabel +
+                    if (device.owner) "  •  The One" else ""
+                textSize = 17f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
                 setTextColor(
                     ContextCompat.getColor(
                         this@SettingsActivity,
@@ -469,6 +471,14 @@ class SettingsActivity : AppCompatActivity() {
                 )
             }
             card.addView(title)
+
+            card.addView(TextView(this).apply {
+                text = device.name +
+                    if (isCurrentDevice) "  •  Dit apparaat" else ""
+                textSize = 12f
+                setTextColor(ContextCompat.getColor(this@SettingsActivity, R.color.text_dim))
+                setPadding(0, 3, 0, 2)
+            })
 
             val state = TextView(this).apply {
                 text = deviceStateText(device)
@@ -483,9 +493,9 @@ class SettingsActivity : AppCompatActivity() {
             }
             card.addView(state)
 
-            if (isCurrentOwnerDevice) {
+            if (device.owner) {
                 card.addView(TextView(this).apply {
-                    text = "Eigenaar • kan niet worden geblokkeerd"
+                    text = "The One • beheerder • kan niet worden geblokkeerd"
                     textSize = 12f
                     setTextColor(ContextCompat.getColor(this@SettingsActivity, R.color.amber))
                     setPadding(0, 4, 0, 6)
@@ -514,7 +524,7 @@ class SettingsActivity : AppCompatActivity() {
                                 )
                                 Toast.makeText(
                                     this@SettingsActivity,
-                                    if (newBlocked) "${device.name} is geblokkeerd." else "${device.name} is gedeblokkeerd.",
+                                    if (newBlocked) "$personLabel is geblokkeerd." else "$personLabel is gedeblokkeerd.",
                                     Toast.LENGTH_SHORT
                                 ).show()
                             }.onFailure {
