@@ -36,6 +36,7 @@ class UsbMusicActivity : AppCompatActivity() {
     private data class Track(
         val uri: Uri,
         val displayName: String,
+        val playerTitle: String,
         val volumeKey: String,
         val folder: String
     )
@@ -88,7 +89,6 @@ class UsbMusicActivity : AppCompatActivity() {
                 timeText.text = "${formatTime(state.positionMs)} / ${formatTime(state.durationMs)}"
             }
             nowPlayingText.text = when {
-                state.isPreparing -> "Laden: ${state.title}"
                 state.hasTrack -> state.title
                 else -> "Geen nummer geselecteerd"
             }
@@ -387,15 +387,19 @@ class UsbMusicActivity : AppCompatActivity() {
                         rawPath.isNotBlank() -> folderFromAbsolutePath(rawPath, volume)
                         else -> ""
                     }
-                    val display = when {
-                        title.isNotBlank() && artist.isNotBlank() && artist != "<unknown>" -> "$artist — $title"
+                    val cleanTitle = when {
                         title.isNotBlank() -> title
                         file.isNotBlank() -> file.substringBeforeLast('.')
                         else -> "Onbekend nummer"
                     }
+                    val display = when {
+                        title.isNotBlank() && artist.isNotBlank() && artist != "<unknown>" -> "$artist — $title"
+                        else -> cleanTitle
+                    }
                     output += Track(
                         uri = ContentUris.withAppendedId(uri, id),
                         displayName = display,
+                        playerTitle = cleanTitle,
                         volumeKey = volume,
                         folder = folder
                     )
@@ -432,15 +436,19 @@ class UsbMusicActivity : AppCompatActivity() {
                     val title = if (titleCol >= 0) c.getString(titleCol).orEmpty().trim() else ""
                     val artist = if (artistCol >= 0) c.getString(artistCol).orEmpty().trim() else ""
                     val file = if (fileCol >= 0) c.getString(fileCol).orEmpty().trim() else ""
-                    val display = when {
-                        title.isNotBlank() && artist.isNotBlank() && artist != "<unknown>" -> "$artist — $title"
+                    val cleanTitle = when {
                         title.isNotBlank() -> title
                         file.isNotBlank() -> file.substringBeforeLast('.')
                         else -> "Onbekend nummer"
                     }
+                    val display = when {
+                        title.isNotBlank() && artist.isNotBlank() && artist != "<unknown>" -> "$artist — $title"
+                        else -> cleanTitle
+                    }
                     output += Track(
                         uri = ContentUris.withAppendedId(uri, id),
                         displayName = display,
+                        playerTitle = cleanTitle,
                         volumeKey = key,
                         folder = folderFromAbsolutePath(rawPath, key)
                     )
@@ -524,9 +532,11 @@ class UsbMusicActivity : AppCompatActivity() {
     private fun playTrack(track: Track) {
         val queue = if (playbackQueue.isNotEmpty()) playbackQueue else listOf(track)
         val index = queue.indexOfFirst { it.uri == track.uri }.let { if (it < 0) 0 else it }
-        val serviceQueue = queue.map { UsbPlaybackService.QueueItem(it.uri.toString(), it.displayName) }
+        val serviceQueue = queue.map {
+            UsbPlaybackService.QueueItem(it.uri.toString(), it.playerTitle)
+        }
         UsbPlaybackService.play(this, serviceQueue, index)
-        nowPlayingText.text = "Laden: ${track.displayName}"
+        nowPlayingText.text = track.playerTitle
     }
 
     private fun togglePlayPause() {
