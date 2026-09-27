@@ -17,7 +17,7 @@
             android:layout_weight="1"
             android:text="The One Car • WhatsApp"
             android:textColor="@color/amber"
-            android:textSize="26sp"
+            android:textSize="39sp"
             android:textStyle="bold" />
         <Button
             android:id="@+id/clearChatsButton"
@@ -37,7 +37,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textColor="@color/text_dim"
-        android:textSize="14sp"
+        android:textSize="21sp"
         android:paddingTop="6dp"
         android:paddingBottom="10dp" />
 
@@ -47,7 +47,7 @@
         android:layout_height="wrap_content"
         android:text="Nog geen toegestane WhatsApp-gesprekken ontvangen."
         android:textColor="@color/text_dim"
-        android:textSize="17sp"
+        android:textSize="25.5sp"
         android:gravity="center"
         android:padding="24dp" />
 
