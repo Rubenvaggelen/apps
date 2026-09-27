@@ -563,37 +563,78 @@ class MoviesActivity : AppCompatActivity() {
     }
 
     private fun showRemoteStickDialog(sticks: List<RemoteUsbMusicClient.RemoteStick>) {
-        val labels = sticks.map {
-            val cached = it.files.count { file -> file.cached }
-            val total = it.totalFiles
+        val density = resources.displayMetrics.density
+        val sourceList = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(
+                (18 * density).toInt(),
+                (8 * density).toInt(),
+                (18 * density).toInt(),
+                (8 * density).toInt()
+            )
+        }
+        val scroll = ScrollView(this).apply {
+            addView(sourceList)
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Shared Media")
+            .setMessage("Tik op een bron om direct de USB-mappen te openen.")
+            .setView(scroll)
+            .setPositiveButton("Vernieuwen", null)
+            .setNegativeButton("Sluiten", null)
+            .create()
+
+        sticks.forEach { stick ->
+            val cached = stick.files.count { file -> file.cached }
+            val total = stick.totalFiles
             val status = if (cached >= total && total > 0) {
                 "$cached nummer" + if (cached == 1) "" else "s"
             } else {
                 "$cached van $total beschikbaar"
             }
-            it.deviceName + " • " + it.stickName + " • " + status
-        }.toTypedArray()
 
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Shared Media")
-            .setItems(labels) { _, which ->
-                val stick = sticks[which]
-                if (stick.files.isEmpty()) {
-                    AlertDialog.Builder(this)
-                        .setTitle(stick.deviceName + " • " + stick.stickName)
-                        .setMessage(
-                            "Deze bron wordt nog gesynchroniseerd. " +
-                                "Er zijn nog geen nummers klaar om af te spelen."
-                        )
-                        .setPositiveButton("OK", null)
-                        .show()
-                } else {
-                    showRemoteFolderDialog(stick)
+            val source = TextView(this).apply {
+                text = stick.deviceName + " • " + stick.stickName +
+                    "\n" + status + "\nOPEN MAPPEN  ›"
+                textSize = 18f
+                setTextColor(Color.WHITE)
+                setPadding(
+                    (18 * density).toInt(),
+                    (16 * density).toInt(),
+                    (18 * density).toInt(),
+                    (16 * density).toInt()
+                )
+                setBackgroundResource(R.drawable.bg_the_one_tile)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    dialog.dismiss()
+                    if (stick.files.isEmpty()) {
+                        AlertDialog.Builder(this@MoviesActivity)
+                            .setTitle(stick.deviceName + " • " + stick.stickName)
+                            .setMessage(
+                                "Deze bron wordt nog gesynchroniseerd. " +
+                                    "Er zijn nog geen nummers klaar om af te spelen."
+                            )
+                            .setPositiveButton("OK", null)
+                            .show()
+                    } else {
+                        showRemoteFolderDialog(stick)
+                    }
                 }
             }
-            .setPositiveButton("Vernieuwen", null)
-            .setNegativeButton("Sluiten", null)
-            .create()
+
+            sourceList.addView(
+                source,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = (12 * density).toInt()
+                }
+            )
+        }
 
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE)
