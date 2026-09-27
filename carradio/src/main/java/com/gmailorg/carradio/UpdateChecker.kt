@@ -20,7 +20,7 @@ object UpdateChecker {
         "https://api.github.com/repos/Rubenvaggelen/apps/releases?per_page=40"
     private const val ASSET_NAME = "carradio-debug.apk"
 
-    fun checkForUpdate(context: Context) {
+    fun checkForUpdate(context: Context, manual: Boolean = false) {
         Thread {
             try {
                 val connection = URL(RELEASES_URL).openConnection() as HttpURLConnection
@@ -64,13 +64,39 @@ object UpdateChecker {
                     bestDownloadUrl = assetUrl
                 }
 
-                if (bestVersion > BuildConfig.VERSION_CODE && bestDownloadUrl.isNotBlank()) {
-                    (context as? android.app.Activity)?.runOnUiThread {
-                        showUpdateDialog(context, bestDownloadUrl, bestVersion)
+                (context as? android.app.Activity)?.runOnUiThread {
+                    when {
+                        bestVersion > BuildConfig.VERSION_CODE &&
+                            bestDownloadUrl.isNotBlank() -> {
+                            showUpdateDialog(context, bestDownloadUrl, bestVersion)
+                        }
+
+                        manual -> {
+                            AlertDialog.Builder(context)
+                                .setTitle("Geen nieuwe update")
+                                .setMessage(
+                                    "The One Car is al bijgewerkt. Je gebruikt build " +
+                                        BuildConfig.VERSION_CODE + "."
+                                )
+                                .setPositiveButton("OK", null)
+                                .show()
+                        }
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Update-check mislukt; app blijft normaal bruikbaar", e)
+                if (manual) {
+                    (context as? android.app.Activity)?.runOnUiThread {
+                        AlertDialog.Builder(context)
+                            .setTitle("Update zoeken mislukt")
+                            .setMessage(
+                                "The One Car kon nu niet controleren op updates. " +
+                                    "Controleer de internetverbinding en probeer opnieuw."
+                            )
+                            .setPositiveButton("OK", null)
+                            .show()
+                    }
+                }
             }
         }.start()
     }
