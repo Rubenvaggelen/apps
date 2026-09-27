@@ -47,6 +47,26 @@ object RemoteUsbMusicClient {
         sessionExpires = 0L
     }
 
+    fun loginForBrowsing(context: Context): Boolean {
+        val connection = open(ENDPOINT + "?action=browse-login", "POST")
+        val code = connection.responseCode
+        if (code !in 200..299) {
+            connection.disconnect()
+            return false
+        }
+
+        val json = JSONObject(readBody(connection))
+        connection.disconnect()
+        val token = json.optString("token").trim()
+        if (token.isBlank()) return false
+
+        val seconds = json.optLong("expires_in", 3600L)
+        sessionToken = token
+        sessionExpires =
+            System.currentTimeMillis() + (seconds.coerceAtLeast(120L) - 60L) * 1000L
+        return true
+    }
+
     fun login(context: Context, pin: String): Boolean {
         val connection = open(ENDPOINT + "?action=login", "POST")
         connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
