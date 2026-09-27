@@ -21,8 +21,14 @@ object RemoteUsbMusicClient {
         val stickId: String,
         val path: String,
         val name: String,
-        val folder: String
-    )
+        val folder: String,
+        val title: String,
+        val artist: String,
+        val album: String
+    ) {
+        val displayName: String
+            get() = title.ifBlank { name }
+    }
 
     data class RemoteStick(
         val deviceId: String,
@@ -108,7 +114,10 @@ object RemoteUsbMusicClient {
                         stickId = stickId,
                         path = path,
                         name = f.optString("name", path.substringAfterLast('/')).trim(),
-                        folder = f.optString("folder").trim()
+                        folder = f.optString("folder").trim(),
+                        title = f.optString("title").trim(),
+                        artist = f.optString("artist").trim(),
+                        album = f.optString("album").trim()
                     )
                 }
             }
