@@ -592,19 +592,88 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showRemoteFolderDialog(stick: RemoteUsbMusicClient.RemoteStick) {
-        val groups = stick.files
-            .groupBy { it.folder.ifBlank { "Hoofdmap" } }
-            .toSortedMap(String.CASE_INSENSITIVE_ORDER)
-        val folders = groups.keys.toList()
+        showRemoteFolderLevel(stick, "")
+    }
+
+    private fun showRemoteFolderLevel(
+        stick: RemoteUsbMusicClient.RemoteStick,
+        prefix: String
+    ) {
+        val normalizedPrefix = prefix.trim('/')
+        val childFolders = linkedSetOf<String>()
+        val directFiles = mutableListOf<RemoteUsbMusicClient.RemoteFile>()
+
+        stick.files.forEach { file ->
+            val folder = file.folder.replace('\\', '/').trim('/')
+            when {
+                normalizedPrefix.isBlank() && folder.isBlank() -> {
+                    directFiles += file
+                }
+                normalizedPrefix.isBlank() -> {
+                    childFolders += folder.substringBefore('/')
+                }
+                folder == normalizedPrefix -> {
+                    directFiles += file
+                }
+                folder.startsWith("$normalizedPrefix/") -> {
+                    val rest = folder.removePrefix("$normalizedPrefix/")
+                    val child = rest.substringBefore('/')
+                    if (child.isNotBlank()) {
+                        childFolders += "$normalizedPrefix/$child"
+                    }
+                }
+            }
+        }
+
+        val folders = childFolders.sortedWith(String.CASE_INSENSITIVE_ORDER)
+        val sortedFiles = directFiles.sortedBy {
+            it.displayName.lowercase(Locale.ROOT)
+        }
+
+        if (folders.isEmpty()) {
+            showRemoteTrackDialog(
+                stick,
+                normalizedPrefix.ifBlank { "Hoofdmap" },
+                sortedFiles
+            )
+            return
+        }
+
+        val labels = mutableListOf<String>()
+        folders.forEach {
+            labels += "📁 " + it.substringAfterLast('/')
+        }
+        if (sortedFiles.isNotEmpty()) {
+            labels += "🎵 Nummers in deze map (${sortedFiles.size})"
+        }
+
+        val title = if (normalizedPrefix.isBlank()) {
+            stick.deviceName + " • " + stick.stickName
+        } else {
+            normalizedPrefix.substringAfterLast('/')
+        }
 
         AlertDialog.Builder(this)
-            .setTitle(stick.deviceName + " • " + stick.stickName)
-            .setItems(folders.toTypedArray()) { _, which ->
-                val files = groups[folders[which]].orEmpty()
-                    .sortedBy { it.name.lowercase() }
-                showRemoteTrackDialog(stick, folders[which], files)
+            .setTitle(title)
+            .setItems(labels.toTypedArray()) { _, which ->
+                if (which < folders.size) {
+                    showRemoteFolderLevel(stick, folders[which])
+                } else {
+                    showRemoteTrackDialog(
+                        stick,
+                        normalizedPrefix.ifBlank { "Hoofdmap" },
+                        sortedFiles
+                    )
+                }
             }
-            .setNegativeButton("Sluiten", null)
+            .setNegativeButton(
+                if (normalizedPrefix.isBlank()) "Sluiten" else "Terug"
+            ) { _, _ ->
+                if (normalizedPrefix.isNotBlank()) {
+                    val parent = normalizedPrefix.substringBeforeLast('/', "")
+                    showRemoteFolderLevel(stick, parent)
+                }
+            }
             .show()
     }
 
