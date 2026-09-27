@@ -720,23 +720,24 @@ class MoviesActivity : AppCompatActivity() {
                 setOnClickListener {
                     isEnabled = false
                     remoteMusicIo.execute {
-                        val allowed = try {
+                        val access = try {
                             MainDeviceRegistry.refreshAccess(
                                 this@MoviesActivity,
                                 MainDeviceRegistry.ACCESS_FAVORITES
-                            ).allowed
-                        } catch (_: Exception) { false }
+                            )
+                        } catch (_: Exception) { null }
+                        val allowed = access?.allowed == true
                         val ok = if (allowed) try {
                             RemoteUsbMusicClient.setFavoriteItem(this@MoviesActivity, item, false)
                             true
                         } catch (_: Exception) { false } else false
                         runOnUiThread {
                             if (!allowed) {
-                                Toast.makeText(
-                                    this@MoviesActivity,
-                                    "Je hebt geen Favorites-rechten. Vraag toegang aan via The One Favorites.",
-                                    Toast.LENGTH_LONG
-                                ).show()
+                                showSectionAccessRequestDialog(
+                                    MainDeviceRegistry.ACCESS_FAVORITES,
+                                    "The One Favorites",
+                                    access?.pending == true
+                                )
                                 isEnabled = true
                             } else if (ok) {
                                 dialog.dismiss()
@@ -1812,14 +1813,15 @@ class MoviesActivity : AppCompatActivity() {
         val add = !favoriteUsbKeys.contains(key)
         button.isEnabled = false
         remoteMusicIo.execute {
-            val allowed = try {
+            val access = try {
                 MainDeviceRegistry.refreshAccess(
                     this,
                     MainDeviceRegistry.ACCESS_FAVORITES
-                ).allowed
+                )
             } catch (_: Exception) {
-                false
+                null
             }
+            val allowed = access?.allowed == true
             val ok = if (allowed) {
                 try {
                     if (!RemoteUsbMusicClient.hasToken(this) &&
@@ -1840,11 +1842,11 @@ class MoviesActivity : AppCompatActivity() {
             runOnUiThread {
                 button.isEnabled = true
                 if (!allowed) {
-                    Toast.makeText(
-                        this,
-                        "Alleen The One of iemand met muziekrechten mag Favorites wijzigen.",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    showSectionAccessRequestDialog(
+                        MainDeviceRegistry.ACCESS_FAVORITES,
+                        "The One Favorites",
+                        access?.pending == true
+                    )
                 } else if (ok) {
                     if (add) favoriteUsbKeys += key else favoriteUsbKeys -= key
                     button.text = if (add) "★" else "☆"
@@ -1863,20 +1865,21 @@ class MoviesActivity : AppCompatActivity() {
 
     private fun requestRemoteUsbDownload(file: RemoteUsbMusicClient.RemoteFile) {
         remoteMusicIo.execute {
-            val allowed = try {
+            val access = try {
                 MainDeviceRegistry.refreshAccess(
                     this,
                     MainDeviceRegistry.ACCESS_SHARED
-                ).allowed
+                )
             } catch (_: Exception) {
-                false
+                null
             }
+            val allowed = access?.allowed == true
             runOnUiThread {
                 if (!allowed) {
                     showSectionAccessRequestDialog(
                         MainDeviceRegistry.ACCESS_SHARED,
                         "Shared Media",
-                        false
+                        access?.pending == true
                     )
                     return@runOnUiThread
                 }
