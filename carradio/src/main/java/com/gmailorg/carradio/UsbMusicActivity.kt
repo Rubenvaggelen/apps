@@ -570,6 +570,13 @@ class UsbMusicActivity : AppCompatActivity() {
         return "%d:%02d".format(Locale.ROOT, sec / 60, sec % 60)
     }
 
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (CarMediaKeyHandler.handle(this, event)) {
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onDestroy() {
         handler.removeCallbacks(progressTick)
         // Niet stoppen: UsbPlaybackService houdt de muziek aan wanneer dit scherm sluit.
