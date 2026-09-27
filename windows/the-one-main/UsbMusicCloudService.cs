@@ -79,7 +79,7 @@ public static class UsbMusicCloudService
     private static CancellationTokenSource? _backgroundCts;
     private static string _token = "";
     private static DateTime _tokenValidUntil = DateTime.MinValue;
-    private static string _lastDriveSignature = "";
+    private static string _lastDriveSignature = "__not_initialized__";
 
     public static void StartBackgroundSync()
     {
