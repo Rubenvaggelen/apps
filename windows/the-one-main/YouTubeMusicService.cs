@@ -219,6 +219,7 @@ window.theOneToggle = () => audio.paused ? audio.play() : audio.pause();
 window.theOnePrevious = () => { if (index > 0) load(index - 1); else { audio.currentTime = 0; audio.play().catch(()=>{}); } };
 window.theOneNext = () => { if (index + 1 < queue.length) load(index + 1); };
 window.theOneStop = () => { audio.pause(); audio.currentTime = 0; };
+window.theOneQueueIndex = () => index;
 load(0);
 </script>
 </body>
@@ -226,6 +227,23 @@ load(0);
 """.Replace("__QUEUE__", json);
 
         web.NavigateToString(html);
+    }
+
+    public static async Task<int> GetAudioQueueIndexAsync(WebView2 web)
+    {
+        if (web.CoreWebView2 == null) return -1;
+
+        try
+        {
+            var raw = await web.ExecuteScriptAsync(
+                "(window.theOneQueueIndex ? window.theOneQueueIndex() : -1).toString()");
+            raw = (raw ?? "").Trim().Trim('"');
+            return int.TryParse(raw, out var index) ? index : -1;
+        }
+        catch
+        {
+            return -1;
+        }
     }
 
     public static async Task TogglePlayPauseAsync(WebView2 web)
