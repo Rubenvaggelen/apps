@@ -20,7 +20,7 @@ object MenuButtonHelper {
         val button = Button(activity).apply {
             tag = MENU_BUTTON_TAG
             text = "← Terug naar menu"
-            textSize = 15f
+            textSize = 22.5f
             isAllCaps = false
             minHeight = 44.dp(activity)
             setPadding(20.dp(activity), 6.dp(activity), 20.dp(activity), 6.dp(activity))
