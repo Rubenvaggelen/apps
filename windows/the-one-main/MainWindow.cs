@@ -2438,8 +2438,8 @@ public sealed class MainWindow : Window
                                         return;
                                     }
 
-                                    try { await YouTubeMusicService.StopAsync(web); } catch { }
-                                    _nativeUsbMusicActive = true;
+                                    NativeUsbAudioPlayer.Stop();
+                                    _nativeUsbMusicActive = false;
                                     _musicNowPlayingTitle =
                                         $"{file.Name}  •  {stick.DeviceName} / {stick.StickName}";
                                     _musicSessionActive = true;
@@ -2448,11 +2448,11 @@ public sealed class MainWindow : Window
                                         _musicHomeNowPlaying.Text = _musicNowPlayingTitle;
 
                                     var queue = new List<string>();
-                                    foreach (var queued in folderFiles)
+                                    foreach (var queued in folderFiles.Skip(index))
                                         queue.Add(await UsbMusicCloudService.BuildStreamUrlAsync(queued));
 
-                                    NativeUsbAudioPlayer.PlayQueue(queue, index);
-                                    status.Text = "Speelt af via USB thuis";
+                                    await YouTubeMusicService.PlayAudioQueueAsync(web, queue);
+                                    status.Text = "Speelt af via The One Player";
                                     status.Foreground = Sage;
                                 }
                                 catch (Exception ex)
