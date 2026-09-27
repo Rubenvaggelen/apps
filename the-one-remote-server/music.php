@@ -134,7 +134,7 @@ function stream_range(string $path, string $name): never {
 $action = (string)($_GET['action'] ?? 'health');
 $sec = secret($secretFile);
 
-if ($action === 'health') out(200, ['ok'=>true,'service'=>'The One Music Cache','version'=>3]);
+if ($action === 'health') out(200, ['ok'=>true,'service'=>'The One Music Cache','version'=>4]);
 
 if ($action === 'browse-login') {
     out(200,['ok'=>true,'token'=>token_new($sec,'music-read'),'expires_in'=>TOKEN_TTL]);
@@ -165,15 +165,65 @@ if ($action === 'stream') {
 }
 
 if ($action === 'catalog') {
-    if (!token_read_ok(bearer(),$sec)) out(401,['ok'=>false,'error'=>'auth required']);
+    $token=bearer();
+    if (!token_read_ok($token,$sec)) out(401,['ok'=>false,'error'=>'auth required']);
+
+    // Alleen de Windows sync-service mag inactieve sticks opvragen, zodat
+    // bestaande cachegegevens hergebruikt kunnen worden als een stick terugkomt.
+    $includeInactive =
+        ((string)($_GET['include_inactive'] ?? '')) === '1' &&
+        token_ok($token,$sec);
+
     $sticks=[];
     foreach (glob($meta.'/*.json') ?: [] as $f) {
-        $v=load_json($f); if ($v!==[]) $sticks[]=$v;
+        $v=load_json($f);
+        if ($v===[]) continue;
+
+        // Oude metadata zonder online-veld blijft zichtbaar tot de eerste
+        // aanwezigheidssync van het bijbehorende Windows-apparaat.
+        $online = !array_key_exists('online',$v) || (bool)$v['online'];
+        if (!$includeInactive && !$online) continue;
+
+        $sticks[]=$v;
     }
     out(200,['ok'=>true,'sticks'=>$sticks]);
 }
 
 require_auth($sec);
+
+if ($action === 'presence') {
+    $b=read_json();
+    $device=safe_id((string)($b['device_id'] ?? ''));
+
+    $active=[];
+    foreach ((array)($b['active_stick_ids'] ?? []) as $rawStick) {
+        if (!is_string($rawStick)) continue;
+        $active[]=safe_id($rawStick);
+    }
+    $active=array_values(array_unique($active));
+
+    $changed=0;
+    foreach (glob($meta.'/'.$device.'__*.json') ?: [] as $f) {
+        $v=load_json($f);
+        if ($v===[]) continue;
+
+        $stick=(string)($v['stick_id'] ?? '');
+        $online=in_array($stick,$active,true);
+        if (!array_key_exists('online',$v) || (bool)$v['online'] !== $online) {
+            $changed++;
+        }
+
+        $v['online']=$online;
+        $v['presence_updated_at']=gmdate('c');
+        save_json($f,$v);
+    }
+
+    out(200,[
+        'ok'=>true,
+        'active_sticks'=>count($active),
+        'changed'=>$changed
+    ]);
+}
 
 if ($action === 'status') {
     $b=read_json();
@@ -326,6 +376,8 @@ if ($action === 'sync') {
         'device_name'=>mb_substr(trim((string)($b['device_name'] ?? $device)),0,80),
         'stick_id'=>$stick,
         'stick_name'=>mb_substr(trim((string)($b['stick_name'] ?? $stick)),0,100),
+        'online'=>true,
+        'presence_updated_at'=>gmdate('c'),
         'updated_at'=>gmdate('c'),
         'files'=>$rows
     ];
