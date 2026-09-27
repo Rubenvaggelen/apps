@@ -1205,10 +1205,25 @@ class MoviesActivity : AppCompatActivity() {
             )
             row.addView(
                 TextView(this).apply {
+                    text = if (favoriteUsbKeys.contains(usbFavoriteKey(file))) "★" else "☆"
+                    textSize = 22f
+                    gravity = android.view.Gravity.CENTER
+                    setTextColor(Color.parseColor("#D8A451"))
+                    contentDescription = "Favoriet ${file.name}"
+                    setPadding(dp(10), dp(8), dp(10), dp(8))
+                    setOnClickListener {
+                        toggleUsbFavorite(stick, file, this)
+                    }
+                },
+                LinearLayout.LayoutParams(dp(46), LinearLayout.LayoutParams.WRAP_CONTENT)
+            )
+            row.addView(
+                TextView(this).apply {
                     text = "▶"
                     textSize = 17f
                     gravity = android.view.Gravity.CENTER
                     setTextColor(Color.parseColor("#20B8FF"))
+                    setPadding(dp(8), dp(8), dp(4), dp(8))
                 }
             )
             row.setOnClickListener {
