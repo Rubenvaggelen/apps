@@ -617,7 +617,19 @@ class MoviesActivity : AppCompatActivity() {
     }
 
     private fun showRemoteFolderDialog(stick: RemoteUsbMusicClient.RemoteStick) {
-        showRemoteFolderLevel(stick, "")
+        val firstSegments = stick.files
+            .map { normalizeRemoteFolder(it.folder) }
+            .filter { it.isNotBlank() }
+            .map { it.substringBefore('/') }
+            .distinctBy { it.lowercase() }
+
+        val startFolder = if (firstSegments.size == 1) {
+            firstSegments.first()
+        } else {
+            ""
+        }
+
+        showRemoteFolderLevel(stick, startFolder)
     }
 
     private fun showRemoteFolderLevel(
