@@ -127,9 +127,16 @@ public static class UsbMusicCloudService
         {
             var drives = ReadyUsbDrives().ToList();
             Log($"Verwijderbare USB-drives gevonden: {drives.Count}.");
+
+            // Meld altijd welke sticks fysiek aanwezig zijn. Ook een lege lijst
+            // is belangrijk: daarmee verdwijnen losgekoppelde sticks uit USB thuis.
+            await ReportPresenceAsync(drives, cancellationToken);
+
             if (drives.Count == 0) return 0;
 
-            var catalog = await GetCatalogAsync(cancellationToken);
+            // De sync-service mag ook verborgen/inactieve catalogusdata lezen,
+            // zodat een opnieuw aangesloten stick zijn bestaande cache hergebruikt.
+            var catalog = await GetCatalogAsync(cancellationToken, includeInactive: true);
             var existing = catalog
                 .SelectMany(stick => stick.Files.Select(file =>
                 {
@@ -155,6 +162,59 @@ public static class UsbMusicCloudService
         {
             SyncGate.Release();
         }
+    }
+
+    private static async Task ReportPresenceAsync(
+        List<DriveInfo> drives,
+        CancellationToken cancellationToken)
+    {
+        await EnsureTokenAsync(cancellationToken);
+
+        var body = JsonSerializer.Serialize(new
+        {
+            device_id = SafeId(Environment.MachineName),
+            active_stick_ids = drives
+                .Select(StickId)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray()
+        });
+
+        async Task<HttpResponseMessage> SendAsync()
+        {
+            var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                Endpoint + "?action=presence");
+            request.Headers.Authorization =
+                new AuthenticationHeaderValue("Bearer", _token);
+            request.Content =
+                new StringContent(body, Encoding.UTF8, "application/json");
+            return await Http.SendAsync(request, cancellationToken);
+        }
+
+        using var response = await SendAsync();
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            _token = "";
+            await EnsureTokenAsync(cancellationToken);
+
+            using var retry = new HttpRequestMessage(
+                HttpMethod.Post,
+                Endpoint + "?action=presence");
+            retry.Headers.Authorization =
+                new AuthenticationHeaderValue("Bearer", _token);
+            retry.Content =
+                new StringContent(body, Encoding.UTF8, "application/json");
+
+            using var retryResponse =
+                await Http.SendAsync(retry, cancellationToken);
+            retryResponse.EnsureSuccessStatusCode();
+        }
+        else
+        {
+            response.EnsureSuccessStatusCode();
+        }
+
+        Log($"USB-aanwezigheid gepubliceerd: {drives.Count} actieve stick(s).");
     }
 
     public static async Task<bool> ValidateUserPinAsync(
@@ -195,13 +255,17 @@ public static class UsbMusicCloudService
     }
 
     public static async Task<List<CloudUsbMusicStick>> GetCatalogAsync(
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool includeInactive = false)
     {
         await EnsureTokenAsync(cancellationToken);
 
+        var catalogUrl = Endpoint + "?action=catalog" +
+            (includeInactive ? "&include_inactive=1" : "");
+
         using var request = new HttpRequestMessage(
             HttpMethod.Get,
-            Endpoint + "?action=catalog");
+            catalogUrl);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _token);
 
         using var response = await Http.SendAsync(request, cancellationToken);
@@ -209,7 +273,7 @@ public static class UsbMusicCloudService
         {
             _token = "";
             await EnsureTokenAsync(cancellationToken);
-            return await GetCatalogAsync(cancellationToken);
+            return await GetCatalogAsync(cancellationToken, includeInactive);
         }
 
         response.EnsureSuccessStatusCode();
