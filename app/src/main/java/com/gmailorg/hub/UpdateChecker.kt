@@ -5,53 +5,86 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
-import org.json.JSONObject
+import org.json.JSONArray
 import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Checkt bij het opstarten of er een nieuwere versie van de app beschikbaar
- * is (via GitHub Releases, die de build-workflow automatisch aanmaakt), en
- * toont zo ja een dialoogvenster met een link om de nieuwe APK te downloaden.
+ * Zoekt specifiek naar Android-releases met tags v###.
+ * Andere The One Family releases (zoals windows-v###) worden genegeerd.
  */
 object UpdateChecker {
 
     private const val TAG = "UpdateChecker"
-    private const val RELEASES_URL = "https://api.github.com/repos/Rubenvaggelen/apps/releases/latest"
+    private const val RELEASES_URL =
+        "https://api.github.com/repos/Rubenvaggelen/apps/releases?per_page=40"
+    private const val ASSET_NAME = "app-debug.apk"
 
     fun checkForUpdate(context: Context) {
         Thread {
             try {
                 val connection = URL(RELEASES_URL).openConnection() as HttpURLConnection
                 connection.setRequestProperty("Accept", "application/vnd.github+json")
+                connection.setRequestProperty("User-Agent", "TheOneFamily-Android-Updater")
                 connection.connectTimeout = 10000
                 connection.readTimeout = 10000
+
                 val body = connection.inputStream.bufferedReader().use { it.readText() }
                 connection.disconnect()
 
-                val json = JSONObject(body)
-                val tagName = json.optString("tag_name", "") // bijv. "v42"
-                val latestVersionCode = tagName.removePrefix("v").toIntOrNull() ?: return@Thread
-                val releaseUrl = json.optString("html_url", "")
+                val releases = JSONArray(body)
+                var bestVersion = 0
+                var bestDownloadUrl = ""
 
-                if (latestVersionCode > BuildConfig.VERSION_CODE && releaseUrl.isNotBlank()) {
-                    val context2 = context.applicationContext
+                for (i in 0 until releases.length()) {
+                    val release = releases.optJSONObject(i) ?: continue
+                    if (release.optBoolean("draft", false)) continue
+
+                    val tag = release.optString("tag_name", "").trim()
+                    if (!tag.matches(Regex("^v\\d+$"))) continue
+
+                    val version = tag.substring(1).toIntOrNull() ?: continue
+                    if (version <= bestVersion) continue
+
+                    var assetUrl = ""
+                    val assets = release.optJSONArray("assets")
+                    if (assets != null) {
+                        for (j in 0 until assets.length()) {
+                            val asset = assets.optJSONObject(j) ?: continue
+                            if (asset.optString("name") == ASSET_NAME) {
+                                assetUrl = asset.optString("browser_download_url", "")
+                                break
+                            }
+                        }
+                    }
+
+                    if (assetUrl.isBlank()) continue
+
+                    bestVersion = version
+                    bestDownloadUrl = assetUrl
+                }
+
+                if (bestVersion > BuildConfig.VERSION_CODE && bestDownloadUrl.isNotBlank()) {
                     (context as? android.app.Activity)?.runOnUiThread {
-                        showUpdateDialog(context, releaseUrl)
+                        showUpdateDialog(context, bestDownloadUrl, bestVersion)
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Update-check mislukt (geen probleem, gewoon overslaan)", e)
+                Log.e(TAG, "Update-check mislukt; app blijft normaal bruikbaar", e)
             }
         }.start()
     }
 
-    private fun showUpdateDialog(context: Context, releaseUrl: String) {
+    private fun showUpdateDialog(
+        context: Context,
+        downloadUrl: String,
+        versionCode: Int
+    ) {
         AlertDialog.Builder(context)
             .setTitle("Nieuwe versie beschikbaar")
-            .setMessage("Er is een nieuwere versie van The One. Wil je die nu downloaden?")
+            .setMessage("Er is een nieuwere versie van The One beschikbaar. (build " + versionCode + ")")
             .setPositiveButton("Downloaden") { _, _ ->
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(releaseUrl)))
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)))
             }
             .setNegativeButton("Later", null)
             .show()
