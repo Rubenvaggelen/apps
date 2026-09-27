@@ -12,7 +12,7 @@
         android:layout_height="wrap_content"
         android:text="Vaste WhatsApp-contacten"
         android:textColor="@color/amber"
-        android:textSize="25sp"
+        android:textSize="37.5sp"
         android:textStyle="bold" />
 
     <TextView
@@ -20,7 +20,7 @@
         android:layout_height="wrap_content"
         android:text="Alleen deze vaste contacten kunnen berichten naar The One Car sturen. Zet ieder contact afzonderlijk aan of uit. Losse contacten worden bij een nieuwe verbinding automatisch verwijderd."
         android:textColor="@color/text_dim"
-        android:textSize="14sp"
+        android:textSize="21sp"
         android:paddingTop="5dp"
         android:paddingBottom="10dp" />
 
