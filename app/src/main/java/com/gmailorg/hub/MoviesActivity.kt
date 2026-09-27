@@ -564,7 +564,7 @@ class MoviesActivity : AppCompatActivity() {
 
     private fun showRemoteStickDialog(sticks: List<RemoteUsbMusicClient.RemoteStick>) {
         val labels = sticks.map {
-            val cached = it.files.size
+            val cached = it.files.count { file -> file.cached }
             val total = it.totalFiles
             val status = if (cached >= total && total > 0) {
                 "$cached nummer" + if (cached == 1) "" else "s"
@@ -756,9 +756,15 @@ class MoviesActivity : AppCompatActivity() {
             )
 
             val title = TextView(this).apply {
-                text = cleanUsbTrackTitle(file.displayName)
+                text = if (file.cached) {
+                    cleanUsbTrackTitle(file.displayName)
+                } else {
+                    cleanUsbTrackTitle(file.displayName) + "  •  Synchroniseren…"
+                }
                 textSize = 16f
-                setTextColor(Color.WHITE)
+                setTextColor(
+                    Color.parseColor(if (file.cached) "#FFFFFF" else "#8F9BAD")
+                )
                 maxLines = 2
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 setPadding(
@@ -768,7 +774,15 @@ class MoviesActivity : AppCompatActivity() {
                     (14 * density).toInt()
                 )
                 setOnClickListener {
-                    playRemoteUsbFolder(stick, files, index, normalized)
+                    if (file.cached) {
+                        playRemoteUsbFolder(stick, files, index, normalized)
+                    } else {
+                        Toast.makeText(
+                            this@MoviesActivity,
+                            "Dit nummer wordt nog gesynchroniseerd.",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
                 }
             }
             row.addView(
@@ -788,7 +802,18 @@ class MoviesActivity : AppCompatActivity() {
                     (12 * density).toInt(),
                     (12 * density).toInt()
                 )
-                setOnClickListener { requestRemoteUsbDownload(file) }
+                alpha = if (file.cached) 1f else 0.35f
+                setOnClickListener {
+                    if (file.cached) {
+                        requestRemoteUsbDownload(file)
+                    } else {
+                        Toast.makeText(
+                            this@MoviesActivity,
+                            "Download beschikbaar zodra synchronisatie klaar is.",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
             }
             row.addView(
                 download,
@@ -801,9 +826,11 @@ class MoviesActivity : AppCompatActivity() {
             )
 
             val play = TextView(this).apply {
-                text = "▶"
+                text = if (file.cached) "▶" else "…"
                 textSize = 19f
-                setTextColor(Color.parseColor("#20B8FF"))
+                setTextColor(
+                    Color.parseColor(if (file.cached) "#20B8FF" else "#8F9BAD")
+                )
                 gravity = android.view.Gravity.CENTER
                 contentDescription = "Speel ${file.name} af"
                 setPadding(
@@ -813,7 +840,15 @@ class MoviesActivity : AppCompatActivity() {
                     (12 * density).toInt()
                 )
                 setOnClickListener {
-                    playRemoteUsbFolder(stick, files, index, normalized)
+                    if (file.cached) {
+                        playRemoteUsbFolder(stick, files, index, normalized)
+                    } else {
+                        Toast.makeText(
+                            this@MoviesActivity,
+                            "Dit nummer wordt nog gesynchroniseerd.",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
                 }
             }
             row.addView(
@@ -1019,8 +1054,26 @@ class MoviesActivity : AppCompatActivity() {
             youtubeActive = false
             youtubePlaying = false
 
-            val urls = ArrayList(files.map { RemoteUsbMusicClient.streamUrl(this, it) })
-            val titles = ArrayList(files.map { cleanUsbTrackTitle(it.displayName) })
+            val selectedFile = files.getOrNull(index)
+                ?: throw IllegalArgumentException("Nummer niet gevonden")
+            if (!selectedFile.cached) {
+                Toast.makeText(
+                    this,
+                    "Dit nummer wordt nog gesynchroniseerd.",
+                    Toast.LENGTH_SHORT
+                ).show()
+                return
+            }
+
+            val playableFiles = files.filter { it.cached }
+            val playableIndex = playableFiles.indexOfFirst {
+                it.deviceId == selectedFile.deviceId &&
+                    it.stickId == selectedFile.stickId &&
+                    it.path.equals(selectedFile.path, ignoreCase = true)
+            }.coerceAtLeast(0)
+
+            val urls = ArrayList(playableFiles.map { RemoteUsbMusicClient.streamUrl(this, it) })
+            val titles = ArrayList(playableFiles.map { cleanUsbTrackTitle(it.displayName) })
 
             ContextCompat.startForegroundService(
                 this,
@@ -1028,7 +1081,7 @@ class MoviesActivity : AppCompatActivity() {
                     action = SupremacyPlaybackService.ACTION_PLAY
                     putStringArrayListExtra(SupremacyPlaybackService.EXTRA_QUEUE_URLS, urls)
                     putStringArrayListExtra(SupremacyPlaybackService.EXTRA_QUEUE_TITLES, titles)
-                    putExtra(SupremacyPlaybackService.EXTRA_INDEX, index)
+                    putExtra(SupremacyPlaybackService.EXTRA_INDEX, playableIndex)
                     putExtra(
                         SupremacyPlaybackService.EXTRA_SOURCE,
                         "Shared Media • " + stick.deviceName + " • " + stick.stickName
@@ -1037,9 +1090,9 @@ class MoviesActivity : AppCompatActivity() {
             )
 
             currentRemoteUsbStick = stick
-            currentRemoteUsbFiles = files.toList()
+            currentRemoteUsbFiles = playableFiles.toList()
             currentRemoteUsbFolder = normalizeRemoteFolder(folder)
-            pendingMusicTitle = cleanUsbTrackTitle(files[index].displayName)
+            pendingMusicTitle = cleanUsbTrackTitle(selectedFile.displayName)
             pendingMusicStartedAt = System.currentTimeMillis()
             musicNowPlaying.text = pendingMusicTitle
             musicNowPlaying.paintFlags =
