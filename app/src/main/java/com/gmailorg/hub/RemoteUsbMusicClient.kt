@@ -22,8 +22,14 @@ object RemoteUsbMusicClient {
         val path: String,
         val name: String,
         val folder: String,
+        val title: String,
+        val artist: String,
+        val album: String,
         val cached: Boolean
-    )
+    ) {
+        val displayName: String
+            get() = title.ifBlank { name }
+    }
 
     data class RemoteStick(
         val deviceId: String,
@@ -112,6 +118,9 @@ object RemoteUsbMusicClient {
                         path = path,
                         name = name,
                         folder = f.optString("folder").trim(),
+                        title = f.optString("title").trim(),
+                        artist = f.optString("artist").trim(),
+                        album = f.optString("album").trim(),
                         cached = true
                     )
                 }
