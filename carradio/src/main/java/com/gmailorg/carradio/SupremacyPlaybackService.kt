@@ -14,13 +14,13 @@ import androidx.core.app.NotificationCompat
 
 class SupremacyPlaybackService : Service() {
     private var player: MediaPlayer? = null
-    private var currentTitle = "Supremacy mixen"
+    private var currentTitle = "The One Mixes"
 
     override fun onCreate() {
         super.onCreate()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             (getSystemService(NotificationManager::class.java)).createNotificationChannel(
-                NotificationChannel(CHANNEL, "Supremacy mixen", NotificationManager.IMPORTANCE_LOW)
+                NotificationChannel(CHANNEL, "The One Mixes", NotificationManager.IMPORTANCE_LOW)
             )
         }
     }
@@ -30,7 +30,7 @@ class SupremacyPlaybackService : Service() {
             ACTION_STOP -> { stopPlayer(); stopSelf() }
             ACTION_PLAY -> {
                 val url = intent.getStringExtra(EXTRA_URL).orEmpty()
-                currentTitle = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { "Supremacy mixen" }
+                currentTitle = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { "The One Mixes" }
                 if (url.isNotBlank()) startPlayback(url)
             }
         }
