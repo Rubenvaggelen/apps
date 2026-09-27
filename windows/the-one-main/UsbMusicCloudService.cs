@@ -13,12 +13,17 @@ public sealed class CloudUsbMusicFile
     [JsonPropertyName("path")] public string Path { get; set; } = "";
     [JsonPropertyName("name")] public string Name { get; set; } = "";
     [JsonPropertyName("folder")] public string Folder { get; set; } = "";
+    [JsonPropertyName("title")] public string Title { get; set; } = "";
+    [JsonPropertyName("artist")] public string Artist { get; set; } = "";
+    [JsonPropertyName("album")] public string Album { get; set; } = "";
     [JsonPropertyName("size")] public long Size { get; set; }
     [JsonPropertyName("sha256")] public string Sha256 { get; set; } = "";
     [JsonPropertyName("modified")] public string Modified { get; set; } = "";
     [JsonPropertyName("cached")] public bool Cached { get; set; }
     [JsonIgnore] public string DeviceId { get; set; } = "";
     [JsonIgnore] public string StickId { get; set; } = "";
+    [JsonIgnore] public string DisplayName =>
+        string.IsNullOrWhiteSpace(Title) ? Name : Title.Trim();
 }
 
 public sealed class CloudUsbMusicStick
@@ -284,6 +289,11 @@ public static class UsbMusicCloudService
             .ThenBy(file => file.FullName, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
 
+        var metadata = files.ToDictionary(
+            file => file.FullName,
+            file => ReadMetadata(file.FullName),
+            StringComparer.OrdinalIgnoreCase);
+
         Log($"{deviceName} / {stickName}: {files.Count} audiobestanden gevonden in {scanRoot}.");
 
         if (files.Count == 0)
@@ -308,12 +318,16 @@ public static class UsbMusicCloudService
                 ? old.Sha256
                 : "";
 
+            var tags = metadata[file.FullName];
             provisional.Add(new LocalManifestFile
             {
                 Path = relative,
                 Size = file.Length,
                 Sha256 = knownSha,
-                Modified = modified
+                Modified = modified,
+                Title = tags.Title,
+                Artist = tags.Artist,
+                Album = tags.Album
             });
         }
 
@@ -348,12 +362,16 @@ public static class UsbMusicCloudService
                 !old!.Cached ||
                 !string.Equals(old.Sha256, sha, StringComparison.OrdinalIgnoreCase);
 
+            var tags = metadata[file.FullName];
             finalManifest.Add(new LocalManifestFile
             {
                 Path = relative,
                 Size = file.Length,
                 Sha256 = sha,
-                Modified = modified
+                Modified = modified,
+                Title = tags.Title,
+                Artist = tags.Artist,
+                Album = tags.Album
             });
 
             if (needsUpload)
@@ -530,6 +548,9 @@ public static class UsbMusicCloudService
             files = files.Select(x => new
             {
                 path = x.Path,
+                title = x.Title,
+                artist = x.Artist,
+                album = x.Album,
                 size = x.Size,
                 sha256 = x.Sha256,
                 modified = x.Modified
@@ -650,21 +671,47 @@ public static class UsbMusicCloudService
 
                 var count = 0;
                 long bytes = 0;
-                long newest = 0;
+                ulong fingerprint = 14695981039346656037UL;
 
-                foreach (var file in EnumerateAudioFiles(scanRoot))
+                foreach (var file in EnumerateAudioFiles(scanRoot)
+                    .OrderBy(x => x.FullName, StringComparer.OrdinalIgnoreCase))
                 {
                     count++;
                     bytes += file.Length;
-                    newest = Math.Max(newest, file.LastWriteTimeUtc.Ticks);
+                    var marker =
+                        NormalizePath(Path.GetRelativePath(scanRoot, file.FullName)) +
+                        "|" + file.Length +
+                        "|" + file.LastWriteTimeUtc.Ticks;
+
+                    foreach (var ch in marker)
+                    {
+                        fingerprint ^= ch;
+                        fingerprint *= 1099511628211UL;
+                    }
                 }
 
-                parts.Add($"{drive.Name}|{drive.VolumeLabel}|{drive.TotalSize}|{count}|{bytes}|{newest}");
+                parts.Add($"{drive.Name}|{drive.VolumeLabel}|{drive.TotalSize}|{count}|{bytes}|{fingerprint:x16}");
             }
             catch { }
         }
 
         return string.Join(";", parts.OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static AudioMetadata ReadMetadata(string path)
+    {
+        try
+        {
+            using var media = TagLib.File.Create(path);
+            var title = (media.Tag.Title ?? "").Trim();
+            var artist = (media.Tag.Performers?.FirstOrDefault() ?? "").Trim();
+            var album = (media.Tag.Album ?? "").Trim();
+            return new AudioMetadata(title, artist, album);
+        }
+        catch
+        {
+            return new AudioMetadata("", "", "");
+        }
     }
 
     private static async Task<string> HashFileAsync(
@@ -730,11 +777,16 @@ public static class UsbMusicCloudService
     private static string NormalizePath(string path) =>
         path.Replace('\\', '/').TrimStart('/');
 
+    private sealed record AudioMetadata(string Title, string Artist, string Album);
+
     private sealed class LocalManifestFile
     {
         public string Path { get; set; } = "";
         public long Size { get; set; }
         public string Sha256 { get; set; } = "";
         public string Modified { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string Artist { get; set; } = "";
+        public string Album { get; set; } = "";
     }
 }
