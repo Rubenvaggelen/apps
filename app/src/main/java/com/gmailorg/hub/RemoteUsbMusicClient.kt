@@ -314,6 +314,18 @@ object RemoteUsbMusicClient {
             "&path=" + enc(file.path)
     }
 
+    fun streamUrl(context: Context, favorite: FavoriteItem): String {
+        if (!favorite.kind.equals("usb", ignoreCase = true)) {
+            return favorite.url
+        }
+        val token = token(context)
+        return ENDPOINT + "?action=stream" +
+            "&token=" + enc(token) +
+            "&device=" + enc(favorite.deviceId) +
+            "&stick=" + enc(favorite.stickId) +
+            "&path=" + enc(favorite.path)
+    }
+
     private fun token(context: Context): String {
         if (!hasToken(context)) {
             clearToken(context)
