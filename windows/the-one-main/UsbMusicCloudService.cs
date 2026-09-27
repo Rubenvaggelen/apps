@@ -794,7 +794,10 @@ public static class UsbMusicCloudService
                     }
                 }
 
-                parts.Add($"{drive.Name}|{drive.VolumeLabel}|{drive.TotalSize}|{count}|{bytes}|{fingerprint:x16}");
+                var identity = VolumeIdentityKey(drive);
+                if (string.IsNullOrWhiteSpace(identity))
+                    identity = $"media|{drive.TotalSize}|{drive.DriveFormat}|{count}|{bytes}|{fingerprint:x16}";
+                parts.Add($"{identity}|{count}|{bytes}|{fingerprint:x16}");
             }
             catch { }
         }
