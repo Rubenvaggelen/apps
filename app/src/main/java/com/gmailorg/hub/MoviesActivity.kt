@@ -1,6 +1,7 @@
 package com.gmailorg.hub
 
 import android.content.Intent
+import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.text.InputType
@@ -8,6 +9,7 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import android.webkit.WebChromeClient
@@ -257,30 +259,75 @@ class MoviesActivity : AppCompatActivity() {
     ) {
         val trackList = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24, 12, 24, 12)
+            setPadding(18, 8, 18, 8)
         }
 
         files.forEachIndexed { index, file ->
-            val track = TextView(this).apply {
-                text = file.name
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(8, 6, 8, 6)
+                setOnClickListener { playRemoteUsbFolder(stick, files, index) }
+            }
+
+            val number = TextView(this).apply {
+                text = (index + 1).toString().padStart(2, '0')
+                textSize = 12f
+                setTextColor(Color.parseColor("#20B8FF"))
+                gravity = android.view.Gravity.CENTER
+            }
+            row.addView(
+                number,
+                LinearLayout.LayoutParams(52, LinearLayout.LayoutParams.WRAP_CONTENT)
+            )
+
+            val title = TextView(this).apply {
+                text = cleanUsbTrackTitle(file.name)
                 textSize = 16f
                 setTextColor(Color.WHITE)
-                setPadding(18, 18, 18, 18)
-                isSingleLine = false
-                setOnClickListener {
-                    playRemoteUsbFolder(stick, files, index)
-                }
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding(10, 16, 10, 16)
             }
+            row.addView(
+                title,
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            )
+
+            val play = TextView(this).apply {
+                text = "▶"
+                textSize = 19f
+                setTextColor(Color.parseColor("#20B8FF"))
+                gravity = android.view.Gravity.CENTER
+                setPadding(18, 12, 18, 12)
+                setOnClickListener { playRemoteUsbFolder(stick, files, index) }
+            }
+            row.addView(
+                play,
+                LinearLayout.LayoutParams(64, LinearLayout.LayoutParams.WRAP_CONTENT)
+            )
+
             trackList.addView(
-                track,
+                row,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 )
             )
+
+            if (index < files.lastIndex) {
+                trackList.addView(
+                    View(this).apply { setBackgroundColor(Color.parseColor("#263241")) },
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        1
+                    )
+                )
+            }
         }
 
         val scroll = ScrollView(this).apply {
+            isFillViewport = true
             addView(trackList)
         }
 
@@ -290,6 +337,13 @@ class MoviesActivity : AppCompatActivity() {
             .setNegativeButton("Terug") { _, _ -> showRemoteFolderDialog(stick) }
             .show()
     }
+
+    private fun cleanUsbTrackTitle(raw: String): String =
+        raw
+            .replace(Regex("\\.(mp3|wma|m4a|aac|flac|ogg|wav)$", RegexOption.IGNORE_CASE), "")
+            .replace("_", " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
 
     private fun playRemoteUsbFolder(
         stick: RemoteUsbMusicClient.RemoteStick,
