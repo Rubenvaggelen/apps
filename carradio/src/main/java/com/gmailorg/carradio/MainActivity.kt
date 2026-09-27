@@ -376,19 +376,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun configureCarAudioPlayer() {
         carAudioTitle.setOnClickListener {
-            val state = UsbPlaybackService.snapshot()
-            val stick = currentFamilyStick ?: return@setOnClickListener
-            if (!state.hasTrack || state.uri.isNullOrBlank()) return@setOnClickListener
-
-            val active = currentFamilyFiles.firstOrNull { file ->
-                runCatching {
-                    RemoteUsbMusicClient.streamUrl(this, file) == state.uri
-                }.getOrDefault(false)
-            } ?: currentFamilyFiles.firstOrNull {
-                state.title.equals(cleanRemoteUsbTrackTitle(it.displayName), ignoreCase = true)
-            } ?: return@setOnClickListener
-
-            showRemoteFolderLevel(stick, active.folder)
+            openCurrentFamilyTrackFolder()
         }
 
         carAudioPrevious.setOnClickListener {
@@ -406,6 +394,79 @@ class MainActivity : AppCompatActivity() {
         carAudioStop.setOnClickListener {
             UsbPlaybackService.stop(this)
             carAudioPlayer.postDelayed({ refreshCarAudioPlayer() }, 150L)
+        }
+    }
+
+    private fun openCurrentFamilyTrackFolder() {
+        val state = UsbPlaybackService.snapshot()
+        if (!state.hasTrack) return
+
+        fun openFrom(
+            stick: RemoteUsbMusicClient.RemoteStick,
+            files: List<RemoteUsbMusicClient.RemoteFile>
+        ): Boolean {
+            val active = files.firstOrNull { file ->
+                runCatching {
+                    RemoteUsbMusicClient.streamUrl(this, file) == state.uri
+                }.getOrDefault(false)
+            } ?: files.firstOrNull {
+                state.title.equals(
+                    cleanRemoteUsbTrackTitle(it.displayName),
+                    ignoreCase = true
+                )
+            } ?: return false
+
+            currentFamilyStick = stick
+            currentFamilyFiles = files
+            showRemoteFolderLevel(stick, active.folder)
+            return true
+        }
+
+        val current = currentFamilyStick
+        if (current != null && openFrom(current, currentFamilyFiles)) return
+
+        remoteMusicIo.execute {
+            val sticks = try {
+                RemoteUsbMusicClient.catalog(this)
+            } catch (_: RemoteUsbMusicClient.AuthRequired) {
+                val ok = try {
+                    RemoteUsbMusicClient.loginForBrowsing(this)
+                } catch (_: Exception) {
+                    false
+                }
+                if (!ok) emptyList() else try {
+                    RemoteUsbMusicClient.catalog(this)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+            } catch (_: Exception) {
+                emptyList()
+            }
+
+            val match = sticks.firstNotNullOfOrNull { stick ->
+                val file = stick.files.firstOrNull {
+                    state.title.equals(
+                        cleanRemoteUsbTrackTitle(it.displayName),
+                        ignoreCase = true
+                    )
+                }
+                if (file == null) null else stick to file
+            }
+
+            runOnUiThread {
+                if (match != null) {
+                    val (stick, file) = match
+                    currentFamilyStick = stick
+                    currentFamilyFiles = stick.files
+                    showRemoteFolderLevel(stick, file.folder)
+                } else {
+                    Toast.makeText(
+                        this,
+                        "Map van het spelende nummer kon niet worden gevonden.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
         }
     }
 
