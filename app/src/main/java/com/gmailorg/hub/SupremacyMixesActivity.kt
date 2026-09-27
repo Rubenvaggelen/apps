@@ -7,14 +7,17 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.text.Html
+import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import org.json.JSONArray
@@ -29,9 +32,12 @@ class SupremacyMixesActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private lateinit var progress: ProgressBar
     private val io = Executors.newSingleThreadExecutor()
+    private val favoriteMixUrls = linkedSetOf<String>()
+    private var focusTitle: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        focusTitle = intent.getStringExtra("focus_title").orEmpty().trim()
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -89,6 +95,23 @@ class SupremacyMixesActivity : AppCompatActivity() {
             try { loadOfficial(items) } catch (_: Exception) {}
             try { loadHearThis(items) } catch (_: Exception) {}
             val result = items.values.toList()
+
+            val favorites = try {
+                if (!RemoteUsbMusicClient.hasToken(this) &&
+                    !RemoteUsbMusicClient.loginForBrowsing(this)
+                ) {
+                    emptyList()
+                } else {
+                    RemoteUsbMusicClient.favorites(this)
+                }
+            } catch (_: Exception) {
+                emptyList()
+            }
+            favoriteMixUrls.clear()
+            favorites
+                .filter { it.kind.equals("mix", ignoreCase = true) && it.url.isNotBlank() }
+                .forEach { favoriteMixUrls += it.url }
+
             runOnUiThread {
                 progress.visibility = View.GONE
                 status.text = if (result.isEmpty()) "Geen mixen gevonden." else ""
@@ -144,13 +167,15 @@ class SupremacyMixesActivity : AppCompatActivity() {
             visibility = View.GONE
         }
         var populated = false
-        header.setOnClickListener {
-            if (!populated) {
-                mixes.forEachIndexed { index, mix ->
-                    addRowTo(child, mix, mixes, index)
-                }
-                populated = true
+        fun populate() {
+            if (populated) return
+            mixes.forEachIndexed { index, mix ->
+                addRowTo(child, mix, mixes, index)
             }
+            populated = true
+        }
+        header.setOnClickListener {
+            populate()
             val opening = child.visibility != View.VISIBLE
             child.visibility = if (opening) View.VISIBLE else View.GONE
             header.text = (if (opening) "▼ " else "▶ ") + "$genre (${mixes.size})"
@@ -159,6 +184,12 @@ class SupremacyMixesActivity : AppCompatActivity() {
             topMargin = 8.dp
         })
         list.addView(child)
+
+        if (focusTitle.isNotBlank() && mixes.any { it.title.equals(focusTitle, ignoreCase = true) }) {
+            populate()
+            child.visibility = View.VISIBLE
+            header.text = "▼ $genre (${mixes.size})"
+        }
     }
 
     private fun normalizeGenre(raw: String, title: String): String {
@@ -199,11 +230,36 @@ class SupremacyMixesActivity : AppCompatActivity() {
             setPadding(12.dp, 10.dp, 12.dp, 10.dp)
         }
         row.addView(TextView(this).apply {
-            text = mix.title
+            text = if (mix.title.equals(focusTitle, ignoreCase = true)) "▶ NU • ${mix.title}" else mix.title
             textSize = 16f
-            setTextColor(ContextCompat.getColor(context, R.color.text_main))
+            setTextColor(
+                if (mix.title.equals(focusTitle, ignoreCase = true))
+                    ContextCompat.getColor(context, R.color.gold)
+                else
+                    ContextCompat.getColor(context, R.color.text_main)
+            )
+            setTypeface(
+                typeface,
+                if (mix.title.equals(focusTitle, ignoreCase = true)) Typeface.BOLD else Typeface.NORMAL
+            )
             maxLines = 3
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+
+        val favoriteButton = TextView(this).apply {
+            text = if (favoriteMixUrls.contains(mix.url)) "★" else "☆"
+            textSize = 23f
+            gravity = Gravity.CENTER
+            contentDescription = "Favoriet ${mix.title}"
+            setTextColor(ContextCompat.getColor(context, R.color.gold))
+            setPadding(10.dp, 8.dp, 10.dp, 8.dp)
+            setOnClickListener { toggleMixFavorite(mix, this) }
+        }
+        row.addView(
+            favoriteButton,
+            LinearLayout.LayoutParams(48.dp, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                marginEnd = 8.dp
+            }
+        )
         row.addView(TextView(this).apply {
             text = "↓"
             textSize = 21f
@@ -212,7 +268,7 @@ class SupremacyMixesActivity : AppCompatActivity() {
             setTextColor(ContextCompat.getColor(context, R.color.gold))
             setBackgroundResource(R.drawable.bg_the_one_gold_outline)
             setPadding(12.dp, 10.dp, 12.dp, 10.dp)
-            setOnClickListener { downloadMix(mix) }
+            setOnClickListener { requestMixDownload(mix) }
         }, LinearLayout.LayoutParams(52.dp, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
             marginEnd = 10.dp
         })
@@ -229,6 +285,78 @@ class SupremacyMixesActivity : AppCompatActivity() {
         parent.addView(row)
         parent.addView(View(this).apply { setBackgroundColor(ContextCompat.getColor(context, R.color.surface)) },
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1.dp))
+    }
+
+    private fun toggleMixFavorite(mix: Mix, button: TextView) {
+        val add = !favoriteMixUrls.contains(mix.url)
+        button.isEnabled = false
+        io.execute {
+            val ok = try {
+                if (!RemoteUsbMusicClient.hasToken(this) &&
+                    !RemoteUsbMusicClient.loginForBrowsing(this)
+                ) {
+                    throw IllegalStateException("The One Family is niet bereikbaar")
+                }
+                RemoteUsbMusicClient.setMixFavorite(this, mix.title, mix.url, add)
+                true
+            } catch (_: Exception) {
+                false
+            }
+            runOnUiThread {
+                button.isEnabled = true
+                if (ok) {
+                    if (add) favoriteMixUrls += mix.url else favoriteMixUrls -= mix.url
+                    button.text = if (add) "★" else "☆"
+                    Toast.makeText(
+                        this,
+                        if (add) "Toegevoegd aan The One Favorites" else "Verwijderd uit The One Favorites",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    Toast.makeText(this, "Favoriet opslaan mislukt", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    private fun requestMixDownload(mix: Mix) {
+        val input = EditText(this).apply {
+            hint = "Pincode"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            gravity = Gravity.CENTER
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("The One Mixes")
+            .setMessage("Voer je pincode in om deze mix te downloaden.")
+            .setView(input)
+            .setPositiveButton("Downloaden", null)
+            .setNegativeButton("Annuleren", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val pin = input.text.toString().trim()
+                if (pin.isBlank()) return@setOnClickListener
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
+                io.execute {
+                    val valid = try {
+                        RemoteUsbMusicClient.login(this, pin)
+                    } catch (_: Exception) {
+                        false
+                    }
+                    runOnUiThread {
+                        if (valid) {
+                            dialog.dismiss()
+                            downloadMix(mix)
+                        } else {
+                            input.text.clear()
+                            input.error = "Pincode niet juist"
+                            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
+                        }
+                    }
+                }
+            }
+        }
+        dialog.show()
     }
 
     private fun openPlayer() {
