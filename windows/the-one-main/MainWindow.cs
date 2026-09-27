@@ -30,7 +30,7 @@ public sealed class MainWindow : Window
     private readonly Brush TextMain = Brush("#F3F8FC");
     private readonly Brush TextDim = Brush("#91A4BD");
     private readonly Brush FamilyBlue = Brush("#20B8FF");
-    private readonly Brush Amber = FamilyBlue;
+    private readonly Brush Amber = Brush("#20B8FF");
     private readonly Brush Gold = Brush("#E8AA4E");
     private readonly Brush Sage = Brush("#39D98A");
 
