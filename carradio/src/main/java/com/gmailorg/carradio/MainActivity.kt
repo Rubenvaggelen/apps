@@ -1326,6 +1326,26 @@ class MainActivity : AppCompatActivity() {
 
                 row.addView(
                     TextView(this@MainActivity).apply {
+                        text = if (favoriteUsbKeys.contains(usbFavoriteKey(file))) "★" else "☆"
+                        textSize = 30.0f
+                        gravity = Gravity.CENTER
+                        setTextColor(android.graphics.Color.parseColor("#D8A451"))
+                        contentDescription = "Favoriet ${file.name}"
+                        setPadding(14.dp, 10.dp, 14.dp, 10.dp)
+                        setOnClickListener {
+                            toggleUsbFavorite(stick, file, this)
+                        }
+                    },
+                    LinearLayout.LayoutParams(
+                        58.dp,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        marginEnd = 10.dp
+                    }
+                )
+
+                row.addView(
+                    TextView(this@MainActivity).apply {
                         text = if (isCached) "↓" else "…"
                         textSize = 30.0f
                         gravity = Gravity.CENTER
@@ -1440,7 +1460,87 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
 
+    private fun usbFavoriteKey(file: RemoteUsbMusicClient.RemoteFile): String =
+        usbFavoriteKey(file.deviceId, file.stickId, file.path)
+
+    private fun usbFavoriteKey(deviceId: String, stickId: String, path: String): String =
+        deviceId + "\n" + stickId + "\n" + path
+
+    private fun toggleUsbFavorite(
+        stick: RemoteUsbMusicClient.RemoteStick,
+        file: RemoteUsbMusicClient.RemoteFile,
+        button: TextView
+    ) {
+        val key = usbFavoriteKey(file)
+        val add = !favoriteUsbKeys.contains(key)
+        button.isEnabled = false
+        remoteMusicIo.execute {
+            val allowed = try {
+                CarFamilyAccess.refreshMusicRights(this)
+            } catch (_: Exception) {
+                false
+            }
+            val ok = if (allowed) {
+                try {
+                    if (!RemoteUsbMusicClient.hasToken(this) &&
+                        !RemoteUsbMusicClient.loginForBrowsing(this)
+                    ) {
+                        false
+                    } else {
+                        RemoteUsbMusicClient.setUsbFavorite(this, stick, file, add)
+                        true
+                    }
+                } catch (_: Exception) {
+                    false
+                }
+            } else false
+
+            runOnUiThread {
+                button.isEnabled = true
+                if (!allowed) {
+                    Toast.makeText(
+                        this,
+                        "Dit apparaat heeft geen muziekrechten. Geef deze eerst via Main.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } else if (ok) {
+                    if (add) favoriteUsbKeys += key else favoriteUsbKeys -= key
+                    button.text = if (add) "★" else "☆"
+                    Toast.makeText(
+                        this,
+                        if (add) "Toegevoegd aan The One Favorites"
+                        else "Verwijderd uit The One Favorites",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    Toast.makeText(this, "Favoriet opslaan mislukt", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
     private fun requestRemoteUsbDownload(file: RemoteUsbMusicClient.RemoteFile) {
+        remoteMusicIo.execute {
+            val allowed = try {
+                CarFamilyAccess.refreshMusicRights(this)
+            } catch (_: Exception) {
+                false
+            }
+            runOnUiThread {
+                if (!allowed) {
+                    Toast.makeText(
+                        this,
+                        "Dit apparaat heeft geen muziekrechten. Geef deze eerst via Main.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@runOnUiThread
+                }
+                showRemoteUsbDownloadPin(file)
+            }
+        }
+    }
+
+    private fun showRemoteUsbDownloadPin(file: RemoteUsbMusicClient.RemoteFile) {
         val input = EditText(this).apply {
             hint = "Pincode"
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
