@@ -23,6 +23,7 @@ import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -102,6 +103,11 @@ public class MainActivity extends Activity {
     private PlayerView activePlayerView;
     private SharedPreferences prefs;
     private boolean playerFullscreen = false;
+    private SeekBar playbackSeekBar;
+    private TextView playbackTimeText;
+    private boolean playbackSeekDragging = false;
+    private final Handler playbackUiHandler = new Handler(Looper.getMainLooper());
+    private static final long SEEK_STEP_MS = 10_000L;
     private static final int MAX_PLAYBACK_RETRIES = 15;
     private final Handler playbackRetryHandler = new Handler(Looper.getMainLooper());
     private int playbackRetryCount = 0;
@@ -1256,7 +1262,10 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(Color.BLACK);
 
         activePlayerView = new PlayerView(this);
-        player = new ExoPlayer.Builder(this).build();
+        player = new ExoPlayer.Builder(this)
+                .setSeekBackIncrementMs(SEEK_STEP_MS)
+                .setSeekForwardIncrementMs(SEEK_STEP_MS)
+                .build();
         activePlayerView.setPlayer(player);
         activePlayerView.setUseController(true);
         activePlayerView.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT);
@@ -1358,6 +1367,125 @@ public class MainActivity extends Activity {
         final ArrayList<View> autoHidePlayerButtons = new ArrayList<>();
 
         try {
+            boolean livePlayback = "live".equals(playKind);
+            if (!livePlayback && (playKind == null || playKind.trim().isEmpty())) {
+                for (String url : urls) {
+                    if (url != null && isLikelyLiveStream(url)) {
+                        livePlayback = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!livePlayback) {
+                LinearLayout seekPanel = new LinearLayout(this);
+                seekPanel.setOrientation(LinearLayout.HORIZONTAL);
+                seekPanel.setGravity(Gravity.CENTER_VERTICAL);
+                seekPanel.setPadding(dp(12), dp(8), dp(12), dp(8));
+                seekPanel.setBackground(PremiumUi.card(this));
+                seekPanel.setElevation(dp(8));
+
+                Button rewind = PremiumUi.chipButton(this, "↶ 10 sec");
+                rewind.setOnClickListener(v -> seekRelative(-SEEK_STEP_MS));
+                seekPanel.addView(rewind);
+
+                LinearLayout seekCenter = new LinearLayout(this);
+                seekCenter.setOrientation(LinearLayout.VERTICAL);
+                LinearLayout.LayoutParams centerLp = new LinearLayout.LayoutParams(
+                        0,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        1f
+                );
+                centerLp.leftMargin = dp(10);
+                centerLp.rightMargin = dp(10);
+
+                playbackSeekBar = new SeekBar(this);
+                playbackSeekBar.setMax(1000);
+                playbackSeekBar.setProgress(0);
+                seekCenter.addView(
+                        playbackSeekBar,
+                        new LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.WRAP_CONTENT
+                        )
+                );
+
+                playbackTimeText = text("00:00 / 00:00", 13, Color.WHITE, false);
+                playbackTimeText.setGravity(Gravity.CENTER);
+                seekCenter.addView(
+                        playbackTimeText,
+                        new LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.WRAP_CONTENT
+                        )
+                );
+                seekPanel.addView(seekCenter, centerLp);
+
+                Button forward = PremiumUi.chipButton(this, "10 sec ↷");
+                forward.setOnClickListener(v -> seekRelative(SEEK_STEP_MS));
+                seekPanel.addView(forward);
+
+                playbackSeekBar.setOnSeekBarChangeListener(
+                        new SeekBar.OnSeekBarChangeListener() {
+                            @Override
+                            public void onProgressChanged(
+                                    SeekBar seekBar,
+                                    int progress,
+                                    boolean fromUser
+                            ) {
+                                if (!fromUser || player == null) return;
+                                long duration = player.getDuration();
+                                if (duration <= 0 || duration == C.TIME_UNSET) return;
+                                long preview = duration * progress / 1000L;
+                                if (playbackTimeText != null) {
+                                    playbackTimeText.setText(
+                                            formatPlaybackTime(preview)
+                                                + " / "
+                                                + formatPlaybackTime(duration)
+                                        );
+                                }
+                            }
+
+                            @Override
+                            public void onStartTrackingTouch(SeekBar seekBar) {
+                                playbackSeekDragging = true;
+                            }
+
+                            @Override
+                            public void onStopTrackingTouch(SeekBar seekBar) {
+                                playbackSeekDragging = false;
+                                if (player == null) return;
+                                long duration = player.getDuration();
+                                if (duration <= 0 || duration == C.TIME_UNSET) return;
+                                long position = duration * seekBar.getProgress() / 1000L;
+                                player.seekTo(position);
+                                updatePlaybackSeekUi();
+                            }
+                        }
+                );
+
+                FrameLayout.LayoutParams seekLp = new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        Gravity.BOTTOM
+                );
+                seekLp.leftMargin = dp(16);
+                seekLp.rightMargin = dp(16);
+                seekLp.bottomMargin = dp(18);
+                root.addView(seekPanel, seekLp);
+                autoHidePlayerButtons.add(seekPanel);
+
+                playbackUiHandler.removeCallbacksAndMessages(null);
+                playbackUiHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (player == null || playbackSeekBar == null) return;
+                        updatePlaybackSeekUi();
+                        playbackUiHandler.postDelayed(this, 500L);
+                    }
+                });
+            }
+
             Button subtitles = PremiumUi.chipButton(this, "CC  Ondertiteling");
             subtitles.setOnClickListener(v -> showSubtitleSelector());
             FrameLayout.LayoutParams subtitleLp = new FrameLayout.LayoutParams(
@@ -1408,6 +1536,73 @@ public class MainActivity extends Activity {
             Log.w("TheOneMediaPlayer", "Subtitle controls unavailable; playback continues", subtitleUiError);
         }
 
+    }
+
+    private void seekRelative(long deltaMs) {
+        if (player == null) return;
+        if (!player.isCurrentMediaItemSeekable()) {
+            Toast.makeText(this, "Deze stream kan niet worden doorgespoeld.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        long duration = player.getDuration();
+        long target = Math.max(0L, player.getCurrentPosition() + deltaMs);
+        if (duration > 0 && duration != C.TIME_UNSET) {
+            target = Math.min(duration, target);
+        }
+        player.seekTo(target);
+        updatePlaybackSeekUi();
+    }
+
+    private void updatePlaybackSeekUi() {
+        if (player == null || playbackSeekBar == null || playbackSeekDragging) return;
+
+        long duration = player.getDuration();
+        long position = Math.max(0L, player.getCurrentPosition());
+        boolean seekable = player.isCurrentMediaItemSeekable()
+                && duration > 0
+                && duration != C.TIME_UNSET;
+
+        playbackSeekBar.setEnabled(seekable);
+        if (seekable) {
+            int progress = (int) Math.max(
+                    0,
+                    Math.min(1000L, position * 1000L / duration)
+            );
+            playbackSeekBar.setProgress(progress);
+        } else {
+            playbackSeekBar.setProgress(0);
+        }
+
+        if (playbackTimeText != null) {
+            playbackTimeText.setText(
+                    formatPlaybackTime(position)
+                            + " / "
+                            + (seekable ? formatPlaybackTime(duration) : "--:--")
+            );
+        }
+    }
+
+    private String formatPlaybackTime(long milliseconds) {
+        long totalSeconds = Math.max(0L, milliseconds / 1000L);
+        long hours = totalSeconds / 3600L;
+        long minutes = (totalSeconds % 3600L) / 60L;
+        long seconds = totalSeconds % 60L;
+        if (hours > 0) {
+            return String.format(
+                    java.util.Locale.ROOT,
+                    "%d:%02d:%02d",
+                    hours,
+                    minutes,
+                    seconds
+            );
+        }
+        return String.format(
+                java.util.Locale.ROOT,
+                "%02d:%02d",
+                minutes,
+                seconds
+        );
     }
 
     private void showSubtitleSelector() {
@@ -1576,7 +1771,11 @@ public class MainActivity extends Activity {
 
     private void releasePlayer() {
         playbackRetryHandler.removeCallbacksAndMessages(null);
+        playbackUiHandler.removeCallbacksAndMessages(null);
         playbackRetryCount = 0;
+        playbackSeekDragging = false;
+        playbackSeekBar = null;
+        playbackTimeText = null;
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (activePlayerView != null) {
             activePlayerView.setPlayer(null);
