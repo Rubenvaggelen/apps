@@ -360,36 +360,63 @@ public static class UsbMusicCloudService
                 uploadJobs.Add((file, relative, sha));
         }
 
-        // Grote USB-sticks mogen niet urenlang één bestand per keer uploaden.
-        // Vier gelijktijdige uploads houden de server beheersbaar, maar maken
-        // de cache veel sneller compleet. Reeds gecachete bestanden worden
-        // hierboven overgeslagen, zodat een herstart gewoon verdergaat.
+        // Start agressief met 16 gelijktijdige uploads. Als de server,
+        // verbinding of één van de uploads daar niet goed op reageert, worden
+        // alleen de mislukte bestanden automatisch opnieuw geprobeerd met 12.
+        // Reeds gecachete bestanden blijven overgeslagen, zodat hervatten snel is.
         var uploaded = 0;
-        using var uploadGate = new SemaphoreSlim(8, 8);
-        var uploadTasks = uploadJobs.Select(async job =>
+
+        async Task<List<(FileInfo File, string Relative, string Sha)>> UploadBatchAsync(
+            List<(FileInfo File, string Relative, string Sha)> jobs,
+            int concurrency)
         {
-            await uploadGate.WaitAsync(cancellationToken);
-            try
-            {
-                await UploadAsync(
-                    deviceId,
-                    stickId,
-                    job.Relative,
-                    job.Sha,
-                    job.File.FullName,
-                    cancellationToken);
+            var failed = new List<(FileInfo File, string Relative, string Sha)>();
+            using var gate = new SemaphoreSlim(concurrency, concurrency);
 
-                var done = Interlocked.Increment(ref uploaded);
-                if (done == 1 || done % 25 == 0 || done == uploadJobs.Count)
-                    Log($"{deviceName} / {stickName}: {done}/{uploadJobs.Count} bestand(en) geüpload.");
-            }
-            finally
+            var tasks = jobs.Select(async job =>
             {
-                uploadGate.Release();
-            }
-        }).ToList();
+                await gate.WaitAsync(cancellationToken);
+                try
+                {
+                    await UploadAsync(
+                        deviceId,
+                        stickId,
+                        job.Relative,
+                        job.Sha,
+                        job.File.FullName,
+                        cancellationToken);
 
-        await Task.WhenAll(uploadTasks);
+                    var done = Interlocked.Increment(ref uploaded);
+                    if (done == 1 || done % 25 == 0 || done == uploadJobs.Count)
+                        Log($"{deviceName} / {stickName}: {done}/{uploadJobs.Count} bestand(en) geüpload.");
+                }
+                catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+                {
+                    lock (failed)
+                        failed.Add(job);
+
+                    Log($"{deviceName} / {stickName}: upload mislukt bij {concurrency} parallel - {job.Relative} - {ex.Message}");
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            }).ToList();
+
+            await Task.WhenAll(tasks);
+            return failed;
+        }
+
+        var failedAt16 = await UploadBatchAsync(uploadJobs, 16);
+        if (failedAt16.Count > 0)
+        {
+            Log($"{deviceName} / {stickName}: {failedAt16.Count} upload(s) mislukt op 16 parallel; automatisch terug naar 12.");
+            var failedAt12 = await UploadBatchAsync(failedAt16, 12);
+
+            if (failedAt12.Count > 0)
+                throw new HttpRequestException(
+                    $"{failedAt12.Count} USB-upload(s) mislukten ook na terugval naar 12; volgende sync probeert opnieuw.");
+        }
 
         await SendManifestAsync(
             deviceId, deviceName, stickId, stickName, finalManifest, cancellationToken);
