@@ -2083,7 +2083,19 @@ public sealed class MainWindow : Window
                 : null;
         }
 
-        void RefreshSharedMediaTrackHighlights()
+        static string SharedMediaNowPlayingText(
+            CloudUsbMusicFile file,
+            CloudUsbMusicStick stick)
+        {
+            var artist = (file.Artist ?? "").Trim();
+            var title = file.DisplayName;
+            var track = string.IsNullOrWhiteSpace(artist)
+                ? title
+                : $"{title}  •  {artist}";
+            return $"{track}  •  {stick.DeviceName} / {stick.StickName}";
+        }
+
+        void RefreshSharedMediaTrackHighlights(bool bringActiveIntoView = false)
         {
             var active = CurrentSharedMediaFile();
 
@@ -2092,13 +2104,25 @@ public sealed class MainWindow : Window
                 var isCurrent =
                     active != null && SameSharedMediaFile(active, visual.File);
 
+                var artist = (visual.File.Artist ?? "").Trim();
+                var label = string.IsNullOrWhiteSpace(artist)
+                    ? visual.File.DisplayName
+                    : $"{visual.File.DisplayName}  •  {artist}";
+
                 visual.Title.Text =
-                    (isCurrent ? "▶ NU • " : "") + visual.File.DisplayName;
+                    (isCurrent ? "▶ NU SPEELT • " : "") + label;
                 visual.Title.Foreground = isCurrent ? Gold : TextMain;
                 visual.Title.FontWeight =
                     isCurrent ? FontWeights.Bold : FontWeights.Normal;
                 visual.Row.Background =
                     isCurrent ? Brush("#123247") : Brushes.Transparent;
+
+                if (isCurrent && bringActiveIntoView)
+                {
+                    Dispatcher.BeginInvoke(
+                        System.Windows.Threading.DispatcherPriority.Loaded,
+                        new Action(() => visual.Row.BringIntoView()));
+                }
             }
         }
 
@@ -2163,8 +2187,9 @@ public sealed class MainWindow : Window
                 var active = CurrentSharedMediaFile();
                 if (active != null)
                 {
+                    currentUsbFolder = NormalizeUsbFolder(active.Folder);
                     _musicNowPlayingTitle =
-                        $"{active.DisplayName}  •  {playingUsbStick.DeviceName} / {playingUsbStick.StickName}";
+                        SharedMediaNowPlayingText(active, playingUsbStick);
                     nowPlaying.Text = _musicNowPlayingTitle;
                     if (_musicHomeNowPlaying != null)
                         _musicHomeNowPlaying.Text = _musicNowPlayingTitle;
@@ -2211,7 +2236,7 @@ public sealed class MainWindow : Window
                 NativeUsbAudioPlayer.Stop();
                 _nativeUsbMusicActive = false;
                 _musicNowPlayingTitle =
-                    $"{file.DisplayName}  •  {stick.DeviceName} / {stick.StickName}";
+                    SharedMediaNowPlayingText(file, stick);
                 _musicSessionActive = true;
                 nowPlaying.Text = _musicNowPlayingTitle;
                 if (_musicHomeNowPlaying != null)
@@ -2472,7 +2497,15 @@ public sealed class MainWindow : Window
         nowPlaying.MouseLeftButtonUp += (_, _) =>
         {
             if (currentUsbStick == null || currentUsbFiles == null) return;
-            RenderUsbFolder(currentUsbStick, currentUsbFiles, currentUsbFolder);
+
+            var active = CurrentSharedMediaFile();
+            var targetFolder = active != null
+                ? NormalizeUsbFolder(active.Folder)
+                : currentUsbFolder;
+
+            currentUsbFolder = targetFolder;
+            RenderUsbFolder(currentUsbStick, currentUsbFiles, targetFolder);
+            RefreshSharedMediaTrackHighlights(bringActiveIntoView: true);
         };
 
         var playerControls = new StackPanel
