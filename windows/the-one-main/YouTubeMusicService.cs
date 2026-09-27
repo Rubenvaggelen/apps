@@ -205,22 +205,108 @@ audio{width:100%}
 <script>
 const queue = __QUEUE__;
 let index = 0;
-const audio = document.getElementById('audio');
-function load(i) {
+let active = 0;
+const crossfadeMs = 900;
+const a = document.getElementById('audio');
+const b = document.createElement('audio');
+b.controls = false;
+b.preload = 'auto';
+document.body.appendChild(b);
+const players = [a,b];
+
+function current(){ return players[active]; }
+function standby(){ return players[1-active]; }
+
+function prepareNext(){
+  const n = index + 1;
+  if (n >= queue.length) return;
+  const s = standby();
+  if (s.src !== queue[n]) {
+    s.src = queue[n];
+    s.load();
+  }
+}
+
+function setTrack(i, auto=true){
   if (!queue.length) return;
   index = Math.max(0, Math.min(i, queue.length - 1));
-  audio.src = queue[index];
-  audio.play().catch(()=>{});
+  const p = current();
+  p.src = queue[index];
+  p.volume = 1;
+  if (auto) p.play().catch(()=>{});
+  prepareNext();
 }
-audio.addEventListener('ended', () => {
-  if (index + 1 < queue.length) load(index + 1);
+
+function crossfadeTo(i){
+  if (i < 0 || i >= queue.length) return;
+  const from = current();
+  const to = standby();
+  index = i;
+  to.src = queue[index];
+  to.currentTime = 0;
+  to.volume = 0;
+  to.play().catch(()=>{});
+  const started = performance.now();
+
+  function tick(now){
+    const t = Math.min(1, (now - started) / crossfadeMs);
+    from.volume = Math.max(0, 1 - t);
+    to.volume = Math.min(1, t);
+    if (t < 1) {
+      requestAnimationFrame(tick);
+    } else {
+      from.pause();
+      from.currentTime = 0;
+      from.volume = 1;
+      active = 1 - active;
+      prepareNext();
+    }
+  }
+  requestAnimationFrame(tick);
+}
+
+function maybeCrossfade(){
+  const p = current();
+  if (!Number.isFinite(p.duration) || p.duration <= 0) return;
+  const remaining = p.duration - p.currentTime;
+  if (remaining <= crossfadeMs / 1000 && index + 1 < queue.length && !p.dataset.fading) {
+    p.dataset.fading = '1';
+    crossfadeTo(index + 1);
+    setTimeout(() => { delete p.dataset.fading; }, crossfadeMs + 150);
+  }
+}
+
+players.forEach(p => {
+  p.addEventListener('timeupdate', maybeCrossfade);
+  p.addEventListener('ended', () => {
+    if (index + 1 < queue.length && !p.dataset.fading) {
+      crossfadeTo(index + 1);
+    }
+  });
 });
-window.theOneToggle = () => audio.paused ? audio.play() : audio.pause();
-window.theOnePrevious = () => { if (index > 0) load(index - 1); else { audio.currentTime = 0; audio.play().catch(()=>{}); } };
-window.theOneNext = () => { if (index + 1 < queue.length) load(index + 1); };
-window.theOneStop = () => { audio.pause(); audio.currentTime = 0; };
+
+window.theOneToggle = () => {
+  const p = current();
+  if (p.paused) p.play().catch(()=>{});
+  else p.pause();
+};
+window.theOnePrevious = () => {
+  const p = current();
+  if (p.currentTime > 3 || index <= 0) {
+    p.currentTime = 0;
+    p.play().catch(()=>{});
+  } else {
+    crossfadeTo(index - 1);
+  }
+};
+window.theOneNext = () => {
+  if (index + 1 < queue.length) crossfadeTo(index + 1);
+};
+window.theOneStop = () => {
+  players.forEach(p => { p.pause(); p.currentTime = 0; p.volume = 1; });
+};
 window.theOneQueueIndex = () => index;
-load(0);
+setTrack(0);
 </script>
 </body>
 </html>
