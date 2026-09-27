@@ -94,7 +94,7 @@ class AllowedContactsActivity : AppCompatActivity() {
 
             val toggle = Switch(this).apply {
                 text = contact.displayName
-                textSize = 18f
+                textSize = 27.0f
                 setTextColor(ContextCompat.getColor(this@AllowedContactsActivity, R.color.text_main))
                 isChecked = allowed.any { it.equals(contact.realName, ignoreCase = true) }
                 setPadding(8, 6, 8, 6)
@@ -122,7 +122,7 @@ class AllowedContactsActivity : AppCompatActivity() {
             contact.phoneNumber?.let { number ->
                 val numberText = TextView(this).apply {
                     text = number
-                    textSize = 14f
+                    textSize = 21.0f
                     setTextColor(ContextCompat.getColor(this@AllowedContactsActivity, R.color.text_dim))
                     setPadding(16, 0, 8, 6)
                 }
