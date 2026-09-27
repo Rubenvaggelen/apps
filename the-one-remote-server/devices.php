@@ -9,6 +9,7 @@ const MAIN_ADMIN_SHA256 = '616f55173c48091a11f9d643846e32f77f9f949896747c85cf953
 $home = dirname((string)($_SERVER['DOCUMENT_ROOT'] ?? __DIR__));
 $dataDir = $home . '/the-one-remote-data';
 $devicesFile = $dataDir . '/main-devices.json';
+$ownerFile = $dataDir . '/main-device-owner.json';
 
 if (!is_dir($dataDir)) {
     @mkdir($dataDir, 0700, true);
@@ -57,6 +58,33 @@ function devices_admin(array $body): bool {
     return $pin !== '' && hash_equals(MAIN_ADMIN_SHA256, hash('sha256', $pin));
 }
 
+function devices_owner_id(string $file): string {
+    if (!is_file($file)) return '';
+    $raw = @file_get_contents($file);
+    $data = is_string($raw) ? json_decode($raw, true) : null;
+    return is_array($data) ? trim((string)($data['device_id'] ?? '')) : '';
+}
+
+function devices_save_owner(string $file, string $deviceId): void {
+    $tmp = $file . '.tmp.' . bin2hex(random_bytes(4));
+    $json = json_encode(['device_id' => $deviceId, 'claimed' => gmdate('c')], JSON_PRETTY_PRINT);
+    if (@file_put_contents($tmp, $json, LOCK_EX) === false) {
+        respond_devices(500, ['ok' => false, 'error' => 'Storage unavailable']);
+    }
+    @chmod($tmp, 0600);
+    if (!@rename($tmp, $file)) {
+        @unlink($tmp);
+        respond_devices(500, ['ok' => false, 'error' => 'Storage unavailable']);
+    }
+}
+
+function devices_owner_authorized(array $body, string $ownerFile): bool {
+    if (!devices_admin($body)) return false;
+    $deviceId = trim((string)($body['request_device_id'] ?? ''));
+    $ownerId = devices_owner_id($ownerFile);
+    return $deviceId !== '' && $ownerId !== '' && hash_equals($ownerId, $deviceId);
+}
+
 function clean_device_id(string $value): string {
     $value = trim($value);
     if ($value === '' || strlen($value) > 100 || !preg_match('/^[A-Za-z0-9._:-]+$/', $value)) {
@@ -97,9 +125,26 @@ if ($action === 'heartbeat') {
     ]);
 }
 
-if (!devices_admin($body)) {
+if ($action === 'claim_owner') {
+    if (!devices_admin($body)) {
+        usleep(300000);
+        respond_devices(403, ['ok' => false, 'error' => 'Unauthorized']);
+    }
+
+    $deviceId = clean_device_id((string)($body['request_device_id'] ?? ''));
+    $ownerId = devices_owner_id($ownerFile);
+    if ($ownerId !== '' && !hash_equals($ownerId, $deviceId)) {
+        respond_devices(403, ['ok' => false, 'error' => 'Owner already assigned']);
+    }
+    if ($ownerId === '') {
+        devices_save_owner($ownerFile, $deviceId);
+    }
+    respond_devices(200, ['ok' => true, 'owner' => true]);
+}
+
+if (!devices_owner_authorized($body, $ownerFile)) {
     usleep(300000);
-    respond_devices(403, ['ok' => false, 'error' => 'Unauthorized']);
+    respond_devices(403, ['ok' => false, 'error' => 'Owner device required']);
 }
 
 $state = devices_load($devicesFile);
