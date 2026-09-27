@@ -301,11 +301,15 @@ class SupremacyMixesActivity : AppCompatActivity() {
         val add = !favoriteMixUrls.contains(mix.url)
         button.isEnabled = false
         io.execute {
-            val allowed = try {
-                MainDeviceRegistry.refreshMusicRights(this)
+            val access = try {
+                MainDeviceRegistry.refreshAccess(
+                    this,
+                    MainDeviceRegistry.ACCESS_FAVORITES
+                )
             } catch (_: Exception) {
-                false
+                null
             }
+            val allowed = access?.allowed == true
             val ok = if (allowed) try {
                 if (!RemoteUsbMusicClient.hasToken(this) &&
                     !RemoteUsbMusicClient.loginForBrowsing(this)
@@ -320,11 +324,11 @@ class SupremacyMixesActivity : AppCompatActivity() {
             runOnUiThread {
                 button.isEnabled = true
                 if (!allowed) {
-                    Toast.makeText(
-                        this,
-                        "Alleen The One of iemand met muziekrechten mag Favorites wijzigen.",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    showAccessRequestDialog(
+                        MainDeviceRegistry.ACCESS_FAVORITES,
+                        "The One Favorites",
+                        access?.pending == true
+                    )
                 } else if (ok) {
                     if (add) favoriteMixUrls += mix.url else favoriteMixUrls -= mix.url
                     button.text = if (add) "★" else "☆"
@@ -340,20 +344,66 @@ class SupremacyMixesActivity : AppCompatActivity() {
         }
     }
 
+    private fun showAccessRequestDialog(
+        scope: String,
+        label: String,
+        pending: Boolean
+    ) {
+        if (MainDeviceRegistry.isLocallyOwner(this)) return
+
+        if (pending) {
+            AlertDialog.Builder(this)
+                .setTitle(label)
+                .setMessage("Je aanvraag voor $label is al verstuurd en wacht op goedkeuring van The One.")
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle(label)
+            .setMessage("Je hebt nog geen toegang tot $label. Wil je toegang aanvragen bij The One?")
+            .setNegativeButton("Annuleren", null)
+            .setPositiveButton("Toegang aanvragen") { _, _ ->
+                io.execute {
+                    val result = try {
+                        MainDeviceRegistry.requestAccess(this, scope)
+                    } catch (_: Exception) {
+                        null
+                    }
+                    runOnUiThread {
+                        Toast.makeText(
+                            this,
+                            when {
+                                result?.allowed == true -> "Toegang is al toegestaan."
+                                result?.pending == true -> "Aanvraag voor $label is verstuurd naar The One."
+                                else -> "Aanvraag kon niet worden verstuurd."
+                            },
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+            .show()
+    }
+
     private fun requestMixDownload(mix: Mix) {
         io.execute {
-            val allowed = try {
-                MainDeviceRegistry.refreshMusicRights(this)
+            val access = try {
+                MainDeviceRegistry.refreshAccess(
+                    this,
+                    MainDeviceRegistry.ACCESS_MIXES
+                )
             } catch (_: Exception) {
-                false
+                null
             }
             runOnUiThread {
-                if (!allowed) {
-                    Toast.makeText(
-                        this,
-                        "Alleen The One of iemand met muziekrechten mag downloaden.",
-                        Toast.LENGTH_LONG
-                    ).show()
+                if (access?.allowed != true) {
+                    showAccessRequestDialog(
+                        MainDeviceRegistry.ACCESS_MIXES,
+                        "The One Mixes",
+                        access?.pending == true
+                    )
                     return@runOnUiThread
                 }
                 showMixDownloadPin(mix)
