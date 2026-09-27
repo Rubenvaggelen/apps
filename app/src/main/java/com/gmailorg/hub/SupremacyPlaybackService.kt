@@ -61,6 +61,9 @@ class SupremacyPlaybackService : Service() {
             ACTION_TOGGLE -> togglePlayback()
             ACTION_NEXT -> next()
             ACTION_PREVIOUS -> previous()
+            ACTION_SEEK -> seekToPosition(
+                intent.getIntExtra(EXTRA_POSITION, 0)
+            )
             ACTION_RESTORE_LAST -> restoreLastSession()
 
             ACTION_PLAY -> {
@@ -200,6 +203,33 @@ class SupremacyPlaybackService : Service() {
             try { player?.seekTo(0) } catch (_: Exception) {}
         }
     }
+
+    private fun seekToPosition(positionMs: Int) {
+        val mp = player ?: return
+        try {
+            val duration = mp.duration.coerceAtLeast(0)
+            val safe = positionMs.coerceAtLeast(0)
+                .coerceAtMost(duration)
+            mp.seekTo(safe)
+            requestedStartPositionMs = safe
+            saveSession(explicitPosition = safe)
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun playbackPositionMs(): Int =
+        try {
+            player?.currentPosition ?: requestedStartPositionMs
+        } catch (_: Exception) {
+            requestedStartPositionMs
+        }.coerceAtLeast(0)
+
+    private fun playbackDurationMs(): Int =
+        try {
+            player?.duration ?: 0
+        } catch (_: Exception) {
+            0
+        }.coerceAtLeast(0)
 
     private fun notification(state: String): Notification {
         val open = PendingIntent.getActivity(
@@ -363,6 +393,7 @@ class SupremacyPlaybackService : Service() {
         const val ACTION_TOGGLE = "com.gmailorg.hub.SUPREMACY_TOGGLE"
         const val ACTION_NEXT = "com.gmailorg.hub.SUPREMACY_NEXT"
         const val ACTION_PREVIOUS = "com.gmailorg.hub.SUPREMACY_PREVIOUS"
+        const val ACTION_SEEK = "com.gmailorg.hub.SUPREMACY_SEEK"
         const val ACTION_RESTORE_LAST = "com.gmailorg.hub.SUPREMACY_RESTORE_LAST"
 
         const val EXTRA_TITLE = "title"
@@ -371,6 +402,7 @@ class SupremacyPlaybackService : Service() {
         const val EXTRA_QUEUE_URLS = "queue_urls"
         const val EXTRA_INDEX = "queue_index"
         const val EXTRA_SOURCE = "source"
+        const val EXTRA_POSITION = "position_ms"
 
         private const val CHANNEL = "supremacy_mixes"
         private const val NOTIFICATION_ID = 2407
@@ -422,5 +454,33 @@ class SupremacyPlaybackService : Service() {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getString(KEY_SOURCE, "The One Mixes")
                 ?: "The One Mixes"
+
+        fun currentPositionMs(context: Context): Int =
+            instance?.playbackPositionMs()
+                ?: context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getInt(KEY_POSITION, 0)
+                    .coerceAtLeast(0)
+
+        fun currentDurationMs(): Int =
+            instance?.playbackDurationMs() ?: 0
+
+        fun seek(context: Context, positionMs: Int) {
+            val active = instance
+            if (active != null) {
+                active.seekToPosition(positionMs)
+                return
+            }
+
+            val app = context.applicationContext
+            val intent = Intent(app, SupremacyPlaybackService::class.java).apply {
+                action = ACTION_SEEK
+                putExtra(EXTRA_POSITION, positionMs.coerceAtLeast(0))
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                app.startForegroundService(intent)
+            } else {
+                app.startService(intent)
+            }
+        }
     }
 }
