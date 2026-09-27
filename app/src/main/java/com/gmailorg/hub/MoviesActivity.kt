@@ -393,7 +393,7 @@ class MoviesActivity : AppCompatActivity() {
             )
 
             val title = TextView(this).apply {
-                text = cleanUsbTrackTitle(file.name)
+                text = cleanUsbTrackTitle(file.displayName)
                 textSize = 16f
                 setTextColor(Color.WHITE)
                 maxLines = 2
@@ -586,7 +586,7 @@ class MoviesActivity : AppCompatActivity() {
             youtubePlaying = false
 
             val urls = ArrayList(files.map { RemoteUsbMusicClient.streamUrl(this, it) })
-            val titles = ArrayList(files.map { it.name })
+            val titles = ArrayList(files.map { it.displayName })
 
             ContextCompat.startForegroundService(
                 this,
@@ -604,7 +604,7 @@ class MoviesActivity : AppCompatActivity() {
 
             currentRemoteUsbStick = stick
             currentRemoteUsbFolder = normalizeRemoteFolder(folder)
-            musicNowPlaying.text = files[index].name + "  •  USB thuis"
+            musicNowPlaying.text = files[index].displayName + "  •  USB thuis"
             musicNowPlaying.paintFlags = musicNowPlaying.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
             musicNowPlaying.contentDescription = "Tik om de USB-map van dit nummer te openen"
             musicPlaybackState.text = "Laden…"
