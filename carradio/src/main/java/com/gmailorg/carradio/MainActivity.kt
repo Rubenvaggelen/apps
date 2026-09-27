@@ -689,31 +689,22 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val favorites = RemoteUsbMusicClient.favorites(this)
-                val sticks = try {
-                    RemoteUsbMusicClient.catalog(this)
-                } catch (_: Exception) {
-                    emptyList()
-                }
-
                 val playable = favorites.mapNotNull { item ->
                     when {
-                        item.kind.equals("mix", ignoreCase = true) && item.url.isNotBlank() ->
+                        item.kind.equals("mix", ignoreCase = true) &&
+                            item.url.isNotBlank() ->
                             Triple(item, item.url, item.title)
-                        item.kind.equals("usb", ignoreCase = true) -> {
-                            val file = sticks
-                                .firstOrNull {
-                                    it.deviceId == item.deviceId && it.stickId == item.stickId
-                                }
-                                ?.files
-                                ?.firstOrNull { it.path.equals(item.path, ignoreCase = true) }
-                            if (file?.cached == true) {
-                                Triple(
-                                    item,
-                                    RemoteUsbMusicClient.streamUrl(this, file),
-                                    cleanRemoteUsbTrackTitle(file.displayName)
-                                )
-                            } else null
-                        }
+
+                        item.kind.equals("usb", ignoreCase = true) &&
+                            item.deviceId.isNotBlank() &&
+                            item.stickId.isNotBlank() &&
+                            item.path.isNotBlank() ->
+                            Triple(
+                                item,
+                                RemoteUsbMusicClient.streamUrl(this, item),
+                                cleanRemoteUsbTrackTitle(item.title)
+                            )
+
                         else -> null
                     }
                 }
@@ -791,7 +782,7 @@ class MainActivity : AppCompatActivity() {
             copy.addView(TextView(this).apply {
                 text = item.sourceLabel.ifBlank {
                     if (item.kind.equals("mix", true)) "The One Mixes" else "Shared Media"
-                } + if (playableEntry == null) " • Niet beschikbaar" else ""
+                } + if (playableEntry == null) " • Bron niet beschikbaar" else ""
                 textSize = 14f
                 setTextColor(android.graphics.Color.parseColor("#91A4BD"))
                 maxLines = 1
