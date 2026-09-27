@@ -438,21 +438,32 @@ class SupremacyPlaybackService : Service() {
         }
 
         fun isActive(context: Context): Boolean =
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getBoolean(KEY_ACTIVE, false)
+            instance?.let { it.urls.isNotEmpty() }
+                ?: context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getBoolean(KEY_ACTIVE, false)
 
         fun isPlaying(context: Context): Boolean =
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            instance?.let {
+                try {
+                    it.player?.isPlaying == true
+                } catch (_: Exception) {
+                    false
+                }
+            } ?: context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getBoolean(KEY_PLAYING, false)
 
         fun currentTitle(context: Context): String =
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getString(KEY_TITLE, "Geen muziek actief")
+            instance?.currentTitle
+                ?.takeIf { it.isNotBlank() }
+                ?: context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getString(KEY_TITLE, "Geen muziek actief")
                 ?: "Geen muziek actief"
 
         fun currentSource(context: Context): String =
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getString(KEY_SOURCE, "The One Mixes")
+            instance?.currentSource
+                ?.takeIf { it.isNotBlank() }
+                ?: context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getString(KEY_SOURCE, "The One Mixes")
                 ?: "The One Mixes"
 
         fun currentPositionMs(context: Context): Int =
