@@ -24,13 +24,13 @@ public sealed class MainWindow : Window
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(35) };
 
     private readonly Brush Bg = Brush("#05070B");
-    private readonly Brush Surface = Brush("#0B111A");
-    private readonly Brush SurfaceRaised = Brush("#0D1A28");
-    private readonly Brush Line = Brush("#174963");
+    private readonly Brush Surface = Brush("#0B1119");
+    private readonly Brush SurfaceRaised = Brush("#101925");
+    private readonly Brush Line = Brush("#17384A");
     private readonly Brush TextMain = Brush("#F3F8FC");
-    private readonly Brush TextDim = Brush("#91A4BD");
-    private readonly Brush Amber = Brush("#20B8FF");
-    private readonly Brush Gold = Brush("#E8AA4E");
+    private readonly Brush TextDim = Brush("#8F9BAD");
+    private readonly Brush Amber = Brush("#2D789C");
+    private readonly Brush Gold = Brush("#D8A451");
     private readonly Brush Sage = Brush("#39D98A");
 
     private readonly Grid _content = new();
@@ -135,7 +135,7 @@ public sealed class MainWindow : Window
             Padding = new Thickness(18, 9, 18, 9),
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(32, 184, 255), BlurRadius = 14, Opacity = 0.12, ShadowDepth = 0
+                Color = Color.FromRgb(45, 120, 156), BlurRadius = 14, Opacity = 0.12, ShadowDepth = 0
             }
         };
         var dock = new DockPanel();
@@ -392,7 +392,7 @@ public sealed class MainWindow : Window
             Padding = new Thickness(16, 7, 18, 7),
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(32, 184, 255),
+                Color = Color.FromRgb(45, 120, 156),
                 BlurRadius = 22,
                 Opacity = 0.32,
                 ShadowDepth = 0
@@ -423,7 +423,7 @@ public sealed class MainWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(32, 184, 255),
+                Color = Color.FromRgb(45, 120, 156),
                 BlurRadius = 14,
                 Opacity = 0.55,
                 ShadowDepth = 0
@@ -546,7 +546,7 @@ public sealed class MainWindow : Window
             IsHitTestVisible = true,
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(32, 184, 255),
+                Color = Color.FromRgb(45, 120, 156),
                 BlurRadius = 28,
                 Opacity = 0.34,
                 ShadowDepth = 0
@@ -693,7 +693,7 @@ public sealed class MainWindow : Window
             FontWeight = FontWeights.SemiBold,
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(32, 184, 255),
+                Color = Color.FromRgb(45, 120, 156),
                 BlurRadius = 10,
                 Opacity = 0.16,
                 ShadowDepth = 0
@@ -902,7 +902,7 @@ public sealed class MainWindow : Window
             Margin = new Thickness(0, 0, 0, 10),
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(32, 184, 255),
+                Color = Color.FromRgb(45, 120, 156),
                 BlurRadius = 24,
                 Opacity = 0.34,
                 ShadowDepth = 0
@@ -959,7 +959,7 @@ public sealed class MainWindow : Window
         var tileSurface = new Border
         {
             CornerRadius = new CornerRadius(18),
-            BorderBrush = Brush("#174963"),
+            BorderBrush = Brush("#17384A"),
             BorderThickness = new Thickness(1),
             Padding = new Thickness(10),
             Background = new LinearGradientBrush(
@@ -1030,7 +1030,7 @@ public sealed class MainWindow : Window
                 90);
             tileSurface.Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(32, 184, 255),
+                Color = Color.FromRgb(45, 120, 156),
                 BlurRadius = 24,
                 Opacity = 0.28,
                 ShadowDepth = 0
@@ -1046,7 +1046,7 @@ public sealed class MainWindow : Window
                 ScaleTransform.ScaleYProperty,
                 new DoubleAnimation(tileScale.ScaleY, 1.0, TimeSpan.FromMilliseconds(170)) { EasingFunction = easeOut });
 
-            tileSurface.BorderBrush = Brush("#174963");
+            tileSurface.BorderBrush = Brush("#17384A");
             tileSurface.Background = new LinearGradientBrush(
                 Color.FromRgb(11, 22, 32),
                 Color.FromRgb(7, 12, 18),
@@ -1229,7 +1229,7 @@ public sealed class MainWindow : Window
     {
         var palette = new[]
         {
-            Color.FromRgb(32, 184, 255),
+            Color.FromRgb(45, 120, 156),
             Color.FromRgb(95, 205, 255),
             Color.FromRgb(88, 166, 255),
             Color.FromRgb(104, 225, 190),
@@ -1305,7 +1305,7 @@ public sealed class MainWindow : Window
             StrokeThickness = 1.6,
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(32, 184, 255),
+                Color = Color.FromRgb(45, 120, 156),
                 BlurRadius = 20,
                 Opacity = 0.42,
                 ShadowDepth = 0
@@ -1354,7 +1354,7 @@ public sealed class MainWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(32, 184, 255),
+                Color = Color.FromRgb(45, 120, 156),
                 BlurRadius = 8,
                 Opacity = 0.8,
                 ShadowDepth = 0
@@ -1388,7 +1388,7 @@ public sealed class MainWindow : Window
             root.Children.Add(VectorPath(
                 "M8,5 L20,12 L8,19 Z",
                 "#F3F8FC",
-                "#20B8FF",
+                "#2D789C",
                 0.7,
                 size * 0.48));
         }
@@ -1667,7 +1667,7 @@ public sealed class MainWindow : Window
             FontWeight = FontWeights.SemiBold,
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(32, 184, 255),
+                Color = Color.FromRgb(45, 120, 156),
                 BlurRadius = 12,
                 Opacity = 0.18,
                 ShadowDepth = 0
@@ -1742,14 +1742,14 @@ public sealed class MainWindow : Window
                 Color.FromRgb(13, 27, 41),
                 Color.FromRgb(7, 12, 18),
                 90),
-            BorderBrush = Brush("#245A75"),
+            BorderBrush = Brush("#1E455C"),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(18),
             Padding = new Thickness(16),
             Margin = new Thickness(0, 8, 0, 8),
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(32, 184, 255),
+                Color = Color.FromRgb(45, 120, 156),
                 BlurRadius = 16,
                 Opacity = 0.13,
                 ShadowDepth = 0
@@ -2023,7 +2023,7 @@ public sealed class MainWindow : Window
             Padding = new Thickness(14),
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                Color = Color.FromRgb(32, 184, 255),
+                Color = Color.FromRgb(45, 120, 156),
                 BlurRadius = 20,
                 Opacity = 0.2,
                 ShadowDepth = 0
@@ -2449,7 +2449,7 @@ public sealed class MainWindow : Window
                     var card = new Border
                     {
                         Background = Surface,
-                        BorderBrush = Brush("#174963"),
+                        BorderBrush = Brush("#17384A"),
                         BorderThickness = new Thickness(1),
                         Padding = new Thickness(12),
                         Margin = new Thickness(0, 0, 0, 9),
@@ -2519,7 +2519,7 @@ public sealed class MainWindow : Window
                     };
                     card.MouseLeave += (_, _) =>
                     {
-                        card.BorderBrush = Brush("#174963");
+                        card.BorderBrush = Brush("#17384A");
                         card.Background = Surface;
                     };
 
@@ -2594,7 +2594,7 @@ public sealed class MainWindow : Window
                         Header = $"{group.Key} ({genreMixes.Count})",
                         Foreground = TextMain,
                         Background = Surface,
-                        BorderBrush = Brush("#174963"),
+                        BorderBrush = Brush("#17384A"),
                         BorderThickness = new Thickness(1),
                         Margin = new Thickness(0, 0, 0, 8),
                         Padding = new Thickness(10)
@@ -2742,7 +2742,7 @@ public sealed class MainWindow : Window
                         Header = $"{stick.DeviceName}  •  {stick.StickName}",
                         Foreground = TextMain,
                         Background = Surface,
-                        BorderBrush = Brush("#174963"),
+                        BorderBrush = Brush("#17384A"),
                         BorderThickness = new Thickness(1),
                         Margin = new Thickness(0, 0, 0, 8),
                         Padding = new Thickness(10)
