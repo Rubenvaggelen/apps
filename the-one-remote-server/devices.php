@@ -220,7 +220,14 @@ if ($action === 'set_blocked') {
     if (!isset($state['devices'][$deviceId]) || !is_array($state['devices'][$deviceId])) {
         respond_devices(404, ['ok' => false, 'error' => 'Device not found']);
     }
-    $state['devices'][$deviceId]['blocked'] = filter_var($body['blocked'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+    $blocked = filter_var($body['blocked'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $ownerId = devices_owner_id($ownerFile);
+    if ($blocked && $ownerId !== '' && hash_equals($ownerId, $deviceId)) {
+        respond_devices(409, ['ok' => false, 'error' => 'Owner device cannot be blocked']);
+    }
+
+    $state['devices'][$deviceId]['blocked'] = $blocked;
     $state['devices'][$deviceId]['blocked_updated'] = gmdate('c');
     devices_save($devicesFile, $state);
     respond_devices(200, [
