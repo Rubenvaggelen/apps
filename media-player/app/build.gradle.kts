@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2320
-        versionName = "2.3.20-free-tv-search"
+        versionCode = 2321
+        versionName = "2.3.21-family-style"
     }
 
     signingConfigs {
