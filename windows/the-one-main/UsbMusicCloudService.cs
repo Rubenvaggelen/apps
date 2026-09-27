@@ -684,6 +684,7 @@ public static class UsbMusicCloudService
         await EnsureTokenAsync(cancellationToken);
         const int batchSize = 100;
         var batchTotal = Math.Max(1, (files.Count + batchSize - 1) / batchSize);
+        var syncId = Guid.NewGuid().ToString("N");
 
         for (var batchIndex = 0; batchIndex < batchTotal; batchIndex++)
         {
@@ -704,6 +705,7 @@ public static class UsbMusicCloudService
                 device_name = deviceName,
                 stick_id = stickId,
                 stick_name = stickName,
+                sync_id = syncId,
                 batch_index = batchIndex,
                 batch_total = batchTotal,
                 files = items
