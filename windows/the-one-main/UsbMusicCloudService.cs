@@ -663,14 +663,12 @@ public static class UsbMusicCloudService
         CancellationToken cancellationToken)
     {
         await EnsureTokenAsync(cancellationToken);
+        const int batchSize = 100;
+        var batchTotal = Math.Max(1, (files.Count + batchSize - 1) / batchSize);
 
-        var body = JsonSerializer.Serialize(new
+        for (var batchIndex = 0; batchIndex < batchTotal; batchIndex++)
         {
-            device_id = deviceId,
-            device_name = deviceName,
-            stick_id = stickId,
-            stick_name = stickName,
-            files = files.Select(x => new
+            var items = files.Skip(batchIndex * batchSize).Take(batchSize).Select(x => new
             {
                 path = x.Path,
                 title = x.Title,
@@ -679,19 +677,29 @@ public static class UsbMusicCloudService
                 size = x.Size,
                 sha256 = x.Sha256,
                 modified = x.Modified
-            })
-        });
+            }).ToList();
 
-        using var request = new HttpRequestMessage(
-            HttpMethod.Post,
-            Endpoint + "?action=sync")
-        {
-            Content = new StringContent(body, Encoding.UTF8, "application/json")
-        };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _token);
+            var body = JsonSerializer.Serialize(new
+            {
+                device_id = deviceId,
+                device_name = deviceName,
+                stick_id = stickId,
+                stick_name = stickName,
+                batch_index = batchIndex,
+                batch_total = batchTotal,
+                files = items
+            });
 
-        using var response = await Http.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+            using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint + "?action=sync-batch")
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json")
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _token);
+            using var response = await Http.SendAsync(request, cancellationToken);
+            var payload = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                throw new HttpRequestException($"Catalogusbatch {batchIndex + 1}/{batchTotal} gaf {(int)response.StatusCode}: {payload}");
+        }
     }
 
     private static async Task EnsureTokenAsync(CancellationToken cancellationToken)
