@@ -12,6 +12,9 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
+import android.support.v4.media.MediaMetadataCompat
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -206,6 +209,7 @@ class UsbPlaybackService : Service() {
     }
 
     private var player: ExoPlayer? = null
+    private lateinit var mediaSession: MediaSessionCompat
     private var queue: List<QueueItem> = emptyList()
     private var index = -1
     @Volatile private var preparing = false
@@ -224,6 +228,7 @@ class UsbPlaybackService : Service() {
         super.onCreate()
         instance = this
         createChannel()
+        configureMediaSession()
         stateHandler.post(saveTick)
     }
 
@@ -528,6 +533,92 @@ class UsbPlaybackService : Service() {
         getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
     }
 
+    private fun configureMediaSession() {
+        mediaSession = MediaSessionCompat(this, "TheOneCarAudio").apply {
+            setFlags(
+                MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
+                    MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
+            )
+            setCallback(object : MediaSessionCompat.Callback() {
+                override fun onPlay() {
+                    val state = snapshotInternal()
+                    if (!state.isPlaying) toggleInternal()
+                }
+
+                override fun onPause() {
+                    val state = snapshotInternal()
+                    if (state.isPlaying) toggleInternal()
+                }
+
+                override fun onStop() {
+                    stopPlaybackAndService()
+                }
+
+                override fun onSkipToNext() {
+                    playRelative(+1)
+                }
+
+                override fun onSkipToPrevious() {
+                    playRelative(-1)
+                }
+
+                override fun onSeekTo(pos: Long) {
+                    seekInternal(
+                        pos.coerceAtLeast(0L)
+                            .coerceAtMost(Int.MAX_VALUE.toLong())
+                            .toInt()
+                    )
+                }
+            })
+            isActive = true
+        }
+        updateMediaSession()
+    }
+
+    private fun updateMediaSession() {
+        if (!::mediaSession.isInitialized) return
+
+        val state = snapshotInternal()
+        val playbackState = when {
+            state.isPreparing -> PlaybackStateCompat.STATE_BUFFERING
+            state.isPlaying -> PlaybackStateCompat.STATE_PLAYING
+            state.hasTrack -> PlaybackStateCompat.STATE_PAUSED
+            else -> PlaybackStateCompat.STATE_STOPPED
+        }
+
+        mediaSession.setPlaybackState(
+            PlaybackStateCompat.Builder()
+                .setActions(
+                    PlaybackStateCompat.ACTION_PLAY or
+                        PlaybackStateCompat.ACTION_PAUSE or
+                        PlaybackStateCompat.ACTION_PLAY_PAUSE or
+                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+                        PlaybackStateCompat.ACTION_STOP or
+                        PlaybackStateCompat.ACTION_SEEK_TO
+                )
+                .setState(
+                    playbackState,
+                    state.positionMs.toLong(),
+                    if (state.isPlaying) 1f else 0f
+                )
+                .build()
+        )
+
+        mediaSession.setMetadata(
+            MediaMetadataCompat.Builder()
+                .putString(
+                    MediaMetadataCompat.METADATA_KEY_TITLE,
+                    state.title
+                )
+                .putLong(
+                    MediaMetadataCompat.METADATA_KEY_DURATION,
+                    state.durationMs.toLong()
+                )
+                .build()
+        )
+    }
+
     private fun createChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -543,6 +634,7 @@ class UsbPlaybackService : Service() {
     }
 
     private fun updateNotification() {
+        updateMediaSession()
         try {
             (getSystemService(NOTIFICATION_SERVICE) as NotificationManager)
                 .notify(NOTIFICATION_ID, buildNotification())
@@ -589,6 +681,10 @@ class UsbPlaybackService : Service() {
         if (queue.isNotEmpty()) persistSession()
         stateHandler.removeCallbacks(saveTick)
         releasePlayer()
+        if (::mediaSession.isInitialized) {
+            mediaSession.isActive = false
+            mediaSession.release()
+        }
         if (instance === this) instance = null
         super.onDestroy()
     }
