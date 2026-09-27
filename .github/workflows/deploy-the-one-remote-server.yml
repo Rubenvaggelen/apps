@@ -56,6 +56,14 @@ jobs:
 
           opts=(-i "$keydir/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$keydir/known_hosts" -o ConnectTimeout=20)
           remote="$DEPLOY_USER@$DEPLOY_HOST"
+
+          # Alleen veilige tijdelijke rommel opruimen. Geldige .bin-cache en metadata blijven staan.
+          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" '
+            find "$HOME/the-one-music-cache/files" -maxdepth 1 -type f -name "*.part" -delete 2>/dev/null || true
+            rm -rf "$HOME"/.the-one-remote-stage.* 2>/dev/null || true
+            rm -rf "$HOME"/.the-one-remote-backups/api.* 2>/dev/null || true
+          '
+
           stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'mktemp -d "$HOME/.the-one-remote-stage.XXXXXXXX"')
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" the-one-remote-server/index.php "$remote:$stage/index.php"
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" the-one-remote-server/music.php "$remote:$stage/music.php"
