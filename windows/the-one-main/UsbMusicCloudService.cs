@@ -503,10 +503,10 @@ public static class UsbMusicCloudService
 
         Log($"{deviceName} / {stickName}: {finalManifestList.Count - uploadJobs.Count} bestand(en) uit bestaande cache hersteld; {uploadJobs.Count} upload(s) nog nodig.");
 
-        // Start agressief met 16 gelijktijdige uploads. Als de server,
-        // verbinding of één van de uploads daar niet goed op reageert, worden
-        // alleen de mislukte bestanden automatisch opnieuw geprobeerd met 12.
-        // Reeds gecachete bestanden blijven overgeslagen, zodat hervatten snel is.
+        // Upload bewust conservatief: kleine chunks en maximaal 4 tegelijk.
+        // De hostinglaag kapte grotere JSON-chunks af, waardoor upload-chunk
+        // als lege/malformed request binnenkwam en "invalid id" gaf.
+        // Mislukte bestanden gaan nog één keer met maximaal 2 tegelijk.
         var uploaded = 0;
 
         async Task<List<(FileInfo File, string Relative, string Sha)>> UploadBatchAsync(
@@ -550,15 +550,15 @@ public static class UsbMusicCloudService
             return failed;
         }
 
-        var failedAt16 = await UploadBatchAsync(uploadJobs, 16);
+        var failedAt16 = await UploadBatchAsync(uploadJobs, 4);
         if (failedAt16.Count > 0)
         {
-            Log($"{deviceName} / {stickName}: {failedAt16.Count} upload(s) mislukt op 16 parallel; automatisch terug naar 12.");
-            var failedAt12 = await UploadBatchAsync(failedAt16, 12);
+            Log($"{deviceName} / {stickName}: {failedAt16.Count} upload(s) mislukt op 4 parallel; automatisch terug naar 2.");
+            var failedAt12 = await UploadBatchAsync(failedAt16, 2);
 
             if (failedAt12.Count > 0)
                 throw new HttpRequestException(
-                    $"{failedAt12.Count} USB-upload(s) mislukten ook na terugval naar 12; volgende sync probeert opnieuw.");
+                    $"{failedAt12.Count} USB-upload(s) mislukten ook na terugval naar 2; volgende sync probeert opnieuw.");
         }
 
         await SendManifestAsync(
@@ -607,7 +607,7 @@ public static class UsbMusicCloudService
         {
         }
 
-        const int chunkSize = 128 * 1024;
+        const int chunkSize = 32 * 1024;
         var buffer = new byte[chunkSize];
         long offset = 0;
 
