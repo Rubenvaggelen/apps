@@ -391,7 +391,7 @@ class MainActivity : AppCompatActivity() {
 
             row.addView(
                 TextView(this).apply {
-                    text = file.name
+                    text = file.displayName
                     textSize = 16f
                     setTextColor(android.graphics.Color.WHITE)
                     maxLines = 2
@@ -527,7 +527,7 @@ class MainActivity : AppCompatActivity() {
             val queue = files.map {
                 UsbPlaybackService.QueueItem(
                     RemoteUsbMusicClient.streamUrl(this, it),
-                    it.name
+                    it.displayName
                 )
             }
             UsbPlaybackService.play(this, queue, index)
