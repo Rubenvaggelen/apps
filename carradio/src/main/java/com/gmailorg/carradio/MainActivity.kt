@@ -378,6 +378,9 @@ class MainActivity : AppCompatActivity() {
         carAudioTitle.setOnClickListener {
             openCurrentFamilyTrackFolder()
         }
+        carAudioPlayer.setOnClickListener {
+            openCurrentFamilyTrackFolder()
+        }
 
         carAudioPrevious.setOnClickListener {
             UsbPlaybackService.previous(this)
