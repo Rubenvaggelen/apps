@@ -391,7 +391,11 @@ class SettingsActivity : AppCompatActivity() {
                 MainDeviceRegistry.ownerStatus(this, pin)
             }.getOrDefault(false)
 
-            if (!owner && MainDeviceRegistry.isOwnerEligible()) {
+            if (
+                !owner &&
+                MainDeviceRegistry.isOwnerEligible() &&
+                MainDeviceRegistry.isTheOneProfile(this)
+            ) {
                 runCatching { MainDeviceRegistry.heartbeat(this) }
                 owner = runCatching {
                     MainDeviceRegistry.claimOwner(this, pin)
