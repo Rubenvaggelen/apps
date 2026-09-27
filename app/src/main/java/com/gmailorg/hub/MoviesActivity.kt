@@ -443,17 +443,30 @@ class MoviesActivity : AppCompatActivity() {
     }
 
     private fun showRemoteStickDialog(sticks: List<RemoteUsbMusicClient.RemoteStick>) {
-        val labels = sticks.map { it.deviceName + " • " + it.stickName }.toTypedArray()
+        val labels = sticks.map {
+            val count = it.files.size
+            it.deviceName + " • " + it.stickName +
+                " • " + count + " nummer" + if (count == 1) "" else "s"
+        }.toTypedArray()
+
         val dialog = AlertDialog.Builder(this)
             .setTitle("Shared Media")
             .setItems(labels) { _, which ->
                 showRemoteFolderDialog(sticks[which])
             }
+            .setPositiveButton("Vernieuwen", null)
             .setNegativeButton("Sluiten", null)
             .create()
+
         dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setTextColor(Color.parseColor("#D8A451"))
             dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
                 .setTextColor(Color.parseColor("#D8A451"))
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                dialog.dismiss()
+                loadRemoteUsbCatalog()
+            }
         }
         dialog.show()
     }
