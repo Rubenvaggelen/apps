@@ -49,7 +49,7 @@ class MessageLogActivity : AppCompatActivity() {
             container.addView(TextView(this).apply {
                 text = "Geen WhatsApp-meldingen."
                 setTextColor(ContextCompat.getColor(context, R.color.text_dim))
-                textSize = 16f
+                textSize = 24.0f
                 setPadding(0, 12, 0, 12)
             })
             return
@@ -61,7 +61,7 @@ class MessageLogActivity : AppCompatActivity() {
                 val time = formatter.format(Date(msg.time))
                 text = "$time  •  ${ContactAliases.displayName(msg.contact)}: ${msg.text}"
                 setTextColor(ContextCompat.getColor(context, R.color.text_main))
-                textSize = 17f
+                textSize = 25.5f
                 setPadding(0, 10, 0, 10)
             }
             container.addView(view)
