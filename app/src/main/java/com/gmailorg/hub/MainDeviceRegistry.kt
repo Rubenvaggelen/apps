@@ -10,9 +10,11 @@ import java.util.UUID
 data class MainRegisteredDevice(
     val id: String,
     val name: String,
+    val personName: String,
     val platform: String,
     val version: String,
     val blocked: Boolean,
+    val owner: Boolean,
     val online: Boolean,
     val lastSeen: Long
 )
@@ -23,6 +25,8 @@ object MainDeviceRegistry {
     private const val KEY_DEVICE_ID = "device_id"
     private const val KEY_BLOCKED = "blocked"
     private const val KEY_OWNER = "owner"
+    private const val KEY_PERSON_NAME = "person_name"
+    private const val KEY_THE_ONE = "the_one_profile"
 
     fun deviceId(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -41,10 +45,37 @@ object MainDeviceRegistry {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_OWNER, false)
 
+
+    fun personName(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_PERSON_NAME, "")
+            .orEmpty()
+            .trim()
+
+    fun hasPersonName(context: Context): Boolean =
+        personName(context).isNotBlank()
+
+    fun isTheOneProfile(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_THE_ONE, false)
+
+    fun savePersonRegistration(
+        context: Context,
+        personName: String,
+        isTheOne: Boolean
+    ) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_PERSON_NAME, personName.trim())
+            .putBoolean(KEY_THE_ONE, isTheOne)
+            .apply()
+    }
+
     fun heartbeat(context: Context): Boolean {
         val payload = JSONObject()
             .put("device_id", deviceId(context))
             .put("name", deviceName())
+            .put("person_name", personName(context))
             .put("platform", "Android ${Build.VERSION.RELEASE}")
             .put("version", BuildConfig.VERSION_CODE.toString())
 
@@ -130,9 +161,11 @@ object MainDeviceRegistry {
                     MainRegisteredDevice(
                         id = item.optString("device_id"),
                         name = item.optString("name", "Apparaat"),
+                        personName = item.optString("person_name", "").trim(),
                         platform = item.optString("platform", ""),
                         version = item.optString("version", ""),
                         blocked = item.optBoolean("blocked", false),
+                        owner = item.optBoolean("owner", false),
                         online = item.optBoolean("online", false),
                         lastSeen = item.optLong("last_seen", 0L)
                     )
