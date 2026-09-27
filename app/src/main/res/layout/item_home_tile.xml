@@ -4,7 +4,7 @@
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:gravity="center"
-    android:background="@color/surface"
+    android:background="@drawable/bg_the_one_tile"
     android:padding="16dp"
     android:layout_margin="6dp">
 
@@ -22,7 +22,8 @@
         android:layout_height="wrap_content"
         android:gravity="center"
         android:textColor="@color/text_main"
-        android:textSize="12.5sp"
+        android:textSize="13sp"
+        android:textStyle="bold"
         android:maxLines="2"
         android:ellipsize="end"
         android:text="Label" />
