@@ -91,6 +91,10 @@ class SettingsActivity : AppCompatActivity() {
         setupKieSection()
         setupCarRadioSection()
         setupNotificationReplySection()
+
+        if (MainDeviceRegistry.isOwnerEligible()) {
+            setupDeviceManagerSection()
+        }
     }
 
     private fun setupKieSection() {
@@ -363,7 +367,9 @@ class SettingsActivity : AppCompatActivity() {
 
         val manage = android.widget.Button(this).apply {
             text = "Apparaten beheren"
-            setOnClickListener { loadAndShowDevices(this) }
+            setOnClickListener { trigger ->
+                openOwnerDeviceManager(trigger)
+            }
         }
         unlockedSection.addView(
             manage,
@@ -372,6 +378,38 @@ class SettingsActivity : AppCompatActivity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         )
+    }
+
+    private fun openOwnerDeviceManager(trigger: View) {
+        trigger.isEnabled = false
+        Thread {
+            val pin = if (activeAdminPin.isNotBlank()) activeAdminPin else PIN_CODE
+
+            var owner = runCatching {
+                MainDeviceRegistry.ownerStatus(this, pin)
+            }.getOrDefault(false)
+
+            if (!owner && MainDeviceRegistry.isOwnerEligible()) {
+                runCatching { MainDeviceRegistry.heartbeat(this) }
+                owner = runCatching {
+                    MainDeviceRegistry.claimOwner(this, pin)
+                }.getOrDefault(false)
+            }
+
+            runOnUiThread {
+                trigger.isEnabled = true
+                if (owner) {
+                    activeAdminPin = pin
+                    loadAndShowDevices(trigger)
+                } else {
+                    Toast.makeText(
+                        this,
+                        "Dit toestel heeft geen eigenaarstoegang tot apparatenbeheer.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }.start()
     }
 
     private fun loadAndShowDevices(trigger: View) {
