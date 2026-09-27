@@ -48,6 +48,7 @@ public sealed class MainWindow : Window
     private string _musicNowPlayingTitle = "Muziek";
     private bool _musicSessionActive;
     private bool _musicOverlayFaded;
+    private bool _nativeUsbMusicActive;
     private bool _usbHomeUnlocked;
 
     private Grid? _mailPage;
@@ -525,28 +526,28 @@ public sealed class MainWindow : Window
         if (_musicWebView == null)
             return;
 
-        if (_musicWebView.Parent is Panel parent)
+        if (!_nativeUsbMusicActive && _musicWebView.Parent is Panel parent)
             parent.Children.Remove(_musicWebView);
 
         var overlay = new Border
         {
-            Width = 500,
-            Height = 315,
+            Width = 520,
+            Height = 300,
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Bottom,
             Margin = new Thickness(0, 0, 24, 54),
-            Background = Brush("#F0091018"),
+            Background = Brush("#F20A1018"),
             BorderBrush = Amber,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(16),
-            Padding = new Thickness(10),
-            Opacity = 0.96,
-            IsHitTestVisible = false,
+            BorderThickness = new Thickness(1.2),
+            CornerRadius = new CornerRadius(20),
+            Padding = new Thickness(14),
+            Opacity = 0.98,
+            IsHitTestVisible = true,
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
                 Color = Color.FromRgb(32, 184, 255),
-                BlurRadius = 22,
-                Opacity = 0.24,
+                BlurRadius = 28,
+                Opacity = 0.34,
                 ShadowDepth = 0
             }
         };
@@ -554,26 +555,112 @@ public sealed class MainWindow : Window
         var shell = new Grid();
         shell.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         shell.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        shell.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var header = new Grid { Margin = new Thickness(2, 0, 2, 10) };
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var titleStack = new StackPanel();
+        titleStack.Children.Add(new TextBlock
+        {
+            Text = "THE ONE  •  NU SPEELT",
+            Foreground = Amber,
+            FontSize = 10,
+            FontWeight = FontWeights.Bold,
+            CharacterSpacing = 90
+        });
 
         var title = new TextBlock
         {
             Text = _musicNowPlayingTitle,
             Foreground = TextMain,
-            FontSize = 13,
+            FontSize = 14,
             FontWeight = FontWeights.SemiBold,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            Margin = new Thickness(4, 0, 4, 8)
+            Margin = new Thickness(0, 4, 12, 0)
         };
         _musicHomeNowPlaying = title;
-        shell.Children.Add(title);
+        titleStack.Children.Add(title);
+        header.Children.Add(titleStack);
 
-        var playerSlot = new Grid { ClipToBounds = true };
+        var close = MusicControlButton("✕", "Player afsluiten", 38);
+        close.Margin = new Thickness(8, 0, 0, 0);
+        close.Click += async (_, _) => await StopMusicSessionAsync();
+        Grid.SetColumn(close, 1);
+        header.Children.Add(close);
+        shell.Children.Add(header);
+
+        var playerSlot = new Grid
+        {
+            ClipToBounds = true,
+            Background = Brush("#05080D")
+        };
         Grid.SetRow(playerSlot, 1);
         shell.Children.Add(playerSlot);
 
-        _musicWebView.IsHitTestVisible = false;
-        _musicWebView.Visibility = Visibility.Visible;
-        playerSlot.Children.Add(_musicWebView);
+        if (_nativeUsbMusicActive)
+        {
+            var usbVisual = new StackPanel
+            {
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            usbVisual.Children.Add(new TextBlock
+            {
+                Text = "♫",
+                Foreground = Amber,
+                FontSize = 48,
+                HorizontalAlignment = HorizontalAlignment.Center
+            });
+            usbVisual.Children.Add(new TextBlock
+            {
+                Text = "USB THUIS",
+                Foreground = TextMain,
+                FontSize = 17,
+                FontWeight = FontWeights.Bold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 4, 0, 0)
+            });
+            usbVisual.Children.Add(new TextBlock
+            {
+                Text = "Streaming via The One",
+                Foreground = TextDim,
+                FontSize = 12,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 4, 0, 0)
+            });
+            playerSlot.Children.Add(usbVisual);
+        }
+        else
+        {
+            _musicWebView.IsHitTestVisible = true;
+            _musicWebView.Visibility = Visibility.Visible;
+            playerSlot.Children.Add(_musicWebView);
+        }
+
+        var controls = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 12, 0, 0)
+        };
+
+        var previous = MusicControlButton("⏮", "Vorige");
+        previous.Click += async (_, _) => await MusicPreviousAsync();
+        var toggle = MusicControlButton("⏯", "Play / pauze", 56);
+        toggle.Click += async (_, _) => await MusicToggleAsync();
+        var next = MusicControlButton("⏭", "Volgende");
+        next.Click += async (_, _) => await MusicNextAsync();
+        var stop = MusicControlButton("■", "Stop");
+        stop.Click += async (_, _) => await StopMusicSessionAsync();
+
+        controls.Children.Add(previous);
+        controls.Children.Add(toggle);
+        controls.Children.Add(next);
+        controls.Children.Add(stop);
+        Grid.SetRow(controls, 2);
+        shell.Children.Add(controls);
 
         overlay.Child = shell;
         _musicHomeOverlay = overlay;
@@ -584,52 +671,82 @@ public sealed class MainWindow : Window
         outer.Children.Add(overlay);
     }
 
+    private Button MusicControlButton(string text, string tooltip, double size = 48)
+    {
+        return new Button
+        {
+            Content = text,
+            ToolTip = tooltip,
+            Width = size,
+            Height = 40,
+            Margin = new Thickness(5, 0, 5, 0),
+            Padding = new Thickness(0),
+            Background = Brush("#101A26"),
+            Foreground = Amber,
+            BorderBrush = Brush("#245A75"),
+            BorderThickness = new Thickness(1),
+            Cursor = Cursors.Hand,
+            FontSize = 18,
+            FontWeight = FontWeights.SemiBold
+        };
+    }
+
+    private async Task MusicPreviousAsync()
+    {
+        if (!_musicSessionActive) return;
+
+        if (_nativeUsbMusicActive)
+            NativeUsbAudioPlayer.Previous();
+        else if (_musicWebView != null)
+            await YouTubeMusicService.PreviousAsync(_musicWebView);
+    }
+
+    private async Task MusicToggleAsync()
+    {
+        if (!_musicSessionActive) return;
+
+        if (_nativeUsbMusicActive)
+            NativeUsbAudioPlayer.Toggle();
+        else if (_musicWebView != null)
+            await YouTubeMusicService.TogglePlayPauseAsync(_musicWebView);
+    }
+
+    private async Task MusicNextAsync()
+    {
+        if (!_musicSessionActive) return;
+
+        if (_nativeUsbMusicActive)
+            NativeUsbAudioPlayer.Next();
+        else if (_musicWebView != null)
+            await YouTubeMusicService.NextAsync(_musicWebView);
+    }
+
+    private async Task StopMusicSessionAsync()
+    {
+        if (_nativeUsbMusicActive)
+        {
+            NativeUsbAudioPlayer.Stop();
+        }
+        else if (_musicWebView != null)
+        {
+            try { await YouTubeMusicService.StopAsync(_musicWebView); } catch { }
+        }
+
+        _musicSessionActive = false;
+        _nativeUsbMusicActive = false;
+        _musicNowPlayingTitle = "Muziek";
+
+        if (_musicHomeOverlay?.Parent is Panel parent)
+            parent.Children.Remove(_musicHomeOverlay);
+
+        _musicHomeOverlay = null;
+        _musicHomeNowPlaying = null;
+    }
+
     private void UpdateMusicHomeOverlayFade()
     {
-        if (_musicHomeOverlay == null ||
-            _musicWebView == null ||
-            !_musicHomeOverlay.IsVisible ||
-            !_musicHomeOverlay.IsLoaded)
-            return;
-
-        Point p;
-        try
-        {
-            p = Mouse.GetPosition(_musicHomeOverlay);
-        }
-        catch
-        {
-            return;
-        }
-
-        var inside =
-            p.X >= 0 &&
-            p.Y >= 0 &&
-            p.X <= _musicHomeOverlay.ActualWidth &&
-            p.Y <= _musicHomeOverlay.ActualHeight;
-
-        if (inside == _musicOverlayFaded)
-            return;
-
-        _musicOverlayFaded = inside;
-
-        if (inside)
-        {
-            // WebView2 is een native child window en ondersteunt WPF-opacity niet
-            // betrouwbaar. Verberg alleen de videolaag, en fade de The One-kaart.
-            // De audio/sessie blijft actief en muisklikken gaan door naar de tegel eronder.
-            _musicWebView.Visibility = Visibility.Hidden;
-            _musicHomeOverlay.BeginAnimation(
-                OpacityProperty,
-                new DoubleAnimation(0.14, TimeSpan.FromMilliseconds(130)));
-        }
-        else
-        {
-            _musicWebView.Visibility = Visibility.Visible;
-            _musicHomeOverlay.BeginAnimation(
-                OpacityProperty,
-                new DoubleAnimation(0.96, TimeSpan.FromMilliseconds(150)));
-        }
+        // De compacte player heeft nu eigen bediening en een sluitknop.
+        // Daarom blijft hij volledig klikbaar in plaats van automatisch weg te faden.
     }
 
     private void MigrateRutuCompanyToFixedTile()
@@ -1861,6 +1978,7 @@ public sealed class MainWindow : Window
         var playerGrid = new Grid();
         playerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         playerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        playerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         var nowPlaying = new TextBlock
         {
@@ -1879,6 +1997,31 @@ public sealed class MainWindow : Window
         _musicPlayerGrid = playerGrid;
         Grid.SetRow(web, 1);
         playerGrid.Children.Add(web);
+
+        var playerControls = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 10, 0, 0)
+        };
+        var previousTrack = MusicControlButton("⏮", "Vorige");
+        previousTrack.Click += async (_, _) => await MusicPreviousAsync();
+        var toggleTrack = MusicControlButton("⏯", "Play / pauze", 56);
+        toggleTrack.Click += async (_, _) => await MusicToggleAsync();
+        var nextTrack = MusicControlButton("⏭", "Volgende");
+        nextTrack.Click += async (_, _) => await MusicNextAsync();
+        var stopTrack = MusicControlButton("■", "Stop");
+        stopTrack.Click += async (_, _) =>
+        {
+            await StopMusicSessionAsync();
+            nowPlaying.Text = "Kies links een nummer";
+        };
+        playerControls.Children.Add(previousTrack);
+        playerControls.Children.Add(toggleTrack);
+        playerControls.Children.Add(nextTrack);
+        playerControls.Children.Add(stopTrack);
+        Grid.SetRow(playerControls, 2);
+        playerGrid.Children.Add(playerControls);
 
         playerCard.Child = playerGrid;
         Grid.SetColumn(playerCard, 1);
@@ -2002,6 +2145,8 @@ public sealed class MainWindow : Window
 
                     play.Click += async (_, _) =>
                     {
+                        NativeUsbAudioPlayer.Stop();
+                        _nativeUsbMusicActive = false;
                         _musicNowPlayingTitle = $"{captured.Title}  •  {captured.Channel}";
                         _musicSessionActive = true;
                         nowPlaying.Text = _musicNowPlayingTitle;
@@ -2110,6 +2255,8 @@ public sealed class MainWindow : Window
 
                             play.Click += async (_, _) =>
                             {
+                                NativeUsbAudioPlayer.Stop();
+                                _nativeUsbMusicActive = false;
                                 _musicNowPlayingTitle = $"{mix.Title}  •  Supremacy mixen";
                                 _musicSessionActive = true;
                                 nowPlaying.Text = _musicNowPlayingTitle;
@@ -2292,6 +2439,8 @@ public sealed class MainWindow : Window
                                         return;
                                     }
 
+                                    try { await YouTubeMusicService.StopAsync(web); } catch { }
+                                    _nativeUsbMusicActive = true;
                                     _musicNowPlayingTitle =
                                         $"{file.Name}  •  {stick.DeviceName} / {stick.StickName}";
                                     _musicSessionActive = true;
@@ -2300,10 +2449,10 @@ public sealed class MainWindow : Window
                                         _musicHomeNowPlaying.Text = _musicNowPlayingTitle;
 
                                     var queue = new List<string>();
-                                    foreach (var queued in folderFiles.Skip(index))
+                                    foreach (var queued in folderFiles)
                                         queue.Add(await UsbMusicCloudService.BuildStreamUrlAsync(queued));
 
-                                    NativeUsbAudioPlayer.PlayQueue(queue);
+                                    NativeUsbAudioPlayer.PlayQueue(queue, index);
                                     status.Text = "Speelt af via USB thuis";
                                     status.Foreground = Sage;
                                 }
@@ -2361,6 +2510,8 @@ public sealed class MainWindow : Window
 
             try
             {
+                NativeUsbAudioPlayer.Stop();
+                _nativeUsbMusicActive = false;
                 _musicNowPlayingTitle = "Spotify  •  " + query;
                 _musicSessionActive = true;
                 nowPlaying.Text = _musicNowPlayingTitle;
