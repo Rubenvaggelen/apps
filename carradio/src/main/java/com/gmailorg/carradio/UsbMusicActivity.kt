@@ -92,6 +92,15 @@ class UsbMusicActivity : AppCompatActivity() {
                 state.hasTrack -> state.title
                 else -> "Geen nummer geselecteerd"
             }
+            if (state.hasTrack) {
+                nowPlayingText.paintFlags =
+                    nowPlayingText.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
+                nowPlayingText.contentDescription = "Tik om de map van dit USB-nummer te openen"
+            } else {
+                nowPlayingText.paintFlags =
+                    nowPlayingText.paintFlags and android.graphics.Paint.UNDERLINE_TEXT_FLAG.inv()
+                nowPlayingText.contentDescription = null
+            }
             playPauseButton.text = if (state.isPlaying) "⏸ Pauze" else "▶ Afspelen"
             handler.postDelayed(this, 500L)
         }
@@ -116,9 +125,13 @@ class UsbMusicActivity : AppCompatActivity() {
 
         chooseUsbButton.text = "USB zoeken"
         refreshButton.text = "Vernieuwen"
+        folderBackButton.text = "← 1 stap terug"
         chooseUsbButton.setOnClickListener { ensurePermissionThenScan() }
         refreshButton.setOnClickListener { ensurePermissionThenScan() }
         folderBackButton.setOnClickListener { navigateUp() }
+        nowPlayingText.setOnClickListener {
+            openCurrentTrackFolder()
+        }
         findViewById<Button>(R.id.previousButton).setOnClickListener { playPrevious() }
         playPauseButton.setOnClickListener { togglePlayPause() }
         findViewById<Button>(R.id.nextButton).setOnClickListener { playNext() }
@@ -488,6 +501,24 @@ class UsbMusicActivity : AppCompatActivity() {
             p.startsWith("usb") || p.startsWith("udisk")
         }
         return usbPart
+    }
+
+    private fun openCurrentTrackFolder() {
+        val uri = UsbPlaybackService.snapshot().uri ?: return
+        val track = allTracks.firstOrNull { it.uri.toString() == uri } ?: run {
+            statusText.text = "De map van dit nummer wordt opnieuw gezocht…"
+            ensurePermissionThenScan()
+            return
+        }
+
+        currentVolumeKey = track.volumeKey
+        currentFolder = track.folder.trim('/')
+        rebuildBrowser()
+        statusText.text = if (currentFolder.isBlank()) {
+            "Map van het huidige nummer geopend."
+        } else {
+            "Map geopend: $currentFolder"
+        }
     }
 
     private fun playTrack(track: Track) {
