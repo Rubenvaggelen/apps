@@ -1,6 +1,7 @@
 package com.gmailorg.carradio
 
 import android.Manifest
+import android.app.DownloadManager
 import android.content.ClipData
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -12,12 +13,14 @@ import android.os.Bundle
 import android.os.Handler
 import android.text.InputType
 import android.os.Looper
+import android.os.Environment
 import android.view.DragEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.EditText
 import android.widget.GridLayout
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -374,13 +377,140 @@ class MainActivity : AppCompatActivity() {
         folder: String,
         files: List<RemoteUsbMusicClient.RemoteFile>
     ) {
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(16, 8, 16, 8)
+        }
+
+        files.forEachIndexed { index, file ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(6, 5, 6, 5)
+            }
+
+            row.addView(
+                TextView(this).apply {
+                    text = file.name
+                    textSize = 16f
+                    setTextColor(android.graphics.Color.WHITE)
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setPadding(8, 14, 8, 14)
+                    setOnClickListener { playRemoteUsbFolder(files, index) }
+                },
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            )
+
+            row.addView(
+                TextView(this).apply {
+                    text = "↓"
+                    textSize = 22f
+                    gravity = android.view.Gravity.CENTER
+                    setTextColor(android.graphics.Color.parseColor("#E8AA4E"))
+                    contentDescription = "Download ${file.name}"
+                    setPadding(16, 12, 16, 12)
+                    setOnClickListener { requestRemoteUsbDownload(file) }
+                },
+                LinearLayout.LayoutParams(62, LinearLayout.LayoutParams.WRAP_CONTENT)
+            )
+
+            row.addView(
+                TextView(this).apply {
+                    text = "▶"
+                    textSize = 20f
+                    gravity = android.view.Gravity.CENTER
+                    setTextColor(android.graphics.Color.parseColor("#20B8FF"))
+                    setPadding(16, 12, 16, 12)
+                    setOnClickListener { playRemoteUsbFolder(files, index) }
+                },
+                LinearLayout.LayoutParams(62, LinearLayout.LayoutParams.WRAP_CONTENT)
+            )
+
+            list.addView(row)
+        }
+
+        val scroll = android.widget.ScrollView(this).apply {
+            isFillViewport = true
+            addView(list)
+        }
+
         AlertDialog.Builder(this)
             .setTitle(folder)
-            .setItems(files.map { it.name }.toTypedArray()) { _, index ->
-                playRemoteUsbFolder(files, index)
-            }
+            .setView(scroll)
             .setNegativeButton("Terug") { _, _ -> showRemoteFolderDialog(stick) }
             .show()
+    }
+
+    private fun requestRemoteUsbDownload(file: RemoteUsbMusicClient.RemoteFile) {
+        val input = EditText(this).apply {
+            hint = "Pincode"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            gravity = android.view.Gravity.CENTER
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("USB-download beveiligen")
+            .setMessage("Voer je pincode in om dit nummer te downloaden.")
+            .setView(input)
+            .setPositiveButton("Downloaden", null)
+            .setNegativeButton("Annuleren", null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val pin = input.text.toString().trim()
+                if (pin.isBlank()) return@setOnClickListener
+
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
+                remoteMusicIo.execute {
+                    val valid = try {
+                        RemoteUsbMusicClient.login(this, pin)
+                    } catch (_: Exception) {
+                        false
+                    }
+
+                    runOnUiThread {
+                        if (valid) {
+                            dialog.dismiss()
+                            enqueueRemoteUsbDownload(file)
+                        } else {
+                            input.text.clear()
+                            input.error = "Pincode niet juist"
+                            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
+                        }
+                    }
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun enqueueRemoteUsbDownload(file: RemoteUsbMusicClient.RemoteFile) {
+        try {
+            val safeName = file.name
+                .replace(Regex("""[\\/:*?"<>|]"""), "_")
+                .ifBlank { "TheOne-nummer.mp3" }
+            val manager = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+            val request = DownloadManager.Request(
+                Uri.parse(RemoteUsbMusicClient.streamUrl(this, file))
+            )
+                .setTitle(safeName)
+                .setDescription("The One Car • USB thuis")
+                .setNotificationVisibility(
+                    DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
+                )
+                .setDestinationInExternalPublicDir(
+                    Environment.DIRECTORY_DOWNLOADS,
+                    "The One/$safeName"
+                )
+            manager.enqueue(request)
+            Toast.makeText(this, "Download gestart: $safeName", Toast.LENGTH_SHORT).show()
+        } catch (_: RemoteUsbMusicClient.AuthRequired) {
+            Toast.makeText(this, "Pincode opnieuw invoeren om te downloaden.", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, e.message ?: "Download starten mislukt", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun playRemoteUsbFolder(
