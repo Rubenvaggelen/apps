@@ -84,7 +84,10 @@ class SupremacyMixesActivity : AppCompatActivity() {
         )
         playerBar.addView(Button(this).apply {
             text = "⏮"
-            setOnClickListener { UsbPlaybackService.previous(this@SupremacyMixesActivity) }
+            setOnClickListener {
+                UsbPlaybackService.previous(this@SupremacyMixesActivity)
+                postDelayed({ refreshPlayerBar() }, 80L)
+            }
         })
         playerPlayPause = Button(this).apply {
             text = "▶"
@@ -93,7 +96,10 @@ class SupremacyMixesActivity : AppCompatActivity() {
         playerBar.addView(playerPlayPause)
         playerBar.addView(Button(this).apply {
             text = "⏭"
-            setOnClickListener { UsbPlaybackService.next(this@SupremacyMixesActivity) }
+            setOnClickListener {
+                UsbPlaybackService.next(this@SupremacyMixesActivity)
+                postDelayed({ refreshPlayerBar() }, 80L)
+            }
         })
         playerBar.addView(Button(this).apply {
             text = "■"
@@ -205,7 +211,9 @@ class SupremacyMixesActivity : AppCompatActivity() {
         var populated = false
         header.setOnClickListener {
             if (!populated) {
-                mixes.forEach { addRowTo(child, it) }
+                mixes.forEachIndexed { index, _ ->
+                    addRowTo(child, mixes, index)
+                }
                 populated = true
             }
             val opening = child.visibility != View.VISIBLE
@@ -249,7 +257,12 @@ class SupremacyMixesActivity : AppCompatActivity() {
         }
     }
 
-    private fun addRowTo(parent: LinearLayout, mix: Mix) {
+    private fun addRowTo(
+        parent: LinearLayout,
+        mixes: List<Mix>,
+        index: Int
+    ) {
+        val mix = mixes[index]
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -265,30 +278,43 @@ class SupremacyMixesActivity : AppCompatActivity() {
             text = "▶ Afspelen"
             setTextColor(ContextCompat.getColor(context, R.color.on_amber))
             setBackgroundColor(ContextCompat.getColor(context, R.color.amber))
-            setOnClickListener { play(mix) }
+            setOnClickListener { play(mixes, index) }
         })
         parent.addView(row)
-        parent.addView(View(this).apply { setBackgroundColor(ContextCompat.getColor(context, R.color.surface)) },
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1.dp))
+        parent.addView(
+            View(this).apply {
+                setBackgroundColor(ContextCompat.getColor(context, R.color.surface))
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                1.dp
+            )
+        )
     }
 
-    private fun play(mix: Mix) {
-        status.text = "Laden: ${mix.title}"
+    private fun play(mixes: List<Mix>, selectedIndex: Int) {
+        if (mixes.isEmpty() || selectedIndex !in mixes.indices) return
+
+        val selected = mixes[selectedIndex]
+        status.text = "Laden: ${selected.title}"
+
         io.execute {
             try {
-                val playableUrl = resolvePlayableUrl(mix.url)
-                runOnUiThread {
-                    UsbPlaybackService.play(
-                        this,
-                        listOf(
-                            UsbPlaybackService.QueueItem(
-                                playableUrl,
-                                mix.title
-                            )
-                        ),
-                        0
+                // Los alleen de gekozen mix vooraf op. De overige HTTPS-links
+                // kunnen door ExoPlayer zelf worden gevolgd zodra je ⏮/⏭ gebruikt.
+                val selectedPlayableUrl = resolvePlayableUrl(selected.url)
+
+                val queue = mixes.mapIndexed { index, mix ->
+                    UsbPlaybackService.QueueItem(
+                        if (index == selectedIndex) selectedPlayableUrl else mix.url,
+                        mix.title
                     )
-                    status.text = "Speelt af: ${mix.title}"
+                }
+
+                runOnUiThread {
+                    UsbPlaybackService.play(this, queue, selectedIndex)
+                    status.text = "Speelt af: ${selected.title}"
+                    refreshPlayerBar()
                     Toast.makeText(
                         this,
                         "The One Mixes speelt af",
