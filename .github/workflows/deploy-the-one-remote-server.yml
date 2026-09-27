@@ -57,11 +57,20 @@ jobs:
           opts=(-i "$keydir/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$keydir/known_hosts" -o ConnectTimeout=20)
           remote="$DEPLOY_USER@$DEPLOY_HOST"
 
-          # Alleen veilige tijdelijke rommel opruimen. Geldige .bin-cache en metadata blijven staan.
+          # Ruimte meten en alleen veilige tijdelijke rommel opruimen.
+          # Geldige .bin-cache en definitieve catalogusmetadata blijven onaangeraakt.
           ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" '
+            echo "=== SPACE BEFORE ==="
+            df -h "$HOME" || true
+            du -sh "$HOME/the-one-music-cache" "$HOME/the-one-music-cache/files" "$HOME/the-one-music-cache/meta" 2>/dev/null || true
             find "$HOME/the-one-music-cache/files" -maxdepth 1 -type f -name "*.part" -delete 2>/dev/null || true
+            find "$HOME/the-one-music-cache/meta" -maxdepth 1 -type f -name "*.sync.json" -delete 2>/dev/null || true
+            find "$HOME/the-one-music-cache/meta" -maxdepth 1 -type f -name "*.tmp.*" -delete 2>/dev/null || true
             rm -rf "$HOME"/.the-one-remote-stage.* 2>/dev/null || true
             rm -rf "$HOME"/.the-one-remote-backups/api.* 2>/dev/null || true
+            echo "=== SPACE AFTER ==="
+            df -h "$HOME" || true
+            du -sh "$HOME/the-one-music-cache" "$HOME/the-one-music-cache/files" "$HOME/the-one-music-cache/meta" 2>/dev/null || true
           '
 
           stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'mktemp -d "$HOME/.the-one-remote-stage.XXXXXXXX"')
