@@ -22,6 +22,7 @@ object MainDeviceRegistry {
     private const val PREFS = "main_device_registry"
     private const val KEY_DEVICE_ID = "device_id"
     private const val KEY_BLOCKED = "blocked"
+    private const val KEY_OWNER = "owner"
 
     fun deviceId(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -36,6 +37,10 @@ object MainDeviceRegistry {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_BLOCKED, false)
 
+    fun isLocallyOwner(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_OWNER, false)
+
     fun heartbeat(context: Context): Boolean {
         val payload = JSONObject()
             .put("device_id", deviceId(context))
@@ -45,9 +50,11 @@ object MainDeviceRegistry {
 
         val json = request("heartbeat", payload)
         val blocked = json.optBoolean("blocked", false)
+        val owner = json.optBoolean("owner", false)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_BLOCKED, blocked)
+            .putBoolean(KEY_OWNER, owner)
             .apply()
         return blocked
     }
@@ -65,6 +72,37 @@ object MainDeviceRegistry {
                 .put("request_model", Build.MODEL)
         )
         return json.optBoolean("owner", false)
+    }
+
+    fun ownerStatus(context: Context, pin: String): Boolean {
+        val json = request(
+            "owner_status",
+            JSONObject()
+                .put("pin", pin)
+                .put("request_device_id", deviceId(context))
+        )
+        val owner = json.optBoolean("owner", false)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_OWNER, owner)
+            .apply()
+        return owner
+    }
+
+    fun recoverOwner(context: Context, pin: String, recoveryCode: String): Boolean {
+        val json = request(
+            "recover_owner",
+            JSONObject()
+                .put("pin", pin)
+                .put("request_device_id", deviceId(context))
+                .put("recovery_code", recoveryCode.trim().uppercase())
+        )
+        val owner = json.optBoolean("owner", false)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_OWNER, owner)
+            .apply()
+        return owner
     }
 
     fun listDevices(context: Context, pin: String): List<MainRegisteredDevice> {
