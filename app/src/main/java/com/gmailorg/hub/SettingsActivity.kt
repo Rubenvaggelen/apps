@@ -94,9 +94,6 @@ class SettingsActivity : AppCompatActivity() {
         setupCarRadioSection()
         setupNotificationReplySection()
 
-        if (MainDeviceRegistry.isOwnerEligible()) {
-            setupDeviceManagerSection()
-        }
     }
 
     private fun setupKieSection() {
