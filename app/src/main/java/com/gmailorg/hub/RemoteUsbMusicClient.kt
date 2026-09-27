@@ -40,6 +40,17 @@ object RemoteUsbMusicClient {
         val totalFiles: Int
     )
 
+    data class FavoriteItem(
+        val id: String,
+        val kind: String,
+        val title: String,
+        val sourceLabel: String,
+        val deviceId: String,
+        val stickId: String,
+        val path: String,
+        val url: String
+    )
+
     fun hasToken(context: Context): Boolean =
         sessionToken.isNotBlank() && System.currentTimeMillis() < sessionExpires
 
@@ -181,6 +192,96 @@ object RemoteUsbMusicClient {
                 segment.equals(".Trashes", ignoreCase = true) ||
                 segment.equals(".fseventsd", ignoreCase = true)
         }
+    }
+
+    fun favorites(context: Context): List<FavoriteItem> {
+        val token = token(context)
+        val connection = open(ENDPOINT + "?action=favorites-list", "GET")
+        connection.setRequestProperty("Authorization", "Bearer " + token)
+        val code = connection.responseCode
+        if (code == 401 || code == 403) {
+            connection.disconnect()
+            clearToken(context)
+            throw AuthRequired()
+        }
+        if (code !in 200..299) {
+            connection.disconnect()
+            throw IllegalStateException("Favorieten konden niet worden geladen")
+        }
+        val json = JSONObject(readBody(connection))
+        connection.disconnect()
+        val array = json.optJSONArray("items") ?: return emptyList()
+        val result = mutableListOf<FavoriteItem>()
+        for (i in 0 until array.length()) {
+            val o = array.optJSONObject(i) ?: continue
+            result += FavoriteItem(
+                id = o.optString("id").trim(),
+                kind = o.optString("kind").trim(),
+                title = o.optString("title").trim(),
+                sourceLabel = o.optString("source_label").trim(),
+                deviceId = o.optString("device_id").trim(),
+                stickId = o.optString("stick_id").trim(),
+                path = o.optString("path").trim(),
+                url = o.optString("url").trim()
+            )
+        }
+        return result
+    }
+
+    fun setMixFavorite(
+        context: Context,
+        title: String,
+        url: String,
+        favorite: Boolean
+    ): Boolean = setFavorite(
+        context,
+        JSONObject()
+            .put("kind", "mix")
+            .put("title", title)
+            .put("source_label", "The One Mixes")
+            .put("url", url)
+            .put("favorite", favorite)
+    )
+
+    fun setUsbFavorite(
+        context: Context,
+        stick: RemoteStick,
+        file: RemoteFile,
+        favorite: Boolean
+    ): Boolean = setFavorite(
+        context,
+        JSONObject()
+            .put("kind", "usb")
+            .put("title", file.displayName)
+            .put("source_label", "Shared Media • " + stick.deviceName + " • " + stick.stickName)
+            .put("device_id", file.deviceId)
+            .put("stick_id", file.stickId)
+            .put("path", file.path)
+            .put("favorite", favorite)
+    )
+
+    private fun setFavorite(context: Context, body: JSONObject): Boolean {
+        val token = token(context)
+        val connection = open(ENDPOINT + "?action=favorites-set", "POST")
+        connection.setRequestProperty("Authorization", "Bearer " + token)
+        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        connection.doOutput = true
+        OutputStreamWriter(connection.outputStream, StandardCharsets.UTF_8).use {
+            it.write(body.toString())
+        }
+        val code = connection.responseCode
+        if (code == 401 || code == 403) {
+            connection.disconnect()
+            clearToken(context)
+            throw AuthRequired()
+        }
+        if (code !in 200..299) {
+            connection.disconnect()
+            throw IllegalStateException("Favoriet opslaan mislukt")
+        }
+        val json = JSONObject(readBody(connection))
+        connection.disconnect()
+        return json.optBoolean("favorite", false)
     }
 
     fun streamUrl(context: Context, file: RemoteFile): String {
