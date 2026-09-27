@@ -386,7 +386,7 @@ class MainActivity : AppCompatActivity() {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
-                setPadding(6, 5, 6, 5)
+                setPadding(8, 8, 8, 8)
             }
 
             row.addView(
@@ -396,7 +396,7 @@ class MainActivity : AppCompatActivity() {
                     setTextColor(android.graphics.Color.WHITE)
                     maxLines = 2
                     ellipsize = android.text.TextUtils.TruncateAt.END
-                    setPadding(8, 14, 8, 14)
+                    setPadding(8, 16, 14, 16)
                     setOnClickListener { playRemoteUsbFolder(files, index) }
                 },
                 LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -404,27 +404,33 @@ class MainActivity : AppCompatActivity() {
 
             row.addView(
                 TextView(this).apply {
-                    text = "↓"
-                    textSize = 22f
+                    text = "↓ Download"
+                    textSize = 13f
                     gravity = android.view.Gravity.CENTER
-                    setTextColor(android.graphics.Color.parseColor("#E8AA4E"))
+                    setTextColor(android.graphics.Color.parseColor("#D8A451"))
                     contentDescription = "Download ${file.name}"
-                    setPadding(16, 12, 16, 12)
+                    setBackgroundResource(R.drawable.bg_gold_outline)
+                    setPadding(14, 12, 14, 12)
                     setOnClickListener { requestRemoteUsbDownload(file) }
                 },
-                LinearLayout.LayoutParams(62, LinearLayout.LayoutParams.WRAP_CONTENT)
+                LinearLayout.LayoutParams(118.dp, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    marginStart = 12.dp
+                    marginEnd = 18.dp
+                }
             )
 
             row.addView(
                 TextView(this).apply {
                     text = "▶"
-                    textSize = 20f
+                    textSize = 19f
                     gravity = android.view.Gravity.CENTER
-                    setTextColor(android.graphics.Color.parseColor("#20B8FF"))
-                    setPadding(16, 12, 16, 12)
+                    setTextColor(android.graphics.Color.WHITE)
+                    contentDescription = "Speel ${file.name} af"
+                    setBackgroundResource(R.drawable.bg_outline)
+                    setPadding(18, 12, 18, 12)
                     setOnClickListener { playRemoteUsbFolder(files, index) }
                 },
-                LinearLayout.LayoutParams(62, LinearLayout.LayoutParams.WRAP_CONTENT)
+                LinearLayout.LayoutParams(72.dp, LinearLayout.LayoutParams.WRAP_CONTENT)
             )
 
             list.addView(row)
