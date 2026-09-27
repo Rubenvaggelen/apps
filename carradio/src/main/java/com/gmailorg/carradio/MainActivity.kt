@@ -729,7 +729,9 @@ class MainActivity : AppCompatActivity() {
                     TextView(this@MainActivity).apply {
                         text = cleanRemoteUsbTrackTitle(file.displayName)
                         textSize = 16f
-                        setTextColor(android.graphics.Color.WHITE)
+                        // De standaard AlertDialog van deze K2401-ROM is licht.
+                        // Donkere tekst voorkomt dat titels wit-op-wit verdwijnen.
+                        setTextColor(android.graphics.Color.parseColor("#101925"))
                         maxLines = 2
                         ellipsize = android.text.TextUtils.TruncateAt.END
                         setPadding(8, 14, 14, 14)
