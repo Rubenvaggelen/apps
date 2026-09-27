@@ -43,7 +43,7 @@ class SupremacyMixesActivity : AppCompatActivity() {
             setOnClickListener { finish() }
         })
         header.addView(TextView(this).apply {
-            text = "Supremacy mixen"
+            text = "The One Mixes"
             textSize = 28f
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(ContextCompat.getColor(context, R.color.amber))
