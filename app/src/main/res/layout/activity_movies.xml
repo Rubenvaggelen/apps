@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
@@ -73,6 +74,7 @@
             android:text="ZOEKEN"
             android:background="@drawable/bg_the_one_gold_button"
             android:backgroundTint="@null"
+            app:backgroundTint="@null"
             android:textColor="@color/on_gold"
             android:textStyle="bold" />
     </LinearLayout>
@@ -164,6 +166,7 @@
                 android:textSize="20sp"
                 android:background="@drawable/bg_the_one_blue_button"
                 android:backgroundTint="@null"
+            app:backgroundTint="@null"
                 android:textColor="@color/text_main"
                 android:gravity="center" />
 
@@ -177,6 +180,7 @@
                 android:textSize="20sp"
                 android:background="@drawable/bg_the_one_gold_button"
                 android:backgroundTint="@null"
+            app:backgroundTint="@null"
                 android:textColor="@color/on_gold" />
 
             <Button
@@ -189,6 +193,7 @@
                 android:textSize="19sp"
                 android:background="@drawable/bg_the_one_blue_button"
                 android:backgroundTint="@null"
+            app:backgroundTint="@null"
                 android:textColor="@color/text_main" />
 
             <Button
@@ -201,6 +206,7 @@
                 android:textSize="20sp"
                 android:background="@drawable/bg_the_one_blue_button"
                 android:backgroundTint="@null"
+            app:backgroundTint="@null"
                 android:textColor="@color/text_main"
                 android:gravity="center" />
 
@@ -257,6 +263,7 @@
                     android:text="LADEN"
                     android:background="@drawable/bg_the_one_gold_outline"
                     android:backgroundTint="@null"
+            app:backgroundTint="@null"
                     android:textColor="@color/gold"
                     android:textStyle="bold" />
             </LinearLayout>
@@ -289,6 +296,7 @@
                 android:minHeight="56dp"
                 android:background="@drawable/bg_the_one_blue_button"
                 android:backgroundTint="@null"
+            app:backgroundTint="@null"
                 android:textColor="@color/gold" />
 
             <Button
@@ -304,6 +312,7 @@
                 android:minHeight="56dp"
                 android:background="@drawable/bg_the_one_blue_button"
                 android:backgroundTint="@null"
+            app:backgroundTint="@null"
                 android:textColor="@color/gold" />
 
 
