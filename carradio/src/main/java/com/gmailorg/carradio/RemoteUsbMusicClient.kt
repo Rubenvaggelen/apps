@@ -94,7 +94,7 @@ object RemoteUsbMusicClient {
 
     fun catalog(context: Context): List<RemoteStick> {
         val token = token(context)
-        val connection = open(ENDPOINT + "?action=catalog", "GET")
+        val connection = open(ENDPOINT + "?action=catalog&include_inactive=1", "GET")
         connection.setRequestProperty("Authorization", "Bearer " + token)
 
         val code = connection.responseCode
