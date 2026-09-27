@@ -173,69 +173,169 @@ class WakePcActivity : AppCompatActivity() {
             card.addView(state)
             if (device.owner) {
                 card.addView(TextView(this).apply {
-                    text = "The One • beheerder • muziekrechten actief • kan niet worden geblokkeerd"
+                    text = "The One • beheerder • alle mediarechten actief • kan niet worden geblokkeerd"
                     textSize = 12f
                     setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.amber))
                 })
             } else {
-                var musicRights = device.musicRights
-                val musicState = TextView(this).apply {
-                    text = if (musicRights) "Muziekrechten: toegestaan" else "Muziekrechten: niet toegestaan"
-                    textSize = 12f
-                    setTextColor(ContextCompat.getColor(this@WakePcActivity, if (musicRights) R.color.amber else R.color.text_dim))
-                    setPadding(0, 8, 0, 4)
-                }
-                card.addView(musicState)
+                fun addAccessControl(
+                    label: String,
+                    scope: String,
+                    initialAllowed: Boolean,
+                    initialPending: Boolean
+                ) {
+                    var allowed = initialAllowed
+                    var pending = initialPending
 
-                card.addView(android.widget.Button(this).apply {
-                    fun refreshLabel() {
-                        text = if (musicRights) "Muziekrechten intrekken" else "Muziekrechten geven"
+                    val section = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(0, 10, 0, 6)
                     }
-                    refreshLabel()
-                    setOnClickListener {
-                        isEnabled = false
-                        val enable = !musicRights
-                        Thread {
-                            val result = runCatching {
-                                MainDeviceRegistry.setMusicRights(
-                                    this@WakePcActivity,
-                                    activeDeviceAdminPin,
-                                    device.id,
-                                    enable
-                                )
-                            }
-                            runOnUiThread {
-                                result.onSuccess {
-                                    musicRights = enable
-                                    refreshLabel()
-                                    musicState.text =
-                                        if (musicRights) "Muziekrechten: toegestaan"
-                                        else "Muziekrechten: niet toegestaan"
-                                    musicState.setTextColor(
-                                        ContextCompat.getColor(
-                                            this@WakePcActivity,
-                                            if (musicRights) R.color.amber else R.color.text_dim
-                                        )
+                    val accessState = TextView(this).apply {
+                        textSize = 12f
+                        setPadding(0, 0, 0, 4)
+                    }
+
+                    fun refreshState() {
+                        accessState.text = when {
+                            allowed -> "$label: toegestaan"
+                            pending -> "$label: AANGEVRAAGD"
+                            else -> "$label: niet toegestaan"
+                        }
+                        accessState.setTextColor(
+                            ContextCompat.getColor(
+                                this@WakePcActivity,
+                                if (allowed || pending) R.color.amber else R.color.text_dim
+                            )
+                        )
+                    }
+                    refreshState()
+                    section.addView(accessState)
+
+                    val buttons = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                    }
+                    val grantButton = android.widget.Button(this).apply {
+                        fun refreshLabel() {
+                            text = if (allowed) "$label intrekken" else "$label toestaan"
+                        }
+                        refreshLabel()
+                        setOnClickListener {
+                            isEnabled = false
+                            val enable = !allowed
+                            Thread {
+                                val result = runCatching {
+                                    MainDeviceRegistry.setAccessRight(
+                                        this@WakePcActivity,
+                                        activeDeviceAdminPin,
+                                        device.id,
+                                        scope,
+                                        enable
                                     )
-                                    Toast.makeText(
-                                        this@WakePcActivity,
-                                        if (enable) "$personLabel mag nu Favorites beheren en downloaden."
-                                        else "$personLabel heeft geen muziekrechten meer.",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                    isEnabled = true
-                                }.onFailure {
-                                    Toast.makeText(
-                                        this@WakePcActivity,
-                                        "Muziekrechten wijzigen mislukt: " + (it.message ?: "onbekende fout"),
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                    isEnabled = true
                                 }
-                            }
-                        }.start()
+                                runOnUiThread {
+                                    result.onSuccess {
+                                        allowed = enable
+                                        pending = false
+                                        refreshLabel()
+                                        refreshState()
+                                        Toast.makeText(
+                                            this@WakePcActivity,
+                                            if (enable) "$personLabel heeft nu toegang tot $label."
+                                            else "$personLabel heeft geen toegang meer tot $label.",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        isEnabled = true
+                                    }.onFailure {
+                                        Toast.makeText(
+                                            this@WakePcActivity,
+                                            "$label wijzigen mislukt: " + (it.message ?: "onbekende fout"),
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                        isEnabled = true
+                                    }
+                                }
+                            }.start()
+                        }
                     }
-                })
+                    buttons.addView(
+                        grantButton,
+                        LinearLayout.LayoutParams(
+                            0,
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            1f
+                        )
+                    )
+
+                    if (initialPending && !initialAllowed) {
+                        buttons.addView(
+                            android.widget.Button(this).apply {
+                                text = "Weigeren"
+                                setOnClickListener {
+                                    isEnabled = false
+                                    Thread {
+                                        val result = runCatching {
+                                            MainDeviceRegistry.setAccessRight(
+                                                this@WakePcActivity,
+                                                activeDeviceAdminPin,
+                                                device.id,
+                                                scope,
+                                                false
+                                            )
+                                        }
+                                        runOnUiThread {
+                                            result.onSuccess {
+                                                pending = false
+                                                refreshState()
+                                                text = "Geweigerd"
+                                                isEnabled = false
+                                                Toast.makeText(
+                                                    this@WakePcActivity,
+                                                    "$label-aanvraag van $personLabel geweigerd.",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }.onFailure {
+                                                Toast.makeText(
+                                                    this@WakePcActivity,
+                                                    "Weigeren mislukt: " + (it.message ?: "onbekende fout"),
+                                                    Toast.LENGTH_LONG
+                                                ).show()
+                                                isEnabled = true
+                                            }
+                                        }
+                                    }.start()
+                                }
+                            },
+                            LinearLayout.LayoutParams(
+                                0,
+                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                                1f
+                            ).apply { marginStart = 8 }
+                        )
+                    }
+
+                    section.addView(buttons)
+                    card.addView(section)
+                }
+
+                addAccessControl(
+                    "The One Mixes",
+                    MainDeviceRegistry.ACCESS_MIXES,
+                    device.mixesRights,
+                    device.pendingMixes
+                )
+                addAccessControl(
+                    "Shared Media",
+                    MainDeviceRegistry.ACCESS_SHARED,
+                    device.sharedRights,
+                    device.pendingShared
+                )
+                addAccessControl(
+                    "Favorites",
+                    MainDeviceRegistry.ACCESS_FAVORITES,
+                    device.favoritesRights,
+                    device.pendingFavorites
+                )
 
                 card.addView(android.widget.Button(this).apply {
                     text = if (device.blocked) "Deblokkeren" else "Blokkeren"
