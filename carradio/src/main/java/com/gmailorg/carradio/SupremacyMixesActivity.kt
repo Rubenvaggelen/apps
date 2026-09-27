@@ -25,6 +25,18 @@ class SupremacyMixesActivity : AppCompatActivity() {
     private lateinit var list: LinearLayout
     private lateinit var status: TextView
     private lateinit var progress: ProgressBar
+    private lateinit var playerBar: LinearLayout
+    private lateinit var playerTitle: TextView
+    private lateinit var playerPlayPause: Button
+    private val playerHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val playerRefresh = object : Runnable {
+        override fun run() {
+            if (!isFinishing && !isDestroyed && ::playerBar.isInitialized) {
+                refreshPlayerBar()
+                playerHandler.postDelayed(this, 500L)
+            }
+        }
+    }
     private val io = Executors.newSingleThreadExecutor()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -51,6 +63,56 @@ class SupremacyMixesActivity : AppCompatActivity() {
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(header)
 
+        playerBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            visibility = View.GONE
+            setPadding(10.dp, 8.dp, 10.dp, 8.dp)
+            setBackgroundResource(R.drawable.bg_player_panel)
+        }
+        playerTitle = TextView(this).apply {
+            text = "Geen muziek actief"
+            textSize = 16f
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(ContextCompat.getColor(context, R.color.text_main))
+        }
+        playerBar.addView(
+            playerTitle,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        )
+        playerBar.addView(Button(this).apply {
+            text = "⏮"
+            setOnClickListener { UsbPlaybackService.previous(this@SupremacyMixesActivity) }
+        })
+        playerPlayPause = Button(this).apply {
+            text = "▶"
+            setOnClickListener { UsbPlaybackService.toggle(this@SupremacyMixesActivity) }
+        }
+        playerBar.addView(playerPlayPause)
+        playerBar.addView(Button(this).apply {
+            text = "⏭"
+            setOnClickListener { UsbPlaybackService.next(this@SupremacyMixesActivity) }
+        })
+        playerBar.addView(Button(this).apply {
+            text = "■"
+            setOnClickListener {
+                UsbPlaybackService.stop(this@SupremacyMixesActivity)
+                postDelayed({ refreshPlayerBar() }, 150L)
+            }
+        })
+        root.addView(
+            playerBar,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = 8.dp
+                bottomMargin = 8.dp
+            }
+        )
+
         progress = ProgressBar(this)
         root.addView(progress, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER_HORIZONTAL })
 
@@ -67,6 +129,17 @@ class SupremacyMixesActivity : AppCompatActivity() {
         root.addView(ScrollView(this).apply { addView(list) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
         loadMixes()
+    }
+
+    private fun refreshPlayerBar() {
+        val state = UsbPlaybackService.snapshot()
+        if (!state.hasTrack) {
+            playerBar.visibility = View.GONE
+            return
+        }
+        playerBar.visibility = View.VISIBLE
+        playerTitle.text = state.title
+        playerPlayPause.text = if (state.isPlaying) "⏸" else "▶"
     }
 
     private fun loadMixes() {
@@ -279,6 +352,21 @@ class SupremacyMixesActivity : AppCompatActivity() {
     private fun key(value: String): String =
         value.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9]+"), " ").trim()
 
-    override fun onDestroy() { io.shutdownNow(); super.onDestroy() }
+    override fun onResume() {
+        super.onResume()
+        playerHandler.removeCallbacks(playerRefresh)
+        playerRefresh.run()
+    }
+
+    override fun onPause() {
+        playerHandler.removeCallbacks(playerRefresh)
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        playerHandler.removeCallbacks(playerRefresh)
+        io.shutdownNow()
+        super.onDestroy()
+    }
     private val Int.dp: Int get() = (this * resources.displayMetrics.density).toInt()
 }
