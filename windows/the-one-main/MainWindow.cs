@@ -24,14 +24,14 @@ public sealed class MainWindow : Window
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(35) };
 
     private readonly Brush Bg = Brush("#05070B");
-    private readonly Brush Surface = Brush("#0B111A");
-    private readonly Brush SurfaceRaised = Brush("#111722");
-    private readonly Brush Line = Brush("#243241");
+    private readonly Brush Surface = Brush("#091018");
+    private readonly Brush SurfaceRaised = Brush("#0D1A28");
+    private readonly Brush Line = Brush("#174963");
     private readonly Brush TextMain = Brush("#F3F8FC");
-    private readonly Brush TextDim = Brush("#9AA6B2");
+    private readonly Brush TextDim = Brush("#91A4BD");
     private readonly Brush FamilyBlue = Brush("#20B8FF");
     private readonly Brush Amber = FamilyBlue;
-    private readonly Brush Gold = Brush("#D8A451");
+    private readonly Brush Gold = Brush("#E8AA4E");
     private readonly Brush Sage = Brush("#39D98A");
 
     private readonly Grid _content = new();
@@ -142,12 +142,47 @@ public sealed class MainWindow : Window
         };
         var dock = new DockPanel();
 
-        var brand = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        brand.Children.Add(CreateLogo(48));
-        var brandText = new StackPanel { Margin = new Thickness(12,0,0,0), VerticalAlignment = VerticalAlignment.Center };
+        var brand = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var logoBadge = new Grid
+        {
+            Width = 64,
+            Height = 64,
+            Margin = new Thickness(0, 0, 12, 0)
+        };
+        logoBadge.Children.Add(new System.Windows.Shapes.Ellipse
+        {
+            Fill = Brush("#071019"),
+            Stroke = FamilyBlue,
+            StrokeThickness = 1.4,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Color.FromRgb(32, 184, 255),
+                BlurRadius = 14,
+                Opacity = 0.28,
+                ShadowDepth = 0
+            }
+        });
+        var headerLogo = CreateLogo(58);
+        headerLogo.HorizontalAlignment = HorizontalAlignment.Center;
+        headerLogo.VerticalAlignment = VerticalAlignment.Center;
+        logoBadge.Children.Add(headerLogo);
+        brand.Children.Add(logoBadge);
+
+        var brandText = new StackPanel
+        {
+            VerticalAlignment = VerticalAlignment.Center
+        };
         brandText.Children.Add(new TextBlock
         {
-            Text = "THE ONE", Foreground = Gold, FontSize = 23, FontWeight = FontWeights.Bold
+            Text = "THE ONE",
+            Foreground = FamilyBlue,
+            FontSize = 23,
+            FontWeight = FontWeights.Bold
         });
         brandText.Children.Add(new TextBlock
         {
