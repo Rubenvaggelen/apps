@@ -229,8 +229,7 @@ class SettingsActivity : AppCompatActivity() {
                 }
 
                 runOnUiThread {
-                    if (owner) setupDeviceManagerSection()
-                    else setupOwnerRecoverySection()
+                    if (!owner) setupOwnerRecoverySection()
                 }
             }.start()
         } else {
@@ -322,7 +321,7 @@ class SettingsActivity : AppCompatActivity() {
                                     "Dit toestel is nu de eigenaar van The One Main.",
                                     Toast.LENGTH_LONG
                                 ).show()
-                                setupDeviceManagerSection()
+                                // Apparatenbeheer staat nu onder de tegel Laptop.
                             } else {
                                 input.error = "Herstel is niet gelukt"
                                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
