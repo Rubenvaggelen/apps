@@ -15,6 +15,7 @@ data class MainRegisteredDevice(
     val version: String,
     val blocked: Boolean,
     val owner: Boolean,
+    val musicRights: Boolean,
     val online: Boolean,
     val lastSeen: Long
 )
@@ -32,6 +33,7 @@ object MainDeviceRegistry {
     private const val KEY_DEVICE_ID = "device_id"
     private const val KEY_BLOCKED = "blocked"
     private const val KEY_OWNER = "owner"
+    private const val KEY_MUSIC_RIGHTS = "music_rights"
     private const val KEY_PERSON_NAME = "person_name"
     private const val KEY_THE_ONE = "the_one_profile"
 
@@ -52,6 +54,10 @@ object MainDeviceRegistry {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_OWNER, false)
 
+    fun hasMusicRights(context: Context): Boolean =
+        isLocallyOwner(context) ||
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getBoolean(KEY_MUSIC_RIGHTS, false)
 
     fun personName(context: Context): String =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -93,10 +99,12 @@ object MainDeviceRegistry {
         val json = request("heartbeat", payload)
         val blocked = json.optBoolean("blocked", false)
         val owner = json.optBoolean("owner", false)
+        val musicRights = json.optBoolean("music_rights", owner)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_BLOCKED, blocked)
             .putBoolean(KEY_OWNER, owner)
+            .putBoolean(KEY_MUSIC_RIGHTS, musicRights)
             .apply()
         return blocked
     }
@@ -177,6 +185,7 @@ object MainDeviceRegistry {
                         version = item.optString("version", ""),
                         blocked = item.optBoolean("blocked", false),
                         owner = item.optBoolean("owner", false),
+                        musicRights = item.optBoolean("music_rights", item.optBoolean("owner", false)),
                         online = item.optBoolean("online", false),
                         lastSeen = item.optLong("last_seen", 0L)
                     )
@@ -204,6 +213,37 @@ object MainDeviceRegistry {
                 )
             }
         }
+    }
+
+    fun refreshMusicRights(context: Context): Boolean {
+        val json = request(
+            "music_access",
+            JSONObject().put("device_id", deviceId(context))
+        )
+        val allowed = json.optBoolean("allowed", false)
+        val owner = json.optBoolean("owner", false)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_MUSIC_RIGHTS, allowed)
+            .putBoolean(KEY_OWNER, owner)
+            .apply()
+        return allowed
+    }
+
+    fun setMusicRights(
+        context: Context,
+        pin: String,
+        targetDeviceId: String,
+        enabled: Boolean
+    ) {
+        request(
+            "set_music_rights",
+            JSONObject()
+                .put("pin", pin)
+                .put("request_device_id", deviceId(context))
+                .put("device_id", targetDeviceId)
+                .put("enabled", enabled)
+        )
     }
 
     fun setBlocked(context: Context, pin: String, targetDeviceId: String, blocked: Boolean) {
