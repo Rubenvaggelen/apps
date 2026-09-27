@@ -148,7 +148,7 @@ object RemoteUsbMusicClient {
                 }
             }
 
-            if (files.isNotEmpty()) {
+            if (totalFiles > 0) {
                 result += RemoteStick(
                     deviceId = deviceId,
                     deviceName = deviceName,
