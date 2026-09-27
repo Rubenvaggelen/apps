@@ -411,55 +411,97 @@ public static class UsbMusicCloudService
         // geldige Shared Media-bibliotheek niet meer leeg overschrijven.
         // We bouwen eerst de volledige manifeststatus op en publiceren pas daarna.
 
-        var finalManifest = new List<LocalManifestFile>(files.Count);
-        var uploadJobs = new List<(FileInfo File, string Relative, string Sha)>();
+        var finalManifest = new LocalManifestFile[files.Count];
 
-        foreach (var file in files)
+        // Herstel hashes parallel; dit is veel sneller dan 1360+ bestanden
+        // één voor één lezen en blokkeert de veilige catalogusherstelactie niet onnodig.
+        using (var hashGate = new SemaphoreSlim(8, 8))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var relative = NormalizePath(Path.GetRelativePath(scanRoot, file.FullName));
-            var modified = file.LastWriteTimeUtc.ToString("O");
-            var lookup = $"{deviceId}|{stickId}|{relative}";
-
-            var hasOld = existing.TryGetValue(lookup, out var old);
-            var unchanged =
-                hasOld &&
-                old!.Size == file.Length &&
-                string.Equals(old.Modified, modified, StringComparison.Ordinal) &&
-                !string.IsNullOrWhiteSpace(old.Sha256);
-
-            var sha = unchanged
-                ? old!.Sha256
-                : await HashFileAsync(file.FullName, cancellationToken);
-
-            var needsUpload =
-                !hasOld ||
-                !old!.Cached ||
-                !string.Equals(old.Sha256, sha, StringComparison.OrdinalIgnoreCase);
-
-            var tags = metadata[file.FullName];
-            finalManifest.Add(new LocalManifestFile
+            var manifestTasks = files.Select(async (file, fileIndex) =>
             {
-                Path = relative,
-                Size = file.Length,
-                Sha256 = sha,
-                Modified = modified,
-                Title = tags.Title,
-                Artist = tags.Artist,
-                Album = tags.Album
-            });
+                await hashGate.WaitAsync(cancellationToken);
+                try
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
 
-            if (needsUpload)
-                uploadJobs.Add((file, relative, sha));
+                    var relative = NormalizePath(
+                        Path.GetRelativePath(scanRoot, file.FullName));
+                    var modified = file.LastWriteTimeUtc.ToString("O");
+                    var lookup = $"{deviceId}|{stickId}|{relative}";
+
+                    var hasOld = existing.TryGetValue(lookup, out var old);
+                    var unchanged =
+                        hasOld &&
+                        old!.Size == file.Length &&
+                        string.Equals(old.Modified, modified, StringComparison.Ordinal) &&
+                        !string.IsNullOrWhiteSpace(old.Sha256);
+
+                    var sha = unchanged
+                        ? old!.Sha256
+                        : await HashFileAsync(file.FullName, cancellationToken);
+
+                    var tags = metadata[file.FullName];
+                    finalManifest[fileIndex] = new LocalManifestFile
+                    {
+                        Path = relative,
+                        Size = file.Length,
+                        Sha256 = sha,
+                        Modified = modified,
+                        Title = tags.Title,
+                        Artist = tags.Artist,
+                        Album = tags.Album
+                    };
+                }
+                finally
+                {
+                    hashGate.Release();
+                }
+            }).ToList();
+
+            await Task.WhenAll(manifestTasks);
         }
 
-        // Herstel eerst de volledige catalogus met echte hashes. Als de server
-        // de blobs nog in cache heeft, worden de nummers direct opnieuw gekoppeld
-        // zonder dat alles opnieuw hoeft te worden geüpload.
+        var finalManifestList = finalManifest.ToList();
+
+        // Publiceer eerst de volledige catalogus met echte hashes. Bestaande
+        // serverblobs kunnen hierdoor direct opnieuw aan de nummers gekoppeld worden.
         await SendManifestAsync(
-            deviceId, deviceName, stickId, stickName, finalManifest, cancellationToken);
+            deviceId, deviceName, stickId, stickName,
+            finalManifestList, cancellationToken);
         Log($"{deviceName} / {stickName}: volledige catalogus veilig gepubliceerd.");
+
+        // Vraag daarna opnieuw aan de server wat werkelijk al gecachet is.
+        // Zo uploaden we geen bestanden opnieuw als alleen de cataloguskoppeling
+        // verloren was.
+        var refreshedCatalog =
+            await GetCatalogAsync(cancellationToken, includeInactive: true);
+        var refreshed = refreshedCatalog
+            .Where(x =>
+                x.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase) &&
+                x.StickId.Equals(stickId, StringComparison.OrdinalIgnoreCase))
+            .SelectMany(x => x.Files)
+            .ToDictionary(
+                x => NormalizePath(x.Path),
+                x => x,
+                StringComparer.OrdinalIgnoreCase);
+
+        var uploadJobs = new List<(FileInfo File, string Relative, string Sha)>();
+        for (var i = 0; i < files.Count; i++)
+        {
+            var file = files[i];
+            var manifest = finalManifest[i];
+            if (!refreshed.TryGetValue(manifest.Path, out var serverFile) ||
+                !serverFile.Cached ||
+                !string.Equals(
+                    serverFile.Sha256,
+                    manifest.Sha256,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                uploadJobs.Add((file, manifest.Path, manifest.Sha256));
+            }
+        }
+
+        Log($"{deviceName} / {stickName}: {finalManifestList.Count - uploadJobs.Count} bestand(en) uit bestaande cache hersteld; {uploadJobs.Count} upload(s) nog nodig.");
 
         // Start agressief met 16 gelijktijdige uploads. Als de server,
         // verbinding of één van de uploads daar niet goed op reageert, worden
@@ -520,7 +562,7 @@ public static class UsbMusicCloudService
         }
 
         await SendManifestAsync(
-            deviceId, deviceName, stickId, stickName, finalManifest, cancellationToken);
+            deviceId, deviceName, stickId, stickName, finalManifestList, cancellationToken);
 
         return uploaded;
     }
