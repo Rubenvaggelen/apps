@@ -246,7 +246,10 @@ class UsbPlaybackService : Service() {
             ACTION_NEXT -> playRelative(+1)
             ACTION_PREVIOUS -> playRelative(-1)
             ACTION_SEEK -> seekInternal(intent.getIntExtra(EXTRA_POSITION, 0))
-            ACTION_STOP -> stopPlaybackAndService()
+            ACTION_STOP -> {
+                stopPlaybackAndService()
+                return START_NOT_STICKY
+            }
             ACTION_RESTORE_LAST -> restoreLastSession()
             null -> {
                 // START_STICKY kan een service na procesherstart zonder intent terugbrengen.
@@ -457,22 +460,31 @@ class UsbPlaybackService : Service() {
     }
 
     private fun stopPlaybackAndService() {
-        releasePlayer()
+        // STOP is definitief: geen oud nummer of sessie meer herstellen.
         queue = emptyList()
         index = -1
         preparing = false
+        restoring = false
+        requestedStartPositionMs = 0
+        requestedAutoStart = false
+        pendingQueue = emptyList()
         lastState = PlaybackState()
         clearPersistedSession()
+        releasePlayer()
+        updateMediaSession()
         stopForeground(Service.STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
     private fun releasePlayer() {
-        player?.let {
+        // Eerst ontkoppelen zodat callbacks tijdens stop/release de gewiste
+        // sessie niet opnieuw kunnen opslaan.
+        val oldPlayer = player
+        player = null
+        oldPlayer?.let {
             try { it.stop() } catch (_: Exception) {}
             try { it.release() } catch (_: Exception) {}
         }
-        player = null
     }
 
     private fun applyDuckingVolume() {
