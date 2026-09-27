@@ -176,6 +176,10 @@ class MoviesActivity : AppCompatActivity() {
             .create()
 
         dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setTextColor(Color.parseColor("#D8A451"))
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
+                .setTextColor(Color.WHITE)
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val pin = input.text.toString().trim()
                 if (pin.isBlank()) return@setOnClickListener
@@ -236,13 +240,18 @@ class MoviesActivity : AppCompatActivity() {
 
     private fun showRemoteStickDialog(sticks: List<RemoteUsbMusicClient.RemoteStick>) {
         val labels = sticks.map { it.deviceName + " • " + it.stickName }.toTypedArray()
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle("USB thuis")
             .setItems(labels) { _, which ->
                 showRemoteFolderDialog(sticks[which])
             }
             .setNegativeButton("Sluiten", null)
-            .show()
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
+                .setTextColor(Color.parseColor("#D8A451"))
+        }
+        dialog.show()
     }
 
     private fun normalizeRemoteFolder(value: String): String =
@@ -295,7 +304,7 @@ class MoviesActivity : AppCompatActivity() {
         }
 
         if (labels.isEmpty()) {
-            AlertDialog.Builder(this)
+            val dialog = AlertDialog.Builder(this)
                 .setTitle(if (normalized.isBlank()) stick.deviceName + " • " + stick.stickName else normalized)
                 .setMessage("Deze map bevat geen beschikbare nummers.")
                 .setNegativeButton(
@@ -305,11 +314,16 @@ class MoviesActivity : AppCompatActivity() {
                         showRemoteFolderLevel(stick, parentRemoteFolder(normalized))
                     }
                 }
-                .show()
+                .create()
+            dialog.setOnShowListener {
+                dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
+                    .setTextColor(Color.parseColor("#D8A451"))
+            }
+            dialog.show()
             return
         }
 
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle(
                 if (normalized.isBlank())
                     stick.deviceName + " • " + stick.stickName
@@ -331,7 +345,12 @@ class MoviesActivity : AppCompatActivity() {
                     showRemoteFolderLevel(stick, parentRemoteFolder(normalized))
                 }
             }
-            .show()
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
+                .setTextColor(Color.parseColor("#D8A451"))
+        }
+        dialog.show()
     }
 
     private fun showRemoteTrackDialog(
