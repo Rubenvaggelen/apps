@@ -5,6 +5,7 @@ import android.graphics.Typeface
 import android.os.Bundle
 import android.text.Html
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
@@ -377,6 +378,14 @@ class SupremacyMixesActivity : AppCompatActivity() {
 
     private fun key(value: String): String =
         value.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9]+"), " ").trim()
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (CarMediaKeyHandler.handle(this, event)) {
+            refreshPlayerBar()
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
 
     override fun onResume() {
         super.onResume()
