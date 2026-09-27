@@ -33,6 +33,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private lateinit var lockSection: LinearLayout
     private lateinit var unlockedSection: LinearLayout
+    private lateinit var settingsContent: LinearLayout
     private lateinit var pinInput: EditText
     private lateinit var pinErrorText: TextView
     private lateinit var parkingEmptyState: TextView
@@ -59,6 +60,7 @@ class SettingsActivity : AppCompatActivity() {
 
         lockSection = findViewById(R.id.lockSection)
         unlockedSection = findViewById(R.id.unlockedSection)
+        settingsContent = findViewById(R.id.settingsContent)
         pinInput = findViewById(R.id.pinInput)
         pinErrorText = findViewById(R.id.pinErrorText)
         parkingEmptyState = findViewById(R.id.parkingEmptyState)
@@ -244,7 +246,7 @@ class SettingsActivity : AppCompatActivity() {
         val divider = View(this).apply {
             setBackgroundColor(ContextCompat.getColor(this@SettingsActivity, R.color.line))
         }
-        unlockedSection.addView(
+        settingsContent.addView(
             divider,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -252,14 +254,14 @@ class SettingsActivity : AppCompatActivity() {
             ).apply { setMargins(0, 24, 0, 20) }
         )
 
-        unlockedSection.addView(TextView(this).apply {
+        settingsContent.addView(TextView(this).apply {
             text = "Eigenaar herstellen"
             textSize = 18f
             setTextColor(ContextCompat.getColor(this@SettingsActivity, R.color.text_main))
             setPadding(0, 0, 0, 8)
         })
 
-        unlockedSection.addView(TextView(this).apply {
+        settingsContent.addView(TextView(this).apply {
             text = "Alleen gebruiken wanneer je naar een nieuwe telefoon bent overgestapt. Hiervoor is de aparte herstelcode nodig."
             textSize = 13f
             setTextColor(ContextCompat.getColor(this@SettingsActivity, R.color.text_dim))
@@ -270,7 +272,7 @@ class SettingsActivity : AppCompatActivity() {
             text = "Dit toestel als eigenaar herstellen"
             setOnClickListener { promptOwnerRecovery(this) }
         }
-        unlockedSection.addView(
+        settingsContent.addView(
             recover,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -343,7 +345,7 @@ class SettingsActivity : AppCompatActivity() {
         val divider = View(this).apply {
             setBackgroundColor(ContextCompat.getColor(this@SettingsActivity, R.color.line))
         }
-        unlockedSection.addView(
+        settingsContent.addView(
             divider,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -351,14 +353,14 @@ class SettingsActivity : AppCompatActivity() {
             ).apply { setMargins(0, 24, 0, 20) }
         )
 
-        unlockedSection.addView(TextView(this).apply {
+        settingsContent.addView(TextView(this).apply {
             text = "Verbonden apparaten"
             textSize = 18f
             setTextColor(ContextCompat.getColor(this@SettingsActivity, R.color.text_main))
             setPadding(0, 0, 0, 8)
         })
 
-        unlockedSection.addView(TextView(this).apply {
+        settingsContent.addView(TextView(this).apply {
             text = "Bekijk welke apparaten The One Main gebruiken en blokkeer of deblokkeer ze."
             textSize = 13f
             setTextColor(ContextCompat.getColor(this@SettingsActivity, R.color.text_dim))
@@ -371,7 +373,7 @@ class SettingsActivity : AppCompatActivity() {
                 openOwnerDeviceManager(trigger)
             }
         }
-        unlockedSection.addView(
+        settingsContent.addView(
             manage,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
