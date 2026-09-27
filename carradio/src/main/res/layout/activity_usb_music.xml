@@ -16,7 +16,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="USB MUZIEK • MAPPEN"
+            android:text="SHARED MEDIA • MAPPEN"
             android:textColor="@color/text_main"
             android:textSize="29sp"
             android:letterSpacing="0.025"
@@ -28,7 +28,7 @@
             android:layout_marginEnd="8dp"
             android:background="@drawable/bg_amber_button"
             app:backgroundTint="@null"
-            android:text="USB ZOEKEN"
+            android:text="MEDIA ZOEKEN"
             android:textColor="@color/on_amber"
             android:textStyle="bold" />
         <Button
@@ -47,7 +47,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:paddingTop="6dp"
-        android:text="USB wordt gezocht…"
+        android:text="Shared Media wordt gezocht…"
         android:textColor="@color/text_dim"
         android:textSize="14sp" />
 
@@ -72,7 +72,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:layout_marginStart="10dp"
-            android:text="USB /"
+            android:text="Shared Media /"
             android:textColor="@color/gold"
             android:textSize="15sp"
             android:textStyle="bold" />
@@ -153,7 +153,7 @@
         android:layout_height="wrap_content"
         android:paddingTop="8dp"
         android:paddingBottom="4dp"
-        android:text="USB-STICKS • MAPPEN • NUMMERS"
+        android:text="USB • SD • MAPPEN • NUMMERS"
         android:textColor="@color/gold"
         android:textSize="14sp"
         android:textStyle="bold" />
