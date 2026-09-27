@@ -55,11 +55,25 @@ class SupremacyPlaybackService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
+                // STOP is definitief: wis de afspeelsessie zodat terugkeren naar
+                // Media of een nieuwe app-/autorun het nummer niet herstelt.
                 stopPlayer()
+                urls.clear()
+                titles.clear()
+                index = 0
+                requestedStartPositionMs = 0
+                requestedAutoStart = false
+                paused = false
+                currentTitle = "Geen muziek actief"
+                currentSource = ""
+                pendingQueueUrls = null
+                pendingQueueTitles = null
+                pendingQueueSource = null
                 clearSession()
                 saveState(active = false, playing = false)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
+                return START_NOT_STICKY
             }
 
             ACTION_TOGGLE -> togglePlayback()
@@ -453,11 +467,14 @@ class SupremacyPlaybackService : Service() {
     }
 
     private fun stopPlayer() {
-        player?.let {
+        // Ontkoppel eerst. Eventuele callbacks tijdens stop/release mogen de
+        // zojuist gewiste sessie niet opnieuw opslaan.
+        val oldPlayer = player
+        player = null
+        oldPlayer?.let {
             try { it.stop() } catch (_: Exception) {}
             try { it.release() } catch (_: Exception) {}
         }
-        player = null
     }
 
     override fun onDestroy() {
