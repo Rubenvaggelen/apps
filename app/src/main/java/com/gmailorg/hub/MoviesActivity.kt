@@ -499,7 +499,12 @@ class MoviesActivity : AppCompatActivity() {
 
         val labels = buildList {
             childFolders.forEach { add("📁 " + it.substringAfterLast('/')) }
-            directFiles.forEach { add("🎵 " + cleanUsbTrackTitle(it.displayName)) }
+            directFiles.forEach {
+                add(
+                    (if (isRemoteUsbTrackCurrent(stick, it)) "▶ NU • " else "🎵 ") +
+                        cleanUsbTrackTitle(it.displayName)
+                )
+            }
         }
 
         if (labels.isEmpty()) {
@@ -567,6 +572,10 @@ class MoviesActivity : AppCompatActivity() {
         val downloadWidth = (58 * density).toInt()
         val playWidth = (62 * density).toInt()
         val actionGap = (14 * density).toInt()
+        val trackRows = mutableListOf<LinearLayout>()
+        val trackNumbers = mutableListOf<TextView>()
+        val trackTitles = mutableListOf<TextView>()
+        val trackPlayButtons = mutableListOf<TextView>()
 
         files.forEachIndexed { index, file ->
             val row = LinearLayout(this).apply {
@@ -657,6 +666,11 @@ class MoviesActivity : AppCompatActivity() {
                 LinearLayout.LayoutParams(playWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
             )
 
+            trackRows.add(row)
+            trackNumbers.add(number)
+            trackTitles.add(title)
+            trackPlayButtons.add(play)
+
             trackList.addView(
                 row,
                 LinearLayout.LayoutParams(
@@ -676,6 +690,37 @@ class MoviesActivity : AppCompatActivity() {
             }
         }
 
+        fun refreshPlayingTrackHighlight() {
+            files.forEachIndexed { index, file ->
+                val isCurrent = isRemoteUsbTrackCurrent(stick, file)
+                trackRows[index].setBackgroundColor(
+                    if (isCurrent) Color.parseColor("#123247") else Color.TRANSPARENT
+                )
+                trackNumbers[index].text =
+                    if (isCurrent) "♪" else (index + 1).toString().padStart(2, '0')
+                trackNumbers[index].setTextColor(
+                    Color.parseColor(if (isCurrent) "#D8A451" else "#4B9FC0")
+                )
+                trackTitles[index].text =
+                    (if (isCurrent) "▶ NU • " else "") +
+                        cleanUsbTrackTitle(file.displayName)
+                trackTitles[index].setTextColor(
+                    Color.parseColor(if (isCurrent) "#D8A451" else "#FFFFFF")
+                )
+                trackTitles[index].setTypeface(
+                    null,
+                    if (isCurrent) android.graphics.Typeface.BOLD
+                    else android.graphics.Typeface.NORMAL
+                )
+                trackPlayButtons[index].setTextColor(
+                    Color.parseColor(if (isCurrent) "#D8A451" else "#4B9FC0")
+                )
+                trackRows[index].contentDescription =
+                    if (isCurrent) "Nu actief: ${cleanUsbTrackTitle(file.displayName)}"
+                    else cleanUsbTrackTitle(file.displayName)
+            }
+        }
+
         val scroll = ScrollView(this).apply {
             isFillViewport = true
             addView(trackList)
@@ -688,9 +733,24 @@ class MoviesActivity : AppCompatActivity() {
                 showRemoteFolderLevel(stick, parentRemoteFolder(normalized))
             }
             .create()
+
+        val liveHighlight = object : Runnable {
+            override fun run() {
+                if (dialog.isShowing && !isFinishing && !isDestroyed) {
+                    refreshPlayingTrackHighlight()
+                    trackList.postDelayed(this, 500L)
+                }
+            }
+        }
+
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
                 .setTextColor(Color.parseColor("#D8A451"))
+            refreshPlayingTrackHighlight()
+            trackList.postDelayed(liveHighlight, 500L)
+        }
+        dialog.setOnDismissListener {
+            trackList.removeCallbacks(liveHighlight)
         }
         dialog.show()
     }
@@ -773,6 +833,26 @@ class MoviesActivity : AppCompatActivity() {
             .replace(Regex("\\s+"), " ")
             .trim()
 
+    private fun isRemoteUsbTrackCurrent(
+        stick: RemoteUsbMusicClient.RemoteStick,
+        file: RemoteUsbMusicClient.RemoteFile
+    ): Boolean {
+        if (!SupremacyPlaybackService.isActive(this)) return false
+
+        val source = SupremacyPlaybackService.currentSource(this)
+        val exactSource =
+            "Shared Media • " + stick.deviceName + " • " + stick.stickName
+        val legacySource = "Shared Media • " + stick.deviceName
+        if (!source.equals(exactSource, ignoreCase = true) &&
+            !source.equals(legacySource, ignoreCase = true)
+        ) {
+            return false
+        }
+
+        return cleanUsbTrackTitle(SupremacyPlaybackService.currentTitle(this))
+            .equals(cleanUsbTrackTitle(file.displayName), ignoreCase = true)
+    }
+
     private fun playRemoteUsbFolder(
         stick: RemoteUsbMusicClient.RemoteStick,
         files: List<RemoteUsbMusicClient.RemoteFile>,
@@ -796,7 +876,7 @@ class MoviesActivity : AppCompatActivity() {
                     putExtra(SupremacyPlaybackService.EXTRA_INDEX, index)
                     putExtra(
                         SupremacyPlaybackService.EXTRA_SOURCE,
-                        "Shared Media • " + stick.deviceName
+                        "Shared Media • " + stick.deviceName + " • " + stick.stickName
                     )
                 }
             )
