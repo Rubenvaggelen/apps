@@ -1344,14 +1344,18 @@ class MoviesActivity : AppCompatActivity() {
 
         files.forEachIndexed { index, file ->
             val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
+                orientation = LinearLayout.VERTICAL
                 setPadding(
-                    (8 * density).toInt(),
-                    (6 * density).toInt(),
-                    (8 * density).toInt(),
-                    (6 * density).toInt()
+                    (12 * density).toInt(),
+                    (12 * density).toInt(),
+                    (12 * density).toInt(),
+                    (10 * density).toInt()
                 )
+            }
+
+            val infoRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.TOP
             }
 
             val number = TextView(this).apply {
@@ -1359,11 +1363,30 @@ class MoviesActivity : AppCompatActivity() {
                 textSize = 12f
                 setTextColor(Color.parseColor("#20B8FF"))
                 gravity = android.view.Gravity.CENTER
+                setPadding(
+                    0,
+                    (5 * density).toInt(),
+                    0,
+                    0
+                )
             }
-            row.addView(
+            infoRow.addView(
                 number,
-                LinearLayout.LayoutParams((42 * density).toInt(), LinearLayout.LayoutParams.WRAP_CONTENT)
+                LinearLayout.LayoutParams(
+                    (42 * density).toInt(),
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
             )
+
+            val metadata = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(
+                    (8 * density).toInt(),
+                    0,
+                    (8 * density).toInt(),
+                    0
+                )
+            }
 
             val title = TextView(this).apply {
                 text = if (file.cached) {
@@ -1371,17 +1394,83 @@ class MoviesActivity : AppCompatActivity() {
                 } else {
                     cleanUsbTrackTitle(file.displayName) + "  •  Synchroniseren…"
                 }
-                textSize = 16f
+                textSize = 17f
                 setTextColor(
                     Color.parseColor(if (file.cached) "#FFFFFF" else "#8F9BAD")
                 )
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
                 maxLines = 2
                 ellipsize = android.text.TextUtils.TruncateAt.END
+            }
+            metadata.addView(
+                title,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+
+            metadata.addView(
+                TextView(this).apply {
+                    text = file.artist.ifBlank { "Artiest onbekend" }
+                    textSize = 13f
+                    setTextColor(Color.parseColor("#91A4BD"))
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setPadding(
+                        0,
+                        (4 * density).toInt(),
+                        0,
+                        0
+                    )
+                },
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+
+            infoRow.addView(
+                metadata,
+                LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+            )
+            row.addView(
+                infoRow,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+
+            val actions = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
                 setPadding(
-                    (8 * density).toInt(),
+                    (50 * density).toInt(),
+                    (9 * density).toInt(),
+                    0,
+                    0
+                )
+            }
+
+            val play = TextView(this).apply {
+                text = if (file.cached) "▶  AFSPELEN" else "…  SYNCHRONISEREN"
+                textSize = 13f
+                gravity = android.view.Gravity.CENTER
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setTextColor(
+                    Color.parseColor(if (file.cached) "#20B8FF" else "#8F9BAD")
+                )
+                setBackgroundResource(R.drawable.bg_the_one_blue_button)
+                setPadding(
                     (14 * density).toInt(),
-                    (10 * density).toInt(),
-                    (14 * density).toInt()
+                    (9 * density).toInt(),
+                    (14 * density).toInt(),
+                    (9 * density).toInt()
                 )
                 setOnClickListener {
                     if (file.cached) {
@@ -1395,9 +1484,15 @@ class MoviesActivity : AppCompatActivity() {
                     }
                 }
             }
-            row.addView(
-                title,
-                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            actions.addView(
+                play,
+                LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    1f
+                ).apply {
+                    marginEnd = (8 * density).toInt()
+                }
             )
 
             val favorite = TextView(this).apply {
@@ -1406,32 +1501,39 @@ class MoviesActivity : AppCompatActivity() {
                 setTextColor(Color.parseColor("#D8A451"))
                 gravity = android.view.Gravity.CENTER
                 contentDescription = "Favoriet ${file.name}"
+                setBackgroundResource(R.drawable.bg_the_one_gold_outline)
                 setPadding(
-                    (10 * density).toInt(),
-                    (10 * density).toInt(),
-                    (10 * density).toInt(),
-                    (10 * density).toInt()
+                    (12 * density).toInt(),
+                    (8 * density).toInt(),
+                    (12 * density).toInt(),
+                    (8 * density).toInt()
                 )
                 setOnClickListener {
                     toggleUsbFavorite(stick, file, this)
                 }
             }
-            row.addView(
+            actions.addView(
                 favorite,
-                LinearLayout.LayoutParams(favoriteWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
+                LinearLayout.LayoutParams(
+                    favoriteWidth,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    marginEnd = (8 * density).toInt()
+                }
             )
 
             val download = TextView(this).apply {
-                text = "↓"
+                text = if (file.cached) "↓" else "…"
                 textSize = 21f
                 setTextColor(Color.parseColor("#D8A451"))
                 gravity = android.view.Gravity.CENTER
                 contentDescription = "Download ${file.name}"
+                setBackgroundResource(R.drawable.bg_the_one_gold_outline)
                 setPadding(
                     (12 * density).toInt(),
+                    (8 * density).toInt(),
                     (12 * density).toInt(),
-                    (12 * density).toInt(),
-                    (12 * density).toInt()
+                    (8 * density).toInt()
                 )
                 alpha = if (file.cached) 1f else 0.35f
                 setOnClickListener {
@@ -1446,45 +1548,20 @@ class MoviesActivity : AppCompatActivity() {
                     }
                 }
             }
-            row.addView(
+            actions.addView(
                 download,
-                LinearLayout.LayoutParams(downloadWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
+                LinearLayout.LayoutParams(
+                    downloadWidth,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
             )
 
             row.addView(
-                View(this),
-                LinearLayout.LayoutParams(actionGap, 1)
-            )
-
-            val play = TextView(this).apply {
-                text = if (file.cached) "▶" else "…"
-                textSize = 19f
-                setTextColor(
-                    Color.parseColor(if (file.cached) "#20B8FF" else "#8F9BAD")
+                actions,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
                 )
-                gravity = android.view.Gravity.CENTER
-                contentDescription = "Speel ${file.name} af"
-                setPadding(
-                    (12 * density).toInt(),
-                    (12 * density).toInt(),
-                    (12 * density).toInt(),
-                    (12 * density).toInt()
-                )
-                setOnClickListener {
-                    if (file.cached) {
-                        playRemoteUsbFolder(stick, files, index, normalized)
-                    } else {
-                        Toast.makeText(
-                            this@MoviesActivity,
-                            "Dit nummer wordt nog gesynchroniseerd.",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-            }
-            row.addView(
-                play,
-                LinearLayout.LayoutParams(playWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
             )
 
             trackRows.add(row)
@@ -1524,7 +1601,8 @@ class MoviesActivity : AppCompatActivity() {
                 )
                 trackTitles[index].text =
                     (if (isCurrent) "▶ NU • " else "") +
-                        cleanUsbTrackTitle(file.displayName)
+                        cleanUsbTrackTitle(file.displayName) +
+                        if (!file.cached) "  •  Synchroniseren…" else ""
                 trackTitles[index].setTextColor(
                     Color.parseColor(if (isCurrent) "#D8A451" else "#FFFFFF")
                 )
@@ -1533,8 +1611,20 @@ class MoviesActivity : AppCompatActivity() {
                     if (isCurrent) android.graphics.Typeface.BOLD
                     else android.graphics.Typeface.NORMAL
                 )
+                trackPlayButtons[index].text =
+                    when {
+                        isCurrent -> "▶  NU"
+                        file.cached -> "▶  AFSPELEN"
+                        else -> "…  SYNCHRONISEREN"
+                    }
                 trackPlayButtons[index].setTextColor(
-                    Color.parseColor(if (isCurrent) "#D8A451" else "#20B8FF")
+                    Color.parseColor(
+                        when {
+                            isCurrent -> "#D8A451"
+                            file.cached -> "#20B8FF"
+                            else -> "#8F9BAD"
+                        }
+                    )
                 )
                 trackRows[index].contentDescription =
                     if (isCurrent) "Nu actief: ${cleanUsbTrackTitle(file.displayName)}"
