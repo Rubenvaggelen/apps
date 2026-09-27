@@ -9,6 +9,9 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.CheckBox
+import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
@@ -27,6 +30,7 @@ class HomeActivity : AppCompatActivity() {
 
     private lateinit var adapter: HomeAdapter
     private var blockedDialogShowing = false
+    private var personRegistrationDialogShowing = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,7 +52,7 @@ class HomeActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.versionLabel).text = "build ${BuildConfig.VERSION_CODE}"
 
         UpdateChecker.checkForUpdate(this)
-        checkDeviceAccess()
+        ensurePersonRegistration()
 
         // Zorgt dat de parkeermeldingen voor al je opgeslagen adressen
         // geregistreerd staan zodra locatietoestemming beschikbaar is.
@@ -67,7 +71,7 @@ class HomeActivity : AppCompatActivity() {
         super.onResume()
         SupremacyPlaybackService.resumeLastSessionIfNeeded(this)
         refreshTiles() // eventueel net toegevoegde app tonen
-        checkDeviceAccess()
+        ensurePersonRegistration()
     }
 
     /** Neemt de oude verborgen Fitness-tegelinstelling mee naar de nieuwe Lifestyle-tegel. */
@@ -179,6 +183,106 @@ class HomeActivity : AppCompatActivity() {
             .setNegativeButton("Annuleren", null)
             .show()
         return true
+    }
+
+    private fun ensurePersonRegistration() {
+        if (MainDeviceRegistry.hasPersonName(this)) {
+            checkDeviceAccess()
+            return
+        }
+        showPersonRegistrationDialog()
+    }
+
+    private fun showPersonRegistrationDialog() {
+        if (personRegistrationDialogShowing || isFinishing || isDestroyed) return
+        personRegistrationDialogShowing = true
+
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad / 2, pad, 0)
+        }
+
+        val nameInput = EditText(this).apply {
+            hint = "Jouw naam"
+            maxLines = 1
+            isSingleLine = true
+        }
+        container.addView(nameInput)
+
+        val theOneCheck = CheckBox(this).apply {
+            text = "Ik ben The One"
+            setPadding(0, pad / 2, 0, 0)
+        }
+        container.addView(theOneCheck)
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Wie gebruikt The One?")
+            .setMessage(
+                "Vul één keer je naam in. Deze naam wordt aan dit apparaat gekoppeld, " +
+                    "zodat de beheerder kan zien van wie een apparaat is."
+            )
+            .setView(container)
+            .setPositiveButton("Opslaan", null)
+            .setCancelable(false)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val personName = nameInput.text.toString().trim()
+                if (personName.length < 2) {
+                    nameInput.error = "Vul je naam in"
+                    return@setOnClickListener
+                }
+
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
+                MainDeviceRegistry.savePersonRegistration(
+                    this,
+                    personName,
+                    theOneCheck.isChecked
+                )
+
+                dialog.dismiss()
+                refreshTiles()
+
+                Thread {
+                    val blocked = runCatching {
+                        MainDeviceRegistry.heartbeat(this)
+                    }.getOrNull()
+
+                    var owner = MainDeviceRegistry.isLocallyOwner(this)
+                    if (theOneCheck.isChecked && !owner) {
+                        owner = MainDeviceRegistry.claimInitialOwner(this)
+                    }
+
+                    runOnUiThread {
+                        refreshTiles()
+                        if (theOneCheck.isChecked) {
+                            Toast.makeText(
+                                this,
+                                if (owner) {
+                                    "$personName is geregistreerd als The One • beheerder"
+                                } else {
+                                    "$personName is opgeslagen. Beheerderstatus wordt gecontroleerd zodra dit toestel daarvoor is geautoriseerd."
+                                },
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+
+                        if (blocked == true) {
+                            showBlockedDeviceDialog()
+                        } else {
+                            checkDeviceAccess()
+                        }
+                    }
+                }.start()
+            }
+        }
+
+        dialog.setOnDismissListener {
+            personRegistrationDialogShowing = false
+        }
+        dialog.show()
     }
 
     private fun checkDeviceAccess() {
