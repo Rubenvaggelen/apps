@@ -71,6 +71,10 @@ object MainDeviceRegistry {
             .apply()
     }
 
+    fun isTheOneRegisteredRemotely(): Boolean =
+        request("registration_status", JSONObject())
+            .optBoolean("the_one_registered", false)
+
     fun heartbeat(context: Context): Boolean {
         val payload = JSONObject()
             .put("device_id", deviceId(context))
