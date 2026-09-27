@@ -5,6 +5,7 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
 const MAIN_ADMIN_SHA256 = '616f55173c48091a11f9d643846e32f77f9f949896747c85cf953d931956c8fe';
+const MAIN_OWNER_RECOVERY_SHA256 = '1ba50f63c061b1c2bf3fafdd2b4d655d75f595eb2c23d3e1da5fed386f5978dc';
 
 $home = dirname((string)($_SERVER['DOCUMENT_ROOT'] ?? __DIR__));
 $dataDir = $home . '/the-one-remote-data';
@@ -145,6 +146,47 @@ if ($action === 'claim_owner') {
         devices_save_owner($ownerFile, $deviceId);
     }
     respond_devices(200, ['ok' => true, 'owner' => true]);
+}
+
+if ($action === 'owner_status') {
+    if (!devices_admin($body)) {
+        usleep(300000);
+        respond_devices(403, ['ok' => false, 'error' => 'Unauthorized']);
+    }
+    $deviceId = clean_device_id((string)($body['request_device_id'] ?? ''));
+    $ownerId = devices_owner_id($ownerFile);
+    respond_devices(200, [
+        'ok' => true,
+        'owner' => $ownerId !== '' && hash_equals($ownerId, $deviceId)
+    ]);
+}
+
+if ($action === 'recover_owner') {
+    if (!devices_admin($body)) {
+        usleep(750000);
+        respond_devices(403, ['ok' => false, 'error' => 'Unauthorized']);
+    }
+
+    $recovery = strtoupper(trim((string)($body['recovery_code'] ?? '')));
+    if ($recovery === '' || !hash_equals(MAIN_OWNER_RECOVERY_SHA256, hash('sha256', $recovery))) {
+        usleep(750000);
+        respond_devices(403, ['ok' => false, 'error' => 'Invalid recovery code']);
+    }
+
+    $deviceId = clean_device_id((string)($body['request_device_id'] ?? ''));
+    $state = devices_load($devicesFile);
+    $device = $state['devices'][$deviceId] ?? null;
+    if (!is_array($device)) {
+        respond_devices(409, ['ok' => false, 'error' => 'Register this device first']);
+    }
+
+    $lastSeen = (int)($device['last_seen'] ?? 0);
+    if ($lastSeen <= 0 || (time() - $lastSeen) > 300) {
+        respond_devices(409, ['ok' => false, 'error' => 'Device must be online']);
+    }
+
+    devices_save_owner($ownerFile, $deviceId);
+    respond_devices(200, ['ok' => true, 'owner' => true, 'recovered' => true]);
 }
 
 if (!devices_owner_authorized($body, $ownerFile)) {
