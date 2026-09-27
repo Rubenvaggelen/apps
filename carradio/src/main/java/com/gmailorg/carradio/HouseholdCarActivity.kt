@@ -82,7 +82,7 @@ class HouseholdCarActivity : AppCompatActivity() {
             val text = TextView(this).apply {
                 this.text = item.text
                 setTextColor(ContextCompat.getColor(context, R.color.text_main))
-                textSize = 18f
+                textSize = 27.0f
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 if (item.done) {
                     paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
