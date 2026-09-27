@@ -52,8 +52,28 @@ object MainDeviceRegistry {
         return blocked
     }
 
-    fun listDevices(pin: String): List<MainRegisteredDevice> {
-        val json = request("list", JSONObject().put("pin", pin))
+    fun isOwnerEligible(): Boolean =
+        Build.MODEL.equals("SM-S931B", ignoreCase = true)
+
+    fun claimOwner(context: Context, pin: String): Boolean {
+        if (!isOwnerEligible()) return false
+        val json = request(
+            "claim_owner",
+            JSONObject()
+                .put("pin", pin)
+                .put("request_device_id", deviceId(context))
+                .put("request_model", Build.MODEL)
+        )
+        return json.optBoolean("owner", false)
+    }
+
+    fun listDevices(context: Context, pin: String): List<MainRegisteredDevice> {
+        val json = request(
+            "list",
+            JSONObject()
+                .put("pin", pin)
+                .put("request_device_id", deviceId(context))
+        )
         val array = json.optJSONArray("devices") ?: return emptyList()
         return buildList {
             for (i in 0 until array.length()) {
@@ -73,11 +93,12 @@ object MainDeviceRegistry {
         }
     }
 
-    fun setBlocked(pin: String, deviceId: String, blocked: Boolean) {
+    fun setBlocked(context: Context, pin: String, deviceId: String, blocked: Boolean) {
         request(
             "set_blocked",
             JSONObject()
                 .put("pin", pin)
+                .put("request_device_id", deviceId(context))
                 .put("device_id", deviceId)
                 .put("blocked", blocked)
         )
