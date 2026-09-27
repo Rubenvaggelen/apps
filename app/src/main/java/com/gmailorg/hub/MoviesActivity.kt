@@ -153,11 +153,7 @@ class MoviesActivity : AppCompatActivity() {
     }
 
     private fun openRemoteUsbMusic() {
-        if (RemoteUsbMusicClient.hasToken(this)) {
-            loadRemoteUsbCatalog()
-        } else {
-            showRemoteUsbPinDialog()
-        }
+        loadRemoteUsbCatalog()
     }
 
     private fun showRemoteUsbPinDialog() {
@@ -212,7 +208,21 @@ class MoviesActivity : AppCompatActivity() {
         Toast.makeText(this, "USB thuis laden…", Toast.LENGTH_SHORT).show()
         remoteMusicIo.execute {
             try {
-                val sticks = RemoteUsbMusicClient.catalog(this)
+                if (!RemoteUsbMusicClient.hasToken(this) &&
+                    !RemoteUsbMusicClient.loginForBrowsing(this)
+                ) {
+                    throw IllegalStateException("USB thuis is tijdelijk niet bereikbaar")
+                }
+
+                val sticks = try {
+                    RemoteUsbMusicClient.catalog(this)
+                } catch (_: RemoteUsbMusicClient.AuthRequired) {
+                    RemoteUsbMusicClient.clearToken(this)
+                    if (!RemoteUsbMusicClient.loginForBrowsing(this)) {
+                        throw IllegalStateException("USB thuis is tijdelijk niet bereikbaar")
+                    }
+                    RemoteUsbMusicClient.catalog(this)
+                }
                 runOnUiThread {
                     if (sticks.isEmpty()) {
                         AlertDialog.Builder(this)
@@ -225,7 +235,14 @@ class MoviesActivity : AppCompatActivity() {
                     }
                 }
             } catch (_: RemoteUsbMusicClient.AuthRequired) {
-                runOnUiThread { showRemoteUsbPinDialog() }
+                RemoteUsbMusicClient.clearToken(this)
+                runOnUiThread {
+                    Toast.makeText(
+                        this,
+                        "USB thuis kon niet opnieuw verbinden.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             } catch (e: Exception) {
                 runOnUiThread {
                     Toast.makeText(
@@ -611,7 +628,16 @@ class MoviesActivity : AppCompatActivity() {
             musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 500)
         } catch (_: RemoteUsbMusicClient.AuthRequired) {
             RemoteUsbMusicClient.clearToken(this)
-            showRemoteUsbPinDialog()
+            remoteMusicIo.execute {
+                val ok = try { RemoteUsbMusicClient.loginForBrowsing(this) } catch (_: Exception) { false }
+                runOnUiThread {
+                    if (ok) {
+                        playRemoteUsbFolder(stick, files, index, folder)
+                    } else {
+                        Toast.makeText(this, "USB thuis kon niet opnieuw verbinden.", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
         } catch (e: Exception) {
             Toast.makeText(this, e.message ?: "Afspelen mislukt", Toast.LENGTH_LONG).show()
         }
