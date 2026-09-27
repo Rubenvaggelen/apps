@@ -209,7 +209,16 @@ class SettingsActivity : AppCompatActivity() {
             unlockedSection.visibility = View.VISIBLE
             refreshParkingList()
             refreshHiddenTiles()
-            setupDeviceManagerSection()
+            if (MainDeviceRegistry.isOwnerEligible()) {
+                Thread {
+                    val owner = runCatching {
+                        MainDeviceRegistry.claimOwner(this, activeAdminPin)
+                    }.getOrDefault(false)
+                    runOnUiThread {
+                        if (owner) setupDeviceManagerSection()
+                    }
+                }.start()
+            }
         } else {
             pinErrorText.visibility = View.VISIBLE
             pinInput.text.clear()
@@ -262,7 +271,7 @@ class SettingsActivity : AppCompatActivity() {
         if (activeAdminPin.isBlank()) return
         trigger.isEnabled = false
         Thread {
-            val result = runCatching { MainDeviceRegistry.listDevices(activeAdminPin) }
+            val result = runCatching { MainDeviceRegistry.listDevices(this, activeAdminPin) }
             runOnUiThread {
                 trigger.isEnabled = true
                 result.onSuccess { showDevicesDialog(it) }
@@ -330,7 +339,7 @@ class SettingsActivity : AppCompatActivity() {
                     val newBlocked = !device.blocked
                     Thread {
                         val result = runCatching {
-                            MainDeviceRegistry.setBlocked(activeAdminPin, device.id, newBlocked)
+                            MainDeviceRegistry.setBlocked(this, activeAdminPin, device.id, newBlocked)
                         }
                         runOnUiThread {
                             result.onSuccess {
