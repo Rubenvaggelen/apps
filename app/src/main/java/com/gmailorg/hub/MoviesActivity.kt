@@ -333,7 +333,7 @@ class MoviesActivity : AppCompatActivity() {
 
         val labels = buildList {
             childFolders.forEach { add("📁 " + it.substringAfterLast('/')) }
-            directFiles.forEach { add("🎵 " + cleanUsbTrackTitle(it.name)) }
+            directFiles.forEach { add("🎵 " + cleanUsbTrackTitle(it.displayName)) }
         }
 
         if (labels.isEmpty()) {
@@ -602,7 +602,7 @@ class MoviesActivity : AppCompatActivity() {
 
     private fun cleanUsbTrackTitle(raw: String): String =
         raw
-            .replace(Regex("\\.(mp3|wma|m4a|aac|flac|ogg|wav)$", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("\\.(mp3|wma|m4a|aac|flac|ogg|oga|opus|wav|mp4)$", RegexOption.IGNORE_CASE), "")
             .replace("_", " ")
             .replace(Regex("\\s+"), " ")
             .trim()
@@ -619,7 +619,7 @@ class MoviesActivity : AppCompatActivity() {
             youtubePlaying = false
 
             val urls = ArrayList(files.map { RemoteUsbMusicClient.streamUrl(this, it) })
-            val titles = ArrayList(files.map { it.displayName })
+            val titles = ArrayList(files.map { cleanUsbTrackTitle(it.displayName) })
 
             ContextCompat.startForegroundService(
                 this,
@@ -637,7 +637,7 @@ class MoviesActivity : AppCompatActivity() {
 
             currentRemoteUsbStick = stick
             currentRemoteUsbFolder = normalizeRemoteFolder(folder)
-            musicNowPlaying.text = files[index].displayName + "  •  USB thuis"
+            musicNowPlaying.text = cleanUsbTrackTitle(files[index].displayName) + "  •  USB thuis"
             musicNowPlaying.paintFlags = musicNowPlaying.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
             musicNowPlaying.contentDescription = "Tik om de USB-map van dit nummer te openen"
             musicPlaybackState.text = "Laden…"
