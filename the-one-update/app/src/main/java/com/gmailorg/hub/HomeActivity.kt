@@ -112,8 +112,6 @@ class HomeActivity : AppCompatActivity() {
             HomeTile(id = "currency", type = TileType.CURRENCY, label = "Koers (EUR / SRD / USD)"),
             HomeTile(id = "lifestyle", type = TileType.LIFESTYLE, label = "Lifestyle"),
             HomeTile(id = "remote_pc", type = TileType.REMOTE_PC, label = "Laptop"),
-            HomeTile(id = "car", type = TileType.APP, label = "Car", packageName = "com.gmailorg.carradio"),
-            HomeTile(id = "media", type = TileType.APP, label = "Media", packageName = "com.theone.mediaplayer"),
             HomeTile(id = "whatsapp", type = TileType.APP, label = "WhatsApp", packageName = "com.whatsapp"),
             HomeTile(id = "googlehome", type = TileType.APP, label = "Google Home", packageName = "com.google.android.apps.chromecast.app")
         ).filter { tile ->
@@ -123,14 +121,7 @@ class HomeActivity : AppCompatActivity() {
             (tile.packageName == null || isPackageInstalled(tile.packageName)) &&
                 !HiddenTilesStore.isHidden(tile.id)
         }
-        val fixedFamilyPackages = setOf(
-            "com.gmailorg.carradio",
-            "com.theone.mediaplayer"
-        )
-        val userApps = ShortcutStore.getAll().filter {
-            !HiddenTilesStore.isHidden(it.id) &&
-                it.packageName !in fixedFamilyPackages
-        }
+        val userApps = ShortcutStore.getAll().filter { !HiddenTilesStore.isHidden(it.id) }
         val addButton = HomeTile(id = "add", type = TileType.ADD_BUTTON, label = "App toevoegen")
         adapter.updateTiles(fixed + userApps + addButton)
     }
