@@ -50,14 +50,14 @@ class SupremacyMixesActivity : AppCompatActivity() {
         val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         header.addView(Button(this).apply {
             text = "←"
-            textSize = 22f
+            textSize = 33.0f
             setTextColor(ContextCompat.getColor(context, R.color.text_main))
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             setOnClickListener { finish() }
         })
         header.addView(TextView(this).apply {
             text = "The One Mixes"
-            textSize = 28f
+            textSize = 42.0f
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(ContextCompat.getColor(context, R.color.amber))
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
@@ -72,7 +72,7 @@ class SupremacyMixesActivity : AppCompatActivity() {
         }
         playerTitle = TextView(this).apply {
             text = "Geen muziek actief"
-            textSize = 16f
+            textSize = 24.0f
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
             setTypeface(typeface, Typeface.BOLD)
@@ -118,7 +118,7 @@ class SupremacyMixesActivity : AppCompatActivity() {
 
         status = TextView(this).apply {
             text = "Mixen laden…"
-            textSize = 15f
+            textSize = 22.5f
             gravity = Gravity.CENTER_HORIZONTAL
             setTextColor(ContextCompat.getColor(context, R.color.text_dim))
             setPadding(0, 8.dp, 0, 10.dp)
@@ -191,7 +191,7 @@ class SupremacyMixesActivity : AppCompatActivity() {
     private fun addGenreSection(genre: String, mixes: List<Mix>) {
         val header = Button(this).apply {
             text = "▶ $genre (${mixes.size})"
-            textSize = 18f
+            textSize = 27.0f
             isAllCaps = false
             gravity = Gravity.START or Gravity.CENTER_VERTICAL
             setTextColor(ContextCompat.getColor(context, R.color.amber))
@@ -257,7 +257,7 @@ class SupremacyMixesActivity : AppCompatActivity() {
         }
         row.addView(TextView(this).apply {
             text = mix.title
-            textSize = 17f
+            textSize = 25.5f
             setTextColor(ContextCompat.getColor(context, R.color.text_main))
             maxLines = 3
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
