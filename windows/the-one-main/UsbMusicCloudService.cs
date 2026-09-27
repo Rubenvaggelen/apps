@@ -565,7 +565,7 @@ public static class UsbMusicCloudService
         {
         }
 
-        const int chunkSize = 512 * 1024;
+        const int chunkSize = 128 * 1024;
         var buffer = new byte[chunkSize];
         long offset = 0;
 
