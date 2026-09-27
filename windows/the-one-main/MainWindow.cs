@@ -24,13 +24,13 @@ public sealed class MainWindow : Window
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(35) };
 
     private readonly Brush Bg = Brush("#05070B");
-    private readonly Brush Surface = Brush("#0B1119");
-    private readonly Brush SurfaceRaised = Brush("#101925");
-    private readonly Brush Line = Brush("#17384A");
+    private readonly Brush Surface = Brush("#0B111A");
+    private readonly Brush SurfaceRaised = Brush("#111722");
+    private readonly Brush Line = Brush("#243241");
     private readonly Brush TextMain = Brush("#F3F8FC");
-    private readonly Brush TextDim = Brush("#8F9BAD");
-    private readonly Brush Amber = Brush("#2D789C");
-    private readonly Brush Gold = Brush("#D8A451");
+    private readonly Brush TextDim = Brush("#9AA6B2");
+    private readonly Brush Amber = Brush("#20B8FF");
+    private readonly Brush Gold = Brush("#20B8FF");
     private readonly Brush Sage = Brush("#39D98A");
 
     private readonly Grid _content = new();
@@ -1973,10 +1973,10 @@ public sealed class MainWindow : Window
 
         var searchButton = ActionButton("▶ YouTube", () => { }, 150);
         searchButton.Background = new LinearGradientBrush(
-            Color.FromRgb(241, 184, 93),
-            Color.FromRgb(217, 149, 56),
+            Color.FromRgb(32, 184, 255),
+            Color.FromRgb(20, 116, 171),
             90);
-        searchButton.Foreground = Brush("#201505");
+        searchButton.Foreground = Brush("#02131C");
         searchButton.BorderBrush = Gold;
 
         var spotifyButton = ActionButton("● Spotify", () => { }, 140);
@@ -2559,10 +2559,10 @@ public sealed class MainWindow : Window
         previousTrack.Click += async (_, _) => await MusicPreviousAsync();
         var toggleTrack = MusicControlButton("⏯", "Play / pauze", 56);
         toggleTrack.Background = new LinearGradientBrush(
-            Color.FromRgb(241, 184, 93),
-            Color.FromRgb(217, 149, 56),
+            Color.FromRgb(32, 184, 255),
+            Color.FromRgb(20, 116, 171),
             90);
-        toggleTrack.Foreground = Brush("#201505");
+        toggleTrack.Foreground = Brush("#02131C");
         toggleTrack.BorderBrush = Gold;
         toggleTrack.Click += async (_, _) => await MusicToggleAsync();
         var nextTrack = MusicControlButton("⏭", "Volgende");
