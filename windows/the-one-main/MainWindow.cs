@@ -567,8 +567,7 @@ public sealed class MainWindow : Window
             Text = "THE ONE  •  NU SPEELT",
             Foreground = Amber,
             FontSize = 10,
-            FontWeight = FontWeights.Bold,
-            CharacterSpacing = 90
+            FontWeight = FontWeights.Bold
         });
 
         var title = new TextBlock
