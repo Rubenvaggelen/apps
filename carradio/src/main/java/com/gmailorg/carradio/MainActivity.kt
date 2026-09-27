@@ -682,75 +682,134 @@ class MainActivity : AppCompatActivity() {
         folder: String,
         files: List<RemoteUsbMusicClient.RemoteFile>
     ) {
-        val list = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(16, 8, 16, 8)
-        }
-
-        files.forEachIndexed { index, file ->
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                setPadding(8, 8, 8, 8)
-            }
-
-            row.addView(
-                TextView(this).apply {
-                    text = cleanRemoteUsbTrackTitle(file.displayName)
-                    textSize = 16f
-                    setTextColor(android.graphics.Color.WHITE)
-                    maxLines = 2
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                    setPadding(8, 16, 14, 16)
-                    setOnClickListener { playRemoteUsbFolder(files, index) }
-                },
-                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            )
-
-            row.addView(
-                TextView(this).apply {
-                    text = "↓ Download"
-                    textSize = 13f
-                    gravity = android.view.Gravity.CENTER
-                    setTextColor(android.graphics.Color.parseColor("#D8A451"))
-                    contentDescription = "Download ${file.name}"
-                    setBackgroundResource(R.drawable.bg_gold_outline)
-                    setPadding(14, 12, 14, 12)
-                    setOnClickListener { requestRemoteUsbDownload(file) }
-                },
-                LinearLayout.LayoutParams(118.dp, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    marginStart = 12.dp
-                    marginEnd = 18.dp
+        if (files.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setTitle(folder)
+                .setMessage("In deze map zijn nog geen afspeelbare nummers gecachet.")
+                .setNegativeButton("Terug") { _, _ ->
+                    val parent = folder
+                        .takeUnless { it == "Hoofdmap" }
+                        ?.substringBeforeLast('/', "")
+                        .orEmpty()
+                    showRemoteFolderLevel(stick, parent)
                 }
-            )
-
-            row.addView(
-                TextView(this).apply {
-                    text = "▶"
-                    textSize = 19f
-                    gravity = android.view.Gravity.CENTER
-                    setTextColor(android.graphics.Color.WHITE)
-                    contentDescription = "Speel ${file.name} af"
-                    setBackgroundResource(R.drawable.bg_outline)
-                    setPadding(18, 12, 18, 12)
-                    setOnClickListener { playRemoteUsbFolder(files, index) }
-                },
-                LinearLayout.LayoutParams(72.dp, LinearLayout.LayoutParams.WRAP_CONTENT)
-            )
-
-            list.addView(row)
+                .show()
+            return
         }
 
-        val scroll = android.widget.ScrollView(this).apply {
-            isFillViewport = true
-            addView(list)
+        val listView = android.widget.ListView(this)
+        listView.divider =
+            ContextCompat.getDrawable(this, R.color.line)
+        listView.dividerHeight = 1
+
+        listView.adapter = object : android.widget.BaseAdapter() {
+            override fun getCount(): Int = files.size
+            override fun getItem(position: Int): Any = files[position]
+            override fun getItemId(position: Int): Long = position.toLong()
+
+            override fun getView(
+                position: Int,
+                convertView: View?,
+                parent: android.view.ViewGroup?
+            ): View {
+                val file = files[position]
+
+                val row = LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(12.dp, 10.dp, 12.dp, 10.dp)
+                    layoutParams = android.widget.AbsListView.LayoutParams(
+                        android.widget.AbsListView.LayoutParams.MATCH_PARENT,
+                        android.widget.AbsListView.LayoutParams.WRAP_CONTENT
+                    )
+                }
+
+                row.addView(
+                    TextView(this@MainActivity).apply {
+                        text = cleanRemoteUsbTrackTitle(file.displayName)
+                        textSize = 16f
+                        setTextColor(android.graphics.Color.WHITE)
+                        maxLines = 2
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                        setPadding(8, 14, 14, 14)
+                        setOnClickListener {
+                            playRemoteUsbFolder(files, position)
+                        }
+                    },
+                    LinearLayout.LayoutParams(
+                        0,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        1f
+                    )
+                )
+
+                row.addView(
+                    TextView(this@MainActivity).apply {
+                        text = "↓"
+                        textSize = 20f
+                        gravity = Gravity.CENTER
+                        setTextColor(
+                            android.graphics.Color.parseColor("#D8A451")
+                        )
+                        contentDescription = "Download ${file.name}"
+                        setBackgroundResource(R.drawable.bg_gold_outline)
+                        setPadding(16, 12, 16, 12)
+                        setOnClickListener {
+                            requestRemoteUsbDownload(file)
+                        }
+                    },
+                    LinearLayout.LayoutParams(
+                        58.dp,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        marginStart = 10.dp
+                        marginEnd = 12.dp
+                    }
+                )
+
+                row.addView(
+                    TextView(this@MainActivity).apply {
+                        text = "▶"
+                        textSize = 19f
+                        gravity = Gravity.CENTER
+                        setTextColor(android.graphics.Color.WHITE)
+                        contentDescription = "Speel ${file.name} af"
+                        setBackgroundResource(R.drawable.bg_outline)
+                        setPadding(16, 12, 16, 12)
+                        setOnClickListener {
+                            playRemoteUsbFolder(files, position)
+                        }
+                    },
+                    LinearLayout.LayoutParams(
+                        62.dp,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                )
+
+                return row
+            }
         }
 
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle(folder)
-            .setView(scroll)
-            .setNegativeButton("Terug") { _, _ -> showRemoteFolderDialog(stick) }
-            .show()
+            .setView(listView)
+            .setNegativeButton("Terug") { _, _ ->
+                val parent = folder
+                    .takeUnless { it == "Hoofdmap" }
+                    ?.substringBeforeLast('/', "")
+                    .orEmpty()
+                showRemoteFolderLevel(stick, parent)
+            }
+            .create()
+
+        dialog.setOnShowListener {
+            listView.layoutParams = listView.layoutParams?.apply {
+                height = (420.dp).coerceAtMost(
+                    resources.displayMetrics.heightPixels - 160.dp
+                )
+            }
+        }
+        dialog.show()
     }
 
     private fun requestRemoteUsbDownload(file: RemoteUsbMusicClient.RemoteFile) {
