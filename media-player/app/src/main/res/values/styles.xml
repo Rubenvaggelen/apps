@@ -2,9 +2,9 @@
     <style name="Theme.TheOneMediaPlayer" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:statusBarColor">#05070B</item>
-        <item name="android:navigationBarColor">#05070B</item>
-        <item name="android:windowBackground">#05070B</item>
-        <item name="android:colorAccent">#20B8FF</item>
+        <item name="android:statusBarColor">#070A0F</item>
+        <item name="android:navigationBarColor">#070A0F</item>
+        <item name="android:windowBackground">#070A0F</item>
+        <item name="android:colorAccent">@color/the_one_gold</item>
     </style>
 </resources>
