@@ -120,9 +120,11 @@ if ($action === 'heartbeat') {
         'last_seen' => time()
     ];
     devices_save($devicesFile, $state);
+    $ownerId = devices_owner_id($ownerFile);
     respond_devices(200, [
         'ok' => true,
-        'blocked' => (bool)$state['devices'][$deviceId]['blocked']
+        'blocked' => (bool)$state['devices'][$deviceId]['blocked'],
+        'owner' => $ownerId !== '' && hash_equals($ownerId, $deviceId)
     ]);
 }
 
