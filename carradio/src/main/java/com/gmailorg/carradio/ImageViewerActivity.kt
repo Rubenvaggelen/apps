@@ -46,7 +46,7 @@ class ImageViewerActivity : AppCompatActivity() {
 
         val back = Button(this).apply {
             text = "← Terug"
-            textSize = 16f
+            textSize = 24.0f
             setOnClickListener { finish() }
         }
         root.addView(
@@ -60,7 +60,7 @@ class ImageViewerActivity : AppCompatActivity() {
         val titleText = TextView(this).apply {
             text = intent.getStringExtra(EXTRA_TITLE).orEmpty()
             setTextColor(Color.WHITE)
-            textSize = 18f
+            textSize = 27.0f
             gravity = Gravity.CENTER
         }
         root.addView(
