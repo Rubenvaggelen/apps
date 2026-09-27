@@ -129,7 +129,7 @@ public static class UsbMusicCloudService
             Log($"Verwijderbare USB-drives gevonden: {drives.Count}.");
 
             // Meld altijd welke sticks fysiek aanwezig zijn. Ook een lege lijst
-            // is belangrijk: daarmee verdwijnen losgekoppelde sticks uit USB thuis.
+            // is belangrijk: daarmee verdwijnen losgekoppelde sticks uit Shared Media.
             await ReportPresenceAsync(drives, cancellationToken);
 
             if (drives.Count == 0) return 0;
