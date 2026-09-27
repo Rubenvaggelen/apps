@@ -2057,6 +2057,51 @@ public sealed class MainWindow : Window
         List<CloudUsbMusicFile>? currentUsbFiles = null;
         var currentUsbFolder = "";
 
+        CloudUsbMusicStick? playingUsbStick = null;
+        List<CloudUsbMusicFile>? playingUsbFolderFiles = null;
+        var playingUsbStartIndex = -1;
+        var playingUsbRelativeIndex = 0;
+        var sharedMediaTrackVisuals =
+            new List<(CloudUsbMusicFile File, TextBlock Title, DockPanel Row)>();
+
+        static bool SameSharedMediaFile(
+            CloudUsbMusicFile left,
+            CloudUsbMusicFile right) =>
+            string.Equals(left.DeviceId, right.DeviceId, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(left.StickId, right.StickId, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(left.Path, right.Path, StringComparison.OrdinalIgnoreCase);
+
+        CloudUsbMusicFile? CurrentSharedMediaFile()
+        {
+            if (playingUsbFolderFiles == null || playingUsbStartIndex < 0)
+                return null;
+
+            var absoluteIndex =
+                playingUsbStartIndex + Math.Max(0, playingUsbRelativeIndex);
+            return absoluteIndex >= 0 && absoluteIndex < playingUsbFolderFiles.Count
+                ? playingUsbFolderFiles[absoluteIndex]
+                : null;
+        }
+
+        void RefreshSharedMediaTrackHighlights()
+        {
+            var active = CurrentSharedMediaFile();
+
+            foreach (var visual in sharedMediaTrackVisuals)
+            {
+                var isCurrent =
+                    active != null && SameSharedMediaFile(active, visual.File);
+
+                visual.Title.Text =
+                    (isCurrent ? "▶ NU • " : "") + visual.File.DisplayName;
+                visual.Title.Foreground = isCurrent ? Gold : TextMain;
+                visual.Title.FontWeight =
+                    isCurrent ? FontWeights.Bold : FontWeights.Normal;
+                visual.Row.Background =
+                    isCurrent ? Brush("#123247") : Brushes.Transparent;
+            }
+        }
+
         static string NormalizeUsbFolder(string? value) =>
             (value ?? "").Replace('\\', '/').Trim('/');
 
@@ -2072,9 +2117,14 @@ public sealed class MainWindow : Window
             currentUsbStick = null;
             currentUsbFiles = null;
             currentUsbFolder = "";
+            playingUsbStick = null;
+            playingUsbFolderFiles = null;
+            playingUsbStartIndex = -1;
+            playingUsbRelativeIndex = 0;
             nowPlaying.Cursor = Cursors.Arrow;
             nowPlaying.ToolTip = null;
             nowPlaying.TextDecorations = null;
+            RefreshSharedMediaTrackHighlights();
         }
 
         void SetUsbFolderJump(
@@ -2089,6 +2139,49 @@ public sealed class MainWindow : Window
             nowPlaying.ToolTip = "Klik om direct naar deze USB-map te gaan";
             nowPlaying.TextDecorations = TextDecorations.Underline;
         }
+
+        var sharedMediaHighlightBusy = false;
+        var sharedMediaHighlightTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(650)
+        };
+        sharedMediaHighlightTimer.Tick += async (_, _) =>
+        {
+            if (sharedMediaHighlightBusy ||
+                playingUsbFolderFiles == null ||
+                playingUsbStick == null)
+                return;
+
+            sharedMediaHighlightBusy = true;
+            try
+            {
+                var relativeIndex =
+                    await YouTubeMusicService.GetAudioQueueIndexAsync(web);
+                if (relativeIndex < 0) return;
+
+                playingUsbRelativeIndex = relativeIndex;
+                var active = CurrentSharedMediaFile();
+                if (active != null)
+                {
+                    _musicNowPlayingTitle =
+                        $"{active.DisplayName}  •  {playingUsbStick.DeviceName} / {playingUsbStick.StickName}";
+                    nowPlaying.Text = _musicNowPlayingTitle;
+                    if (_musicHomeNowPlaying != null)
+                        _musicHomeNowPlaying.Text = _musicNowPlayingTitle;
+                }
+
+                RefreshSharedMediaTrackHighlights();
+            }
+            catch
+            {
+                // Alleen de visuele markering bijwerken; audio mag nooit worden onderbroken.
+            }
+            finally
+            {
+                sharedMediaHighlightBusy = false;
+            }
+        };
+        sharedMediaHighlightTimer.Start();
 
         async Task PlayUsbFromFolderAsync(
             CloudUsbMusicStick stick,
@@ -2131,6 +2224,13 @@ public sealed class MainWindow : Window
                     queue.Add(await UsbMusicCloudService.BuildStreamUrlAsync(queued));
 
                 await YouTubeMusicService.PlayAudioQueueAsync(web, queue);
+
+                playingUsbStick = stick;
+                playingUsbFolderFiles = folderFiles;
+                playingUsbStartIndex = index;
+                playingUsbRelativeIndex = 0;
+                RefreshSharedMediaTrackHighlights();
+
                 status.Text = "Speelt af via The One Player";
                 status.Foreground = Sage;
             }
@@ -2237,6 +2337,7 @@ public sealed class MainWindow : Window
             folder = NormalizeUsbFolder(folder);
             currentUsbFolder = folder;
             results.Children.Clear();
+            sharedMediaTrackVisuals.Clear();
 
             var nav = new DockPanel
             {
@@ -2340,7 +2441,7 @@ public sealed class MainWindow : Window
                 download.Click += async (_, _) =>
                     await DownloadUsbFileAsync(file, download);
 
-                row.Children.Add(new TextBlock
+                var trackTitle = new TextBlock
                 {
                     Text = file.DisplayName,
                     Foreground = TextMain,
@@ -2348,7 +2449,9 @@ public sealed class MainWindow : Window
                     TextWrapping = TextWrapping.Wrap,
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = new Thickness(0, 0, 12, 0)
-                });
+                };
+                row.Children.Add(trackTitle);
+                sharedMediaTrackVisuals.Add((file, trackTitle, row));
 
                 play.Click += async (_, _) =>
                     await PlayUsbFromFolderAsync(
@@ -2362,6 +2465,7 @@ public sealed class MainWindow : Window
                 results.Children.Add(row);
             }
 
+            RefreshSharedMediaTrackHighlights();
             resultsScroll.ScrollToTop();
         }
 
