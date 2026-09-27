@@ -185,6 +185,27 @@ object MainDeviceRegistry {
         }
     }
 
+    fun windowsConnectionStatus(context: Context): List<WindowsConnectionDevice> {
+        val json = request(
+            "connection_status",
+            JSONObject().put("request_device_id", deviceId(context))
+        )
+        val array = json.optJSONArray("devices") ?: return emptyList()
+        return buildList {
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i) ?: continue
+                add(
+                    WindowsConnectionDevice(
+                        id = item.optString("device_id", ""),
+                        name = item.optString("name", "Windows apparaat"),
+                        online = item.optBoolean("online", false),
+                        lastSeen = item.optLong("last_seen", 0L)
+                    )
+                )
+            }
+        }
+    }
+
     fun setBlocked(context: Context, pin: String, targetDeviceId: String, blocked: Boolean) {
         request(
             "set_blocked",
