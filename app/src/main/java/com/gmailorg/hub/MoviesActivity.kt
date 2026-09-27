@@ -444,15 +444,32 @@ class MoviesActivity : AppCompatActivity() {
 
     private fun showRemoteStickDialog(sticks: List<RemoteUsbMusicClient.RemoteStick>) {
         val labels = sticks.map {
-            val count = it.files.size
-            it.deviceName + " • " + it.stickName +
-                " • " + count + " nummer" + if (count == 1) "" else "s"
+            val cached = it.files.size
+            val total = it.totalFiles
+            val status = if (cached >= total && total > 0) {
+                "$cached nummer" + if (cached == 1) "" else "s"
+            } else {
+                "$cached van $total beschikbaar"
+            }
+            it.deviceName + " • " + it.stickName + " • " + status
         }.toTypedArray()
 
         val dialog = AlertDialog.Builder(this)
             .setTitle("Shared Media")
             .setItems(labels) { _, which ->
-                showRemoteFolderDialog(sticks[which])
+                val stick = sticks[which]
+                if (stick.files.isEmpty()) {
+                    AlertDialog.Builder(this)
+                        .setTitle(stick.deviceName + " • " + stick.stickName)
+                        .setMessage(
+                            "Deze bron wordt nog gesynchroniseerd. " +
+                                "Er zijn nog geen nummers klaar om af te spelen."
+                        )
+                        .setPositiveButton("OK", null)
+                        .show()
+                } else {
+                    showRemoteFolderDialog(stick)
+                }
             }
             .setPositiveButton("Vernieuwen", null)
             .setNegativeButton("Sluiten", null)
@@ -905,10 +922,12 @@ class MoviesActivity : AppCompatActivity() {
             musicNowPlaying.paintFlags = musicNowPlaying.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
             musicNowPlaying.contentDescription = "Tik om de USB-map van dit nummer te openen"
             musicPlaybackState.text = "Laden…"
-            refreshCompactPlayer()
-            musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 100)
-            musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 300)
-            musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 700)
+            // Niet meteen refreshen: de foreground service moet eerst ACTION_PLAY
+            // verwerken. Anders wordt de net gekozen titel teruggezet naar
+            // "Geen muziek actief".
+            musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 250)
+            musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 600)
+            musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 1200)
         } catch (_: RemoteUsbMusicClient.AuthRequired) {
             RemoteUsbMusicClient.clearToken(this)
             remoteMusicIo.execute {
