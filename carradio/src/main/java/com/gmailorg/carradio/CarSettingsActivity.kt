@@ -46,6 +46,10 @@ class CarSettingsActivity : AppCompatActivity() {
         findViewById<Button>(R.id.tilesButton).setOnClickListener {
             startActivity(Intent(this, CarTileManagerActivity::class.java))
         }
+        findViewById<Button>(R.id.checkUpdatesButton).setOnClickListener {
+            Toast.makeText(this, "Zoeken naar nieuwe updates…", Toast.LENGTH_SHORT).show()
+            UpdateChecker.checkForUpdate(this, manual = true)
+        }
         findViewById<Button>(R.id.diagnosticsButton).setOnClickListener {
             BluetoothListenerService.forcePing()
             diagnostics.text = BluetoothListenerService.diagnostics()
