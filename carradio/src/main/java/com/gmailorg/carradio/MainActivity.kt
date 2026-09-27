@@ -453,15 +453,32 @@ class MainActivity : AppCompatActivity() {
     private fun showMusicChooser() {
         AlertDialog.Builder(this)
             .setTitle("Muziek")
-            .setItems(arrayOf("📻 Radio", "🔌 USB", "🎧 The One Mixes", "☁ Shared Media")) { _, which ->
+            .setItems(arrayOf("📻 Radio", "🗂 Shared Media", "🎧 The One Mixes")) { _, which ->
                 when (which) {
                     0 -> openCarRadio()
-                    1 -> startActivity(Intent(this, UsbMusicActivity::class.java))
+                    1 -> showSharedMediaChooser()
                     2 -> startActivity(Intent(this, SupremacyMixesActivity::class.java))
-                    3 -> openRemoteUsbMusic()
                 }
             }
             .setNegativeButton("Annuleren", null)
+            .show()
+    }
+
+    private fun showSharedMediaChooser() {
+        AlertDialog.Builder(this)
+            .setTitle("Shared Media")
+            .setItems(
+                arrayOf(
+                    "USB / SD op deze Car",
+                    "The One Family bibliotheek"
+                )
+            ) { _, which ->
+                when (which) {
+                    0 -> startActivity(Intent(this, UsbMusicActivity::class.java))
+                    1 -> openRemoteUsbMusic()
+                }
+            }
+            .setNegativeButton("Terug", null)
             .show()
     }
 
