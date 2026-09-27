@@ -214,11 +214,12 @@ class MoviesActivity : AppCompatActivity() {
             MainDeviceRegistry.ACCESS_SHARED,
             "Shared Media"
         ) {
-            openCurrentSharedMediaFolderAfterAccess(activeTitle, activeIndex)
+            openCurrentSharedMediaFolderAfterAccess(source, activeTitle, activeIndex)
         }
     }
 
     private fun openCurrentSharedMediaFolderAfterAccess(
+        source: String,
         activeTitle: String,
         activeIndex: Int
     ) {
