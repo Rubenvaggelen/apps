@@ -310,12 +310,15 @@ class MainActivity : AppCompatActivity() {
     private fun configureCarAudioPlayer() {
         carAudioPrevious.setOnClickListener {
             UsbPlaybackService.previous(this)
+            refreshCarAudioPlayer()
         }
         carAudioPlayPause.setOnClickListener {
             UsbPlaybackService.toggle(this)
+            refreshCarAudioPlayer()
         }
         carAudioNext.setOnClickListener {
             UsbPlaybackService.next(this)
+            refreshCarAudioPlayer()
         }
         carAudioStop.setOnClickListener {
             UsbPlaybackService.stop(this)
