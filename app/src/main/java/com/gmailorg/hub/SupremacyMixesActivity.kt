@@ -291,7 +291,12 @@ class SupremacyMixesActivity : AppCompatActivity() {
         val add = !favoriteMixUrls.contains(mix.url)
         button.isEnabled = false
         io.execute {
-            val ok = try {
+            val allowed = try {
+                MainDeviceRegistry.refreshMusicRights(this)
+            } catch (_: Exception) {
+                false
+            }
+            val ok = if (allowed) try {
                 if (!RemoteUsbMusicClient.hasToken(this) &&
                     !RemoteUsbMusicClient.loginForBrowsing(this)
                 ) {
@@ -301,10 +306,16 @@ class SupremacyMixesActivity : AppCompatActivity() {
                 true
             } catch (_: Exception) {
                 false
-            }
+            } else false
             runOnUiThread {
                 button.isEnabled = true
-                if (ok) {
+                if (!allowed) {
+                    Toast.makeText(
+                        this,
+                        "Alleen The One of iemand met muziekrechten mag Favorites wijzigen.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } else if (ok) {
                     if (add) favoriteMixUrls += mix.url else favoriteMixUrls -= mix.url
                     button.text = if (add) "★" else "☆"
                     Toast.makeText(
@@ -320,6 +331,27 @@ class SupremacyMixesActivity : AppCompatActivity() {
     }
 
     private fun requestMixDownload(mix: Mix) {
+        io.execute {
+            val allowed = try {
+                MainDeviceRegistry.refreshMusicRights(this)
+            } catch (_: Exception) {
+                false
+            }
+            runOnUiThread {
+                if (!allowed) {
+                    Toast.makeText(
+                        this,
+                        "Alleen The One of iemand met muziekrechten mag downloaden.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@runOnUiThread
+                }
+                showMixDownloadPin(mix)
+            }
+        }
+    }
+
+    private fun showMixDownloadPin(mix: Mix) {
         val input = EditText(this).apply {
             hint = "Pincode"
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
