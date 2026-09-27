@@ -10,14 +10,14 @@
         android:layout_height="wrap_content"
         android:text="The One Car • Instellingen"
         android:textColor="@color/amber"
-        android:textSize="25sp"
+        android:textSize="37.5sp"
         android:textStyle="bold" />
     <TextView
         android:id="@+id/settingsStatus"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textColor="@color/text_dim"
-        android:textSize="15sp"
+        android:textSize="22.5sp"
         android:paddingVertical="10dp" />
     <Button
         android:id="@+id/choosePhoneButton"
@@ -59,6 +59,6 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textColor="@color/text_main"
-        android:textSize="14sp"
+        android:textSize="21sp"
         android:paddingTop="14dp" />
 </LinearLayout>
