@@ -7,6 +7,7 @@ on:
       - 'the-one-remote-server/index.php'
       - 'the-one-remote-server/music.php'
       - 'the-one-remote-server/devices.php'
+      - 'the-one-remote-server/RESET_SHARED_MEDIA_ONCE'
       - '.github/workflows/deploy-the-one-remote-server.yml'
   workflow_dispatch: {}
 
