@@ -201,6 +201,10 @@ public static class UsbMusicCloudService
         {
             var stick = element.Deserialize<CloudUsbMusicStick>();
             if (stick == null) continue;
+            stick.Files = stick.Files
+                .Where(file => !IsMacMetadataPath(file.Path, file.Name))
+                .ToList();
+
             foreach (var file in stick.Files)
             {
                 file.DeviceId = stick.DeviceId;
@@ -552,6 +556,9 @@ public static class UsbMusicCloudService
 
         foreach (var path in paths)
         {
+            if (IsMacMetadataPath(path, System.IO.Path.GetFileName(path)))
+                continue;
+
             if (!AudioExtensions.Contains(System.IO.Path.GetExtension(path)))
                 continue;
 
@@ -561,6 +568,25 @@ public static class UsbMusicCloudService
 
             yield return info;
         }
+    }
+
+    private static bool IsMacMetadataPath(string path, string? name = null)
+    {
+        var clean = (path ?? "").Replace('\\', '/');
+        var fileName = string.IsNullOrWhiteSpace(name)
+            ? System.IO.Path.GetFileName(clean)
+            : name.Trim();
+
+        if (fileName.StartsWith("._", StringComparison.Ordinal))
+            return true;
+        if (fileName.Equals(".DS_Store", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return clean.Split('/', StringSplitOptions.RemoveEmptyEntries).Any(segment =>
+            segment.Equals("__MACOSX", StringComparison.OrdinalIgnoreCase) ||
+            segment.Equals(".Spotlight-V100", StringComparison.OrdinalIgnoreCase) ||
+            segment.Equals(".Trashes", StringComparison.OrdinalIgnoreCase) ||
+            segment.Equals(".fseventsd", StringComparison.OrdinalIgnoreCase));
     }
 
     private static string BuildDriveSignature()
