@@ -569,15 +569,15 @@ public static class UsbMusicCloudService
             return failed;
         }
 
-        var failedAt16 = await UploadBatchAsync(uploadJobs, 4);
+        var failedAt16 = await UploadBatchAsync(uploadJobs, 16);
         if (failedAt16.Count > 0)
         {
-            Log($"{deviceName} / {stickName}: {failedAt16.Count} upload(s) mislukt op 4 parallel; automatisch terug naar 2.");
-            var failedAt12 = await UploadBatchAsync(failedAt16, 2);
+            Log($"{deviceName} / {stickName}: {failedAt16.Count} upload(s) mislukt op 16 parallel; automatisch terug naar 12.");
+            var failedAt12 = await UploadBatchAsync(failedAt16, 12);
 
             if (failedAt12.Count > 0)
                 throw new HttpRequestException(
-                    $"{failedAt12.Count} USB-upload(s) mislukten ook na terugval naar 2; volgende sync probeert opnieuw.");
+                    $"{failedAt12.Count} USB-upload(s) mislukten ook na terugval naar 12; volgende sync probeert opnieuw.");
         }
 
         await SendManifestAsync(
