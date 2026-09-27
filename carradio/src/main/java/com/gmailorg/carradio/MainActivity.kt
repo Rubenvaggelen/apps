@@ -1046,7 +1046,19 @@ class MainActivity : AppCompatActivity() {
     }
     private fun cancelStartupGuard() { try { startService(Intent(this, BluetoothListenerService::class.java).apply { action = BluetoothListenerService.ACTION_CANCEL_STARTUP }) } catch (_: Exception) {} }
     override fun onUserInteraction() { super.onUserInteraction(); cancelStartupGuard() }
-    override fun onResume() { super.onResume(); statusText.text = MessageBus.currentStatus(); buildTiles() }
+    override fun onResume() {
+        super.onResume()
+        statusText.text = MessageBus.currentStatus()
+        buildTiles()
+        handler.removeCallbacks(carAudioRefresh)
+        carAudioRefresh.run()
+    }
+
+    override fun onPause() {
+        handler.removeCallbacks(carAudioRefresh)
+        super.onPause()
+    }
+
     override fun onDestroy() {
         remoteMusicIo.shutdownNow()
         MessageBus.removeStatusListener(statusListener)
