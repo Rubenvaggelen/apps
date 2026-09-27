@@ -57,6 +57,44 @@
             android:paddingBottom="12dp" />
 
         <LinearLayout
+            android:id="@+id/carVolumeRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="8dp"
+            android:background="@drawable/bg_player_panel">
+
+            <TextView
+                android:id="@+id/carVolumeDown"
+                android:layout_width="54dp"
+                android:layout_height="46dp"
+                android:gravity="center"
+                android:text="−"
+                android:textColor="@color/text_main"
+                android:textSize="30sp"
+                android:background="@drawable/bg_outline" />
+
+            <SeekBar
+                android:id="@+id/carVolumeSeek"
+                android:layout_width="0dp"
+                android:layout_height="46dp"
+                android:layout_weight="1"
+                android:layout_marginHorizontal="10dp" />
+
+            <TextView
+                android:id="@+id/carVolumeUp"
+                android:layout_width="54dp"
+                android:layout_height="46dp"
+                android:gravity="center"
+                android:text="+"
+                android:textColor="@color/text_main"
+                android:textSize="30sp"
+                android:background="@drawable/bg_outline" />
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/carAudioPlayer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
