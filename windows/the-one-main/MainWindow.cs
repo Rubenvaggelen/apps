@@ -1941,7 +1941,7 @@ public sealed class MainWindow : Window
         });
         header.Children.Add(new TextBlock
         {
-            Text = "YouTube, Spotify, Supremacy en USB thuis in één muziekspeler.",
+            Text = "YouTube, Spotify, The One Mixes en USB thuis in één muziekspeler.",
             Foreground = TextDim,
             FontSize = 13,
             Margin = new Thickness(0, 4, 0, 0)
@@ -1963,7 +1963,7 @@ public sealed class MainWindow : Window
         spotifyButton.Foreground = Brushes.White;
         spotifyButton.BorderBrush = Brush("#1ED760");
 
-        var supremacyButton = ActionButton("♫ SUPREMACY", () => { }, 150);
+        var supremacyButton = ActionButton("♫ THE ONE MIXES", () => { }, 150);
         supremacyButton.Foreground = Gold;
         var usbHomeButton = ActionButton("USB THUIS", () => { }, 140);
         usbHomeButton.Foreground = Gold;
@@ -2563,7 +2563,7 @@ public sealed class MainWindow : Window
         {
             supremacyButton.IsEnabled = false;
             results.Children.Clear();
-            status.Text = "Supremacy mixen laden…";
+            status.Text = "The One Mixes laden…";
             status.Foreground = TextDim;
 
             try
@@ -2573,12 +2573,12 @@ public sealed class MainWindow : Window
 
                 if (mixes.Count == 0)
                 {
-                    status.Text = "Geen Supremacy mixen gevonden.";
+                    status.Text = "Geen The One Mixes gevonden.";
                     status.Foreground = Amber;
                     return;
                 }
 
-                status.Text = $"{mixes.Count} Supremacy mixen geladen";
+                status.Text = $"{mixes.Count} The One Mixes geladen";
                 status.Foreground = Sage;
 
                 foreach (var group in mixes
@@ -2638,7 +2638,7 @@ public sealed class MainWindow : Window
                                 NativeUsbAudioPlayer.Stop();
                                 _nativeUsbMusicActive = false;
                                 ClearUsbFolderJump();
-                                _musicNowPlayingTitle = $"{mix.Title}  •  Supremacy mixen";
+                                _musicNowPlayingTitle = $"{mix.Title}  •  The One Mixes";
                                 _musicSessionActive = true;
                                 nowPlaying.Text = _musicNowPlayingTitle;
                                 if (_musicHomeNowPlaying != null)
@@ -2663,7 +2663,7 @@ public sealed class MainWindow : Window
             }
             catch (Exception ex)
             {
-                status.Text = "Supremacy laden mislukt: " + ex.Message;
+                status.Text = "The One Mixes laden mislukt: " + ex.Message;
                 status.Foreground = Amber;
             }
             finally
