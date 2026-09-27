@@ -203,7 +203,7 @@ class ChatActivity : AppCompatActivity() {
                     else -> msg.text
                 }
                 setTextColor(ContextCompat.getColor(context, R.color.text_main))
-                textSize = 17f
+                textSize = 25.5f
                 setBackgroundResource(if (msg.mine) R.drawable.bg_chat_out else R.drawable.bg_chat_in)
                 maxWidth = (resources.displayMetrics.widthPixels * 0.72).toInt()
 
@@ -242,7 +242,7 @@ class ChatActivity : AppCompatActivity() {
             val time = TextView(this).apply {
                 text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(msg.time))
                 setTextColor(ContextCompat.getColor(context, R.color.text_dim))
-                textSize = 11f
+                textSize = 16.5f
                 gravity = if (msg.mine) Gravity.END else Gravity.START
             }
             wrapper.addView(bubble)
