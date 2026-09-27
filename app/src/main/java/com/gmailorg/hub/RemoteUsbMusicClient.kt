@@ -260,6 +260,26 @@ object RemoteUsbMusicClient {
             .put("favorite", favorite)
     )
 
+    fun setFavoriteItem(
+        context: Context,
+        item: FavoriteItem,
+        favorite: Boolean
+    ): Boolean {
+        val body = JSONObject()
+            .put("kind", item.kind)
+            .put("title", item.title)
+            .put("source_label", item.sourceLabel)
+            .put("favorite", favorite)
+        if (item.kind.equals("usb", ignoreCase = true)) {
+            body.put("device_id", item.deviceId)
+                .put("stick_id", item.stickId)
+                .put("path", item.path)
+        } else {
+            body.put("url", item.url)
+        }
+        return setFavorite(context, body)
+    }
+
     private fun setFavorite(context: Context, body: JSONObject): Boolean {
         val token = token(context)
         body.put("request_device_id", MainDeviceRegistry.deviceId(context))
