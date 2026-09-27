@@ -267,7 +267,6 @@ class UsbPlaybackService : Service() {
         if (queue.isEmpty()) return
 
         val newIndex = requestedIndex.coerceIn(0, queue.lastIndex)
-        val item = queue[newIndex]
         index = newIndex
         preparing = true
         requestedStartPositionMs = startPositionMs.coerceAtLeast(0)
@@ -278,8 +277,8 @@ class UsbPlaybackService : Service() {
 
         lastState = PlaybackState(
             hasTrack = true,
-            title = item.title,
-            uri = item.uri,
+            title = queue[index].title,
+            uri = queue[index].uri,
             positionMs = requestedStartPositionMs,
             isPlaying = false,
             isPreparing = true
@@ -300,12 +299,25 @@ class UsbPlaybackService : Service() {
                 .build(),
             true
         )
-        exo.setMediaItem(MediaItem.fromUri(item.uri))
-        if (requestedStartPositionMs > 0) {
-            exo.seekTo(requestedStartPositionMs.toLong())
-        }
+
+        // Eén vaste ExoPlayer-queue: volgende nummers worden vooraf voorbereid
+        // zodat er geen harde stop meer zit tussen twee tracks.
+        exo.setMediaItems(queue.map { MediaItem.fromUri(it.uri) })
+        exo.seekTo(index, requestedStartPositionMs.toLong())
         exo.playWhenReady = autoStart
+
         exo.addListener(object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                if (player !== exo) return
+                index = exo.currentMediaItemIndex.coerceIn(0, queue.lastIndex)
+                requestedStartPositionMs = 0
+                preparing = false
+                restoring = false
+                updateStateCache()
+                persistSession()
+                updateNotification()
+            }
+
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (player !== exo) return
 
@@ -321,7 +333,9 @@ class UsbPlaybackService : Service() {
 
                     Player.STATE_ENDED -> {
                         preparing = false
-                        playRelative(+1)
+                        updateStateCache()
+                        persistSession()
+                        updateNotification()
                     }
                 }
             }
@@ -408,10 +422,25 @@ class UsbPlaybackService : Service() {
     }
 
     private fun playRelative(delta: Int) {
-        if (queue.isEmpty()) return
-        val base = if (index in queue.indices) index else 0
-        val next = (base + delta + queue.size) % queue.size
-        playIndex(next, 0, true, false)
+        val exo = player
+        if (exo == null) {
+            if (queue.isNotEmpty()) playIndex((if (index in queue.indices) index else 0), 0, true, false)
+            return
+        }
+
+        if (delta > 0) {
+            if (exo.hasNextMediaItem()) exo.seekToNextMediaItem()
+            else exo.seekTo(0, 0L)
+        } else {
+            if (exo.currentPosition > 3000L) {
+                exo.seekTo(0L)
+            } else if (exo.hasPreviousMediaItem()) {
+                exo.seekToPreviousMediaItem()
+            } else {
+                exo.seekTo(0, 0L)
+            }
+        }
+        exo.play()
     }
 
     private fun seekInternal(positionMs: Int) {
