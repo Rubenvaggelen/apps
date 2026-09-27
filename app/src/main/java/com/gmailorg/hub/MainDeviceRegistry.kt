@@ -93,13 +93,13 @@ object MainDeviceRegistry {
         }
     }
 
-    fun setBlocked(context: Context, pin: String, deviceId: String, blocked: Boolean) {
+    fun setBlocked(context: Context, pin: String, targetDeviceId: String, blocked: Boolean) {
         request(
             "set_blocked",
             JSONObject()
                 .put("pin", pin)
                 .put("request_device_id", deviceId(context))
-                .put("device_id", deviceId)
+                .put("device_id", targetDeviceId)
                 .put("blocked", blocked)
         )
     }
