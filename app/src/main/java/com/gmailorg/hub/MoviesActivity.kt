@@ -129,8 +129,9 @@ class MoviesActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        SupremacyPlaybackService.resumeLastSessionIfNeeded(this)
         musicNowPlaying.removeCallbacks(compactPlayerRefresh)
-        compactPlayerRefresh.run()
+        musicNowPlaying.postDelayed(compactPlayerRefresh, 250)
     }
 
     override fun onPause() {
