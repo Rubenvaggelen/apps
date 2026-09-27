@@ -89,6 +89,16 @@ class SupremacyMixesActivity : AppCompatActivity() {
         loadMixes()
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        focusTitle = intent.getStringExtra("focus_title").orEmpty().trim()
+        list.removeAllViews()
+        progress.visibility = View.VISIBLE
+        status.text = "Mixen laden…"
+        loadMixes()
+    }
+
     private fun loadMixes() {
         io.execute {
             val items = linkedMapOf<String, Mix>()
@@ -440,20 +450,14 @@ class SupremacyMixesActivity : AppCompatActivity() {
     }
 
     private fun play(mix: Mix, queue: List<Mix>, index: Int) {
-        ContextCompat.startForegroundService(this, Intent(this, SupremacyPlaybackService::class.java).apply {
-            action = SupremacyPlaybackService.ACTION_PLAY
-            putExtra(SupremacyPlaybackService.EXTRA_TITLE, mix.title)
-            putExtra(SupremacyPlaybackService.EXTRA_URL, mix.url)
-            putStringArrayListExtra(
-                SupremacyPlaybackService.EXTRA_QUEUE_TITLES,
-                ArrayList(queue.map { it.title })
-            )
-            putStringArrayListExtra(
-                SupremacyPlaybackService.EXTRA_QUEUE_URLS,
-                ArrayList(queue.map { it.url })
-            )
-            putExtra(SupremacyPlaybackService.EXTRA_INDEX, index)
-        })
+        SupremacyPlaybackService.playQueue(
+            this,
+            queue.map { it.url },
+            queue.map { it.title },
+            index,
+            "The One Mixes"
+        )
+        focusTitle = mix.title
     }
 
     private fun getText(url: String): String {
