@@ -2888,28 +2888,6 @@ public sealed class MainWindow : Window
 
         usbHomeButton.Click += async (_, _) =>
         {
-            if (!_usbHomeUnlocked)
-            {
-                var pin = AskUsbHomePin();
-                if (pin == null) return;
-
-                usbHomeButton.IsEnabled = false;
-                status.Text = "Shared Media ontgrendelen…";
-                status.Foreground = TextDim;
-
-                var valid = await UsbMusicCloudService.ValidateUserPinAsync(pin);
-                usbHomeButton.IsEnabled = true;
-
-                if (!valid)
-                {
-                    status.Text = "Pincode niet juist of server niet bereikbaar.";
-                    status.Foreground = Amber;
-                    return;
-                }
-
-                _usbHomeUnlocked = true;
-            }
-
             usbHomeButton.IsEnabled = false;
             results.Children.Clear();
             status.Text = "Shared Media synchroniseren en laden…";
