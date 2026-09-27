@@ -43,6 +43,12 @@
         android:layout_marginTop="8dp"
         android:text="🧩 Tegels beheren" />
     <Button
+        android:id="@+id/checkUpdatesButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="↻ Zoek nieuwe updates" />
+    <Button
         android:id="@+id/diagnosticsButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
