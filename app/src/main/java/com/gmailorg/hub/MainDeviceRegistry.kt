@@ -19,6 +19,13 @@ data class MainRegisteredDevice(
     val lastSeen: Long
 )
 
+data class WindowsConnectionDevice(
+    val id: String,
+    val name: String,
+    val online: Boolean,
+    val lastSeen: Long
+)
+
 object MainDeviceRegistry {
     private const val ENDPOINT = "https://rubenvanaggelen.com/the-one-remote-api/devices.php"
     private const val PREFS = "main_device_registry"
