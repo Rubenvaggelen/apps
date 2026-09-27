@@ -306,7 +306,9 @@ class SupremacyPlaybackService : Service() {
         index = prefs.getInt(KEY_INDEX, 0).coerceIn(0, urls.lastIndex)
         currentSource = prefs.getString(KEY_SOURCE, "Supremacy") ?: "Supremacy"
         requestedStartPositionMs = prefs.getInt(KEY_POSITION, 0).coerceAtLeast(0)
-        requestedAutoStart = prefs.getBoolean(KEY_WAS_PLAYING, true)
+        // Herstel altijd gepauzeerd. De gebruiker bepaalt zelf wanneer muziek
+        // na het opnieuw openen van The One verder speelt.
+        requestedAutoStart = false
         currentTitle = titles.getOrNull(index).orEmpty().ifBlank { "Muziek" }
         startCurrent()
     }
