@@ -56,6 +56,74 @@
             android:textSize="14sp"
             android:paddingBottom="12dp" />
 
+        <LinearLayout
+            android:id="@+id/carAudioPlayer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="10dp"
+            android:visibility="gone"
+            android:background="@drawable/bg_player_panel">
+
+            <TextView
+                android:id="@+id/carAudioTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:text="Geen muziek actief"
+                android:textColor="@color/text_main"
+                android:textSize="17sp"
+                android:textStyle="bold"
+                android:paddingEnd="10dp" />
+
+            <TextView
+                android:id="@+id/carAudioPrevious"
+                android:layout_width="54dp"
+                android:layout_height="46dp"
+                android:gravity="center"
+                android:text="⏮"
+                android:textColor="@color/text_main"
+                android:textSize="20sp"
+                android:background="@drawable/bg_outline" />
+
+            <TextView
+                android:id="@+id/carAudioPlayPause"
+                android:layout_width="58dp"
+                android:layout_height="46dp"
+                android:layout_marginStart="8dp"
+                android:gravity="center"
+                android:text="▶"
+                android:textColor="@color/on_gold"
+                android:textSize="20sp"
+                android:background="@drawable/bg_amber_button" />
+
+            <TextView
+                android:id="@+id/carAudioNext"
+                android:layout_width="54dp"
+                android:layout_height="46dp"
+                android:layout_marginStart="8dp"
+                android:gravity="center"
+                android:text="⏭"
+                android:textColor="@color/text_main"
+                android:textSize="20sp"
+                android:background="@drawable/bg_outline" />
+
+            <TextView
+                android:id="@+id/carAudioStop"
+                android:layout_width="54dp"
+                android:layout_height="46dp"
+                android:layout_marginStart="8dp"
+                android:gravity="center"
+                android:text="■"
+                android:textColor="@color/gold"
+                android:textSize="18sp"
+                android:background="@drawable/bg_gold_outline" />
+        </LinearLayout>
+
         <ScrollView
             android:layout_width="match_parent"
             android:layout_height="0dp"
