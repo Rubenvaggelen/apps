@@ -282,6 +282,22 @@ class FitnessActivity : AppCompatActivity() {
             })
         }
 
+        // Altijd zichtbaar: je moet Fitness kunnen verlaten zonder eerst
+        // alle profielvelden in te vullen.
+        val topBackButton = Button(this).apply {
+            text = "← TERUG"
+            textSize = 16f
+            isAllCaps = true
+            setPadding(pad / 2, pad / 3, pad / 2, pad / 3)
+        }
+        container.addView(
+            topBackButton,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = fieldGap / 2 }
+        )
+
         // Always-visible action at the top of the form. On smaller screens the
         // AlertDialog's standard positive button can end up below the fold.
         val topSaveButton = Button(this).apply {
@@ -400,9 +416,12 @@ class FitnessActivity : AppCompatActivity() {
             .setMessage("The One maakt hiermee een persoonlijk trainings- en voedingspatroon. Je kunt dit later altijd wijzigen.")
             .setView(scroll)
             .setPositiveButton("Opslaan", null)
-            .apply { if (!firstSetup) setNegativeButton("Annuleren", null) }
+            .setNegativeButton(if (firstSetup) "Terug" else "Annuleren", null)
             .create()
-        dialog.setCancelable(!firstSetup)
+        dialog.setCancelable(true)
+        dialog.setOnCancelListener {
+            if (firstSetup) finish()
+        }
         dialog.setOnShowListener {
             val saveProfile = View.OnClickListener {
                 val age = ageInput.text.toString().trim().toIntOrNull()
@@ -437,6 +456,14 @@ class FitnessActivity : AppCompatActivity() {
                     refreshStatus()
                     showSection(if (section == Section.PROFILE) Section.PROFILE else Section.TODAY)
                 }
+            }
+            topBackButton.setOnClickListener {
+                dialog.dismiss()
+                if (firstSetup) finish()
+            }
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener {
+                dialog.dismiss()
+                if (firstSetup) finish()
             }
             topSaveButton.setOnClickListener(saveProfile)
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(saveProfile)
