@@ -40,6 +40,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var adapter: SettingsParkingAdapter
     private var activeAdminPin = ""
     private var deviceManagerAdded = false
+    private var ownerRecoveryAdded = false
 
     private val pickRingtone = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -209,20 +210,126 @@ class SettingsActivity : AppCompatActivity() {
             unlockedSection.visibility = View.VISIBLE
             refreshParkingList()
             refreshHiddenTiles()
-            if (MainDeviceRegistry.isOwnerEligible()) {
-                Thread {
-                    val owner = runCatching {
+
+            Thread {
+                var owner = runCatching {
+                    MainDeviceRegistry.ownerStatus(this, activeAdminPin)
+                }.getOrDefault(false)
+
+                if (!owner && MainDeviceRegistry.isOwnerEligible()) {
+                    owner = runCatching {
                         MainDeviceRegistry.claimOwner(this, activeAdminPin)
                     }.getOrDefault(false)
-                    runOnUiThread {
-                        if (owner) setupDeviceManagerSection()
-                    }
-                }.start()
-            }
+                }
+
+                runOnUiThread {
+                    if (owner) setupDeviceManagerSection()
+                    else setupOwnerRecoverySection()
+                }
+            }.start()
         } else {
             pinErrorText.visibility = View.VISIBLE
             pinInput.text.clear()
         }
+    }
+
+    private fun setupOwnerRecoverySection() {
+        if (ownerRecoveryAdded) return
+        ownerRecoveryAdded = true
+
+        val divider = View(this).apply {
+            setBackgroundColor(ContextCompat.getColor(this@SettingsActivity, R.color.line))
+        }
+        unlockedSection.addView(
+            divider,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                1
+            ).apply { setMargins(0, 24, 0, 20) }
+        )
+
+        unlockedSection.addView(TextView(this).apply {
+            text = "Eigenaar herstellen"
+            textSize = 18f
+            setTextColor(ContextCompat.getColor(this@SettingsActivity, R.color.text_main))
+            setPadding(0, 0, 0, 8)
+        })
+
+        unlockedSection.addView(TextView(this).apply {
+            text = "Alleen gebruiken wanneer je naar een nieuwe telefoon bent overgestapt. Hiervoor is de aparte herstelcode nodig."
+            textSize = 13f
+            setTextColor(ContextCompat.getColor(this@SettingsActivity, R.color.text_dim))
+            setPadding(0, 0, 0, 10)
+        })
+
+        val recover = android.widget.Button(this).apply {
+            text = "Dit toestel als eigenaar herstellen"
+            setOnClickListener { promptOwnerRecovery(this) }
+        }
+        unlockedSection.addView(
+            recover,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+    }
+
+    private fun promptOwnerRecovery(trigger: View) {
+        val input = EditText(this).apply {
+            hint = "Herstelcode"
+            setSingleLine(true)
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Eigenaar herstellen")
+            .setMessage("Hiermee wordt dit toestel de nieuwe eigenaar van The One Main. Het vorige eigenaarstoestel verliest daarna de beheerrechten.")
+            .setView(input)
+            .setNegativeButton("Annuleren", null)
+            .setPositiveButton("Overzetten", null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val recoveryCode = input.text?.toString().orEmpty().trim()
+                if (recoveryCode.length < 12) {
+                    input.error = "Vul de volledige herstelcode in"
+                    return@setOnClickListener
+                }
+
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
+                trigger.isEnabled = false
+
+                Thread {
+                    val result = runCatching {
+                        MainDeviceRegistry.heartbeat(this)
+                        MainDeviceRegistry.recoverOwner(this, activeAdminPin, recoveryCode)
+                    }
+
+                    runOnUiThread {
+                        trigger.isEnabled = true
+                        result.onSuccess { owner ->
+                            if (owner) {
+                                dialog.dismiss()
+                                Toast.makeText(
+                                    this,
+                                    "Dit toestel is nu de eigenaar van The One Main.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                                setupDeviceManagerSection()
+                            } else {
+                                input.error = "Herstel is niet gelukt"
+                                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
+                            }
+                        }.onFailure {
+                            input.error = "Herstelcode onjuist of herstel niet toegestaan"
+                            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
+                        }
+                    }
+                }.start()
+            }
+        }
+        dialog.show()
     }
 
     private fun setupDeviceManagerSection() {
