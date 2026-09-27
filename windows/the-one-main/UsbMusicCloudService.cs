@@ -365,7 +365,7 @@ public static class UsbMusicCloudService
         // de cache veel sneller compleet. Reeds gecachete bestanden worden
         // hierboven overgeslagen, zodat een herstart gewoon verdergaat.
         var uploaded = 0;
-        using var uploadGate = new SemaphoreSlim(4, 4);
+        using var uploadGate = new SemaphoreSlim(8, 8);
         var uploadTasks = uploadJobs.Select(async job =>
         {
             await uploadGate.WaitAsync(cancellationToken);
