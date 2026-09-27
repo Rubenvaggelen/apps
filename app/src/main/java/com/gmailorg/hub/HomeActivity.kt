@@ -65,6 +65,7 @@ class HomeActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        SupremacyPlaybackService.resumeLastSessionIfNeeded(this)
         refreshTiles() // eventueel net toegevoegde app tonen
         checkDeviceAccess()
     }
