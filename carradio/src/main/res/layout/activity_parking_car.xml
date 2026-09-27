@@ -2,7 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical"
     android:background="@color/bg" android:padding="16dp">
-    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Parkeren" android:textColor="@color/amber" android:textSize="25sp" android:textStyle="bold"/>
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Parkeren" android:textColor="@color/amber" android:textSize="37.5sp" android:textStyle="bold"/>
     <TextView android:id="@+id/parkingStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/text_dim" android:paddingBottom="6dp"/>
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
         <EditText android:id="@+id/parkingInput" android:layout_width="0dp" android:layout_height="50dp" android:layout_weight="1"
@@ -14,7 +14,7 @@
     <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="8dp">
         <LinearLayout android:id="@+id/parkingList" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical"/>
     </ScrollView>
-    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Parkeer-eindtijd" android:textColor="@color/text_main" android:textStyle="bold" android:textSize="17sp"/>
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Parkeer-eindtijd" android:textColor="@color/text_main" android:textStyle="bold" android:textSize="25.5sp"/>
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
         <TextView android:id="@+id/parkingTimerText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textColor="@color/text_dim"/>
         <Button android:id="@+id/parkingPickTimeButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Tijd kiezen"/>
