@@ -2561,46 +2561,6 @@ public sealed class MainWindow : Window
                             DockPanel.SetDock(play, Dock.Right);
                             row.Children.Add(play);
 
-                            var download = SmallButton("↓ Download", () => { });
-                            download.MinWidth = 105;
-                            download.Margin = new Thickness(6, 0, 6, 0);
-                            DockPanel.SetDock(download, Dock.Right);
-                            row.Children.Add(download);
-                            download.Click += async (_, _) =>
-                                await DownloadUsbFileAsync(file, download);
-
-                            var download = SmallButton("↓ Download", () => { });
-                            download.MinWidth = 105;
-                            download.Margin = new Thickness(6, 0, 6, 0);
-                            DockPanel.SetDock(download, Dock.Right);
-                            row.Children.Add(download);
-                            download.Click += async (_, _) =>
-                                await DownloadUsbFileAsync(file, download);
-
-                            var download = SmallButton("↓ Download", () => { });
-                            download.MinWidth = 105;
-                            download.Margin = new Thickness(6, 0, 6, 0);
-                            DockPanel.SetDock(download, Dock.Right);
-                            row.Children.Add(download);
-                            download.Click += async (_, _) =>
-                                await DownloadUsbFileAsync(file, download);
-
-                            var download = SmallButton("↓ Download", () => { });
-                            download.MinWidth = 105;
-                            download.Margin = new Thickness(6, 0, 6, 0);
-                            DockPanel.SetDock(download, Dock.Right);
-                            row.Children.Add(download);
-                            download.Click += async (_, _) =>
-                                await DownloadUsbFileAsync(file, download);
-
-                            var download = SmallButton("↓ Download", () => { });
-                            download.MinWidth = 105;
-                            download.Margin = new Thickness(6, 0, 6, 0);
-                            DockPanel.SetDock(download, Dock.Right);
-                            row.Children.Add(download);
-                            download.Click += async (_, _) =>
-                                await DownloadUsbFileAsync(file, download);
-
                             row.Children.Add(new TextBlock
                             {
                                 Text = mix.Title,
@@ -2771,6 +2731,14 @@ public sealed class MainWindow : Window
                             play.MinWidth = 105;
                             DockPanel.SetDock(play, Dock.Right);
                             row.Children.Add(play);
+
+                            var download = SmallButton("↓ Download", () => { });
+                            download.MinWidth = 105;
+                            download.Margin = new Thickness(6, 0, 6, 0);
+                            DockPanel.SetDock(download, Dock.Right);
+                            row.Children.Add(download);
+                            download.Click += async (_, _) =>
+                                await DownloadUsbFileAsync(file, download);
 
                             row.Children.Add(new TextBlock
                             {
