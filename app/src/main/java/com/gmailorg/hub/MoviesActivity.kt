@@ -344,19 +344,18 @@ class MoviesActivity : AppCompatActivity() {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
-                setPadding(8, 6, 8, 6)
-                setOnClickListener { playRemoteUsbFolder(stick, files, index, normalized) }
+                setPadding(8, 8, 8, 8)
             }
 
             val number = TextView(this).apply {
                 text = (index + 1).toString().padStart(2, '0')
                 textSize = 12f
-                setTextColor(Color.parseColor("#20B8FF"))
+                setTextColor(Color.parseColor("#4B9FC0"))
                 gravity = android.view.Gravity.CENTER
             }
             row.addView(
                 number,
-                LinearLayout.LayoutParams(52, LinearLayout.LayoutParams.WRAP_CONTENT)
+                LinearLayout.LayoutParams(48, LinearLayout.LayoutParams.WRAP_CONTENT)
             )
 
             val title = TextView(this).apply {
@@ -365,7 +364,10 @@ class MoviesActivity : AppCompatActivity() {
                 setTextColor(Color.WHITE)
                 maxLines = 2
                 ellipsize = android.text.TextUtils.TruncateAt.END
-                setPadding(10, 16, 10, 16)
+                setPadding(10, 16, 12, 16)
+                setOnClickListener {
+                    playRemoteUsbFolder(stick, files, index, normalized)
+                }
             }
             row.addView(
                 title,
@@ -373,30 +375,38 @@ class MoviesActivity : AppCompatActivity() {
             )
 
             val download = TextView(this).apply {
-                text = "↓"
-                textSize = 20f
-                setTextColor(Color.parseColor("#E8AA4E"))
+                text = "↓ Download"
+                textSize = 13f
+                setTextColor(Color.parseColor("#D8A451"))
                 gravity = android.view.Gravity.CENTER
                 contentDescription = "Download ${file.name}"
+                setBackgroundResource(R.drawable.bg_the_one_gold_outline)
                 setPadding(14, 12, 14, 12)
                 setOnClickListener { requestRemoteUsbDownload(file) }
             }
             row.addView(
                 download,
-                LinearLayout.LayoutParams(56, LinearLayout.LayoutParams.WRAP_CONTENT)
+                LinearLayout.LayoutParams(110, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    marginStart = 10
+                    marginEnd = 16
+                }
             )
 
             val play = TextView(this).apply {
                 text = "▶"
-                textSize = 19f
-                setTextColor(Color.parseColor("#20B8FF"))
+                textSize = 18f
+                setTextColor(Color.WHITE)
                 gravity = android.view.Gravity.CENTER
+                contentDescription = "Speel ${file.name} af"
+                setBackgroundResource(R.drawable.bg_the_one_blue_button)
                 setPadding(18, 12, 18, 12)
-                setOnClickListener { playRemoteUsbFolder(stick, files, index, normalized) }
+                setOnClickListener {
+                    playRemoteUsbFolder(stick, files, index, normalized)
+                }
             }
             row.addView(
                 play,
-                LinearLayout.LayoutParams(64, LinearLayout.LayoutParams.WRAP_CONTENT)
+                LinearLayout.LayoutParams(68, LinearLayout.LayoutParams.WRAP_CONTENT)
             )
 
             trackList.addView(
