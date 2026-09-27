@@ -27,7 +27,8 @@
             android:layout_weight="1"
             android:text="Films, Series &amp; Muziek"
             android:textColor="@color/text_main"
-            android:textSize="20sp"
+            android:textSize="24sp"
+            android:letterSpacing="0.015"
             android:textStyle="bold" />
     </LinearLayout>
 
@@ -57,9 +58,9 @@
             android:hint="Film, serie, nummer of artiest..."
             android:textColorHint="@color/text_dim"
             android:textColor="@color/text_main"
-            android:background="@color/surface"
+            android:background="@drawable/bg_the_one_input"
             android:padding="12dp"
-            android:minHeight="48dp"
+            android:minHeight="52dp"
             android:inputType="text"
             android:imeOptions="actionSearch"
             android:maxLines="1" />
@@ -69,9 +70,11 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
-            android:text="Zoeken"
-            android:backgroundTint="@color/amber"
-            android:textColor="@color/on_amber" />
+            android:text="ZOEKEN"
+            android:background="@drawable/bg_the_one_gold_button"
+            android:backgroundTint="@null"
+            android:textColor="@color/on_gold"
+            android:textStyle="bold" />
     </LinearLayout>
 
 
@@ -82,8 +85,8 @@
         android:layout_marginHorizontal="16dp"
         android:layout_marginBottom="14dp"
         android:orientation="vertical"
-        android:background="@color/surface"
-        android:padding="12dp">
+        android:background="@drawable/bg_the_one_panel"
+        android:padding="14dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -109,7 +112,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="The One"
-                    android:textColor="@color/amber"
+                    android:textColor="@color/gold"
                     android:textSize="13sp"
                     android:textStyle="bold" />
 
@@ -156,11 +159,12 @@
                 android:layout_width="0dp"
                 android:layout_height="44dp"
                 android:layout_weight="1"
-                android:text="Terug"
-                android:textSize="12sp"
-                android:textColor="@color/amber"
-                android:drawableStart="@drawable/ic_media_previous_the_one"
-                android:drawablePadding="4dp"
+                android:layout_marginEnd="4dp"
+                android:text="⏮"
+                android:textSize="20sp"
+                android:background="@drawable/bg_the_one_blue_button"
+                android:backgroundTint="@null"
+                android:textColor="@color/text_main"
                 android:gravity="center" />
 
             <Button
@@ -168,30 +172,36 @@
                 android:layout_width="0dp"
                 android:layout_height="44dp"
                 android:layout_weight="1"
+                android:layout_marginHorizontal="4dp"
                 android:text="⏯"
-                android:textSize="18sp"
-                android:backgroundTint="@color/amber"
-                android:textColor="@color/on_amber" />
+                android:textSize="20sp"
+                android:background="@drawable/bg_the_one_gold_button"
+                android:backgroundTint="@null"
+                android:textColor="@color/on_gold" />
 
             <Button
                 android:id="@+id/musicStopButton"
                 android:layout_width="0dp"
                 android:layout_height="44dp"
                 android:layout_weight="1"
-                android:text="⏹"
-                android:textSize="18sp"
-                android:textColor="@color/amber" />
+                android:layout_marginHorizontal="4dp"
+                android:text="■"
+                android:textSize="19sp"
+                android:background="@drawable/bg_the_one_blue_button"
+                android:backgroundTint="@null"
+                android:textColor="@color/text_main" />
 
             <Button
                 android:id="@+id/musicNextButton"
                 android:layout_width="0dp"
                 android:layout_height="44dp"
                 android:layout_weight="1"
-                android:text="Volgende"
-                android:textSize="12sp"
-                android:textColor="@color/amber"
-                android:drawableEnd="@drawable/ic_media_next_the_one"
-                android:drawablePadding="4dp"
+                android:layout_marginStart="4dp"
+                android:text="⏭"
+                android:textSize="20sp"
+                android:background="@drawable/bg_the_one_blue_button"
+                android:backgroundTint="@null"
+                android:textColor="@color/text_main"
                 android:gravity="center" />
 
         </LinearLayout>
@@ -244,8 +254,11 @@
                     style="?android:attr/borderlessButtonStyle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Laden"
-                    android:textColor="@color/amber" />
+                    android:text="LADEN"
+                    android:background="@drawable/bg_the_one_gold_outline"
+                    android:backgroundTint="@null"
+                    android:textColor="@color/gold"
+                    android:textStyle="bold" />
             </LinearLayout>
 
             <LinearLayout
@@ -269,9 +282,14 @@
                 android:layout_height="wrap_content"
                 android:layout_marginHorizontal="16dp"
                 android:layout_marginBottom="12dp"
-                android:text="Supremacy mixen"
-                android:backgroundTint="@color/amber"
-                android:textColor="@color/on_amber" />
+                android:text="SUPREMACY MIXEN   ›"
+                android:textSize="16sp"
+                android:letterSpacing="0.08"
+                android:textStyle="bold"
+                android:minHeight="56dp"
+                android:background="@drawable/bg_the_one_blue_button"
+                android:backgroundTint="@null"
+                android:textColor="@color/gold" />
 
             <Button
                 android:id="@+id/remoteUsbMusicButton"
@@ -279,9 +297,14 @@
                 android:layout_height="wrap_content"
                 android:layout_marginHorizontal="16dp"
                 android:layout_marginBottom="12dp"
-                android:text="USB thuis"
-                android:backgroundTint="@color/amber"
-                android:textColor="@color/on_amber" />
+                android:text="USB THUIS   ›"
+                android:textSize="16sp"
+                android:letterSpacing="0.08"
+                android:textStyle="bold"
+                android:minHeight="56dp"
+                android:background="@drawable/bg_the_one_blue_button"
+                android:backgroundTint="@null"
+                android:textColor="@color/gold" />
 
 
             <LinearLayout
