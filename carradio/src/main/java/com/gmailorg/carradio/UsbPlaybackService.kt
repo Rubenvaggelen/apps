@@ -113,14 +113,76 @@ class UsbPlaybackService : Service() {
             })
         }
 
-        fun toggle(context: Context) = start(context, Intent(context, UsbPlaybackService::class.java).apply { action = ACTION_TOGGLE })
-        fun next(context: Context) = start(context, Intent(context, UsbPlaybackService::class.java).apply { action = ACTION_NEXT })
-        fun previous(context: Context) = start(context, Intent(context, UsbPlaybackService::class.java).apply { action = ACTION_PREVIOUS })
-        fun seek(context: Context, positionMs: Int) = start(context, Intent(context, UsbPlaybackService::class.java).apply {
-            action = ACTION_SEEK
-            putExtra(EXTRA_POSITION, positionMs.coerceAtLeast(0))
-        })
-        fun stop(context: Context) = start(context, Intent(context, UsbPlaybackService::class.java).apply { action = ACTION_STOP })
+        fun toggle(context: Context) {
+            val active = instance
+            if (active != null) {
+                active.toggleInternal()
+            } else {
+                start(
+                    context,
+                    Intent(context, UsbPlaybackService::class.java).apply {
+                        action = ACTION_TOGGLE
+                    }
+                )
+            }
+        }
+
+        fun next(context: Context) {
+            val active = instance
+            if (active != null) {
+                active.playRelative(+1)
+            } else {
+                start(
+                    context,
+                    Intent(context, UsbPlaybackService::class.java).apply {
+                        action = ACTION_NEXT
+                    }
+                )
+            }
+        }
+
+        fun previous(context: Context) {
+            val active = instance
+            if (active != null) {
+                active.playRelative(-1)
+            } else {
+                start(
+                    context,
+                    Intent(context, UsbPlaybackService::class.java).apply {
+                        action = ACTION_PREVIOUS
+                    }
+                )
+            }
+        }
+
+        fun seek(context: Context, positionMs: Int) {
+            val active = instance
+            if (active != null) {
+                active.seekInternal(positionMs.coerceAtLeast(0))
+            } else {
+                start(
+                    context,
+                    Intent(context, UsbPlaybackService::class.java).apply {
+                        action = ACTION_SEEK
+                        putExtra(EXTRA_POSITION, positionMs.coerceAtLeast(0))
+                    }
+                )
+            }
+        }
+
+        fun stop(context: Context) {
+            val active = instance
+            if (active != null) {
+                active.stopPlaybackAndService()
+            } else {
+                start(
+                    context,
+                    Intent(context, UsbPlaybackService::class.java).apply {
+                        action = ACTION_STOP
+                    }
+                )
+            }
+        }
 
         /**
          * Start de speler opnieuw na een reboot/app-herstart als er een opgeslagen sessie is.
