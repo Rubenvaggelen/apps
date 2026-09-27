@@ -59,6 +59,7 @@ public sealed class CloudUsbMusicStick
 public static class UsbMusicCloudService
 {
     private const string Endpoint = "https://rubenvanaggelen.com/the-one-remote-api/music.php";
+    private const string DeviceEndpoint = "https://rubenvanaggelen.com/the-one-remote-api/devices.php";
     private const string Pin = "1207";
 
     private static readonly HttpClient Http = new()
@@ -101,6 +102,8 @@ public static class UsbMusicCloudService
         {
             try
             {
+                await ReportWindowsHeartbeatAsync(cancellationToken);
+
                 var signature = BuildDriveSignature();
                 if (!string.Equals(signature, _lastDriveSignature, StringComparison.Ordinal))
                 {
@@ -123,6 +126,43 @@ public static class UsbMusicCloudService
             {
                 break;
             }
+        }
+    }
+
+    private static async Task ReportWindowsHeartbeatAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var rawMachine = Environment.MachineName;
+            var displayName =
+                Environment.UserName.Equals("Surface Pro", StringComparison.OrdinalIgnoreCase) ||
+                rawMachine.StartsWith("TABLET-", StringComparison.OrdinalIgnoreCase)
+                    ? "Surface"
+                    : rawMachine.Equals("Ruben", StringComparison.OrdinalIgnoreCase)
+                        ? "Ruben"
+                        : rawMachine;
+
+            var body = JsonSerializer.Serialize(new
+            {
+                device_id = "windows-" + SafeId(rawMachine),
+                name = displayName,
+                person_name = "",
+                platform = "Windows",
+                version = ""
+            });
+
+            using var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                DeviceEndpoint + "?action=heartbeat")
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json")
+            };
+            using var response = await Http.SendAsync(request, cancellationToken);
+            response.EnsureSuccessStatusCode();
+        }
+        catch when (!cancellationToken.IsCancellationRequested)
+        {
+            // Statusmelding mag Shared Media nooit blokkeren.
         }
     }
 
