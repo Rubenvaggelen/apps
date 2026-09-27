@@ -45,7 +45,7 @@ class RadioStationsActivity : AppCompatActivity() {
     private fun createStationButton(station: Station): Button {
         return Button(this).apply {
             text = station.name
-            textSize = 18f
+            textSize = 27.0f
             isAllCaps = false
             gravity = Gravity.CENTER_VERTICAL
             setTextColor(ContextCompat.getColor(this@RadioStationsActivity, R.color.text_main))
