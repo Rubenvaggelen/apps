@@ -563,7 +563,15 @@ public sealed class MainWindow : Window
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var titleStack = new StackPanel();
+        var titleStack = new StackPanel
+        {
+            Cursor = _openCurrentUsbFolderAction != null ? Cursors.Hand : Cursors.Arrow
+        };
+        titleStack.MouseLeftButtonUp += (_, _) =>
+        {
+            if (_openCurrentUsbFolderAction != null)
+                _openCurrentUsbFolderAction.Invoke();
+        };
         titleStack.Children.Add(new TextBlock
         {
             Text = "THE ONE  •  NU SPEELT",
@@ -583,13 +591,14 @@ public sealed class MainWindow : Window
         };
         _musicHomeNowPlaying = title;
 
+        title.MouseLeftButtonUp += (_, _) =>
+            _openCurrentUsbFolderAction?.Invoke();
+
         if (_openCurrentUsbFolderAction != null)
         {
             title.Cursor = Cursors.Hand;
             title.ToolTip = "Klik om naar de map van dit nummer te gaan";
             title.TextDecorations = TextDecorations.Underline;
-            title.MouseLeftButtonUp += (_, _) =>
-                _openCurrentUsbFolderAction?.Invoke();
         }
 
         titleStack.Children.Add(title);
@@ -2181,6 +2190,12 @@ public sealed class MainWindow : Window
             nowPlaying.Cursor = Cursors.Hand;
             nowPlaying.ToolTip = "Klik om direct naar deze USB-map te gaan";
             nowPlaying.TextDecorations = TextDecorations.Underline;
+            if (_musicHomeNowPlaying != null)
+            {
+                _musicHomeNowPlaying.Cursor = Cursors.Hand;
+                _musicHomeNowPlaying.ToolTip = "Klik om naar de map van dit nummer te gaan";
+                _musicHomeNowPlaying.TextDecorations = TextDecorations.Underline;
+            }
         }
 
         var sharedMediaHighlightBusy = false;
