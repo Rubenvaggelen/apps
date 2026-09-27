@@ -2930,7 +2930,7 @@ public sealed class MainWindow : Window
                             .ThenBy(file => file.DisplayName, StringComparer.CurrentCultureIgnoreCase)
                             .ToList()
                     })
-                    .Where(source => source.Files.Count > 0)
+                    .Where(source => source.Stick.Files.Count > 0)
                     .GroupBy(
                         source => $"{source.Stick.DeviceName}|{source.Stick.StickName}",
                         StringComparer.OrdinalIgnoreCase)
