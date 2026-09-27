@@ -137,15 +137,30 @@ class MoviesActivity : AppCompatActivity() {
         }
 
         findViewById<View>(R.id.favoritesButton).setOnClickListener {
-            openTheOneFavorites()
+            withSectionAccess(
+                MainDeviceRegistry.ACCESS_FAVORITES,
+                "The One Favorites"
+            ) {
+                openTheOneFavorites()
+            }
         }
 
         findViewById<View>(R.id.supremacyMixesButton).setOnClickListener {
-            startActivity(Intent(this, SupremacyMixesActivity::class.java))
+            withSectionAccess(
+                MainDeviceRegistry.ACCESS_MIXES,
+                "The One Mixes"
+            ) {
+                startActivity(Intent(this, SupremacyMixesActivity::class.java))
+            }
         }
 
         findViewById<View>(R.id.remoteUsbMusicButton).setOnClickListener {
-            openRemoteUsbMusic()
+            withSectionAccess(
+                MainDeviceRegistry.ACCESS_SHARED,
+                "Shared Media"
+            ) {
+                openRemoteUsbMusic()
+            }
         }
 
     }
@@ -169,15 +184,25 @@ class MoviesActivity : AppCompatActivity() {
 
         val source = SupremacyPlaybackService.currentSource(this)
         if (source.equals("The One Favorites", ignoreCase = true)) {
-            openTheOneFavorites()
+            withSectionAccess(
+                MainDeviceRegistry.ACCESS_FAVORITES,
+                "The One Favorites"
+            ) {
+                openTheOneFavorites()
+            }
             return
         }
         if (!source.startsWith("Shared Media •", ignoreCase = true)) {
-            startActivity(
-                Intent(this, SupremacyMixesActivity::class.java)
-                    .putExtra("focus_title", SupremacyPlaybackService.currentTitle(this))
-                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            )
+            withSectionAccess(
+                MainDeviceRegistry.ACCESS_MIXES,
+                "The One Mixes"
+            ) {
+                startActivity(
+                    Intent(this, SupremacyMixesActivity::class.java)
+                        .putExtra("focus_title", SupremacyPlaybackService.currentTitle(this))
+                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                )
+            }
             return
         }
 
@@ -185,6 +210,18 @@ class MoviesActivity : AppCompatActivity() {
             cleanUsbTrackTitle(SupremacyPlaybackService.currentTitle(this))
         val activeIndex = SupremacyPlaybackService.currentQueueIndex(this)
 
+        withSectionAccess(
+            MainDeviceRegistry.ACCESS_SHARED,
+            "Shared Media"
+        ) {
+            openCurrentSharedMediaFolderAfterAccess(activeTitle, activeIndex)
+        }
+    }
+
+    private fun openCurrentSharedMediaFolderAfterAccess(
+        activeTitle: String,
+        activeIndex: Int
+    ) {
         val currentStick = currentRemoteUsbStick
         if (currentStick != null) {
             val active = currentRemoteUsbFiles.getOrNull(activeIndex)
@@ -478,6 +515,88 @@ class MoviesActivity : AppCompatActivity() {
         musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 700)
     }
 
+    private fun withSectionAccess(
+        scope: String,
+        label: String,
+        onAllowed: () -> Unit
+    ) {
+        remoteMusicIo.execute {
+            val status = try {
+                MainDeviceRegistry.refreshAccess(this, scope)
+            } catch (_: Exception) {
+                null
+            }
+            runOnUiThread {
+                if (status?.allowed == true) {
+                    onAllowed()
+                } else {
+                    showSectionAccessRequestDialog(
+                        scope,
+                        label,
+                        status?.pending == true
+                    )
+                }
+            }
+        }
+    }
+
+    private fun showSectionAccessRequestDialog(
+        scope: String,
+        label: String,
+        pending: Boolean
+    ) {
+        if (MainDeviceRegistry.isLocallyOwner(this)) return
+
+        if (pending) {
+            AlertDialog.Builder(this)
+                .setTitle(label)
+                .setMessage("Je aanvraag voor $label is al verstuurd en wacht op goedkeuring van The One.")
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle(label)
+            .setMessage("Je hebt nog geen toegang tot $label. Wil je toegang aanvragen bij The One?")
+            .setNegativeButton("Annuleren", null)
+            .setPositiveButton("Toegang aanvragen") { _, _ ->
+                remoteMusicIo.execute {
+                    val result = try {
+                        MainDeviceRegistry.requestAccess(this, scope)
+                    } catch (_: Exception) {
+                        null
+                    }
+                    runOnUiThread {
+                        when {
+                            result?.allowed == true -> {
+                                Toast.makeText(
+                                    this,
+                                    "Toegang is al toegestaan.",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                            result?.pending == true -> {
+                                Toast.makeText(
+                                    this,
+                                    "Aanvraag voor $label is verstuurd naar The One.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                            else -> {
+                                Toast.makeText(
+                                    this,
+                                    "Aanvraag kon niet worden verstuurd.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
+                    }
+                }
+            }
+            .show()
+    }
+
     private fun openTheOneFavorites() {
         Toast.makeText(this, "The One Favorites laden…", Toast.LENGTH_SHORT).show()
         remoteMusicIo.execute {
@@ -600,7 +719,12 @@ class MoviesActivity : AppCompatActivity() {
                 setOnClickListener {
                     isEnabled = false
                     remoteMusicIo.execute {
-                        val allowed = try { MainDeviceRegistry.refreshMusicRights(this@MoviesActivity) } catch (_: Exception) { false }
+                        val allowed = try {
+                            MainDeviceRegistry.refreshAccess(
+                                this@MoviesActivity,
+                                MainDeviceRegistry.ACCESS_FAVORITES
+                            ).allowed
+                        } catch (_: Exception) { false }
                         val ok = if (allowed) try {
                             RemoteUsbMusicClient.setFavoriteItem(this@MoviesActivity, item, false)
                             true
@@ -609,7 +733,7 @@ class MoviesActivity : AppCompatActivity() {
                             if (!allowed) {
                                 Toast.makeText(
                                     this@MoviesActivity,
-                                    "Alleen The One of iemand met muziekrechten mag Favorites wijzigen.",
+                                    "Je hebt geen Favorites-rechten. Vraag toegang aan via The One Favorites.",
                                     Toast.LENGTH_LONG
                                 ).show()
                                 isEnabled = true
@@ -1688,7 +1812,10 @@ class MoviesActivity : AppCompatActivity() {
         button.isEnabled = false
         remoteMusicIo.execute {
             val allowed = try {
-                MainDeviceRegistry.refreshMusicRights(this)
+                MainDeviceRegistry.refreshAccess(
+                    this,
+                    MainDeviceRegistry.ACCESS_FAVORITES
+                ).allowed
             } catch (_: Exception) {
                 false
             }
@@ -1736,17 +1863,20 @@ class MoviesActivity : AppCompatActivity() {
     private fun requestRemoteUsbDownload(file: RemoteUsbMusicClient.RemoteFile) {
         remoteMusicIo.execute {
             val allowed = try {
-                MainDeviceRegistry.refreshMusicRights(this)
+                MainDeviceRegistry.refreshAccess(
+                    this,
+                    MainDeviceRegistry.ACCESS_SHARED
+                ).allowed
             } catch (_: Exception) {
                 false
             }
             runOnUiThread {
                 if (!allowed) {
-                    Toast.makeText(
-                        this,
-                        "Alleen The One of iemand met muziekrechten mag downloaden.",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    showSectionAccessRequestDialog(
+                        MainDeviceRegistry.ACCESS_SHARED,
+                        "Shared Media",
+                        false
+                    )
                     return@runOnUiThread
                 }
                 showRemoteUsbDownloadPin(file)
