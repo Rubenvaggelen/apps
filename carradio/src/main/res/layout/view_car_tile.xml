@@ -26,7 +26,7 @@
             android:layout_marginTop="8dp"
             android:gravity="center"
             android:textColor="@color/text_main"
-            android:textSize="15sp"
+            android:textSize="22.5sp"
             android:textStyle="bold"
             android:maxLines="2" />
     </LinearLayout>
@@ -41,7 +41,7 @@
         android:paddingHorizontal="7dp"
         android:background="@drawable/bg_unread_count"
         android:textColor="@color/on_amber"
-        android:textSize="14sp"
+        android:textSize="21sp"
         android:textStyle="bold"
         android:visibility="gone" />
 </FrameLayout>
