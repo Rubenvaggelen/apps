@@ -168,11 +168,13 @@ if ($action === 'catalog') {
     $token=bearer();
     if (!token_read_ok($token,$sec)) out(401,['ok'=>false,'error'=>'auth required']);
 
-    // Alleen de Windows sync-service mag inactieve sticks opvragen, zodat
-    // bestaande cachegegevens hergebruikt kunnen worden als een stick terugkomt.
+    // Alle geautoriseerde The One Family-clients mogen bestaande/inactieve
+    // Shared Media-catalogussen lezen. Zo blijven eerder gesynchroniseerde
+    // bibliotheken zichtbaar op Main en Car tijdens herstel of als een bron
+    // tijdelijk offline is.
     $includeInactive =
         ((string)($_GET['include_inactive'] ?? '')) === '1' &&
-        token_ok($token,$sec);
+        token_read_ok($token,$sec);
 
     $sticks=[];
     foreach (glob($meta.'/*.json') ?: [] as $f) {
