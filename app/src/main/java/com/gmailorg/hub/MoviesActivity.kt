@@ -47,6 +47,7 @@ class MoviesActivity : AppCompatActivity() {
     private var currentRemoteUsbFolder: String = ""
     private var currentRemoteUsbFiles: List<RemoteUsbMusicClient.RemoteFile> = emptyList()
     private val remoteMusicIo = Executors.newSingleThreadExecutor()
+    private val favoriteUsbKeys = linkedSetOf<String>()
     private val compactPlayerRefresh = object : Runnable {
         override fun run() {
             if (!isFinishing && !isDestroyed && ::musicNowPlaying.isInitialized) {
@@ -88,10 +89,10 @@ class MoviesActivity : AppCompatActivity() {
         configureMusicPlayer()
         configureMusicSeekBar()
         musicNowPlaying.setOnClickListener {
-            openCurrentSharedMediaTrackFolder()
+            openCurrentMusicSource()
         }
         musicPlayerCard.setOnClickListener {
-            openCurrentSharedMediaTrackFolder()
+            openCurrentMusicSource()
         }
         findViewById<View>(R.id.musicPreviousButton).setOnClickListener {
             if (SupremacyPlaybackService.isActive(this)) {
@@ -135,6 +136,10 @@ class MoviesActivity : AppCompatActivity() {
             }
         }
 
+        findViewById<View>(R.id.favoritesButton).setOnClickListener {
+            openTheOneFavorites()
+        }
+
         findViewById<View>(R.id.supremacyMixesButton).setOnClickListener {
             startActivity(Intent(this, SupremacyMixesActivity::class.java))
         }
@@ -159,11 +164,21 @@ class MoviesActivity : AppCompatActivity() {
         super.onPause()
     }
 
-    private fun openCurrentSharedMediaTrackFolder() {
+    private fun openCurrentMusicSource() {
         if (!SupremacyPlaybackService.isActive(this)) return
 
         val source = SupremacyPlaybackService.currentSource(this)
-        if (!source.startsWith("Shared Media •", ignoreCase = true)) return
+        if (source.equals("The One Favorites", ignoreCase = true)) {
+            openTheOneFavorites()
+            return
+        }
+        if (!source.startsWith("Shared Media •", ignoreCase = true)) {
+            startActivity(
+                Intent(this, SupremacyMixesActivity::class.java)
+                    .putExtra("focus_title", SupremacyPlaybackService.currentTitle(this))
+            )
+            return
+        }
 
         val activeTitle =
             cleanUsbTrackTitle(SupremacyPlaybackService.currentTitle(this))
@@ -249,17 +264,19 @@ class MoviesActivity : AppCompatActivity() {
             pendingMusicStartedAt = 0L
             musicNowPlaying.text =
                 cleanUsbTrackTitle(SupremacyPlaybackService.currentTitle(this))
-            val isSharedMedia = SupremacyPlaybackService.currentSource(this)
-                .startsWith("Shared Media •", ignoreCase = true)
-            if (isSharedMedia && currentRemoteUsbStick != null) {
-                musicNowPlaying.paintFlags =
-                    musicNowPlaying.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
-                musicNowPlaying.contentDescription =
-                    "Tik om naar de map van het spelende nummer te gaan"
-            } else {
-                musicNowPlaying.paintFlags =
-                    musicNowPlaying.paintFlags and android.graphics.Paint.UNDERLINE_TEXT_FLAG.inv()
-            }
+            val source = SupremacyPlaybackService.currentSource(this)
+            val isSharedMedia = source.startsWith("Shared Media •", ignoreCase = true)
+            musicNowPlaying.paintFlags =
+                musicNowPlaying.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
+            musicNowPlaying.contentDescription =
+                when {
+                    source.equals("The One Favorites", ignoreCase = true) ->
+                        "Tik om The One Favorites te openen"
+                    isSharedMedia ->
+                        "Tik om naar de map van het spelende nummer te gaan"
+                    else ->
+                        "Tik om het spelende nummer in The One Mixes te openen"
+                }
             musicPlaybackState.text =
                 if (SupremacyPlaybackService.isPlaying(this)) "Speelt af" else "Laden…"
 
