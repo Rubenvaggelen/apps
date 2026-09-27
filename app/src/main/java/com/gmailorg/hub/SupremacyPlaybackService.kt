@@ -7,18 +7,22 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.media.AudioAttributes
-import android.media.MediaPlayer
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import org.json.JSONArray
 import org.json.JSONObject
 
 class SupremacyPlaybackService : Service() {
-    private var player: MediaPlayer? = null
+    private var player: ExoPlayer? = null
     private var currentTitle = "The One Mixes"
     private var currentSource = "The One Mixes"
     private var titles = arrayListOf<String>()
@@ -116,52 +120,89 @@ class SupremacyPlaybackService : Service() {
         requestedAutoStart = autoStart
         paused = !autoStart
         saveState(active = true, playing = false)
-        saveSession(explicitPosition = requestedStartPositionMs, explicitPlaying = autoStart)
+        saveSession(
+            explicitPosition = requestedStartPositionMs,
+            explicitPlaying = autoStart
+        )
         startForeground(NOTIFICATION_ID, notification("Laden…"))
 
-        player = MediaPlayer().apply {
-            setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .build()
-            )
-            setDataSource(url)
-            setOnPreparedListener {
-                val seekTo = requestedStartPositionMs.coerceAtMost(it.duration.coerceAtLeast(0))
-                if (seekTo > 0) {
-                    try { it.seekTo(seekTo) } catch (_: Exception) {}
+        val exo = ExoPlayer.Builder(this).build()
+        player = exo
+
+        exo.setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                .build(),
+            true
+        )
+        exo.setMediaItem(MediaItem.fromUri(url))
+        if (requestedStartPositionMs > 0) {
+            exo.seekTo(requestedStartPositionMs.toLong())
+        }
+        exo.playWhenReady = autoStart
+
+        exo.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (player !== exo) return
+
+                when (playbackState) {
+                    Player.STATE_READY -> {
+                        paused = !exo.playWhenReady
+                        saveState(
+                            active = true,
+                            playing = exo.isPlaying || exo.playWhenReady
+                        )
+                        saveSession()
+                        updateNotification(
+                            if (exo.isPlaying || exo.playWhenReady) {
+                                "Speelt af"
+                            } else {
+                                "Gepauzeerd"
+                            }
+                        )
+                    }
+
+                    Player.STATE_ENDED -> {
+                        if (index + 1 < urls.size) {
+                            index++
+                            requestedStartPositionMs = 0
+                            requestedAutoStart = true
+                            startCurrent()
+                        } else {
+                            clearSession()
+                            saveState(active = false, playing = false)
+                            stopForeground(STOP_FOREGROUND_REMOVE)
+                            stopSelf()
+                        }
+                    }
                 }
-                if (requestedAutoStart) {
-                    it.start()
-                    paused = false
-                } else {
-                    paused = true
-                }
-                saveState(active = true, playing = requestedAutoStart)
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (player !== exo) return
+                paused = !isPlaying
+                saveState(active = true, playing = isPlaying)
                 saveSession()
-                updateNotification(if (requestedAutoStart) "Speelt af" else "Gepauzeerd")
+                updateNotification(
+                    if (isPlaying) "Speelt af" else "Gepauzeerd"
+                )
             }
-            setOnCompletionListener {
-                if (index + 1 < urls.size) {
-                    index++
-                    requestedStartPositionMs = 0
-                    requestedAutoStart = true
-                    startCurrent()
-                } else {
-                    clearSession()
-                    saveState(active = false, playing = false)
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopSelf()
-                }
-            }
-            setOnErrorListener { _, _, _ ->
+
+            override fun onPlayerError(error: PlaybackException) {
+                if (player !== exo) return
                 saveState(active = false, playing = false)
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-                true
+                updateNotification("Afspelen mislukt")
             }
-            prepareAsync()
+        })
+
+        try {
+            exo.prepare()
+        } catch (_: Exception) {
+            saveState(active = false, playing = false)
+            stopPlayer()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
         }
     }
 
@@ -170,16 +211,13 @@ class SupremacyPlaybackService : Service() {
         if (p.isPlaying) {
             p.pause()
             paused = true
-            saveState(active = true, playing = false)
-            saveSession()
-            updateNotification("Gepauzeerd")
         } else {
-            p.start()
+            p.play()
             paused = false
-            saveState(active = true, playing = true)
-            saveSession()
-            updateNotification("Speelt af")
         }
+        saveState(active = true, playing = p.isPlaying)
+        saveSession()
+        updateNotification(if (p.isPlaying) "Speelt af" else "Gepauzeerd")
     }
 
     private fun next() {
@@ -200,36 +238,50 @@ class SupremacyPlaybackService : Service() {
             requestedAutoStart = true
             startCurrent()
         } else {
-            try { player?.seekTo(0) } catch (_: Exception) {}
+            try { player?.seekTo(0L) } catch (_: Exception) {}
         }
     }
 
     private fun seekToPosition(positionMs: Int) {
-        val mp = player ?: return
+        val exo = player ?: return
         try {
-            val duration = mp.duration.coerceAtLeast(0)
-            val safe = positionMs.coerceAtLeast(0)
-                .coerceAtMost(duration)
-            mp.seekTo(safe)
-            requestedStartPositionMs = safe
-            saveSession(explicitPosition = safe)
+            val duration = exo.duration
+            val requested = positionMs.toLong().coerceAtLeast(0L)
+            val safe = if (duration > 0 && duration != C.TIME_UNSET) {
+                requested.coerceAtMost(duration)
+            } else {
+                requested
+            }
+            exo.seekTo(safe)
+            requestedStartPositionMs =
+                safe.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            saveSession(explicitPosition = requestedStartPositionMs)
         } catch (_: Exception) {
         }
     }
 
     private fun playbackPositionMs(): Int =
         try {
-            player?.currentPosition ?: requestedStartPositionMs
+            player?.currentPosition
+                ?.coerceAtLeast(0L)
+                ?.coerceAtMost(Int.MAX_VALUE.toLong())
+                ?.toInt()
+                ?: requestedStartPositionMs
         } catch (_: Exception) {
             requestedStartPositionMs
         }.coerceAtLeast(0)
 
     private fun playbackDurationMs(): Int =
         try {
-            player?.duration ?: 0
+            val duration = player?.duration ?: 0L
+            if (duration > 0 && duration != C.TIME_UNSET) {
+                duration.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            } else {
+                0
+            }
         } catch (_: Exception) {
             0
-        }.coerceAtLeast(0)
+        }
 
     private fun notification(state: String): Notification {
         val open = PendingIntent.getActivity(
@@ -285,11 +337,7 @@ class SupremacyPlaybackService : Service() {
     ) {
         if (urls.isEmpty() || index !in urls.indices) return
 
-        val currentPosition = explicitPosition ?: try {
-            player?.currentPosition ?: requestedStartPositionMs
-        } catch (_: Exception) {
-            requestedStartPositionMs
-        }
+        val currentPosition = explicitPosition ?: playbackPositionMs()
 
         val currentlyPlaying = explicitPlaying ?: try {
             player?.isPlaying == true
@@ -370,8 +418,10 @@ class SupremacyPlaybackService : Service() {
     }
 
     private fun stopPlayer() {
-        try { player?.stop() } catch (_: Exception) {}
-        player?.release()
+        player?.let {
+            try { it.stop() } catch (_: Exception) {}
+            try { it.release() } catch (_: Exception) {}
+        }
         player = null
     }
 
