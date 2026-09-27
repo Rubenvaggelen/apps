@@ -131,7 +131,8 @@ object RemoteUsbMusicClient {
                 for (j in 0 until fileArray.length()) {
                     val f = fileArray.optJSONObject(j) ?: continue
                     val path = f.optString("path").trim()
-                    if (path.isBlank() || !f.optBoolean("cached", false)) continue
+                    if (path.isBlank()) continue
+                    val cached = f.optBoolean("cached", false)
                     val name = f.optString("name", path.substringAfterLast('/')).trim()
                     if (isMacMetadataFile(path, name)) continue
                     files += RemoteFile(
@@ -143,7 +144,7 @@ object RemoteUsbMusicClient {
                         title = f.optString("title").trim(),
                         artist = f.optString("artist").trim(),
                         album = f.optString("album").trim(),
-                        cached = true
+                        cached = cached
                     )
                 }
             }
