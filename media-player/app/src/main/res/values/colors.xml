@@ -1,4 +1,7 @@
 <resources>
-    <color name="black">#05070B</color>
-    <color name="the_one_blue">#20B8FF</color>
+    <color name="black">#070A0F</color>
+    <color name="the_one_blue">#2D789C</color>
+    <color name="the_one_gold">#D8A451</color>
+    <color name="the_one_surface">#0B1119</color>
+    <color name="the_one_text">#F3F6F9</color>
 </resources>
