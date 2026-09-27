@@ -430,6 +430,12 @@ public static class UsbMusicCloudService
             recoveryManifest, cancellationToken);
         Log($"{deviceName} / {stickName}: snelle herstelcatalogus gepubliceerd.");
 
+        // Tijdelijke Family-herstelmodus: publiceer de volledige catalogus en
+        // behoud bestaande cache, maar start geen nieuwe uploads zolang de
+        // hostingopslag write-fouten geeft. Zo blijven Main, Windows en Car stabiel.
+        Log($"{deviceName} / {stickName}: herstelmodus actief; nieuwe uploads tijdelijk uitgesteld.");
+        return 0;
+
         var finalManifest = new LocalManifestFile[files.Count];
 
         // Herstel hashes parallel; dit is veel sneller dan 1360+ bestanden
