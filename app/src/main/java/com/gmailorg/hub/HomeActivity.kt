@@ -26,6 +26,7 @@ class HomeActivity : AppCompatActivity() {
     private val mailUrl = "https://rubenvaggelen.github.io/Gmailorg/"
 
     private lateinit var adapter: HomeAdapter
+    private var blockedDialogShowing = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,6 +48,7 @@ class HomeActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.versionLabel).text = "build ${BuildConfig.VERSION_CODE}"
 
         UpdateChecker.checkForUpdate(this)
+        checkDeviceAccess()
 
         // Zorgt dat de parkeermeldingen voor al je opgeslagen adressen
         // geregistreerd staan zodra locatietoestemming beschikbaar is.
@@ -64,6 +66,7 @@ class HomeActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refreshTiles() // eventueel net toegevoegde app tonen
+        checkDeviceAccess()
     }
 
     /** Neemt de oude verborgen Fitness-tegelinstelling mee naar de nieuwe Lifestyle-tegel. */
@@ -174,6 +177,52 @@ class HomeActivity : AppCompatActivity() {
             .setNegativeButton("Annuleren", null)
             .show()
         return true
+    }
+
+    private fun checkDeviceAccess() {
+        if (MainDeviceRegistry.isLocallyBlocked(this)) {
+            showBlockedDeviceDialog()
+        }
+
+        Thread {
+            val blocked = runCatching { MainDeviceRegistry.heartbeat(this) }.getOrNull()
+                ?: return@Thread
+            runOnUiThread {
+                if (blocked) showBlockedDeviceDialog()
+            }
+        }.start()
+    }
+
+    private fun showBlockedDeviceDialog() {
+        if (blockedDialogShowing || isFinishing || isDestroyed) return
+        blockedDialogShowing = true
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Apparaat geblokkeerd")
+            .setMessage("Dit apparaat is geblokkeerd voor The One Main. Deblokkeer het vanaf een ander toegestaan apparaat en controleer daarna opnieuw.")
+            .setNegativeButton("App sluiten") { _, _ -> finishAffinity() }
+            .setPositiveButton("Opnieuw controleren", null)
+            .setCancelable(false)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
+                Thread {
+                    val blocked = runCatching { MainDeviceRegistry.heartbeat(this) }.getOrDefault(true)
+                    runOnUiThread {
+                        if (!blocked) {
+                            dialog.dismiss()
+                            Toast.makeText(this, "Apparaat is weer vrijgegeven.", Toast.LENGTH_SHORT).show()
+                        } else {
+                            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
+                        }
+                    }
+                }.start()
+            }
+        }
+        dialog.setOnDismissListener { blockedDialogShowing = false }
+        dialog.show()
     }
 
     private fun openMailInCustomTab() {
