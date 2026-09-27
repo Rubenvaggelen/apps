@@ -95,6 +95,8 @@ class MainActivity : AppCompatActivity() {
     }
     private var visibleTileOrder: List<String> = emptyList()
     private var draggingView: View? = null
+    private var currentFamilyStick: RemoteUsbMusicClient.RemoteStick? = null
+    private var currentFamilyFiles: List<RemoteUsbMusicClient.RemoteFile> = emptyList()
 
     private data class FixedTile(val id: String, val label: String, val icon: Int, val featured: Boolean = false, val action: (MainActivity) -> Unit)
     private data class RenderTile(
@@ -373,6 +375,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun configureCarAudioPlayer() {
+        carAudioTitle.setOnClickListener {
+            val state = UsbPlaybackService.snapshot()
+            val stick = currentFamilyStick ?: return@setOnClickListener
+            if (!state.hasTrack || state.uri.isNullOrBlank()) return@setOnClickListener
+
+            val active = currentFamilyFiles.firstOrNull { file ->
+                runCatching {
+                    RemoteUsbMusicClient.streamUrl(this, file) == state.uri
+                }.getOrDefault(false)
+            } ?: currentFamilyFiles.firstOrNull {
+                state.title.equals(cleanRemoteUsbTrackTitle(it.displayName), ignoreCase = true)
+            } ?: return@setOnClickListener
+
+            showRemoteFolderLevel(stick, active.folder)
+        }
+
         carAudioPrevious.setOnClickListener {
             UsbPlaybackService.previous(this)
             refreshCarAudioPlayer()
@@ -400,6 +418,19 @@ class MainActivity : AppCompatActivity() {
 
         carAudioPlayer.visibility = View.VISIBLE
         carAudioTitle.text = state.title
+        val familyTrack = currentFamilyStick != null &&
+            currentFamilyFiles.any {
+                state.title.equals(cleanRemoteUsbTrackTitle(it.displayName), ignoreCase = true)
+            }
+        if (familyTrack) {
+            carAudioTitle.paintFlags =
+                carAudioTitle.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
+            carAudioTitle.contentDescription =
+                "Tik om naar de map van het spelende nummer te gaan"
+        } else {
+            carAudioTitle.paintFlags =
+                carAudioTitle.paintFlags and android.graphics.Paint.UNDERLINE_TEXT_FLAG.inv()
+        }
         carAudioPlayPause.text =
             if (state.isPlaying) "⏸" else "▶"
     }
@@ -873,7 +904,7 @@ class MainActivity : AppCompatActivity() {
                         ellipsize = android.text.TextUtils.TruncateAt.END
                         setPadding(8, 14, 14, 14)
                         setOnClickListener {
-                            playRemoteUsbFolder(files, position)
+                            playRemoteUsbFolder(stick, files, position)
                         }
                     },
                     LinearLayout.LayoutParams(
@@ -924,7 +955,7 @@ class MainActivity : AppCompatActivity() {
                         )
                         setPadding(16, 12, 16, 12)
                         setOnClickListener {
-                            playRemoteUsbFolder(files, position)
+                            playRemoteUsbFolder(stick, files, position)
                         }
                     },
                     LinearLayout.LayoutParams(
@@ -1074,6 +1105,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun playRemoteUsbFolder(
+        stick: RemoteUsbMusicClient.RemoteStick,
         files: List<RemoteUsbMusicClient.RemoteFile>,
         index: Int
     ) {
@@ -1084,6 +1116,8 @@ class MainActivity : AppCompatActivity() {
                     cleanRemoteUsbTrackTitle(it.displayName)
                 )
             }
+            currentFamilyStick = stick
+            currentFamilyFiles = files.toList()
             UsbPlaybackService.play(this, queue, index)
             Toast.makeText(this, "Shared Media speelt af", Toast.LENGTH_SHORT).show()
         } catch (_: RemoteUsbMusicClient.AuthRequired) {
@@ -1092,7 +1126,7 @@ class MainActivity : AppCompatActivity() {
                 val ok = try { RemoteUsbMusicClient.loginForBrowsing(this) } catch (_: Exception) { false }
                 runOnUiThread {
                     if (ok) {
-                        playRemoteUsbFolder(files, index)
+                        playRemoteUsbFolder(stick, files, index)
                     } else {
                         Toast.makeText(this, "Shared Media kon niet opnieuw verbinden.", Toast.LENGTH_LONG).show()
                     }
