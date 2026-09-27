@@ -271,11 +271,34 @@ if ($action === 'upload-chunk') {
         out(409,['ok'=>false,'error'=>'offset mismatch','expected'=>(int)($current===false?0:$current)]);
     }
 
-    if (@file_put_contents($part,$chunk,FILE_APPEND|LOCK_EX)===false) {
-        out(500,['ok'=>false,'error'=>'chunk write failed']);
+    $fh=@fopen($part,'c+b');
+    if ($fh===false) out(500,['ok'=>false,'error'=>'chunk open failed']);
+
+    if (@fseek($fh,$offset,SEEK_SET)!==0) {
+        @fclose($fh);
+        out(500,['ok'=>false,'error'=>'chunk seek failed']);
     }
 
-    out(200,['ok'=>true,'offset'=>$offset+strlen($chunk)]);
+    $length=strlen($chunk);
+    $written=0;
+    while ($written<$length) {
+        $n=@fwrite($fh,substr($chunk,$written));
+        if ($n===false || $n===0) {
+            @fclose($fh);
+            out(500,[
+                'ok'=>false,
+                'error'=>'chunk write failed',
+                'written'=>$written,
+                'length'=>$length
+            ]);
+        }
+        $written+=$n;
+    }
+    @fflush($fh);
+    @fclose($fh);
+    clearstatcache(true,$part);
+
+    out(200,['ok'=>true,'offset'=>$offset+$written]);
 }
 
 if ($action === 'upload-finish') {
