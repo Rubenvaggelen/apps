@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/carRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/bg">
@@ -70,4 +71,99 @@
                 android:useDefaultMargins="false" />
         </ScrollView>
     </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/youtubeOverlay"
+        android:layout_width="560dp"
+        android:layout_height="330dp"
+        android:layout_gravity="end|bottom"
+        android:layout_margin="14dp"
+        android:visibility="gone"
+        android:elevation="24dp"
+        android:background="@drawable/bg_player_panel">
+
+        <com.gmailorg.carradio.PassThroughFrameLayout
+            android:id="@+id/youtubePlayerSurface"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginTop="52dp">
+
+            <WebView
+                android:id="@+id/youtubeWebView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@color/bg" />
+        </com.gmailorg.carradio.PassThroughFrameLayout>
+
+        <LinearLayout
+            android:id="@+id/youtubeControls"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="8dp"
+            android:background="@color/surface_raised">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
+                android:text="YouTube"
+                android:textColor="@color/gold"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:paddingStart="8dp" />
+
+            <TextView
+                android:id="@+id/youtubeFadeButton"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:gravity="center"
+                android:minWidth="90dp"
+                android:paddingHorizontal="12dp"
+                android:text="Tegels"
+                android:textColor="@color/text_main"
+                android:textStyle="bold"
+                android:background="@drawable/bg_outline" />
+
+            <TextView
+                android:id="@+id/youtubeFullscreenButton"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:gravity="center"
+                android:minWidth="126dp"
+                android:paddingHorizontal="12dp"
+                android:text="⛶ Volledig"
+                android:textColor="@color/text_main"
+                android:textStyle="bold"
+                android:background="@drawable/bg_outline" />
+
+            <TextView
+                android:id="@+id/youtubeMinimizeButton"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:gravity="center"
+                android:minWidth="108dp"
+                android:paddingHorizontal="12dp"
+                android:text="▣ Verklein"
+                android:textColor="@color/text_main"
+                android:textStyle="bold"
+                android:background="@drawable/bg_outline" />
+
+            <TextView
+                android:id="@+id/youtubeCloseButton"
+                android:layout_width="48dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:gravity="center"
+                android:text="✕"
+                android:textColor="@color/gold"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:background="@drawable/bg_gold_outline" />
+        </LinearLayout>
+    </FrameLayout>
 </FrameLayout>
