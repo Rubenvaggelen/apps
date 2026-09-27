@@ -3,7 +3,7 @@
     android:layout_width="match_parent" android:layout_height="match_parent"
     android:orientation="vertical" android:background="@color/bg" android:padding="16dp">
     <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:text="Huishouden" android:textColor="@color/amber" android:textSize="25sp" android:textStyle="bold"/>
+        android:text="Huishouden" android:textColor="@color/amber" android:textSize="37.5sp" android:textStyle="bold"/>
     <TextView android:id="@+id/householdStatus" android:layout_width="match_parent" android:layout_height="wrap_content"
         android:textColor="@color/text_dim" android:paddingBottom="6dp"/>
     <Switch android:id="@+id/householdAlertSwitch" android:layout_width="match_parent" android:layout_height="wrap_content"
