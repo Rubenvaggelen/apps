@@ -12,6 +12,7 @@ $files = $root . '/files';
 $meta = $root . '/meta';
 $secretFile = $root . '/secret.key';
 $rateFile = $root . '/rate.json';
+$favoritesFile = $root . '/favorites.json';
 
 foreach ([$root, $files, $meta] as $dir) {
     if (!is_dir($dir)) @mkdir($dir, 0700, true);
@@ -211,6 +212,74 @@ if ($action === 'catalog') {
         $sticks[]=$v;
     }
     out(200,['ok'=>true,'sticks'=>$sticks]);
+}
+
+
+if ($action === 'favorites-list') {
+    $token=bearer();
+    if (!token_read_ok($token,$sec)) out(401,['ok'=>false,'error'=>'auth required']);
+    $doc=load_json($favoritesFile);
+    $items=is_array($doc['items'] ?? null) ? $doc['items'] : [];
+    out(200,['ok'=>true,'items'=>array_values($items)]);
+}
+
+if ($action === 'favorites-set') {
+    $token=bearer();
+    if (!token_read_ok($token,$sec)) out(401,['ok'=>false,'error'=>'auth required']);
+    $b=read_json();
+    $kind=strtolower(trim((string)($b['kind'] ?? '')));
+    if (!in_array($kind,['mix','usb'],true)) out(400,['ok'=>false,'error'=>'invalid kind']);
+
+    $title=mb_substr(trim((string)($b['title'] ?? '')),0,240);
+    if ($title==='') out(400,['ok'=>false,'error'=>'title required']);
+    $sourceLabel=mb_substr(trim((string)($b['source_label'] ?? '')),0,160);
+    $device=trim((string)($b['device_id'] ?? ''));
+    $stick=trim((string)($b['stick_id'] ?? ''));
+    $path=trim((string)($b['path'] ?? ''));
+    $url=trim((string)($b['url'] ?? ''));
+
+    if ($kind==='usb') {
+        $device=safe_id($device);
+        $stick=safe_id($stick);
+        $path=safe_path($path);
+        $identity="usb\n".$device."\n".$stick."\n".$path;
+    } else {
+        if ($url==='' || !preg_match('#^https?://#i',$url)) out(400,['ok'=>false,'error'=>'url required']);
+        if (strlen($url)>2000) out(400,['ok'=>false,'error'=>'url too long']);
+        $identity="mix\n".$url;
+        $device=''; $stick=''; $path='';
+    }
+
+    $id=hash('sha256',$identity);
+    $doc=load_json($favoritesFile);
+    if (!is_array($doc['items'] ?? null)) $doc=['items'=>[]];
+    $items=[];
+    foreach ((array)$doc['items'] as $row) {
+        if (!is_array($row)) continue;
+        $rowId=(string)($row['id'] ?? '');
+        if ($rowId!=='' && $rowId!==$id) $items[]=$row;
+    }
+
+    $favorite=filter_var($b['favorite'] ?? true,FILTER_VALIDATE_BOOLEAN);
+    if ($favorite) {
+        array_unshift($items,[
+            'id'=>$id,
+            'kind'=>$kind,
+            'title'=>$title,
+            'source_label'=>$sourceLabel,
+            'device_id'=>$device,
+            'stick_id'=>$stick,
+            'path'=>$path,
+            'url'=>$url,
+            'added_at'=>gmdate('c')
+        ]);
+        if (count($items)>1000) $items=array_slice($items,0,1000);
+    }
+
+    if (!save_json($favoritesFile,['items'=>$items,'updated_at'=>gmdate('c')])) {
+        out(507,['ok'=>false,'error'=>'favorites storage unavailable']);
+    }
+    out(200,['ok'=>true,'favorite'=>$favorite,'id'=>$id]);
 }
 
 require_auth($sec);
