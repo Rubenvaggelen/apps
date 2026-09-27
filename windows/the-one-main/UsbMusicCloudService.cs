@@ -2,6 +2,7 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -71,6 +72,11 @@ public static class UsbMusicCloudService
         "The One Family",
         "The One Windows",
         "usb-music-sync.log");
+    private static readonly string StickIdentityMap = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "The One Family",
+        "The One Windows",
+        "usb-stick-identities.json");
     private static readonly HashSet<string> AudioExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".mp3", ".m4a", ".aac", ".ogg", ".oga", ".opus", ".flac", ".wav", ".wma"
@@ -128,15 +134,24 @@ public static class UsbMusicCloudService
             var drives = ReadyUsbDrives().ToList();
             Log($"Shared Media-drives gevonden: {drives.Count}.");
 
-            // Meld altijd welke sticks fysiek aanwezig zijn. Ook een lege lijst
-            // is belangrijk: daarmee verdwijnen losgekoppelde sticks uit Shared Media.
-            await ReportPresenceAsync(drives, cancellationToken);
+            if (drives.Count == 0)
+            {
+                await ReportPresenceAsync(drives, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), cancellationToken);
+                return 0;
+            }
 
-            if (drives.Count == 0) return 0;
-
-            // De sync-service mag ook verborgen/inactieve catalogusdata lezen,
-            // zodat een opnieuw aangesloten stick zijn bestaande cache hergebruikt.
+            // Lees ook verborgen/inactieve catalogusdata. Daarmee kunnen we een USB-stick
+            // waarvan alleen de zichtbare naam veranderde terugkoppelen aan zijn bestaande
+            // Family-identiteit, inclusief reeds gecontroleerde/gecachete nummers.
             var catalog = await GetCatalogAsync(cancellationToken, includeInactive: true);
+            var resolvedStickIds = drives.ToDictionary(
+                drive => drive.RootDirectory.FullName,
+                drive => ResolveStickId(drive, catalog),
+                StringComparer.OrdinalIgnoreCase);
+
+            // Meld altijd welke fysieke sticks aanwezig zijn, maar gebruik voortaan de
+            // stabiele/canonieke identiteit in plaats van de zichtbare volumenaam.
+            await ReportPresenceAsync(drives, resolvedStickIds, cancellationToken);
             var existing = catalog
                 .SelectMany(stick => stick.Files.Select(file =>
                 {
@@ -153,7 +168,11 @@ public static class UsbMusicCloudService
             foreach (var drive in drives)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                synced += await SyncDriveAsync(drive, existing, cancellationToken);
+                synced += await SyncDriveAsync(
+                    drive,
+                    resolvedStickIds[drive.RootDirectory.FullName],
+                    existing,
+                    cancellationToken);
             }
 
             return synced;
@@ -166,6 +185,7 @@ public static class UsbMusicCloudService
 
     private static async Task ReportPresenceAsync(
         List<DriveInfo> drives,
+        IReadOnlyDictionary<string, string> resolvedStickIds,
         CancellationToken cancellationToken)
     {
         await EnsureTokenAsync(cancellationToken);
@@ -174,7 +194,9 @@ public static class UsbMusicCloudService
         {
             device_id = SafeId(Environment.MachineName),
             active_stick_ids = drives
-                .Select(StickId)
+                .Select(drive => resolvedStickIds.TryGetValue(drive.RootDirectory.FullName, out var id)
+                    ? id
+                    : LegacyStickId(drive))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray()
         });
@@ -352,6 +374,7 @@ public static class UsbMusicCloudService
 
     private static async Task<int> SyncDriveAsync(
         DriveInfo drive,
+        string stickId,
         Dictionary<string, CloudUsbMusicFile> existing,
         CancellationToken cancellationToken)
     {
@@ -360,8 +383,6 @@ public static class UsbMusicCloudService
         var stickName = string.IsNullOrWhiteSpace(drive.VolumeLabel)
             ? $"USB {drive.Name.TrimEnd('\\')}"
             : drive.VolumeLabel.Trim();
-        var stickId = StickId(drive);
-
         var preferred = Path.Combine(drive.RootDirectory.FullName, "Muziek");
         var scanRoot = Directory.Exists(preferred)
             ? preferred
@@ -814,12 +835,162 @@ public static class UsbMusicCloudService
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
-    private static string StickId(DriveInfo drive)
+    private static string ResolveStickId(
+        DriveInfo drive,
+        IReadOnlyCollection<CloudUsbMusicStick> catalog)
+    {
+        var hardwareKey = VolumeIdentityKey(drive);
+        var saved = LoadStickIdentityMap();
+        if (!string.IsNullOrWhiteSpace(hardwareKey) &&
+            saved.TryGetValue(hardwareKey, out var remembered) &&
+            !string.IsNullOrWhiteSpace(remembered))
+        {
+            return remembered;
+        }
+
+        var deviceId = SafeId(Environment.MachineName);
+        var legacyId = LegacyStickId(drive);
+
+        // Als de huidige naam nog dezelfde is als vroeger, behoud exact de bestaande ID.
+        var direct = catalog.FirstOrDefault(x =>
+            x.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase) &&
+            x.StickId.Equals(legacyId, StringComparison.OrdinalIgnoreCase));
+        if (direct != null)
+        {
+            RememberStickIdentity(hardwareKey, direct.StickId, saved);
+            return direct.StickId;
+        }
+
+        // Migratiepad voor een stick waarvan Windows alleen de volumenaam heeft veranderd.
+        // Vergelijk relatieve paden + bestandsgrootte met de bestaande Family-catalogus.
+        var preferred = Path.Combine(drive.RootDirectory.FullName, "Muziek");
+        var scanRoot = Directory.Exists(preferred) ? preferred : drive.RootDirectory.FullName;
+        var local = EnumerateAudioFiles(scanRoot)
+            .Select(file => NormalizePath(Path.GetRelativePath(scanRoot, file.FullName)) + "|" + file.Length)
+            .Take(500)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        CloudUsbMusicStick? best = null;
+        var bestScore = 0;
+        var bestRatio = 0d;
+        foreach (var candidate in catalog.Where(x =>
+            x.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)))
+        {
+            var remote = candidate.Files
+                .Select(file => NormalizePath(file.Path) + "|" + file.Size)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (remote.Count == 0 || local.Count == 0) continue;
+
+            var score = local.Count(marker => remote.Contains(marker));
+            var ratio = (double)score / Math.Max(1, Math.Min(local.Count, remote.Count));
+            if (score > bestScore || (score == bestScore && ratio > bestRatio))
+            {
+                best = candidate;
+                bestScore = score;
+                bestRatio = ratio;
+            }
+        }
+
+        var minimumMatches = Math.Min(10, Math.Max(1, local.Count / 4));
+        if (best != null && bestScore >= minimumMatches && bestRatio >= 0.60d)
+        {
+            Log($"USB-identiteit hersteld: {drive.Name} -> bestaande stick {best.StickId} ({bestScore} matches, {bestRatio:P0}).");
+            RememberStickIdentity(hardwareKey, best.StickId, saved);
+            return best.StickId;
+        }
+
+        // Nieuwe stick: identiteit is gebaseerd op het volume-serienummer en niet op de naam.
+        var raw = string.IsNullOrWhiteSpace(hardwareKey)
+            ? $"fallback|{drive.TotalSize}|{drive.DriveFormat}"
+            : hardwareKey;
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(raw));
+        var stableId = Convert.ToHexString(hash).ToLowerInvariant()[..20];
+        RememberStickIdentity(hardwareKey, stableId, saved);
+        return stableId;
+    }
+
+    private static string LegacyStickId(DriveInfo drive)
     {
         var raw = $"{drive.VolumeLabel}|{drive.TotalSize}";
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(raw));
         return Convert.ToHexString(hash).ToLowerInvariant()[..20];
     }
+
+    private static Dictionary<string, string> LoadStickIdentityMap()
+    {
+        try
+        {
+            if (!File.Exists(StickIdentityMap))
+                return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            var json = File.ReadAllText(StickIdentityMap);
+            return JsonSerializer.Deserialize<Dictionary<string, string>>(json)
+                ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private static void RememberStickIdentity(
+        string hardwareKey,
+        string stickId,
+        Dictionary<string, string> map)
+    {
+        if (string.IsNullOrWhiteSpace(hardwareKey) || string.IsNullOrWhiteSpace(stickId))
+            return;
+
+        try
+        {
+            map[hardwareKey] = stickId;
+            var dir = Path.GetDirectoryName(StickIdentityMap);
+            if (!string.IsNullOrWhiteSpace(dir))
+                Directory.CreateDirectory(dir);
+            File.WriteAllText(StickIdentityMap, JsonSerializer.Serialize(map));
+        }
+        catch
+        {
+            // De identity-cache is een optimalisatie; catalogusmatching blijft de fallback.
+        }
+    }
+
+    private static string VolumeIdentityKey(DriveInfo drive)
+    {
+        try
+        {
+            var root = drive.RootDirectory.FullName;
+            var volumeName = new StringBuilder(261);
+            var fileSystemName = new StringBuilder(261);
+            if (GetVolumeInformation(
+                root,
+                volumeName,
+                volumeName.Capacity,
+                out var serial,
+                out _,
+                out _,
+                fileSystemName,
+                fileSystemName.Capacity))
+            {
+                return $"volume|{serial:x8}|{drive.TotalSize}|{fileSystemName}";
+            }
+        }
+        catch { }
+
+        return "";
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetVolumeInformation(
+        string lpRootPathName,
+        StringBuilder lpVolumeNameBuffer,
+        int nVolumeNameSize,
+        out uint lpVolumeSerialNumber,
+        out uint lpMaximumComponentLength,
+        out uint lpFileSystemFlags,
+        StringBuilder lpFileSystemNameBuffer,
+        int nFileSystemNameSize);
 
     private static string SafeId(string value)
     {
