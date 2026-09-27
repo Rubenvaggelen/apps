@@ -374,6 +374,63 @@ if ($action === 'upload') {
     out(200,['ok'=>true]);
 }
 
+if ($action === 'sync-batch') {
+    $b=read_json();
+    $device=safe_id((string)($b['device_id'] ?? ''));
+    $stick=safe_id((string)($b['stick_id'] ?? ''));
+    $batchIndex=max(0,(int)($b['batch_index'] ?? 0));
+    $batchTotal=max(1,(int)($b['batch_total'] ?? 1));
+    if ($batchIndex >= $batchTotal || $batchTotal > 200) {
+        out(400,['ok'=>false,'error'=>'invalid batch']);
+    }
+
+    $tmpMeta=$meta.'/'.$device.'__'.$stick.'.sync.json';
+    if ($batchIndex===0) {
+        $doc=[
+            'device_id'=>$device,
+            'device_name'=>mb_substr(trim((string)($b['device_name'] ?? $device)),0,80),
+            'stick_id'=>$stick,
+            'stick_name'=>mb_substr(trim((string)($b['stick_name'] ?? $stick)),0,100),
+            'online'=>true,
+            'presence_updated_at'=>gmdate('c'),
+            'updated_at'=>gmdate('c'),
+            'files'=>[]
+        ];
+    } else {
+        $doc=load_json($tmpMeta);
+        if ($doc===[]) out(409,['ok'=>false,'error'=>'batch not started']);
+    }
+
+    foreach ((array)($b['files'] ?? []) as $item) {
+        if (!is_array($item)) continue;
+        $path=safe_path((string)($item['path'] ?? ''));
+        $sha=strtolower(trim((string)($item['sha256'] ?? '')));
+        if ($sha !== '' && !preg_match('/^[a-f0-9]{64}$/',$sha)) continue;
+        $doc['files'][]=[
+            'path'=>$path,
+            'name'=>basename($path),
+            'folder'=>dirname($path)==='.'?'':dirname($path),
+            'title'=>mb_substr(trim((string)($item['title'] ?? '')),0,240),
+            'artist'=>mb_substr(trim((string)($item['artist'] ?? '')),0,240),
+            'album'=>mb_substr(trim((string)($item['album'] ?? '')),0,240),
+            'size'=>max(0,(int)($item['size'] ?? 0)),
+            'sha256'=>$sha,
+            'modified'=>trim((string)($item['modified'] ?? '')),
+            'cached'=>is_file($files.'/'.key_for($device,$stick,$path).'.bin')
+        ];
+    }
+
+    $doc['updated_at']=gmdate('c');
+    if ($batchIndex + 1 >= $batchTotal) {
+        save_json($meta.'/'.$device.'__'.$stick.'.json',$doc);
+        @unlink($tmpMeta);
+        out(200,['ok'=>true,'files'=>count($doc['files']),'complete'=>true]);
+    }
+
+    save_json($tmpMeta,$doc);
+    out(200,['ok'=>true,'files'=>count($doc['files']),'complete'=>false]);
+}
+
 if ($action === 'sync') {
     $b=read_json();
     $device=safe_id((string)($b['device_id'] ?? ''));
