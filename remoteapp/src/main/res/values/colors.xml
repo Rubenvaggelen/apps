@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="remote_bg">#071018</color>
-    <color name="remote_surface">#0F1C29</color>
-    <color name="remote_blue">#20B7FF</color>
-    <color name="remote_text">#F3F8FC</color>
-    <color name="remote_dim">#9FB2C2</color>
+    <color name="remote_bg">#070A0F</color>
+    <color name="remote_surface">#0B1119</color>
+    <color name="remote_blue">#2D789C</color>
+    <color name="remote_gold">#D8A451</color>
+    <color name="remote_text">#F3F6F9</color>
+    <color name="remote_dim">#8F9BAD</color>
 </resources>
