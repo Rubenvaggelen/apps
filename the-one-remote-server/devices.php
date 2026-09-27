@@ -131,6 +131,11 @@ if ($action === 'claim_owner') {
         respond_devices(403, ['ok' => false, 'error' => 'Unauthorized']);
     }
 
+    $model = strtoupper(trim((string)($body['request_model'] ?? '')));
+    if ($model !== 'SM-S931B') {
+        respond_devices(403, ['ok' => false, 'error' => 'Owner device required']);
+    }
+
     $deviceId = clean_device_id((string)($body['request_device_id'] ?? ''));
     $ownerId = devices_owner_id($ownerFile);
     if ($ownerId !== '' && !hash_equals($ownerId, $deviceId)) {
