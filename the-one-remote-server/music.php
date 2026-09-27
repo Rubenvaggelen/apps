@@ -37,11 +37,32 @@ function load_json(string $file): array {
     $v = json_decode((string)@file_get_contents($file), true);
     return is_array($v) ? $v : [];
 }
-function save_json(string $file, array $v): void {
+function save_json(string $file, array $v): bool {
+    $json = json_encode(
+        $v,
+        JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+    );
+    if (!is_string($json)) return false;
+
     $tmp = $file . '.tmp.' . bin2hex(random_bytes(4));
-    @file_put_contents($tmp, json_encode($v, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), LOCK_EX);
+    $written = @file_put_contents($tmp, $json, LOCK_EX);
+    if ($written === false || $written !== strlen($json)) {
+        @unlink($tmp);
+        return false;
+    }
+
+    $check = @file_get_contents($tmp);
+    if (!is_string($check) || strlen($check) !== strlen($json) || json_decode($check, true) === null) {
+        @unlink($tmp);
+        return false;
+    }
+
     @chmod($tmp, 0600);
-    @rename($tmp, $file);
+    if (!@rename($tmp, $file)) {
+        @unlink($tmp);
+        return false;
+    }
+    return true;
 }
 function safe_id(string $v): string {
     $v = trim($v);
@@ -423,12 +444,16 @@ if ($action === 'sync-batch') {
 
     $doc['updated_at']=gmdate('c');
     if ($batchIndex + 1 >= $batchTotal) {
-        save_json($meta.'/'.$device.'__'.$stick.'.json',$doc);
+        if (!save_json($meta.'/'.$device.'__'.$stick.'.json',$doc)) {
+            out(507,['ok'=>false,'error'=>'catalog storage full']);
+        }
         @unlink($tmpMeta);
         out(200,['ok'=>true,'files'=>count($doc['files']),'complete'=>true]);
     }
 
-    save_json($tmpMeta,$doc);
+    if (!save_json($tmpMeta,$doc)) {
+        out(507,['ok'=>false,'error'=>'catalog storage full']);
+    }
     out(200,['ok'=>true,'files'=>count($doc['files']),'complete'=>false]);
 }
 
