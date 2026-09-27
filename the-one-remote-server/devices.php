@@ -105,6 +105,39 @@ function clean_device_id(string $value): string {
     return $value;
 }
 
+function clean_access_scope(string $value): string {
+    $scope = strtolower(trim($value));
+    if (!in_array($scope, ['mixes', 'shared', 'favorites'], true)) {
+        respond_devices(400, ['ok' => false, 'error' => 'Invalid access scope']);
+    }
+    return $scope;
+}
+
+function device_access_rights(array $device): array {
+    $legacy = (bool)($device['music_rights'] ?? false);
+    $stored = is_array($device['access_rights'] ?? null) ? $device['access_rights'] : [];
+    return [
+        'mixes' => (bool)($stored['mixes'] ?? $legacy),
+        'shared' => (bool)($stored['shared'] ?? $legacy),
+        'favorites' => (bool)($stored['favorites'] ?? $legacy)
+    ];
+}
+
+function device_access_requests(array $device): array {
+    $stored = is_array($device['access_requests'] ?? null) ? $device['access_requests'] : [];
+    $result = [];
+    foreach (['mixes', 'shared', 'favorites'] as $scope) {
+        $row = is_array($stored[$scope] ?? null) ? $stored[$scope] : [];
+        if (($row['status'] ?? '') === 'pending') {
+            $result[$scope] = [
+                'status' => 'pending',
+                'requested_at' => (string)($row['requested_at'] ?? '')
+            ];
+        }
+    }
+    return $result;
+}
+
 $action = (string)($_GET['action'] ?? 'health');
 
 if ($action === 'health') {
@@ -140,17 +173,25 @@ if ($action === 'heartbeat') {
         'version' => mb_substr($version, 0, 40),
         'blocked' => (bool)($old['blocked'] ?? false),
         'music_rights' => (bool)($old['music_rights'] ?? false),
+        'access_rights' => device_access_rights($old),
+        'access_requests' => device_access_requests($old),
         'registered' => (string)($old['registered'] ?? gmdate('c')),
         'last_seen' => time()
     ];
     devices_save($devicesFile, $state);
     $ownerId = devices_owner_id($ownerFile);
     $owner = $ownerId !== '' && hash_equals($ownerId, $deviceId);
+    $rights = device_access_rights($state['devices'][$deviceId]);
+    if ($owner) {
+        $rights = ['mixes' => true, 'shared' => true, 'favorites' => true];
+    }
     respond_devices(200, [
         'ok' => true,
         'blocked' => (bool)$state['devices'][$deviceId]['blocked'],
         'owner' => $owner,
         'music_rights' => $owner || (bool)($state['devices'][$deviceId]['music_rights'] ?? false),
+        'access_rights' => $rights,
+        'access_requests' => device_access_requests($state['devices'][$deviceId]),
         'the_one_registered' => devices_owner_person_name($ownerFile) !== ''
     ]);
 }
@@ -258,6 +299,56 @@ if ($action === 'connection_status') {
     respond_devices(200, ['ok' => true, 'devices' => $devices]);
 }
 
+if ($action === 'access_status') {
+    $deviceId = clean_device_id((string)($body['device_id'] ?? ''));
+    $scope = clean_access_scope((string)($body['scope'] ?? ''));
+    $state = devices_load($devicesFile);
+    $ownerId = devices_owner_id($ownerFile);
+    $device = is_array($state['devices'][$deviceId] ?? null) ? $state['devices'][$deviceId] : [];
+    $owner = $ownerId !== '' && hash_equals($ownerId, $deviceId);
+    $rights = device_access_rights($device);
+    $requests = device_access_requests($device);
+    respond_devices(200, [
+        'ok' => true,
+        'allowed' => $owner || (bool)($rights[$scope] ?? false),
+        'pending' => isset($requests[$scope]),
+        'owner' => $owner,
+        'scope' => $scope,
+        'person_name' => (string)($device['person_name'] ?? '')
+    ]);
+}
+
+if ($action === 'request_access') {
+    $deviceId = clean_device_id((string)($body['device_id'] ?? ''));
+    $scope = clean_access_scope((string)($body['scope'] ?? ''));
+    $state = devices_load($devicesFile);
+    if (!isset($state['devices'][$deviceId]) || !is_array($state['devices'][$deviceId])) {
+        respond_devices(404, ['ok' => false, 'error' => 'Device not found']);
+    }
+
+    $ownerId = devices_owner_id($ownerFile);
+    if ($ownerId !== '' && hash_equals($ownerId, $deviceId)) {
+        respond_devices(200, ['ok' => true, 'allowed' => true, 'pending' => false, 'scope' => $scope]);
+    }
+
+    $rights = device_access_rights($state['devices'][$deviceId]);
+    if ((bool)($rights[$scope] ?? false)) {
+        respond_devices(200, ['ok' => true, 'allowed' => true, 'pending' => false, 'scope' => $scope]);
+    }
+
+    $requests = is_array($state['devices'][$deviceId]['access_requests'] ?? null)
+        ? $state['devices'][$deviceId]['access_requests']
+        : [];
+    $requests[$scope] = [
+        'status' => 'pending',
+        'requested_at' => gmdate('c')
+    ];
+    $state['devices'][$deviceId]['access_requests'] = $requests;
+    devices_save($devicesFile, $state);
+
+    respond_devices(200, ['ok' => true, 'allowed' => false, 'pending' => true, 'scope' => $scope]);
+}
+
 if ($action === 'music_access') {
     $deviceId = clean_device_id((string)($body['device_id'] ?? ''));
     $state = devices_load($devicesFile);
@@ -289,11 +380,49 @@ if ($action === 'list') {
         $d['online'] = $lastSeen > 0 && ($now - $lastSeen) <= 90;
         $d['owner'] = $ownerId !== '' && $deviceId !== '' && hash_equals($ownerId, $deviceId);
         $d['music_rights'] = (bool)$d['owner'] || (bool)($d['music_rights'] ?? false);
+        $d['access_rights'] = (bool)$d['owner']
+            ? ['mixes' => true, 'shared' => true, 'favorites' => true]
+            : device_access_rights($d);
+        $d['access_requests'] = device_access_requests($d);
         if (!isset($d['person_name'])) $d['person_name'] = '';
         return $d;
     }, $state['devices']));
     usort($devices, fn($a, $b) => ((int)($b['last_seen'] ?? 0)) <=> ((int)($a['last_seen'] ?? 0)));
     respond_devices(200, ['ok' => true, 'devices' => $devices]);
+}
+
+if ($action === 'set_access_right') {
+    $deviceId = clean_device_id((string)($body['device_id'] ?? ''));
+    $scope = clean_access_scope((string)($body['scope'] ?? ''));
+    if (!isset($state['devices'][$deviceId]) || !is_array($state['devices'][$deviceId])) {
+        respond_devices(404, ['ok' => false, 'error' => 'Device not found']);
+    }
+
+    $ownerId = devices_owner_id($ownerFile);
+    $ownerTarget = $ownerId !== '' && hash_equals($ownerId, $deviceId);
+    $enabled = filter_var($body['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    if ($ownerTarget && !$enabled) {
+        respond_devices(409, ['ok' => false, 'error' => 'Owner keeps all access rights']);
+    }
+
+    $rights = device_access_rights($state['devices'][$deviceId]);
+    $rights[$scope] = $ownerTarget ? true : $enabled;
+    $state['devices'][$deviceId]['access_rights'] = $rights;
+
+    $requests = is_array($state['devices'][$deviceId]['access_requests'] ?? null)
+        ? $state['devices'][$deviceId]['access_requests']
+        : [];
+    unset($requests[$scope]);
+    $state['devices'][$deviceId]['access_requests'] = $requests;
+    $state['devices'][$deviceId]['access_rights_updated'] = gmdate('c');
+
+    devices_save($devicesFile, $state);
+    respond_devices(200, [
+        'ok' => true,
+        'device_id' => $deviceId,
+        'scope' => $scope,
+        'enabled' => (bool)$rights[$scope]
+    ]);
 }
 
 if ($action === 'set_music_rights') {
@@ -310,6 +439,12 @@ if ($action === 'set_music_rights') {
     }
 
     $state['devices'][$deviceId]['music_rights'] = $ownerTarget ? true : $enabled;
+    $state['devices'][$deviceId]['access_rights'] = [
+        'mixes' => $ownerTarget ? true : $enabled,
+        'shared' => $ownerTarget ? true : $enabled,
+        'favorites' => $ownerTarget ? true : $enabled
+    ];
+    $state['devices'][$deviceId]['access_requests'] = [];
     $state['devices'][$deviceId]['music_rights_updated'] = gmdate('c');
     devices_save($devicesFile, $state);
     respond_devices(200, [
