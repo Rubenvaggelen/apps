@@ -232,8 +232,33 @@ if ($action === 'catalog') {
 if ($action === 'favorites-list') {
     $token=bearer();
     if (!token_read_ok($token,$sec)) out(401,['ok'=>false,'error'=>'auth required']);
+
+    $requestDevice=safe_id((string)($_GET['request_device_id'] ?? ''));
+    if (!music_device_allowed($requestDevice,$deviceRegistryFile,$deviceOwnerFile)) {
+        out(403,['ok'=>false,'error'=>'music rights required']);
+    }
+
     $doc=load_json($favoritesFile);
-    $items=is_array($doc['items'] ?? null) ? $doc['items'] : [];
+    $byDevice=is_array($doc['by_device'] ?? null) ? $doc['by_device'] : [];
+
+    // Legacy favorites were previously global. They now belong only to The One
+    // (the registered owner) so they never leak to another device.
+    $owner=load_json($deviceOwnerFile);
+    $ownerId=trim((string)($owner['device_id'] ?? ''));
+    $bucket=is_array($byDevice[$requestDevice] ?? null)
+        ? $byDevice[$requestDevice]
+        : [];
+    $items=is_array($bucket['items'] ?? null) ? $bucket['items'] : [];
+
+    if (
+        $items===[] &&
+        $ownerId!=='' &&
+        hash_equals($ownerId,$requestDevice) &&
+        is_array($doc['items'] ?? null)
+    ) {
+        $items=$doc['items'];
+    }
+
     out(200,['ok'=>true,'items'=>array_values($items)]);
 }
 
@@ -245,6 +270,7 @@ if ($action === 'favorites-set') {
     if (!music_device_allowed($requestDevice,$deviceRegistryFile,$deviceOwnerFile)) {
         out(403,['ok'=>false,'error'=>'music rights required']);
     }
+
     $kind=strtolower(trim((string)($b['kind'] ?? '')));
     if (!in_array($kind,['mix','usb'],true)) out(400,['ok'=>false,'error'=>'invalid kind']);
 
@@ -270,9 +296,28 @@ if ($action === 'favorites-set') {
 
     $id=hash('sha256',$identity);
     $doc=load_json($favoritesFile);
-    if (!is_array($doc['items'] ?? null)) $doc=['items'=>[]];
+    $byDevice=is_array($doc['by_device'] ?? null) ? $doc['by_device'] : [];
+
+    $owner=load_json($deviceOwnerFile);
+    $ownerId=trim((string)($owner['device_id'] ?? ''));
+
+    $bucket=is_array($byDevice[$requestDevice] ?? null)
+        ? $byDevice[$requestDevice]
+        : [];
+    $existing=is_array($bucket['items'] ?? null) ? $bucket['items'] : [];
+
+    // Migrate the old global list only into the owner's private list.
+    if (
+        $existing===[] &&
+        $ownerId!=='' &&
+        hash_equals($ownerId,$requestDevice) &&
+        is_array($doc['items'] ?? null)
+    ) {
+        $existing=$doc['items'];
+    }
+
     $items=[];
-    foreach ((array)$doc['items'] as $row) {
+    foreach ($existing as $row) {
         if (!is_array($row)) continue;
         $rowId=(string)($row['id'] ?? '');
         if ($rowId!=='' && $rowId!==$id) $items[]=$row;
@@ -294,9 +339,20 @@ if ($action === 'favorites-set') {
         if (count($items)>1000) $items=array_slice($items,0,1000);
     }
 
-    if (!save_json($favoritesFile,['items'=>$items,'updated_at'=>gmdate('c')])) {
+    $byDevice[$requestDevice]=[
+        'items'=>$items,
+        'updated_at'=>gmdate('c')
+    ];
+
+    // Deliberately drop the old global "items" field. Favorites are private
+    // per device from this point forward.
+    if (!save_json($favoritesFile,[
+        'by_device'=>$byDevice,
+        'updated_at'=>gmdate('c')
+    ])) {
         out(507,['ok'=>false,'error'=>'favorites storage unavailable']);
     }
+
     out(200,['ok'=>true,'favorite'=>$favorite,'id'=>$id]);
 }
 
