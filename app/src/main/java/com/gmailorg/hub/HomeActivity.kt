@@ -122,6 +122,7 @@ class HomeActivity : AppCompatActivity() {
             // tonen als die app ook daadwerkelijk geïnstalleerd staat —
             // anders zie je een leeg "+"-icoontje voor een niet-bestaande app.
             (tile.packageName == null || isPackageInstalled(tile.packageName)) &&
+                (tile.id != "remote_pc" || MainDeviceRegistry.isLocallyOwner(this)) &&
                 !HiddenTilesStore.isHidden(tile.id)
         }
         val userApps = ShortcutStore.getAll().filter { !HiddenTilesStore.isHidden(it.id) }
@@ -187,7 +188,13 @@ class HomeActivity : AppCompatActivity() {
         Thread {
             val blocked = runCatching { MainDeviceRegistry.heartbeat(this) }.getOrNull()
                 ?: return@Thread
+
+            if (!MainDeviceRegistry.isLocallyOwner(this) && MainDeviceRegistry.isOwnerEligible()) {
+                MainDeviceRegistry.claimInitialOwner(this)
+            }
+
             runOnUiThread {
+                refreshTiles()
                 if (blocked) showBlockedDeviceDialog()
             }
         }.start()
