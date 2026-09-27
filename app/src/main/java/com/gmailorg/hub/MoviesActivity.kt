@@ -38,6 +38,14 @@ class MoviesActivity : AppCompatActivity() {
     private var currentRemoteUsbStick: RemoteUsbMusicClient.RemoteStick? = null
     private var currentRemoteUsbFolder: String = ""
     private val remoteMusicIo = Executors.newSingleThreadExecutor()
+    private val compactPlayerRefresh = object : Runnable {
+        override fun run() {
+            if (!isFinishing && !isDestroyed && ::musicNowPlaying.isInitialized) {
+                refreshCompactPlayer()
+                musicNowPlaying.postDelayed(this, 500)
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -121,7 +129,15 @@ class MoviesActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        refreshCompactPlayer()
+        musicNowPlaying.removeCallbacks(compactPlayerRefresh)
+        compactPlayerRefresh.run()
+    }
+
+    override fun onPause() {
+        if (::musicNowPlaying.isInitialized) {
+            musicNowPlaying.removeCallbacks(compactPlayerRefresh)
+        }
+        super.onPause()
     }
 
     private fun refreshCompactPlayer() {
@@ -823,6 +839,9 @@ class MoviesActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        if (::musicNowPlaying.isInitialized) {
+            musicNowPlaying.removeCallbacks(compactPlayerRefresh)
+        }
         remoteMusicIo.shutdownNow()
         if (isFinishing && ::musicWebPlayer.isInitialized) {
             musicWebPlayer.stopLoading()
