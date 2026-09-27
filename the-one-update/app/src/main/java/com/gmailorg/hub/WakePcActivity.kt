@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.text.InputType
 import android.view.View
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -22,7 +23,10 @@ import java.security.MessageDigest
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
+// The One WOL: PIN-beveiligd wakker maken vanuit The One Main
 class WakePcActivity : AppCompatActivity() {
+
+    private var activeDeviceAdminPin = ""
 
     companion object {
         private const val LAPTOP_NAME = "Ruben"
@@ -54,8 +58,38 @@ class WakePcActivity : AppCompatActivity() {
         val wakeButton = findViewById<View>(R.id.wakePcButton)
         val sleepButton = findViewById<View>(R.id.sleepPcButton)
         val remoteButton = findViewById<View>(R.id.remotePcButton)
+        val manageDevicesButton = findViewById<View>(R.id.manageDevicesButton)
 
         findViewById<View>(R.id.backButton).setOnClickListener { finish() }
+
+        wakeButton.isEnabled = false
+        sleepButton.isEnabled = false
+        remoteButton.isEnabled = false
+        manageDevicesButton.isEnabled = false
+        status.setTextColor(ContextCompat.getColor(this, R.color.text_dim))
+        status.text = "Eigenaarsrechten controleren…"
+
+        Thread {
+            runCatching { MainDeviceRegistry.heartbeat(this) }
+            val owner = MainDeviceRegistry.isLocallyOwner(this)
+            runOnUiThread {
+                if (!owner) {
+                    Toast.makeText(
+                        this,
+                        "Alleen het eigenaarstoestel mag laptops beheren.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    finish()
+                    return@runOnUiThread
+                }
+
+                wakeButton.isEnabled = true
+                sleepButton.isEnabled = true
+                remoteButton.isEnabled = true
+                manageDevicesButton.isEnabled = true
+                status.text = "Klaar"
+            }
+        }.start()
 
         wakeButton.setOnClickListener {
             val lockedUntil = securityPrefs.getLong("locked_until", 0L)
@@ -77,6 +111,105 @@ class WakePcActivity : AppCompatActivity() {
         remoteButton.setOnClickListener {
             openRemoteControl()
         }
+
+        manageDevicesButton.setOnClickListener {
+            promptDeviceManagerPin(manageDevicesButton)
+        }
+    }
+
+    private fun promptDeviceManagerPin(trigger: View) {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            hint = "Beheerpincode"
+            isSingleLine = true
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Apparaten beheren")
+            .setMessage("Voer de beheerpincode in.")
+            .setView(input)
+            .setNegativeButton("Annuleren", null)
+            .setPositiveButton("Openen", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val pin = input.text.toString().trim()
+                if (pin.isBlank()) { input.error = "Vul de beheerpincode in"; return@setOnClickListener }
+                trigger.isEnabled = false
+                Thread {
+                    val owner = runCatching { MainDeviceRegistry.ownerStatus(this, pin) }.getOrDefault(false)
+                    val devices = if (owner) runCatching { MainDeviceRegistry.listDevices(this, pin) }.getOrNull() else null
+                    runOnUiThread {
+                        trigger.isEnabled = true
+                        if (!owner) { input.text.clear(); input.error = "Geen beheerderstoegang"; return@runOnUiThread }
+                        if (devices == null) { Toast.makeText(this, "Apparaten konden niet worden geladen.", Toast.LENGTH_LONG).show(); return@runOnUiThread }
+                        activeDeviceAdminPin = pin
+                        dialog.dismiss()
+                        showManagedDevices(devices)
+                    }
+                }.start()
+            }
+        }
+        dialog.show()
+    }
+
+    private fun showManagedDevices(devices: List<MainRegisteredDevice>) {
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(18, 8, 18, 8) }
+        if (devices.isEmpty()) list.addView(TextView(this).apply { text = "Nog geen apparaten geregistreerd."; setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim)); textSize = 14f })
+        devices.forEach { device ->
+            val personLabel = device.personName.ifBlank { "Naam nog niet ingevuld" }
+            val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(16, 14, 16, 14) }
+            card.addView(TextView(this).apply {
+                text = (if (device.online) "●  " else "○  ") + personLabel + (if (device.owner) "  •  The One" else "")
+                textSize = 17f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setTextColor(ContextCompat.getColor(this@WakePcActivity, if (device.online) R.color.amber else R.color.text_main))
+            })
+            card.addView(TextView(this).apply { text = device.name; textSize = 12f; setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim)) })
+            val state = TextView(this).apply {
+                text = managedDeviceStateText(device)
+                textSize = 12f
+                setTextColor(ContextCompat.getColor(this@WakePcActivity, if (device.blocked) android.R.color.holo_red_light else R.color.text_dim))
+            }
+            card.addView(state)
+            if (device.owner) {
+                card.addView(TextView(this).apply { text = "The One • beheerder • kan niet worden geblokkeerd"; textSize = 12f; setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.amber)) })
+            } else {
+                card.addView(android.widget.Button(this).apply {
+                    text = if (device.blocked) "Deblokkeren" else "Blokkeren"
+                    setOnClickListener {
+                        isEnabled = false
+                        val newBlocked = !device.blocked
+                        Thread {
+                            val result = runCatching { MainDeviceRegistry.setBlocked(this@WakePcActivity, activeDeviceAdminPin, device.id, newBlocked) }
+                            runOnUiThread {
+                                result.onSuccess {
+                                    Toast.makeText(this@WakePcActivity, personLabel + if (newBlocked) " is geblokkeerd." else " is gedeblokkeerd.", Toast.LENGTH_SHORT).show()
+                                    isEnabled = true
+                                }.onFailure {
+                                    Toast.makeText(this@WakePcActivity, "Wijzigen mislukt: " + (it.message ?: "onbekende fout"), Toast.LENGTH_LONG).show()
+                                    isEnabled = true
+                                }
+                            }
+                        }.start()
+                    }
+                })
+            }
+            list.addView(card)
+            list.addView(View(this).apply { setBackgroundColor(ContextCompat.getColor(this@WakePcActivity, R.color.line)) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
+        }
+        val scroll = android.widget.ScrollView(this).apply { isFillViewport = true; addView(list) }
+        AlertDialog.Builder(this).setTitle("Verbonden apparaten").setView(scroll).setNegativeButton("Sluiten", null).show()
+    }
+
+    private fun managedDeviceStateText(device: MainRegisteredDevice): String {
+        val prefix = if (device.blocked) "GEBLOKKEERD • " else ""
+        val onlineText = if (device.online) "Online" else "Offline"
+        val platform = listOf(device.platform, if (device.version.isBlank()) "" else "build " + device.version).filter { it.isNotBlank() }.joinToString(" • ")
+        val seen = if (device.lastSeen > 0L) {
+            val formatter = java.text.SimpleDateFormat("dd-MM HH:mm", java.util.Locale("nl", "NL"))
+            "Laatst gezien " + formatter.format(java.util.Date(device.lastSeen * 1000L))
+        } else "Nog niet gezien"
+        return prefix + listOf(onlineText, platform, seen).filter { it.isNotBlank() }.joinToString(" • ")
     }
 
     private fun askForPinAndWake(status: TextView, wakeButton: View) {
