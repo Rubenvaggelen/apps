@@ -2118,7 +2118,7 @@ public sealed class MainWindow : Window
                 NativeUsbAudioPlayer.Stop();
                 _nativeUsbMusicActive = false;
                 _musicNowPlayingTitle =
-                    $"{file.Name}  •  {stick.DeviceName} / {stick.StickName}";
+                    $"{file.DisplayName}  •  {stick.DeviceName} / {stick.StickName}";
                 _musicSessionActive = true;
                 nowPlaying.Text = _musicNowPlayingTitle;
                 if (_musicHomeNowPlaying != null)
@@ -2308,7 +2308,7 @@ public sealed class MainWindow : Window
                         NormalizeUsbFolder(file.Folder),
                         folder,
                         StringComparison.OrdinalIgnoreCase))
-                .OrderBy(file => file.Name, StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(file => file.DisplayName, StringComparer.CurrentCultureIgnoreCase)
                 .ToList();
 
             if (directTracks.Count == 0 && childFolders.Count == 0)
@@ -2342,7 +2342,7 @@ public sealed class MainWindow : Window
 
                 row.Children.Add(new TextBlock
                 {
-                    Text = file.Name,
+                    Text = file.DisplayName,
                     Foreground = TextMain,
                     FontSize = 13,
                     TextWrapping = TextWrapping.Wrap,
@@ -2713,7 +2713,7 @@ public sealed class MainWindow : Window
                         Files = stick.Files
                             .Where(file => file.Cached)
                             .OrderBy(file => file.Folder, StringComparer.CurrentCultureIgnoreCase)
-                            .ThenBy(file => file.Name, StringComparer.CurrentCultureIgnoreCase)
+                            .ThenBy(file => file.DisplayName, StringComparer.CurrentCultureIgnoreCase)
                             .ToList()
                     })
                     .ToList();
@@ -2763,7 +2763,7 @@ public sealed class MainWindow : Window
                         .OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase))
                     {
                         var folderFiles = folderGroup
-                            .OrderBy(file => file.Name, StringComparer.CurrentCultureIgnoreCase)
+                            .OrderBy(file => file.DisplayName, StringComparer.CurrentCultureIgnoreCase)
                             .ToList();
 
                         var folderSection = new Expander
@@ -2804,7 +2804,7 @@ public sealed class MainWindow : Window
 
                             row.Children.Add(new TextBlock
                             {
-                                Text = file.Name,
+                                Text = file.DisplayName,
                                 Foreground = TextMain,
                                 FontSize = 13,
                                 TextWrapping = TextWrapping.Wrap,
@@ -2831,7 +2831,7 @@ public sealed class MainWindow : Window
                                     NativeUsbAudioPlayer.Stop();
                                     _nativeUsbMusicActive = false;
                                     _musicNowPlayingTitle =
-                                        $"{file.Name}  •  {stick.DeviceName} / {stick.StickName}";
+                                        $"{file.DisplayName}  •  {stick.DeviceName} / {stick.StickName}";
                                     _musicSessionActive = true;
                                     nowPlaying.Text = _musicNowPlayingTitle;
                                     if (_musicHomeNowPlaying != null)
