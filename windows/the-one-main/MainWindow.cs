@@ -2089,6 +2089,90 @@ public sealed class MainWindow : Window
             }
         }
 
+        async Task DownloadUsbFileAsync(
+            CloudUsbMusicFile file,
+            Button trigger)
+        {
+            var pin = AskUsbHomePin(
+                "USB-download beveiligen",
+                "Voer je pincode in om dit nummer te downloaden.",
+                "Downloaden");
+            if (pin == null) return;
+
+            trigger.IsEnabled = false;
+            status.Text = "Pincode controleren…";
+            status.Foreground = TextDim;
+
+            try
+            {
+                var valid = await UsbMusicCloudService.ValidateUserPinAsync(pin);
+                if (!valid)
+                {
+                    status.Text = "Pincode niet juist.";
+                    status.Foreground = Amber;
+                    return;
+                }
+
+                var safeName = string.Concat(
+                    file.Name.Select(ch =>
+                        Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch))
+                    .Trim();
+                if (string.IsNullOrWhiteSpace(safeName))
+                    safeName = "TheOne-nummer.mp3";
+
+                var extension = Path.GetExtension(safeName);
+                var save = new SaveFileDialog
+                {
+                    Title = "USB-nummer downloaden",
+                    FileName = safeName,
+                    InitialDirectory = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                        "Downloads"),
+                    OverwritePrompt = true,
+                    AddExtension = !string.IsNullOrWhiteSpace(extension),
+                    DefaultExt = extension
+                };
+
+                if (save.ShowDialog(this) != true)
+                {
+                    status.Text = "Download geannuleerd.";
+                    status.Foreground = TextDim;
+                    return;
+                }
+
+                status.Text = "Downloaden…";
+                status.Foreground = TextDim;
+
+                var url = await UsbMusicCloudService.BuildStreamUrlAsync(file);
+                using var response = await Http.GetAsync(
+                    url,
+                    HttpCompletionOption.ResponseHeadersRead);
+                response.EnsureSuccessStatusCode();
+
+                await using var source = await response.Content.ReadAsStreamAsync();
+                await using var target = new FileStream(
+                    save.FileName,
+                    FileMode.Create,
+                    FileAccess.Write,
+                    FileShare.None,
+                    128 * 1024,
+                    useAsync: true);
+                await source.CopyToAsync(target);
+
+                status.Text = "✓ Download klaar: " + Path.GetFileName(save.FileName);
+                status.Foreground = Sage;
+            }
+            catch (Exception ex)
+            {
+                status.Text = "Download mislukt: " + ex.Message;
+                status.Foreground = Amber;
+            }
+            finally
+            {
+                trigger.IsEnabled = true;
+            }
+        }
+
         void RenderUsbFolder(
             CloudUsbMusicStick stick,
             List<CloudUsbMusicFile> allFiles,
@@ -2191,6 +2275,14 @@ public sealed class MainWindow : Window
                 play.MinWidth = 105;
                 DockPanel.SetDock(play, Dock.Right);
                 row.Children.Add(play);
+
+                var download = SmallButton("↓ Download", () => { });
+                download.MinWidth = 105;
+                download.Margin = new Thickness(6, 0, 6, 0);
+                DockPanel.SetDock(download, Dock.Right);
+                row.Children.Add(download);
+                download.Click += async (_, _) =>
+                    await DownloadUsbFileAsync(file, download);
 
                 row.Children.Add(new TextBlock
                 {
@@ -2468,6 +2560,46 @@ public sealed class MainWindow : Window
                             play.MinWidth = 105;
                             DockPanel.SetDock(play, Dock.Right);
                             row.Children.Add(play);
+
+                            var download = SmallButton("↓ Download", () => { });
+                            download.MinWidth = 105;
+                            download.Margin = new Thickness(6, 0, 6, 0);
+                            DockPanel.SetDock(download, Dock.Right);
+                            row.Children.Add(download);
+                            download.Click += async (_, _) =>
+                                await DownloadUsbFileAsync(file, download);
+
+                            var download = SmallButton("↓ Download", () => { });
+                            download.MinWidth = 105;
+                            download.Margin = new Thickness(6, 0, 6, 0);
+                            DockPanel.SetDock(download, Dock.Right);
+                            row.Children.Add(download);
+                            download.Click += async (_, _) =>
+                                await DownloadUsbFileAsync(file, download);
+
+                            var download = SmallButton("↓ Download", () => { });
+                            download.MinWidth = 105;
+                            download.Margin = new Thickness(6, 0, 6, 0);
+                            DockPanel.SetDock(download, Dock.Right);
+                            row.Children.Add(download);
+                            download.Click += async (_, _) =>
+                                await DownloadUsbFileAsync(file, download);
+
+                            var download = SmallButton("↓ Download", () => { });
+                            download.MinWidth = 105;
+                            download.Margin = new Thickness(6, 0, 6, 0);
+                            DockPanel.SetDock(download, Dock.Right);
+                            row.Children.Add(download);
+                            download.Click += async (_, _) =>
+                                await DownloadUsbFileAsync(file, download);
+
+                            var download = SmallButton("↓ Download", () => { });
+                            download.MinWidth = 105;
+                            download.Margin = new Thickness(6, 0, 6, 0);
+                            DockPanel.SetDock(download, Dock.Right);
+                            row.Children.Add(download);
+                            download.Click += async (_, _) =>
+                                await DownloadUsbFileAsync(file, download);
 
                             row.Children.Add(new TextBlock
                             {
@@ -2772,7 +2904,10 @@ public sealed class MainWindow : Window
         _ = YouTubeMusicService.InitializeAsync(web);
     }
 
-    private string? AskUsbHomePin()
+    private string? AskUsbHomePin(
+        string title = "USB thuis",
+        string message = "Voer de pincode in om je USB-muziek te openen.",
+        string actionLabel = "Openen")
     {
         var input = new PasswordBox
         {
@@ -2795,7 +2930,7 @@ public sealed class MainWindow : Window
 
         panel.Children.Add(new TextBlock
         {
-            Text = "USB thuis",
+            Text = title,
             Foreground = Amber,
             FontSize = 20,
             FontWeight = FontWeights.Bold
@@ -2803,7 +2938,7 @@ public sealed class MainWindow : Window
 
         panel.Children.Add(new TextBlock
         {
-            Text = "Voer de pincode in om je USB-muziek te openen.",
+            Text = message,
             Foreground = TextDim,
             FontSize = 13,
             Margin = new Thickness(0, 8, 0, 12)
@@ -2819,7 +2954,7 @@ public sealed class MainWindow : Window
         };
 
         var cancel = SmallButton("Annuleren", () => { });
-        var open = SmallButton("Openen", () => { });
+        var open = SmallButton(actionLabel, () => { });
         open.Margin = new Thickness(8, 0, 0, 0);
 
         buttons.Children.Add(cancel);
