@@ -13,6 +13,8 @@ $meta = $root . '/meta';
 $secretFile = $root . '/secret.key';
 $rateFile = $root . '/rate.json';
 $favoritesFile = $root . '/favorites.json';
+$deviceRegistryFile = $home . '/the-one-remote-data/main-devices.json';
+$deviceOwnerFile = $home . '/the-one-remote-data/main-device-owner.json';
 
 foreach ([$root, $files, $meta] as $dir) {
     if (!is_dir($dir)) @mkdir($dir, 0700, true);
@@ -65,6 +67,18 @@ function save_json(string $file, array $v): bool {
     }
     return true;
 }
+function music_device_allowed(string $deviceId, string $devicesFile, string $ownerFile): bool {
+    $devices = load_json($devicesFile);
+    $rows = is_array($devices['devices'] ?? null) ? $devices['devices'] : [];
+    $device = is_array($rows[$deviceId] ?? null) ? $rows[$deviceId] : null;
+
+    $owner = load_json($ownerFile);
+    $ownerId = trim((string)($owner['device_id'] ?? ''));
+    if ($ownerId !== '' && hash_equals($ownerId, $deviceId)) return true;
+
+    return is_array($device) && (bool)($device['music_rights'] ?? false);
+}
+
 function safe_id(string $v): string {
     $v = trim($v);
     if ($v === '' || strlen($v) > 80 || !preg_match('/^[A-Za-z0-9._-]+$/', $v)) out(400, ['ok'=>false,'error'=>'invalid id']);
@@ -227,6 +241,10 @@ if ($action === 'favorites-set') {
     $token=bearer();
     if (!token_read_ok($token,$sec)) out(401,['ok'=>false,'error'=>'auth required']);
     $b=read_json();
+    $requestDevice=safe_id((string)($b['request_device_id'] ?? ''));
+    if (!music_device_allowed($requestDevice,$deviceRegistryFile,$deviceOwnerFile)) {
+        out(403,['ok'=>false,'error'=>'music rights required']);
+    }
     $kind=strtolower(trim((string)($b['kind'] ?? '')));
     if (!in_array($kind,['mix','usb'],true)) out(400,['ok'=>false,'error'=>'invalid kind']);
 
