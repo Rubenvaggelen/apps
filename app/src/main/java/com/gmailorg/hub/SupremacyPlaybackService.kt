@@ -504,6 +504,9 @@ class SupremacyPlaybackService : Service() {
         private const val KEY_WAS_PLAYING = "was_playing"
 
         @Volatile private var instance: SupremacyPlaybackService? = null
+        @Volatile private var pendingQueueUrls: List<String>? = null
+        @Volatile private var pendingQueueTitles: List<String>? = null
+        @Volatile private var pendingQueueSource: String? = null
 
         fun resumeLastSessionIfNeeded(context: Context) {
             if (instance != null) return
