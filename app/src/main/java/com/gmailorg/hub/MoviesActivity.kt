@@ -144,8 +144,7 @@ class MoviesActivity : AppCompatActivity() {
     private fun refreshCompactPlayer() {
         if (SupremacyPlaybackService.isActive(this)) {
             musicNowPlaying.text =
-                SupremacyPlaybackService.currentTitle(this) + "  •  " +
-                    SupremacyPlaybackService.currentSource(this)
+                cleanUsbTrackTitle(SupremacyPlaybackService.currentTitle(this))
             musicPlaybackState.text =
                 if (SupremacyPlaybackService.isPlaying(this)) "Speelt af" else "Gepauzeerd"
             return
@@ -638,7 +637,7 @@ class MoviesActivity : AppCompatActivity() {
 
             currentRemoteUsbStick = stick
             currentRemoteUsbFolder = normalizeRemoteFolder(folder)
-            musicNowPlaying.text = cleanUsbTrackTitle(files[index].displayName) + "  •  USB thuis"
+            musicNowPlaying.text = cleanUsbTrackTitle(files[index].displayName)
             musicNowPlaying.paintFlags = musicNowPlaying.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
             musicNowPlaying.contentDescription = "Tik om de USB-map van dit nummer te openen"
             musicPlaybackState.text = "Laden…"
