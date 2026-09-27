@@ -322,7 +322,7 @@ public static class UsbMusicCloudService
         Log($"{deviceName} / {stickName}: voorlopige catalogus gepubliceerd.");
 
         var finalManifest = new List<LocalManifestFile>(files.Count);
-        var uploaded = 0;
+        var uploadJobs = new List<(FileInfo File, string Relative, string Sha)>();
 
         foreach (var file in files)
         {
@@ -357,19 +357,39 @@ public static class UsbMusicCloudService
             });
 
             if (needsUpload)
+                uploadJobs.Add((file, relative, sha));
+        }
+
+        // Grote USB-sticks mogen niet urenlang één bestand per keer uploaden.
+        // Vier gelijktijdige uploads houden de server beheersbaar, maar maken
+        // de cache veel sneller compleet. Reeds gecachete bestanden worden
+        // hierboven overgeslagen, zodat een herstart gewoon verdergaat.
+        var uploaded = 0;
+        using var uploadGate = new SemaphoreSlim(4, 4);
+        var uploadTasks = uploadJobs.Select(async job =>
+        {
+            await uploadGate.WaitAsync(cancellationToken);
+            try
             {
                 await UploadAsync(
                     deviceId,
                     stickId,
-                    relative,
-                    sha,
-                    file.FullName,
+                    job.Relative,
+                    job.Sha,
+                    job.File.FullName,
                     cancellationToken);
-                uploaded++;
-                if (uploaded == 1 || uploaded % 25 == 0)
-                    Log($"{deviceName} / {stickName}: {uploaded} bestand(en) geüpload.");
+
+                var done = Interlocked.Increment(ref uploaded);
+                if (done == 1 || done % 25 == 0 || done == uploadJobs.Count)
+                    Log($"{deviceName} / {stickName}: {done}/{uploadJobs.Count} bestand(en) geüpload.");
             }
-        }
+            finally
+            {
+                uploadGate.Release();
+            }
+        }).ToList();
+
+        await Task.WhenAll(uploadTasks);
 
         await SendManifestAsync(
             deviceId, deviceName, stickId, stickName, finalManifest, cancellationToken);
