@@ -262,6 +262,7 @@ object RemoteUsbMusicClient {
 
     private fun setFavorite(context: Context, body: JSONObject): Boolean {
         val token = token(context)
+        body.put("request_device_id", CarFamilyAccess.deviceId(context))
         val connection = open(ENDPOINT + "?action=favorites-set", "POST")
         connection.setRequestProperty("Authorization", "Bearer " + token)
         connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
