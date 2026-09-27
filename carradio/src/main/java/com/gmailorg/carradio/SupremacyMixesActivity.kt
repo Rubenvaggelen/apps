@@ -11,6 +11,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import org.json.JSONArray
@@ -199,11 +200,65 @@ class SupremacyMixesActivity : AppCompatActivity() {
     }
 
     private fun play(mix: Mix) {
-        ContextCompat.startForegroundService(this, Intent(this, SupremacyPlaybackService::class.java).apply {
-            action = SupremacyPlaybackService.ACTION_PLAY
-            putExtra(SupremacyPlaybackService.EXTRA_TITLE, mix.title)
-            putExtra(SupremacyPlaybackService.EXTRA_URL, mix.url)
-        })
+        status.text = "Laden: ${mix.title}"
+        io.execute {
+            try {
+                val playableUrl = resolvePlayableUrl(mix.url)
+                runOnUiThread {
+                    UsbPlaybackService.play(
+                        this,
+                        listOf(
+                            UsbPlaybackService.QueueItem(
+                                playableUrl,
+                                mix.title
+                            )
+                        ),
+                        0
+                    )
+                    status.text = "Speelt af: ${mix.title}"
+                    Toast.makeText(
+                        this,
+                        "The One Mixes speelt af",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    status.text = "Afspelen mislukt"
+                    Toast.makeText(
+                        this,
+                        e.message ?: "Deze mix kon niet worden afgespeeld",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun resolvePlayableUrl(sourceUrl: String): String {
+        var current = sourceUrl
+        repeat(6) {
+            val connection = URL(current).openConnection() as HttpURLConnection
+            connection.instanceFollowRedirects = false
+            connection.connectTimeout = 12000
+            connection.readTimeout = 12000
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("User-Agent", "TheOneCar/1.0")
+            connection.setRequestProperty("Range", "bytes=0-1")
+
+            val code = connection.responseCode
+            if (code in 300..399) {
+                val location = connection.getHeaderField("Location")
+                connection.disconnect()
+                if (location.isNullOrBlank()) return current
+                current = URL(URL(current), location).toString()
+            } else {
+                val resolved = connection.url.toString()
+                connection.disconnect()
+                return resolved
+            }
+        }
+        return current
     }
 
     private fun getText(url: String): String {
