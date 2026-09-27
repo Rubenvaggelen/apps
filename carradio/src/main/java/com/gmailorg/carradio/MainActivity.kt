@@ -453,7 +453,7 @@ class MainActivity : AppCompatActivity() {
     private fun showMusicChooser() {
         AlertDialog.Builder(this)
             .setTitle("Muziek")
-            .setItems(arrayOf("📻 Radio", "🔌 USB", "🎧 The One Mixes", "☁ USB thuis")) { _, which ->
+            .setItems(arrayOf("📻 Radio", "🔌 USB", "🎧 The One Mixes", "☁ Shared Media")) { _, which ->
                 when (which) {
                     0 -> openCarRadio()
                     1 -> startActivity(Intent(this, UsbMusicActivity::class.java))
@@ -477,7 +477,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val dialog = AlertDialog.Builder(this)
-            .setTitle("USB thuis")
+            .setTitle("Shared Media")
             .setMessage("Voer de pincode in voor je USB-muziek.")
             .setView(input)
             .setPositiveButton("Openen", null)
@@ -514,13 +514,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadRemoteUsbCatalog() {
-        Toast.makeText(this, "USB thuis laden…", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Shared Media laden…", Toast.LENGTH_SHORT).show()
         remoteMusicIo.execute {
             try {
                 if (!RemoteUsbMusicClient.hasToken(this) &&
                     !RemoteUsbMusicClient.loginForBrowsing(this)
                 ) {
-                    throw IllegalStateException("USB thuis is tijdelijk niet bereikbaar")
+                    throw IllegalStateException("Shared Media is tijdelijk niet bereikbaar")
                 }
 
                 val sticks = try {
@@ -528,14 +528,14 @@ class MainActivity : AppCompatActivity() {
                 } catch (_: RemoteUsbMusicClient.AuthRequired) {
                     RemoteUsbMusicClient.clearToken(this)
                     if (!RemoteUsbMusicClient.loginForBrowsing(this)) {
-                        throw IllegalStateException("USB thuis is tijdelijk niet bereikbaar")
+                        throw IllegalStateException("Shared Media is tijdelijk niet bereikbaar")
                     }
                     RemoteUsbMusicClient.catalog(this)
                 }
                 runOnUiThread {
                     if (sticks.isEmpty()) {
                         AlertDialog.Builder(this)
-                            .setTitle("USB thuis")
+                            .setTitle("Shared Media")
                             .setMessage("Nog geen gesynchroniseerde USB-muziek gevonden.")
                             .setPositiveButton("OK", null)
                             .show()
@@ -548,7 +548,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     Toast.makeText(
                         this,
-                        "USB thuis kon niet opnieuw verbinden.",
+                        "Shared Media kon niet opnieuw verbinden.",
                         Toast.LENGTH_LONG
                     ).show()
                 }
@@ -556,7 +556,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     Toast.makeText(
                         this,
-                        e.message ?: "USB thuis kon niet worden geladen",
+                        e.message ?: "Shared Media kon niet worden geladen",
                         Toast.LENGTH_LONG
                     ).show()
                 }
@@ -566,7 +566,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showRemoteStickDialog(sticks: List<RemoteUsbMusicClient.RemoteStick>) {
         AlertDialog.Builder(this)
-            .setTitle("USB thuis")
+            .setTitle("Shared Media")
             .setItems(sticks.map { it.deviceName + " • " + it.stickName }.toTypedArray()) { _, which ->
                 showRemoteFolderDialog(sticks[which])
             }
@@ -721,7 +721,7 @@ class MainActivity : AppCompatActivity() {
                 Uri.parse(RemoteUsbMusicClient.streamUrl(this, file))
             )
                 .setTitle(safeName)
-                .setDescription("The One Car • USB thuis")
+                .setDescription("The One Car • Shared Media")
                 .setNotificationVisibility(
                     DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
                 )
@@ -760,7 +760,7 @@ class MainActivity : AppCompatActivity() {
                 )
             }
             UsbPlaybackService.play(this, queue, index)
-            Toast.makeText(this, "USB thuis speelt af", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Shared Media speelt af", Toast.LENGTH_SHORT).show()
         } catch (_: RemoteUsbMusicClient.AuthRequired) {
             RemoteUsbMusicClient.clearToken(this)
             remoteMusicIo.execute {
@@ -769,7 +769,7 @@ class MainActivity : AppCompatActivity() {
                     if (ok) {
                         playRemoteUsbFolder(files, index)
                     } else {
-                        Toast.makeText(this, "USB thuis kon niet opnieuw verbinden.", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this, "Shared Media kon niet opnieuw verbinden.", Toast.LENGTH_LONG).show()
                     }
                 }
             }
