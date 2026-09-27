@@ -44,6 +44,7 @@ class MoviesActivity : AppCompatActivity() {
     private var pendingMusicStartedAt = 0L
     private var currentRemoteUsbStick: RemoteUsbMusicClient.RemoteStick? = null
     private var currentRemoteUsbFolder: String = ""
+    private var currentRemoteUsbFiles: List<RemoteUsbMusicClient.RemoteFile> = emptyList()
     private val remoteMusicIo = Executors.newSingleThreadExecutor()
     private val compactPlayerRefresh = object : Runnable {
         override fun run() {
@@ -87,7 +88,14 @@ class MoviesActivity : AppCompatActivity() {
         configureMusicSeekBar()
         musicNowPlaying.setOnClickListener {
             val stick = currentRemoteUsbStick ?: return@setOnClickListener
-            showRemoteFolderLevel(stick, currentRemoteUsbFolder, openCurrentFolder = true)
+            val activeIndex = SupremacyPlaybackService.currentQueueIndex(this)
+            val activeFolder = currentRemoteUsbFiles
+                .getOrNull(activeIndex)
+                ?.folder
+                ?.let(::normalizeRemoteFolder)
+                ?: currentRemoteUsbFolder
+            currentRemoteUsbFolder = activeFolder
+            showRemoteFolderLevel(stick, activeFolder, openCurrentFolder = true)
         }
         findViewById<View>(R.id.musicPreviousButton).setOnClickListener {
             if (SupremacyPlaybackService.isActive(this)) {
@@ -116,6 +124,7 @@ class MoviesActivity : AppCompatActivity() {
             pendingMusicTitle = null
             pendingMusicStartedAt = 0L
             currentRemoteUsbStick = null
+            currentRemoteUsbFiles = emptyList()
             currentRemoteUsbFolder = ""
             musicNowPlaying.paintFlags = musicNowPlaying.paintFlags and android.graphics.Paint.UNDERLINE_TEXT_FLAG.inv()
             musicNowPlaying.text = "Geen muziek actief"
@@ -160,6 +169,17 @@ class MoviesActivity : AppCompatActivity() {
             pendingMusicStartedAt = 0L
             musicNowPlaying.text =
                 cleanUsbTrackTitle(SupremacyPlaybackService.currentTitle(this))
+            val isSharedMedia = SupremacyPlaybackService.currentSource(this)
+                .startsWith("Shared Media •", ignoreCase = true)
+            if (isSharedMedia && currentRemoteUsbStick != null) {
+                musicNowPlaying.paintFlags =
+                    musicNowPlaying.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
+                musicNowPlaying.contentDescription =
+                    "Tik om naar de map van het spelende nummer te gaan"
+            } else {
+                musicNowPlaying.paintFlags =
+                    musicNowPlaying.paintFlags and android.graphics.Paint.UNDERLINE_TEXT_FLAG.inv()
+            }
             musicPlaybackState.text =
                 if (SupremacyPlaybackService.isPlaying(this)) "Speelt af" else "Laden…"
 
@@ -938,6 +958,7 @@ class MoviesActivity : AppCompatActivity() {
             )
 
             currentRemoteUsbStick = stick
+            currentRemoteUsbFiles = files.toList()
             currentRemoteUsbFolder = normalizeRemoteFolder(folder)
             pendingMusicTitle = cleanUsbTrackTitle(files[index].displayName)
             pendingMusicStartedAt = System.currentTimeMillis()
