@@ -16,8 +16,21 @@ data class MainRegisteredDevice(
     val blocked: Boolean,
     val owner: Boolean,
     val musicRights: Boolean,
+    val mixesRights: Boolean,
+    val sharedRights: Boolean,
+    val favoritesRights: Boolean,
+    val pendingMixes: Boolean,
+    val pendingShared: Boolean,
+    val pendingFavorites: Boolean,
     val online: Boolean,
     val lastSeen: Long
+)
+
+data class MainAccessStatus(
+    val allowed: Boolean,
+    val pending: Boolean,
+    val owner: Boolean,
+    val scope: String
 )
 
 data class WindowsConnectionDevice(
@@ -28,6 +41,10 @@ data class WindowsConnectionDevice(
 )
 
 object MainDeviceRegistry {
+    const val ACCESS_MIXES = "mixes"
+    const val ACCESS_SHARED = "shared"
+    const val ACCESS_FAVORITES = "favorites"
+
     private const val ENDPOINT = "https://rubenvanaggelen.com/the-one-remote-api/devices.php"
     private const val PREFS = "main_device_registry"
     private const val KEY_DEVICE_ID = "device_id"
@@ -100,11 +117,15 @@ object MainDeviceRegistry {
         val blocked = json.optBoolean("blocked", false)
         val owner = json.optBoolean("owner", false)
         val musicRights = json.optBoolean("music_rights", owner)
+        val accessRights = json.optJSONObject("access_rights") ?: JSONObject()
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_BLOCKED, blocked)
             .putBoolean(KEY_OWNER, owner)
             .putBoolean(KEY_MUSIC_RIGHTS, musicRights)
+            .putBoolean("access_mixes", accessRights.optBoolean(ACCESS_MIXES, owner || musicRights))
+            .putBoolean("access_shared", accessRights.optBoolean(ACCESS_SHARED, owner || musicRights))
+            .putBoolean("access_favorites", accessRights.optBoolean(ACCESS_FAVORITES, owner || musicRights))
             .apply()
         return blocked
     }
@@ -186,6 +207,18 @@ object MainDeviceRegistry {
                         blocked = item.optBoolean("blocked", false),
                         owner = item.optBoolean("owner", false),
                         musicRights = item.optBoolean("music_rights", item.optBoolean("owner", false)),
+                        mixesRights = item.optJSONObject("access_rights")
+                            ?.optBoolean(ACCESS_MIXES, item.optBoolean("music_rights", false))
+                            ?: item.optBoolean("music_rights", item.optBoolean("owner", false)),
+                        sharedRights = item.optJSONObject("access_rights")
+                            ?.optBoolean(ACCESS_SHARED, item.optBoolean("music_rights", false))
+                            ?: item.optBoolean("music_rights", item.optBoolean("owner", false)),
+                        favoritesRights = item.optJSONObject("access_rights")
+                            ?.optBoolean(ACCESS_FAVORITES, item.optBoolean("music_rights", false))
+                            ?: item.optBoolean("music_rights", item.optBoolean("owner", false)),
+                        pendingMixes = item.optJSONObject("access_requests")?.has(ACCESS_MIXES) == true,
+                        pendingShared = item.optJSONObject("access_requests")?.has(ACCESS_SHARED) == true,
+                        pendingFavorites = item.optJSONObject("access_requests")?.has(ACCESS_FAVORITES) == true,
                         online = item.optBoolean("online", false),
                         lastSeen = item.optLong("last_seen", 0L)
                     )
@@ -213,6 +246,60 @@ object MainDeviceRegistry {
                 )
             }
         }
+    }
+
+    fun refreshAccess(context: Context, scope: String): MainAccessStatus {
+        val json = request(
+            "access_status",
+            JSONObject()
+                .put("device_id", deviceId(context))
+                .put("scope", scope)
+        )
+        val status = MainAccessStatus(
+            allowed = json.optBoolean("allowed", false),
+            pending = json.optBoolean("pending", false),
+            owner = json.optBoolean("owner", false),
+            scope = json.optString("scope", scope)
+        )
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_OWNER, status.owner)
+            .putBoolean("access_" + scope, status.allowed)
+            .apply()
+        return status
+    }
+
+    fun requestAccess(context: Context, scope: String): MainAccessStatus {
+        val json = request(
+            "request_access",
+            JSONObject()
+                .put("device_id", deviceId(context))
+                .put("scope", scope)
+        )
+        return MainAccessStatus(
+            allowed = json.optBoolean("allowed", false),
+            pending = json.optBoolean("pending", false),
+            owner = isLocallyOwner(context),
+            scope = json.optString("scope", scope)
+        )
+    }
+
+    fun setAccessRight(
+        context: Context,
+        pin: String,
+        targetDeviceId: String,
+        scope: String,
+        enabled: Boolean
+    ) {
+        request(
+            "set_access_right",
+            JSONObject()
+                .put("pin", pin)
+                .put("request_device_id", deviceId(context))
+                .put("device_id", targetDeviceId)
+                .put("scope", scope)
+                .put("enabled", enabled)
+        )
     }
 
     fun refreshMusicRights(context: Context): Boolean {
