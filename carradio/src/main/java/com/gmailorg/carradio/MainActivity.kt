@@ -90,6 +90,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
     private val remoteMusicIo = Executors.newSingleThreadExecutor()
+    private val favoriteUsbKeys = linkedSetOf<String>()
     private val statusListener: (String) -> Unit = { text -> statusText.text = text }
     private val dataListener: () -> Unit = {
         if (!isFinishing && !isDestroyed) buildTiles()
@@ -163,6 +164,7 @@ class MainActivity : AppCompatActivity() {
         MessageBus.addDataListener(dataListener)
         tileGrid.setOnDragListener { _, event -> handleTileDrag(event) }
         UsbPlaybackService.resumeLastSessionIfNeeded(this)
+        remoteMusicIo.execute { runCatching { CarFamilyAccess.heartbeat(this) } }
         buildTiles(); ensurePermissionThenStart(); ensureNotificationPermission(); handler.post(clockTick); UpdateChecker.checkForUpdate(this)
     }
 
@@ -377,10 +379,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun configureCarAudioPlayer() {
         carAudioTitle.setOnClickListener {
-            openCurrentFamilyTrackFolder()
+            openCurrentMusicTrack()
         }
         carAudioPlayer.setOnClickListener {
-            openCurrentFamilyTrackFolder()
+            openCurrentMusicTrack()
         }
 
         carAudioPrevious.setOnClickListener {
@@ -401,9 +403,21 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun openCurrentFamilyTrackFolder() {
+    private fun openCurrentMusicTrack() {
         val state = UsbPlaybackService.snapshot()
         if (!state.hasTrack) return
+
+        val activeUri = state.uri.orEmpty()
+        val isSharedMedia =
+            activeUri.contains("the-one-remote-api", ignoreCase = true) ||
+                activeUri.contains("music.php", ignoreCase = true)
+        if (!isSharedMedia) {
+            startActivity(
+                Intent(this, SupremacyMixesActivity::class.java)
+                    .putExtra("focus_title", state.title)
+            )
+            return
+        }
 
         fun openFrom(
             stick: RemoteUsbMusicClient.RemoteStick,
@@ -487,15 +501,14 @@ class MainActivity : AppCompatActivity() {
             currentFamilyFiles.any {
                 state.title.equals(cleanRemoteUsbTrackTitle(it.displayName), ignoreCase = true)
             }
-        if (familyTrack) {
-            carAudioTitle.paintFlags =
-                carAudioTitle.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
-            carAudioTitle.contentDescription =
+        carAudioTitle.paintFlags =
+            carAudioTitle.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
+        carAudioTitle.contentDescription =
+            if (familyTrack) {
                 "Tik om naar de map van het spelende nummer te gaan"
-        } else {
-            carAudioTitle.paintFlags =
-                carAudioTitle.paintFlags and android.graphics.Paint.UNDERLINE_TEXT_FLAG.inv()
-        }
+            } else {
+                "Tik om het spelende nummer in The One Mixes te openen"
+            }
         carAudioPlayPause.text =
             if (state.isPlaying) "⏸" else "▶"
     }
@@ -668,11 +681,12 @@ class MainActivity : AppCompatActivity() {
     private fun showMusicChooser() {
         AlertDialog.Builder(this)
             .setTitle("Muziek")
-            .setItems(arrayOf("📻 Radio", "🗂 Shared Media", "🎧 The One Mixes")) { _, which ->
+            .setItems(arrayOf("📻 Radio", "★ The One Favorites", "🗂 Shared Media", "🎧 The One Mixes")) { _, which ->
                 when (which) {
                     0 -> openCarRadio()
-                    1 -> showSharedMediaChooser()
-                    2 -> startActivity(Intent(this, SupremacyMixesActivity::class.java))
+                    1 -> openTheOneFavorites()
+                    2 -> showSharedMediaChooser()
+                    3 -> startActivity(Intent(this, SupremacyMixesActivity::class.java))
                 }
             }
             .setNegativeButton("Annuleren", null)
@@ -764,6 +778,18 @@ class MainActivity : AppCompatActivity() {
                     }
                     RemoteUsbMusicClient.catalog(this)
                 }
+                val favorites = try {
+                    RemoteUsbMusicClient.favorites(this)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                favoriteUsbKeys.clear()
+                favorites
+                    .filter { it.kind.equals("usb", ignoreCase = true) }
+                    .forEach {
+                        favoriteUsbKeys += usbFavoriteKey(it.deviceId, it.stickId, it.path)
+                    }
+
                 runOnUiThread {
                     if (sticks.isEmpty()) {
                         AlertDialog.Builder(this)
