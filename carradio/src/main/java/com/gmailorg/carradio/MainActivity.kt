@@ -15,9 +15,15 @@ import android.text.InputType
 import android.os.Looper
 import android.os.Environment
 import android.view.DragEvent
+import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
+import android.webkit.WebChromeClient
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.GridLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -38,7 +44,28 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
     private lateinit var tileGrid: GridLayout
     private lateinit var clockText: TextView
+    private lateinit var carRoot: FrameLayout
+    private lateinit var youtubeOverlay: FrameLayout
+    private lateinit var youtubePlayerSurface: PassThroughFrameLayout
+    private lateinit var youtubeWebView: WebView
+    private lateinit var youtubeControls: LinearLayout
+    private lateinit var youtubeFadeButton: TextView
+    private lateinit var youtubeFullscreenButton: TextView
+    private lateinit var youtubeMinimizeButton: TextView
+    private lateinit var youtubeCloseButton: TextView
+    private var youtubeFullscreen = false
+    private var youtubeFaded = false
+    private var youtubeCustomView: View? = null
+    private var youtubeCustomCallback: WebChromeClient.CustomViewCallback? = null
     private val handler = Handler(Looper.getMainLooper())
+    private val youtubeAutoFade = Runnable {
+        if (::youtubeOverlay.isInitialized &&
+            youtubeOverlay.visibility == View.VISIBLE &&
+            !youtubeFullscreen
+        ) {
+            setYoutubeFaded(true)
+        }
+    }
     private val remoteMusicIo = Executors.newSingleThreadExecutor()
     private val statusListener: (String) -> Unit = { text -> statusText.text = text }
     private val dataListener: () -> Unit = {
@@ -85,6 +112,16 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         statusText = findViewById(R.id.statusText); tileGrid = findViewById(R.id.tileGrid); clockText = findViewById(R.id.clockText)
+        carRoot = findViewById(R.id.carRoot)
+        youtubeOverlay = findViewById(R.id.youtubeOverlay)
+        youtubePlayerSurface = findViewById(R.id.youtubePlayerSurface)
+        youtubeWebView = findViewById(R.id.youtubeWebView)
+        youtubeControls = findViewById(R.id.youtubeControls)
+        youtubeFadeButton = findViewById(R.id.youtubeFadeButton)
+        youtubeFullscreenButton = findViewById(R.id.youtubeFullscreenButton)
+        youtubeMinimizeButton = findViewById(R.id.youtubeMinimizeButton)
+        youtubeCloseButton = findViewById(R.id.youtubeCloseButton)
+        configureYoutubeOverlay()
         MessageBus.addStatusListener(statusListener)
         MessageBus.addDataListener(dataListener)
         tileGrid.setOnDragListener { _, event -> handleTileDrag(event) }
@@ -248,6 +285,171 @@ class MainActivity : AppCompatActivity() {
             openUrl(url.toString())
         }
     }
+    private fun configureYoutubeOverlay() {
+        youtubeWebView.settings.javaScriptEnabled = true
+        youtubeWebView.settings.domStorageEnabled = true
+        youtubeWebView.settings.mediaPlaybackRequiresUserGesture = false
+        youtubeWebView.settings.useWideViewPort = true
+        youtubeWebView.settings.loadWithOverviewMode = true
+        youtubeWebView.settings.setSupportZoom(false)
+        youtubeWebView.webViewClient = WebViewClient()
+        youtubeWebView.webChromeClient = object : WebChromeClient() {
+            override fun onShowCustomView(
+                view: View?,
+                callback: CustomViewCallback?
+            ) {
+                if (view == null || youtubeCustomView != null) {
+                    callback?.onCustomViewHidden()
+                    return
+                }
+
+                youtubeCustomView = view
+                youtubeCustomCallback = callback
+                setYoutubeFullscreen(true)
+                youtubeWebView.visibility = View.GONE
+                youtubePlayerSurface.addView(
+                    view,
+                    FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    )
+                )
+            }
+
+            override fun onHideCustomView() {
+                hideYoutubeCustomView()
+            }
+        }
+
+        youtubeFadeButton.setOnClickListener {
+            setYoutubeFaded(!youtubeFaded)
+        }
+        youtubeFullscreenButton.setOnClickListener {
+            setYoutubeFullscreen(true)
+        }
+        youtubeMinimizeButton.setOnClickListener {
+            hideYoutubeCustomView()
+            setYoutubeFullscreen(false)
+            setYoutubeFaded(false)
+        }
+        youtubeCloseButton.setOnClickListener {
+            closeYoutubeOverlay()
+        }
+
+        youtubePlayerSurface.setOnTouchListener { _, _ ->
+            if (!youtubeFaded && !youtubeFullscreen) scheduleYoutubeFade()
+            false
+        }
+
+        youtubeOverlay.setOnHoverListener { _, event ->
+            if (!youtubeFullscreen && event.action == MotionEvent.ACTION_HOVER_ENTER) {
+                setYoutubeFaded(true)
+            }
+            false
+        }
+
+        tileGrid.setOnHoverListener { _, event ->
+            if (youtubeOverlay.visibility == View.VISIBLE &&
+                !youtubeFullscreen &&
+                event.action == MotionEvent.ACTION_HOVER_ENTER
+            ) {
+                setYoutubeFaded(true)
+            }
+            false
+        }
+    }
+
+    private fun showYoutubeOverlay(url: String = "https://www.youtube.com/") {
+        youtubeOverlay.visibility = View.VISIBLE
+        youtubeOverlay.bringToFront()
+        window.decorView.keepScreenOn = true
+        setYoutubeFullscreen(false)
+        setYoutubeFaded(false)
+
+        val current = youtubeWebView.url.orEmpty()
+        if (current.isBlank() || current == "about:blank") {
+            youtubeWebView.loadUrl(url)
+        } else if (
+            url.contains("music.youtube.com") &&
+            !current.contains("music.youtube.com")
+        ) {
+            youtubeWebView.loadUrl(url)
+        }
+    }
+
+    private fun setYoutubeFullscreen(fullscreen: Boolean) {
+        youtubeFullscreen = fullscreen
+        handler.removeCallbacks(youtubeAutoFade)
+
+        val params = youtubeOverlay.layoutParams as FrameLayout.LayoutParams
+        if (fullscreen) {
+            params.width = FrameLayout.LayoutParams.MATCH_PARENT
+            params.height = FrameLayout.LayoutParams.MATCH_PARENT
+            params.gravity = Gravity.FILL
+            params.setMargins(0, 0, 0, 0)
+            youtubeMinimizeButton.visibility = View.VISIBLE
+            youtubeFullscreenButton.visibility = View.GONE
+            setYoutubeFaded(false)
+        } else {
+            params.width = 560.dp
+            params.height = 330.dp
+            params.gravity = Gravity.END or Gravity.BOTTOM
+            val margin = 14.dp
+            params.setMargins(margin, margin, margin, margin)
+            youtubeMinimizeButton.visibility = View.VISIBLE
+            youtubeFullscreenButton.visibility = View.VISIBLE
+            scheduleYoutubeFade()
+        }
+        youtubeOverlay.layoutParams = params
+        youtubeOverlay.bringToFront()
+    }
+
+    private fun setYoutubeFaded(faded: Boolean) {
+        if (youtubeFullscreen && faded) return
+
+        youtubeFaded = faded
+        handler.removeCallbacks(youtubeAutoFade)
+        youtubePlayerSurface.passThrough = faded
+        youtubePlayerSurface.animate()
+            .alpha(if (faded) 0.20f else 1.0f)
+            .setDuration(180L)
+            .start()
+        youtubeControls.animate()
+            .alpha(if (faded) 0.78f else 1.0f)
+            .setDuration(180L)
+            .start()
+        youtubeFadeButton.text = if (faded) "Player" else "Tegels"
+
+        if (!faded && !youtubeFullscreen) scheduleYoutubeFade()
+    }
+
+    private fun scheduleYoutubeFade() {
+        handler.removeCallbacks(youtubeAutoFade)
+        if (!youtubeFullscreen && youtubeOverlay.visibility == View.VISIBLE) {
+            handler.postDelayed(youtubeAutoFade, 4500L)
+        }
+    }
+
+    private fun hideYoutubeCustomView() {
+        val custom = youtubeCustomView ?: return
+        youtubePlayerSurface.removeView(custom)
+        youtubeCustomView = null
+        youtubeWebView.visibility = View.VISIBLE
+        youtubeCustomCallback?.onCustomViewHidden()
+        youtubeCustomCallback = null
+    }
+
+    private fun closeYoutubeOverlay() {
+        handler.removeCallbacks(youtubeAutoFade)
+        hideYoutubeCustomView()
+        youtubeWebView.stopLoading()
+        youtubeWebView.loadUrl("about:blank")
+        youtubeOverlay.visibility = View.GONE
+        youtubeFaded = false
+        youtubeFullscreen = false
+        window.decorView.keepScreenOn = false
+    }
+
     private fun showMusicChooser() {
         AlertDialog.Builder(this)
             .setTitle("Muziek")
@@ -629,6 +831,17 @@ class MainActivity : AppCompatActivity() {
         return layered
     }
     private fun launchPackage(pkg: String): Boolean {
+        when (pkg.lowercase(Locale.ROOT)) {
+            "com.google.android.youtube" -> {
+                showYoutubeOverlay("https://www.youtube.com/")
+                return true
+            }
+            "com.google.android.apps.youtube.music" -> {
+                showYoutubeOverlay("https://music.youtube.com/")
+                return true
+            }
+        }
+
         val intent = packageManager.getLaunchIntentForPackage(pkg) ?: return false
         return try { startActivity(intent); true } catch (_: Exception) { false }
     }
@@ -640,6 +853,11 @@ class MainActivity : AppCompatActivity() {
         MessageBus.removeStatusListener(statusListener)
         MessageBus.removeDataListener(dataListener)
         handler.removeCallbacks(clockTick)
+        handler.removeCallbacks(youtubeAutoFade)
+        if (::youtubeWebView.isInitialized) {
+            youtubeWebView.stopLoading()
+            youtubeWebView.destroy()
+        }
         super.onDestroy()
     }
     private val Int.dp: Int get() = (this * resources.displayMetrics.density).toInt()
