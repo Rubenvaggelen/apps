@@ -294,7 +294,11 @@ class HomeActivity : AppCompatActivity() {
             val blocked = runCatching { MainDeviceRegistry.heartbeat(this) }.getOrNull()
                 ?: return@Thread
 
-            if (!MainDeviceRegistry.isLocallyOwner(this) && MainDeviceRegistry.isOwnerEligible()) {
+            if (
+                !MainDeviceRegistry.isLocallyOwner(this) &&
+                MainDeviceRegistry.isOwnerEligible() &&
+                MainDeviceRegistry.isTheOneProfile(this)
+            ) {
                 MainDeviceRegistry.claimInitialOwner(this)
             }
 
