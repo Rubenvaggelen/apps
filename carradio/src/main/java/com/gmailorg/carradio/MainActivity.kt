@@ -408,7 +408,7 @@ class MainActivity : AppCompatActivity() {
 
             row.addView(
                 TextView(this).apply {
-                    text = file.displayName
+                    text = cleanRemoteUsbTrackTitle(file.displayName)
                     textSize = 16f
                     setTextColor(android.graphics.Color.WHITE)
                     maxLines = 2
@@ -536,6 +536,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun cleanRemoteUsbTrackTitle(raw: String): String =
+        raw
+            .replace(
+                Regex("\\.(mp3|wma|m4a|aac|flac|ogg|oga|opus|wav|mp4)$", RegexOption.IGNORE_CASE),
+                ""
+            )
+            .replace("_", " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
     private fun playRemoteUsbFolder(
         files: List<RemoteUsbMusicClient.RemoteFile>,
         index: Int
@@ -544,7 +554,7 @@ class MainActivity : AppCompatActivity() {
             val queue = files.map {
                 UsbPlaybackService.QueueItem(
                     RemoteUsbMusicClient.streamUrl(this, it),
-                    it.displayName
+                    cleanRemoteUsbTrackTitle(it.displayName)
                 )
             }
             UsbPlaybackService.play(this, queue, index)
