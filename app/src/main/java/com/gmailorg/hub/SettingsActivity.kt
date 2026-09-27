@@ -38,6 +38,8 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var parkingEmptyState: TextView
     private lateinit var notificationSoundName: TextView
     private lateinit var adapter: SettingsParkingAdapter
+    private var activeAdminPin = ""
+    private var deviceManagerAdded = false
 
     private val pickRingtone = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -201,15 +203,208 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun tryUnlock() {
         if (pinInput.text.toString() == PIN_CODE) {
+            activeAdminPin = pinInput.text.toString()
             pinErrorText.visibility = View.GONE
             lockSection.visibility = View.GONE
             unlockedSection.visibility = View.VISIBLE
             refreshParkingList()
             refreshHiddenTiles()
+            setupDeviceManagerSection()
         } else {
             pinErrorText.visibility = View.VISIBLE
             pinInput.text.clear()
         }
+    }
+
+    private fun setupDeviceManagerSection() {
+        if (deviceManagerAdded) return
+        deviceManagerAdded = true
+
+        val divider = View(this).apply {
+            setBackgroundColor(ContextCompat.getColor(this@SettingsActivity, R.color.line))
+        }
+        unlockedSection.addView(
+            divider,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                1
+            ).apply { setMargins(0, 24, 0, 20) }
+        )
+
+        unlockedSection.addView(TextView(this).apply {
+            text = "Verbonden apparaten"
+            textSize = 18f
+            setTextColor(ContextCompat.getColor(this@SettingsActivity, R.color.text_main))
+            setPadding(0, 0, 0, 8)
+        })
+
+        unlockedSection.addView(TextView(this).apply {
+            text = "Bekijk welke apparaten The One Main gebruiken en blokkeer of deblokkeer ze."
+            textSize = 13f
+            setTextColor(ContextCompat.getColor(this@SettingsActivity, R.color.text_dim))
+            setPadding(0, 0, 0, 10)
+        })
+
+        val manage = android.widget.Button(this).apply {
+            text = "Apparaten beheren"
+            setOnClickListener { loadAndShowDevices(this) }
+        }
+        unlockedSection.addView(
+            manage,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+    }
+
+    private fun loadAndShowDevices(trigger: View) {
+        if (activeAdminPin.isBlank()) return
+        trigger.isEnabled = false
+        Thread {
+            val result = runCatching { MainDeviceRegistry.listDevices(activeAdminPin) }
+            runOnUiThread {
+                trigger.isEnabled = true
+                result.onSuccess { showDevicesDialog(it) }
+                    .onFailure {
+                        Toast.makeText(
+                            this,
+                            "Apparaten konden niet worden geladen: ${it.message ?: "onbekende fout"}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+            }
+        }.start()
+    }
+
+    private fun showDevicesDialog(devices: List<MainRegisteredDevice>) {
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(18, 8, 18, 8)
+        }
+
+        if (devices.isEmpty()) {
+            list.addView(TextView(this).apply {
+                text = "Nog geen apparaten geregistreerd."
+                setTextColor(ContextCompat.getColor(this@SettingsActivity, R.color.text_dim))
+                textSize = 14f
+                setPadding(12, 20, 12, 20)
+            })
+        }
+
+        devices.forEach { device ->
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(16, 14, 16, 14)
+            }
+
+            val title = TextView(this).apply {
+                text = (if (device.online) "●  " else "○  ") + device.name
+                textSize = 16f
+                setTextColor(
+                    ContextCompat.getColor(
+                        this@SettingsActivity,
+                        if (device.online) R.color.amber else R.color.text_main
+                    )
+                )
+            }
+            card.addView(title)
+
+            val state = TextView(this).apply {
+                text = deviceStateText(device)
+                textSize = 12f
+                setTextColor(
+                    ContextCompat.getColor(
+                        this@SettingsActivity,
+                        if (device.blocked) android.R.color.holo_red_light else R.color.text_dim
+                    )
+                )
+                setPadding(0, 5, 0, 8)
+            }
+            card.addView(state)
+
+            val action = android.widget.Button(this).apply {
+                text = if (device.blocked) "Deblokkeren" else "Blokkeren"
+                setOnClickListener {
+                    isEnabled = false
+                    val newBlocked = !device.blocked
+                    Thread {
+                        val result = runCatching {
+                            MainDeviceRegistry.setBlocked(activeAdminPin, device.id, newBlocked)
+                        }
+                        runOnUiThread {
+                            result.onSuccess {
+                                text = if (newBlocked) "Deblokkeren" else "Blokkeren"
+                                state.text =
+                                    (if (newBlocked) "GEBLOKKEERD • " else "") +
+                                        deviceLastSeenText(device)
+                                state.setTextColor(
+                                    ContextCompat.getColor(
+                                        this@SettingsActivity,
+                                        if (newBlocked) android.R.color.holo_red_light else R.color.text_dim
+                                    )
+                                )
+                                Toast.makeText(
+                                    this@SettingsActivity,
+                                    if (newBlocked) "${device.name} is geblokkeerd." else "${device.name} is gedeblokkeerd.",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }.onFailure {
+                                Toast.makeText(
+                                    this@SettingsActivity,
+                                    "Wijzigen mislukt: ${it.message ?: "onbekende fout"}",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                            isEnabled = true
+                        }
+                    }.start()
+                }
+            }
+            card.addView(action)
+
+            list.addView(
+                card,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+
+            list.addView(View(this).apply {
+                setBackgroundColor(ContextCompat.getColor(this@SettingsActivity, R.color.line))
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
+        }
+
+        val scroll = android.widget.ScrollView(this).apply {
+            isFillViewport = true
+            addView(list)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Verbonden apparaten")
+            .setView(scroll)
+            .setNegativeButton("Sluiten", null)
+            .show()
+    }
+
+    private fun deviceStateText(device: MainRegisteredDevice): String {
+        val prefix = if (device.blocked) "GEBLOKKEERD • " else ""
+        return prefix + deviceLastSeenText(device)
+    }
+
+    private fun deviceLastSeenText(device: MainRegisteredDevice): String {
+        val onlineText = if (device.online) "Online" else "Offline"
+        val platform = listOf(device.platform, if (device.version.isBlank()) "" else "build ${device.version}")
+            .filter { it.isNotBlank() }
+            .joinToString(" • ")
+        val seen = if (device.lastSeen > 0L) {
+            val formatter = java.text.SimpleDateFormat("dd-MM HH:mm", java.util.Locale("nl", "NL"))
+            "Laatst gezien ${formatter.format(java.util.Date(device.lastSeen * 1000L))}"
+        } else {
+            "Nog niet gezien"
+        }
+        return listOf(onlineText, platform, seen).filter { it.isNotBlank() }.joinToString(" • ")
     }
 
     private fun refreshParkingList() {
