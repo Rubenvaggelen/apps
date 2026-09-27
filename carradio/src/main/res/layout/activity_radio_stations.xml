@@ -19,7 +19,7 @@
             android:layout_height="52dp"
             android:text="‹ Terug"
             android:textAllCaps="false"
-            android:textSize="16sp" />
+            android:textSize="24sp" />
 
         <TextView
             android:layout_width="0dp"
@@ -28,7 +28,7 @@
             android:layout_marginStart="16dp"
             android:text="The One Radio"
             android:textColor="@color/amber"
-            android:textSize="27sp"
+            android:textSize="40.5sp"
             android:textStyle="bold"
             android:fontFamily="serif" />
     </LinearLayout>
@@ -38,7 +38,7 @@
         android:layout_height="wrap_content"
         android:text="Jouw radiozenders uit The One"
         android:textColor="@color/text_dim"
-        android:textSize="15sp"
+        android:textSize="22.5sp"
         android:paddingBottom="12dp" />
 
     <ScrollView
