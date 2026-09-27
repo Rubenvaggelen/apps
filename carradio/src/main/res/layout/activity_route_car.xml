@@ -13,7 +13,7 @@
         android:layout_height="wrap_content"
         android:text="Route"
         android:textColor="@color/amber"
-        android:textSize="24sp"
+        android:textSize="36sp"
         android:textStyle="bold"/>
 
     <TextView
@@ -78,7 +78,7 @@
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:text="Route berekenen"
-            android:textSize="16sp"
+            android:textSize="24sp"
             android:textStyle="bold"
             android:backgroundTint="@color/amber"
             android:textColor="@color/on_amber"/>
@@ -90,7 +90,7 @@
             android:layout_weight="1"
             android:layout_marginStart="10dp"
             android:text="⛽  Benzinepompen"
-            android:textSize="16sp"
+            android:textSize="24sp"
             android:textStyle="bold"
             android:backgroundTint="@color/surface_raised"
             android:textColor="@color/text_main"/>
@@ -102,5 +102,5 @@
         android:layout_marginTop="6dp"
         android:text="Benzinepompen: binnen 5 km, goedkoopste eerst, direct navigeren via Google Maps of Waze."
         android:textColor="@color/text_dim"
-        android:textSize="12sp"/>
+        android:textSize="18sp"/>
 </LinearLayout>
