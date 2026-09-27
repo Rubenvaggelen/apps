@@ -1075,18 +1075,12 @@ class MoviesActivity : AppCompatActivity() {
             val urls = ArrayList(playableFiles.map { RemoteUsbMusicClient.streamUrl(this, it) })
             val titles = ArrayList(playableFiles.map { cleanUsbTrackTitle(it.displayName) })
 
-            ContextCompat.startForegroundService(
-                this,
-                Intent(this, SupremacyPlaybackService::class.java).apply {
-                    action = SupremacyPlaybackService.ACTION_PLAY
-                    putStringArrayListExtra(SupremacyPlaybackService.EXTRA_QUEUE_URLS, urls)
-                    putStringArrayListExtra(SupremacyPlaybackService.EXTRA_QUEUE_TITLES, titles)
-                    putExtra(SupremacyPlaybackService.EXTRA_INDEX, playableIndex)
-                    putExtra(
-                        SupremacyPlaybackService.EXTRA_SOURCE,
-                        "Shared Media • " + stick.deviceName + " • " + stick.stickName
-                    )
-                }
+            SupremacyPlaybackService.playQueue(
+                context = this,
+                queueUrls = urls,
+                queueTitles = titles,
+                startIndex = playableIndex,
+                source = "Shared Media • " + stick.deviceName + " • " + stick.stickName
             )
 
             currentRemoteUsbStick = stick
