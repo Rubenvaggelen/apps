@@ -402,42 +402,14 @@ public static class UsbMusicCloudService
 
         if (files.Count == 0)
         {
-            await SendManifestAsync(
-                deviceId, deviceName, stickId, stickName,
-                new List<LocalManifestFile>(), cancellationToken);
+            Log($"{deviceName} / {stickName}: geen audiobestanden gevonden; bestaande Family-catalogus blijft behouden.");
             return 0;
         }
 
-        // Toon de stick en mapstructuur direct, nog vóór de lange hash/uploadfase.
-        var provisional = new List<LocalManifestFile>(files.Count);
-        foreach (var file in files)
-        {
-            var relative = NormalizePath(Path.GetRelativePath(scanRoot, file.FullName));
-            var modified = file.LastWriteTimeUtc.ToString("O");
-            var lookup = $"{deviceId}|{stickId}|{relative}";
-
-            var knownSha = existing.TryGetValue(lookup, out var old) &&
-                           old!.Size == file.Length &&
-                           string.Equals(old.Modified, modified, StringComparison.Ordinal)
-                ? old.Sha256
-                : "";
-
-            var tags = metadata[file.FullName];
-            provisional.Add(new LocalManifestFile
-            {
-                Path = relative,
-                Size = file.Length,
-                Sha256 = knownSha,
-                Modified = modified,
-                Title = tags.Title,
-                Artist = tags.Artist,
-                Album = tags.Album
-            });
-        }
-
-        await SendManifestAsync(
-            deviceId, deviceName, stickId, stickName, provisional, cancellationToken);
-        Log($"{deviceName} / {stickName}: voorlopige catalogus gepubliceerd.");
+        // Publiceer nooit meer een voorlopige catalogus met lege hashes.
+        // Zo kan een reboot, stationsletterwissel of mislukte upload een eerder
+        // geldige Shared Media-bibliotheek niet meer leeg overschrijven.
+        // We bouwen eerst de volledige manifeststatus op en publiceren pas daarna.
 
         var finalManifest = new List<LocalManifestFile>(files.Count);
         var uploadJobs = new List<(FileInfo File, string Relative, string Sha)>();
@@ -481,6 +453,13 @@ public static class UsbMusicCloudService
             if (needsUpload)
                 uploadJobs.Add((file, relative, sha));
         }
+
+        // Herstel eerst de volledige catalogus met echte hashes. Als de server
+        // de blobs nog in cache heeft, worden de nummers direct opnieuw gekoppeld
+        // zonder dat alles opnieuw hoeft te worden geüpload.
+        await SendManifestAsync(
+            deviceId, deviceName, stickId, stickName, finalManifest, cancellationToken);
+        Log($"{deviceName} / {stickName}: volledige catalogus veilig gepubliceerd.");
 
         // Start agressief met 16 gelijktijdige uploads. Als de server,
         // verbinding of één van de uploads daar niet goed op reageert, worden
