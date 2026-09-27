@@ -71,25 +71,56 @@ class SupremacyPlaybackService : Service() {
             ACTION_RESTORE_LAST -> restoreLastSession()
 
             ACTION_PLAY -> {
-                currentSource = intent.getStringExtra(EXTRA_SOURCE).orEmpty().ifBlank { "The One Mixes" }
-                val incomingUrls = intent.getStringArrayListExtra(EXTRA_QUEUE_URLS)
-                val incomingTitles = intent.getStringArrayListExtra(EXTRA_QUEUE_TITLES)
+                val pendingUrlsNow = pendingQueueUrls
+                val pendingTitlesNow = pendingQueueTitles
+                val pendingSourceNow = pendingQueueSource
                 val startIndex = intent.getIntExtra(EXTRA_INDEX, 0)
 
-                if (!incomingUrls.isNullOrEmpty()) {
-                    urls = ArrayList(incomingUrls)
+                if (!pendingUrlsNow.isNullOrEmpty()) {
+                    urls = ArrayList(pendingUrlsNow)
                     titles = ArrayList(
-                        incomingTitles?.takeIf { it.size == incomingUrls.size }
-                            ?: incomingUrls.map { "The One Mixes" }
+                        pendingTitlesNow
+                            ?.takeIf { it.size == pendingUrlsNow.size }
+                            ?: pendingUrlsNow.map { "Muziek" }
                     )
+                    currentSource =
+                        pendingSourceNow.orEmpty().ifBlank { "The One Mixes" }
                     index = startIndex.coerceIn(0, urls.lastIndex)
+
+                    pendingQueueUrls = null
+                    pendingQueueTitles = null
+                    pendingQueueSource = null
                 } else {
-                    val url = intent.getStringExtra(EXTRA_URL).orEmpty()
-                    val title = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { "The One Mixes" }
-                    if (url.isBlank()) return START_NOT_STICKY
-                    urls = arrayListOf(url)
-                    titles = arrayListOf(title)
-                    index = 0
+                    currentSource =
+                        intent.getStringExtra(EXTRA_SOURCE)
+                            .orEmpty()
+                            .ifBlank { "The One Mixes" }
+
+                    val incomingUrls =
+                        intent.getStringArrayListExtra(EXTRA_QUEUE_URLS)
+                    val incomingTitles =
+                        intent.getStringArrayListExtra(EXTRA_QUEUE_TITLES)
+
+                    if (!incomingUrls.isNullOrEmpty()) {
+                        urls = ArrayList(incomingUrls)
+                        titles = ArrayList(
+                            incomingTitles
+                                ?.takeIf { it.size == incomingUrls.size }
+                                ?: incomingUrls.map { "The One Mixes" }
+                        )
+                        index = startIndex.coerceIn(0, urls.lastIndex)
+                    } else {
+                        val url =
+                            intent.getStringExtra(EXTRA_URL).orEmpty()
+                        val title =
+                            intent.getStringExtra(EXTRA_TITLE)
+                                .orEmpty()
+                                .ifBlank { "The One Mixes" }
+                        if (url.isBlank()) return START_NOT_STICKY
+                        urls = arrayListOf(url)
+                        titles = arrayListOf(title)
+                        index = 0
+                    }
                 }
 
                 requestedStartPositionMs = 0
@@ -487,34 +518,91 @@ class SupremacyPlaybackService : Service() {
             }
         }
 
-        fun isActive(context: Context): Boolean =
-            instance?.let { it.urls.isNotEmpty() }
-                ?: context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                    .getBoolean(KEY_ACTIVE, false)
+        fun isActive(context: Context): Boolean {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            return instance?.urls?.isNotEmpty() == true ||
+                prefs.getBoolean(KEY_ACTIVE, false)
+        }
 
-        fun isPlaying(context: Context): Boolean =
-            instance?.let {
-                try {
-                    it.player?.isPlaying == true
+        fun isPlaying(context: Context): Boolean {
+            val live = instance
+            if (live?.player != null) {
+                return try {
+                    live.player?.isPlaying == true
                 } catch (_: Exception) {
                     false
                 }
-            } ?: context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            }
+            return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getBoolean(KEY_PLAYING, false)
+        }
 
-        fun currentTitle(context: Context): String =
-            instance?.currentTitle
-                ?.takeIf { it.isNotBlank() }
-                ?: context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                    .getString(KEY_TITLE, "Geen muziek actief")
+        fun currentTitle(context: Context): String {
+            val live = instance
+            if (live != null && live.urls.isNotEmpty()) {
+                return live.currentTitle.takeIf { it.isNotBlank() }
+                    ?: "Geen muziek actief"
+            }
+            return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_TITLE, "Geen muziek actief")
                 ?: "Geen muziek actief"
+        }
 
-        fun currentSource(context: Context): String =
-            instance?.currentSource
-                ?.takeIf { it.isNotBlank() }
-                ?: context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                    .getString(KEY_SOURCE, "The One Mixes")
+        fun currentSource(context: Context): String {
+            val live = instance
+            if (live != null && live.urls.isNotEmpty()) {
+                return live.currentSource.takeIf { it.isNotBlank() }
+                    ?: "The One Mixes"
+            }
+            return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_SOURCE, "The One Mixes")
                 ?: "The One Mixes"
+        }
+
+        fun playQueue(
+            context: Context,
+            queueUrls: List<String>,
+            queueTitles: List<String>,
+            startIndex: Int,
+            source: String
+        ) {
+            if (queueUrls.isEmpty()) return
+
+            val titlesSafe =
+                queueTitles.takeIf { it.size == queueUrls.size }
+                    ?: queueUrls.map { "Muziek" }
+            val safeIndex = startIndex.coerceIn(0, queueUrls.lastIndex)
+            val selectedTitle =
+                titlesSafe.getOrNull(safeIndex)
+                    .orEmpty()
+                    .ifBlank { "Muziek" }
+            val sourceSafe = source.ifBlank { "The One Mixes" }
+
+            pendingQueueUrls = queueUrls.toList()
+            pendingQueueTitles = titlesSafe.toList()
+            pendingQueueSource = sourceSafe
+
+            context.applicationContext
+                .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_ACTIVE, true)
+                .putBoolean(KEY_PLAYING, false)
+                .putString(KEY_TITLE, selectedTitle)
+                .putString(KEY_SOURCE, sourceSafe)
+                .apply()
+
+            val app = context.applicationContext
+            val intent =
+                Intent(app, SupremacyPlaybackService::class.java).apply {
+                    action = ACTION_PLAY
+                    putExtra(EXTRA_INDEX, safeIndex)
+                }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                app.startForegroundService(intent)
+            } else {
+                app.startService(intent)
+            }
+        }
 
         fun currentPositionMs(context: Context): Int =
             instance?.playbackPositionMs()
