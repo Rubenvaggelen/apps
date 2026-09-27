@@ -140,6 +140,12 @@ if ($action === 'claim_owner') {
     }
 
     $deviceId = clean_device_id((string)($body['request_device_id'] ?? ''));
+    $state = devices_load($devicesFile);
+    $device = $state['devices'][$deviceId] ?? null;
+    if (!is_array($device) || (time() - (int)($device['last_seen'] ?? 0)) > 300) {
+        respond_devices(409, ['ok' => false, 'error' => 'Device must register first']);
+    }
+
     $ownerId = devices_owner_id($ownerFile);
     if ($ownerId !== '' && !hash_equals($ownerId, $deviceId)) {
         respond_devices(403, ['ok' => false, 'error' => 'Owner already assigned']);
