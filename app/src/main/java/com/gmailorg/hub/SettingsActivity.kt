@@ -446,7 +446,7 @@ class SettingsActivity : AppCompatActivity() {
                     val newBlocked = !device.blocked
                     Thread {
                         val result = runCatching {
-                            MainDeviceRegistry.setBlocked(this, activeAdminPin, device.id, newBlocked)
+                            MainDeviceRegistry.setBlocked(this@SettingsActivity, activeAdminPin, device.id, newBlocked)
                         }
                         runOnUiThread {
                             result.onSuccess {
