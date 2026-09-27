@@ -31,6 +31,7 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var adapter: HomeAdapter
     private var blockedDialogShowing = false
     private var personRegistrationDialogShowing = false
+    private var personRegistrationLookupRunning = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -190,10 +191,30 @@ class HomeActivity : AppCompatActivity() {
             checkDeviceAccess()
             return
         }
-        showPersonRegistrationDialog()
+        if (
+            personRegistrationDialogShowing ||
+            personRegistrationLookupRunning ||
+            isFinishing ||
+            isDestroyed
+        ) return
+
+        personRegistrationLookupRunning = true
+        Thread {
+            val alreadyRegistered = runCatching {
+                MainDeviceRegistry.isTheOneRegisteredRemotely()
+            }.getOrDefault(true)
+
+            val allowTheOneSelection =
+                MainDeviceRegistry.isOwnerEligible() && !alreadyRegistered
+
+            runOnUiThread {
+                personRegistrationLookupRunning = false
+                showPersonRegistrationDialog(allowTheOneSelection)
+            }
+        }.start()
     }
 
-    private fun showPersonRegistrationDialog() {
+    private fun showPersonRegistrationDialog(allowTheOneSelection: Boolean) {
         if (personRegistrationDialogShowing || isFinishing || isDestroyed) return
         personRegistrationDialogShowing = true
 
@@ -210,11 +231,15 @@ class HomeActivity : AppCompatActivity() {
         }
         container.addView(nameInput)
 
-        val theOneCheck = CheckBox(this).apply {
-            text = "Ik ben The One"
-            setPadding(0, pad / 2, 0, 0)
+        val theOneCheck = if (allowTheOneSelection) {
+            CheckBox(this).apply {
+                text = "Ik ben The One"
+                setPadding(0, pad / 2, 0, 0)
+                container.addView(this)
+            }
+        } else {
+            null
         }
-        container.addView(theOneCheck)
 
         val dialog = AlertDialog.Builder(this)
             .setTitle("Wie gebruikt The One?")
@@ -236,10 +261,11 @@ class HomeActivity : AppCompatActivity() {
                 }
 
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
+                val isTheOne = theOneCheck?.isChecked == true
                 MainDeviceRegistry.savePersonRegistration(
                     this,
                     personName,
-                    theOneCheck.isChecked
+                    isTheOne
                 )
 
                 dialog.dismiss()
@@ -251,13 +277,13 @@ class HomeActivity : AppCompatActivity() {
                     }.getOrNull()
 
                     var owner = MainDeviceRegistry.isLocallyOwner(this)
-                    if (theOneCheck.isChecked && !owner) {
+                    if (isTheOne && !owner) {
                         owner = MainDeviceRegistry.claimInitialOwner(this)
                     }
 
                     runOnUiThread {
                         refreshTiles()
-                        if (theOneCheck.isChecked) {
+                        if (isTheOne) {
                             Toast.makeText(
                                 this,
                                 if (owner) {
