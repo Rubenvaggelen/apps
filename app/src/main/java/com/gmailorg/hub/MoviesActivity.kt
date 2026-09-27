@@ -33,6 +33,8 @@ class MoviesActivity : AppCompatActivity() {
     private lateinit var musicWebPlayer: WebView
     private var youtubeActive = false
     private var youtubePlaying = false
+    private var currentRemoteUsbStick: RemoteUsbMusicClient.RemoteStick? = null
+    private var currentRemoteUsbFolder: String = ""
     private val remoteMusicIo = Executors.newSingleThreadExecutor()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -63,6 +65,10 @@ class MoviesActivity : AppCompatActivity() {
         musicPlaybackState = findViewById(R.id.musicPlaybackState)
         musicWebPlayer = findViewById(R.id.musicWebPlayer)
         configureMusicPlayer()
+        musicNowPlaying.setOnClickListener {
+            val stick = currentRemoteUsbStick ?: return@setOnClickListener
+            showRemoteFolderLevel(stick, currentRemoteUsbFolder, openCurrentFolder = true)
+        }
         findViewById<View>(R.id.musicPreviousButton).setOnClickListener {
             if (SupremacyPlaybackService.isActive(this)) {
                 sendSupremacyAction(SupremacyPlaybackService.ACTION_PREVIOUS)
@@ -87,6 +93,9 @@ class MoviesActivity : AppCompatActivity() {
             }
             youtubeActive = false
             youtubePlaying = false
+            currentRemoteUsbStick = null
+            currentRemoteUsbFolder = ""
+            musicNowPlaying.paintFlags = musicNowPlaying.paintFlags and android.graphics.Paint.UNDERLINE_TEXT_FLAG.inv()
             musicNowPlaying.text = "Geen muziek actief"
             musicPlaybackState.text = "Gestopt"
         }
@@ -234,21 +243,87 @@ class MoviesActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun showRemoteFolderDialog(stick: RemoteUsbMusicClient.RemoteStick) {
-        val groups = stick.files
-            .groupBy { it.folder.ifBlank { "Hoofdmap" } }
-            .toSortedMap(String.CASE_INSENSITIVE_ORDER)
+    private fun normalizeRemoteFolder(value: String): String =
+        value.replace('\\', '/').trim('/').let { if (it.equals("Hoofdmap", true)) "" else it }
 
-        val folders = groups.keys.toList()
-        AlertDialog.Builder(this)
-            .setTitle(stick.deviceName + " • " + stick.stickName)
-            .setItems(folders.toTypedArray()) { _, which ->
-                val folder = folders[which]
-                val files = groups[folder].orEmpty()
-                    .sortedBy { it.name.lowercase() }
-                showRemoteTrackDialog(stick, folder, files)
+    private fun parentRemoteFolder(value: String): String {
+        val folder = normalizeRemoteFolder(value)
+        return folder.substringBeforeLast('/', "")
+    }
+
+    private fun showRemoteFolderDialog(stick: RemoteUsbMusicClient.RemoteStick) {
+        showRemoteFolderLevel(stick, "")
+    }
+
+    private fun showRemoteFolderLevel(
+        stick: RemoteUsbMusicClient.RemoteStick,
+        folder: String,
+        openCurrentFolder: Boolean = false
+    ) {
+        val normalized = normalizeRemoteFolder(folder)
+        val directFiles = stick.files
+            .filter { normalizeRemoteFolder(it.folder) == normalized }
+            .sortedBy { it.name.lowercase() }
+
+        if (openCurrentFolder && directFiles.isNotEmpty()) {
+            showRemoteTrackDialog(stick, normalized, directFiles)
+            return
+        }
+
+        val prefix = if (normalized.isBlank()) "" else "$normalized/"
+        val childFolders = stick.files
+            .map { normalizeRemoteFolder(it.folder) }
+            .filter { it.length > normalized.length && it.startsWith(prefix, ignoreCase = true) }
+            .mapNotNull { path ->
+                val remainder = path.removePrefix(prefix)
+                val child = remainder.substringBefore('/').trim()
+                if (child.isBlank()) null else if (normalized.isBlank()) child else "$normalized/$child"
             }
-            .setNegativeButton("Terug") { _, _ -> showRemoteStickDialog(listOf(stick)) }
+            .distinctBy { it.lowercase() }
+            .sortedWith(String.CASE_INSENSITIVE_ORDER)
+
+        val labels = buildList {
+            childFolders.forEach { add("📁 " + it.substringAfterLast('/')) }
+            directFiles.forEach { add("🎵 " + cleanUsbTrackTitle(it.name)) }
+        }
+
+        if (labels.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setTitle(if (normalized.isBlank()) stick.deviceName + " • " + stick.stickName else normalized)
+                .setMessage("Deze map bevat geen beschikbare nummers.")
+                .setNegativeButton(
+                    if (normalized.isBlank()) "Sluiten" else "← 1 stap terug"
+                ) { _, _ ->
+                    if (normalized.isNotBlank()) {
+                        showRemoteFolderLevel(stick, parentRemoteFolder(normalized))
+                    }
+                }
+                .show()
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle(
+                if (normalized.isBlank())
+                    stick.deviceName + " • " + stick.stickName
+                else
+                    normalized
+            )
+            .setItems(labels.toTypedArray()) { _, which ->
+                if (which < childFolders.size) {
+                    showRemoteFolderLevel(stick, childFolders[which])
+                } else {
+                    val index = which - childFolders.size
+                    playRemoteUsbFolder(stick, directFiles, index, normalized)
+                }
+            }
+            .setNegativeButton(
+                if (normalized.isBlank()) "Sluiten" else "← 1 stap terug"
+            ) { _, _ ->
+                if (normalized.isNotBlank()) {
+                    showRemoteFolderLevel(stick, parentRemoteFolder(normalized))
+                }
+            }
             .show()
     }
 
@@ -257,6 +332,7 @@ class MoviesActivity : AppCompatActivity() {
         folder: String,
         files: List<RemoteUsbMusicClient.RemoteFile>
     ) {
+        val normalized = normalizeRemoteFolder(folder)
         val trackList = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(18, 8, 18, 8)
@@ -267,7 +343,7 @@ class MoviesActivity : AppCompatActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
                 setPadding(8, 6, 8, 6)
-                setOnClickListener { playRemoteUsbFolder(stick, files, index) }
+                setOnClickListener { playRemoteUsbFolder(stick, files, index, normalized) }
             }
 
             val number = TextView(this).apply {
@@ -300,7 +376,7 @@ class MoviesActivity : AppCompatActivity() {
                 setTextColor(Color.parseColor("#20B8FF"))
                 gravity = android.view.Gravity.CENTER
                 setPadding(18, 12, 18, 12)
-                setOnClickListener { playRemoteUsbFolder(stick, files, index) }
+                setOnClickListener { playRemoteUsbFolder(stick, files, index, normalized) }
             }
             row.addView(
                 play,
@@ -332,9 +408,11 @@ class MoviesActivity : AppCompatActivity() {
         }
 
         AlertDialog.Builder(this)
-            .setTitle(folder)
+            .setTitle(if (normalized.isBlank()) "Hoofdmap" else normalized)
             .setView(scroll)
-            .setNegativeButton("Terug") { _, _ -> showRemoteFolderDialog(stick) }
+            .setNegativeButton("← 1 stap terug") { _, _ ->
+                showRemoteFolderLevel(stick, parentRemoteFolder(normalized))
+            }
             .show()
     }
 
@@ -348,7 +426,8 @@ class MoviesActivity : AppCompatActivity() {
     private fun playRemoteUsbFolder(
         stick: RemoteUsbMusicClient.RemoteStick,
         files: List<RemoteUsbMusicClient.RemoteFile>,
-        index: Int
+        index: Int,
+        folder: String = files.getOrNull(index)?.folder.orEmpty()
     ) {
         try {
             musicWebPlayer.evaluateJavascript("window.theOneStop && window.theOneStop();", null)
@@ -372,7 +451,11 @@ class MoviesActivity : AppCompatActivity() {
                 }
             )
 
+            currentRemoteUsbStick = stick
+            currentRemoteUsbFolder = normalizeRemoteFolder(folder)
             musicNowPlaying.text = files[index].name + "  •  USB thuis"
+            musicNowPlaying.paintFlags = musicNowPlaying.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
+            musicNowPlaying.contentDescription = "Tik om de USB-map van dit nummer te openen"
             musicPlaybackState.text = "Laden…"
             musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 500)
         } catch (_: RemoteUsbMusicClient.AuthRequired) {
