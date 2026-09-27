@@ -66,9 +66,20 @@ function devices_owner_id(string $file): string {
     return is_array($data) ? trim((string)($data['device_id'] ?? '')) : '';
 }
 
-function devices_save_owner(string $file, string $deviceId): void {
+function devices_owner_person_name(string $file): string {
+    if (!is_file($file)) return '';
+    $raw = @file_get_contents($file);
+    $data = is_string($raw) ? json_decode($raw, true) : null;
+    return is_array($data) ? trim((string)($data['person_name'] ?? '')) : '';
+}
+
+function devices_save_owner(string $file, string $deviceId, string $personName = ''): void {
     $tmp = $file . '.tmp.' . bin2hex(random_bytes(4));
-    $json = json_encode(['device_id' => $deviceId, 'claimed' => gmdate('c')], JSON_PRETTY_PRINT);
+    $json = json_encode([
+        'device_id' => $deviceId,
+        'person_name' => mb_substr(trim($personName), 0, 80),
+        'claimed' => gmdate('c')
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     if (@file_put_contents($tmp, $json, LOCK_EX) === false) {
         respond_devices(500, ['ok' => false, 'error' => 'Storage unavailable']);
     }
@@ -97,10 +108,17 @@ function clean_device_id(string $value): string {
 $action = (string)($_GET['action'] ?? 'health');
 
 if ($action === 'health') {
-    respond_devices(200, ['ok' => true, 'service' => 'The One Main Device Registry', 'version' => 2]);
+    respond_devices(200, ['ok' => true, 'service' => 'The One Main Device Registry', 'version' => 3]);
 }
 
 $body = devices_body();
+
+if ($action === 'registration_status') {
+    respond_devices(200, [
+        'ok' => true,
+        'the_one_registered' => devices_owner_person_name($ownerFile) !== ''
+    ]);
+}
 
 if ($action === 'heartbeat') {
     $deviceId = clean_device_id((string)($body['device_id'] ?? ''));
@@ -129,7 +147,8 @@ if ($action === 'heartbeat') {
     respond_devices(200, [
         'ok' => true,
         'blocked' => (bool)$state['devices'][$deviceId]['blocked'],
-        'owner' => $ownerId !== '' && hash_equals($ownerId, $deviceId)
+        'owner' => $ownerId !== '' && hash_equals($ownerId, $deviceId),
+        'the_one_registered' => devices_owner_person_name($ownerFile) !== ''
     ]);
 }
 
@@ -155,10 +174,15 @@ if ($action === 'claim_owner') {
     if ($ownerId !== '' && !hash_equals($ownerId, $deviceId)) {
         respond_devices(403, ['ok' => false, 'error' => 'Owner already assigned']);
     }
-    if ($ownerId === '') {
-        devices_save_owner($ownerFile, $deviceId);
+    $personName = trim((string)($device['person_name'] ?? ''));
+    if ($ownerId === '' || hash_equals($ownerId, $deviceId)) {
+        devices_save_owner($ownerFile, $deviceId, $personName);
     }
-    respond_devices(200, ['ok' => true, 'owner' => true]);
+    respond_devices(200, [
+        'ok' => true,
+        'owner' => true,
+        'the_one_registered' => $personName !== ''
+    ]);
 }
 
 if ($action === 'owner_status') {
@@ -198,7 +222,11 @@ if ($action === 'recover_owner') {
         respond_devices(409, ['ok' => false, 'error' => 'Device must be online']);
     }
 
-    devices_save_owner($ownerFile, $deviceId);
+    devices_save_owner(
+        $ownerFile,
+        $deviceId,
+        trim((string)($device['person_name'] ?? ''))
+    );
     respond_devices(200, ['ok' => true, 'owner' => true, 'recovered' => true]);
 }
 
