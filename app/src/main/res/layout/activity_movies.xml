@@ -22,15 +22,31 @@
             android:textSize="20sp"
             android:textColor="@color/text_main" />
 
-        <TextView
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Films, Series &amp; Muziek"
-            android:textColor="@color/text_main"
-            android:textSize="24sp"
-            android:letterSpacing="0.015"
-            android:textStyle="bold" />
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="THE ONE FAMILY • MEDIA"
+                android:textColor="@color/gold"
+                android:textSize="10sp"
+                android:letterSpacing="0.16"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="Films, Series &amp; Muziek"
+                android:textColor="@color/text_main"
+                android:textSize="24sp"
+                android:letterSpacing="0.015"
+                android:textStyle="bold" />
+        </LinearLayout>
     </LinearLayout>
 
     <TextView
@@ -246,14 +262,30 @@
                 android:paddingHorizontal="16dp"
                 android:paddingBottom="10dp">
 
-                <TextView
+                <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Binnenkort: Marvel &amp; DC"
-                    android:textColor="@color/text_main"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="THE ONE FAMILY • BINNENKORT"
+                        android:textColor="@color/gold"
+                        android:textSize="9sp"
+                        android:letterSpacing="0.14"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="Marvel &amp; DC"
+                        android:textColor="@color/text_main"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
 
                 <Button
                     android:id="@+id/upcomingLoadButton"
