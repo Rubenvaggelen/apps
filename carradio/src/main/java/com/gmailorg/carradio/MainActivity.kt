@@ -1,6 +1,7 @@
 package com.gmailorg.carradio
 
 import android.Manifest
+import android.app.Dialog
 import android.app.DownloadManager
 import android.content.ClipData
 import android.content.Intent
@@ -796,17 +797,205 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showRemoteStickDialog(sticks: List<RemoteUsbMusicClient.RemoteStick>) {
-        AlertDialog.Builder(this)
-            .setTitle("Shared Media")
-            .setItems(sticks.map { it.deviceName + " • " + it.stickName }.toTypedArray()) { _, which ->
-                showRemoteFolderDialog(sticks[which])
+        val dialog = Dialog(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(28.dp, 22.dp, 28.dp, 20.dp)
+            setBackgroundResource(R.drawable.bg_player_panel)
+        }
+
+        panel.addView(
+            TextView(this).apply {
+                text = "THE ONE FAMILY • CAR"
+                textSize = 13f
+                letterSpacing = 0.18f
+                setTextColor(android.graphics.Color.parseColor("#D8A451"))
             }
-            .setNegativeButton("Sluiten", null)
-            .show()
+        )
+        panel.addView(
+            TextView(this).apply {
+                text = "Shared Media"
+                textSize = 30f
+                setTextColor(android.graphics.Color.WHITE)
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setPadding(0, 4.dp, 0, 2.dp)
+            }
+        )
+        panel.addView(
+            TextView(this).apply {
+                text = "Kies een bron"
+                textSize = 16f
+                setTextColor(android.graphics.Color.parseColor("#91A4BD"))
+                setPadding(0, 0, 0, 18.dp)
+            }
+        )
+
+        val sourceList = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        val scroll = android.widget.ScrollView(this).apply {
+            isFillViewport = true
+            addView(sourceList)
+        }
+        panel.addView(
+            scroll,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+
+        sticks.forEach { stick ->
+            val cached = stick.files.count { it.cached }
+            val total = stick.totalFiles
+            val status = if (cached >= total && total > 0) {
+                "$cached nummer" + if (cached == 1) "" else "s"
+            } else {
+                "$cached van $total beschikbaar"
+            }
+
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(20.dp, 16.dp, 18.dp, 16.dp)
+                setBackgroundResource(R.drawable.bg_outline)
+                isClickable = true
+                isFocusable = true
+            }
+            val copy = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+            copy.addView(
+                TextView(this).apply {
+                    text = stick.deviceName + " • " + stick.stickName
+                    textSize = 21f
+                    setTextColor(android.graphics.Color.WHITE)
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                }
+            )
+            copy.addView(
+                TextView(this).apply {
+                    text = status
+                    textSize = 15f
+                    setTextColor(android.graphics.Color.parseColor("#91A4BD"))
+                    setPadding(0, 5.dp, 0, 0)
+                }
+            )
+            card.addView(
+                copy,
+                LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+            )
+            card.addView(
+                TextView(this).apply {
+                    text = "›"
+                    textSize = 34f
+                    gravity = Gravity.CENTER
+                    setTextColor(android.graphics.Color.parseColor("#D8A451"))
+                    setPadding(14.dp, 0, 2.dp, 0)
+                }
+            )
+            card.setOnClickListener {
+                dialog.dismiss()
+                if (stick.files.none { it.cached }) {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle(stick.deviceName + " • " + stick.stickName)
+                        .setMessage(
+                            "Deze bron wordt nog gesynchroniseerd. " +
+                                "Er zijn nog geen nummers klaar om af te spelen."
+                        )
+                        .setPositiveButton("OK", null)
+                        .show()
+                } else {
+                    showRemoteFolderDialog(stick)
+                }
+            }
+
+            sourceList.addView(
+                card,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = 12.dp
+                }
+            )
+        }
+
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, 8.dp, 0, 0)
+        }
+        val close = TextView(this).apply {
+            text = "SLUITEN"
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTextColor(android.graphics.Color.parseColor("#D8A451"))
+            setBackgroundResource(R.drawable.bg_gold_outline)
+            setPadding(20.dp, 13.dp, 20.dp, 13.dp)
+            setOnClickListener { dialog.dismiss() }
+        }
+        val refresh = TextView(this).apply {
+            text = "VERNIEUWEN"
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(android.graphics.Color.parseColor("#201505"))
+            setBackgroundResource(R.drawable.bg_amber_button)
+            setPadding(20.dp, 13.dp, 20.dp, 13.dp)
+            setOnClickListener {
+                dialog.dismiss()
+                loadRemoteUsbCatalog()
+            }
+        }
+        actions.addView(
+            close,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = 8.dp
+            }
+        )
+        actions.addView(
+            refresh,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = 8.dp
+            }
+        )
+        panel.addView(actions)
+
+        dialog.setContentView(panel)
+        dialog.setCanceledOnTouchOutside(true)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        dialog.window?.attributes = dialog.window?.attributes?.apply { dimAmount = 0.72f }
+        dialog.show()
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.84f).toInt(),
+            (resources.displayMetrics.heightPixels * 0.82f).toInt()
+        )
     }
 
     private fun showRemoteFolderDialog(stick: RemoteUsbMusicClient.RemoteStick) {
-        showRemoteFolderLevel(stick, "")
+        val firstSegments = stick.files
+            .filter { it.cached }
+            .map { it.folder.replace('\\', '/').trim('/') }
+            .filter { it.isNotBlank() }
+            .map { it.substringBefore('/') }
+            .distinctBy { it.lowercase(Locale.ROOT) }
+
+        val startFolder = if (firstSegments.size == 1) {
+            firstSegments.first()
+        } else {
+            ""
+        }
+
+        showRemoteFolderLevel(stick, startFolder)
     }
 
     private fun showRemoteFolderLevel(
