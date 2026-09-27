@@ -620,6 +620,12 @@ class SupremacyPlaybackService : Service() {
         fun currentDurationMs(): Int =
             instance?.playbackDurationMs() ?: 0
 
+        fun currentQueueIndex(context: Context): Int =
+            instance?.index
+                ?: context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getInt(KEY_INDEX, 0)
+                    .coerceAtLeast(0)
+
         fun seek(context: Context, positionMs: Int) {
             val active = instance
             if (active != null) {
