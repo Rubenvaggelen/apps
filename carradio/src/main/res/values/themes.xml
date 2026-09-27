@@ -1,19 +1,21 @@
 <resources>
-    <color name="bg">#05070B</color>
-    <color name="surface">#091018</color>
-    <color name="surface_raised">#0D1A28</color>
-    <color name="line">#174963</color>
-    <color name="amber">#20B8FF</color>
-    <color name="on_amber">#201505</color>
-    <color name="gold">#E8AA4E</color>
-    <color name="on_gold">#201505</color>
-    <color name="text_main">#F3F8FC</color>
-    <color name="text_dim">#91A4BD</color>
+    <color name="bg">#070A0F</color>
+    <color name="surface">#0B1119</color>
+    <color name="surface_raised">#101925</color>
+    <color name="line">#1E3446</color>
+    <color name="amber">#D8A451</color>
+    <color name="on_amber">#171007</color>
+    <color name="gold">#D8A451</color>
+    <color name="on_gold">#171007</color>
+    <color name="the_one_blue">#2D789C</color>
+    <color name="blue_glow">#4B9FC0</color>
+    <color name="text_main">#F3F6F9</color>
+    <color name="text_dim">#8F9BAD</color>
     <color name="sage">#39D98A</color>
 
     <style name="Theme.CarRadio" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <item name="android:windowBackground">@color/bg</item>
-        <item name="colorPrimary">@color/amber</item>
+        <item name="colorPrimary">#0F2533</item>
         <item name="colorPrimaryDark">@color/bg</item>
         <item name="colorAccent">@color/amber</item>
         <item name="colorSecondary">@color/gold</item>
