@@ -477,6 +477,237 @@ class MoviesActivity : AppCompatActivity() {
         musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 700)
     }
 
+    private fun openTheOneFavorites() {
+        Toast.makeText(this, "The One Favorites laden…", Toast.LENGTH_SHORT).show()
+        remoteMusicIo.execute {
+            try {
+                if (!RemoteUsbMusicClient.hasToken(this) &&
+                    !RemoteUsbMusicClient.loginForBrowsing(this)
+                ) {
+                    throw IllegalStateException("The One Family is tijdelijk niet bereikbaar")
+                }
+
+                val favorites = RemoteUsbMusicClient.favorites(this)
+                val sticks = try {
+                    RemoteUsbMusicClient.catalog(this)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+
+                val playable = favorites.mapNotNull { item ->
+                    when {
+                        item.kind.equals("mix", ignoreCase = true) && item.url.isNotBlank() ->
+                            Triple(item, item.url, item.title)
+                        item.kind.equals("usb", ignoreCase = true) -> {
+                            val file = sticks
+                                .firstOrNull {
+                                    it.deviceId == item.deviceId && it.stickId == item.stickId
+                                }
+                                ?.files
+                                ?.firstOrNull { it.path.equals(item.path, ignoreCase = true) }
+                            if (file?.cached == true) {
+                                Triple(item, RemoteUsbMusicClient.streamUrl(this, file), cleanUsbTrackTitle(file.displayName))
+                            } else null
+                        }
+                        else -> null
+                    }
+                }
+
+                runOnUiThread {
+                    showTheOneFavoritesDialog(favorites, playable)
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(
+                        this,
+                        e.message ?: "The One Favorites konden niet worden geladen",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun showTheOneFavoritesDialog(
+        favorites: List<RemoteUsbMusicClient.FavoriteItem>,
+        playable: List<Triple<RemoteUsbMusicClient.FavoriteItem, String, String>>
+    ) {
+        val density = resources.displayMetrics.density
+        fun dp(value: Int): Int = (value * density).toInt()
+
+        val dialog = Dialog(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(20), dp(22), dp(18))
+            setBackgroundResource(R.drawable.bg_the_one_panel)
+        }
+
+        panel.addView(TextView(this).apply {
+            text = "THE ONE FAMILY • MUZIEK"
+            textSize = 11f
+            letterSpacing = 0.16f
+            setTextColor(Color.parseColor("#E8AA4E"))
+        })
+        panel.addView(TextView(this).apply {
+            text = "★ The One Favorites"
+            textSize = 26f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(Color.parseColor("#F3F8FC"))
+            setPadding(0, dp(5), 0, dp(3))
+        })
+        panel.addView(TextView(this).apply {
+            text = if (favorites.isEmpty()) "Nog geen favorieten" else "${favorites.size} favoriet" + if (favorites.size == 1) "" else "en"
+            textSize = 13f
+            setTextColor(Color.parseColor("#91A4BD"))
+            setPadding(0, 0, 0, dp(14))
+        })
+
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
+        favorites.forEach { item ->
+            val playableEntry = playable.firstOrNull { it.first.id == item.id }
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(dp(14), dp(12), dp(12), dp(12))
+                setBackgroundResource(R.drawable.bg_the_one_tile)
+            }
+
+            val copy = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            copy.addView(TextView(this).apply {
+                text = item.title
+                textSize = 16f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setTextColor(Color.parseColor(if (playableEntry != null) "#F3F8FC" else "#8F9BAD"))
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+            copy.addView(TextView(this).apply {
+                text = item.sourceLabel.ifBlank {
+                    if (item.kind.equals("mix", true)) "The One Mixes" else "Shared Media"
+                } + if (playableEntry == null) " • Niet beschikbaar" else ""
+                textSize = 12f
+                setTextColor(Color.parseColor("#91A4BD"))
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding(0, dp(3), 0, 0)
+            })
+            row.addView(copy, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+
+            row.addView(TextView(this).apply {
+                text = "★"
+                textSize = 23f
+                gravity = android.view.Gravity.CENTER
+                setTextColor(Color.parseColor("#E8AA4E"))
+                contentDescription = "Verwijder ${item.title} uit Favorites"
+                setPadding(dp(10), dp(8), dp(10), dp(8))
+                setOnClickListener {
+                    isEnabled = false
+                    remoteMusicIo.execute {
+                        val allowed = try { MainDeviceRegistry.refreshMusicRights(this@MoviesActivity) } catch (_: Exception) { false }
+                        val ok = if (allowed) try {
+                            RemoteUsbMusicClient.setFavoriteItem(this@MoviesActivity, item, false)
+                            true
+                        } catch (_: Exception) { false } else false
+                        runOnUiThread {
+                            if (!allowed) {
+                                Toast.makeText(
+                                    this@MoviesActivity,
+                                    "Alleen The One of iemand met muziekrechten mag Favorites wijzigen.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                                isEnabled = true
+                            } else if (ok) {
+                                dialog.dismiss()
+                                openTheOneFavorites()
+                            } else {
+                                Toast.makeText(this@MoviesActivity, "Favoriet verwijderen mislukt", Toast.LENGTH_SHORT).show()
+                                isEnabled = true
+                            }
+                        }
+                    }
+                }
+            })
+
+            row.addView(TextView(this).apply {
+                text = if (playableEntry != null) "▶" else "…"
+                textSize = 18f
+                gravity = android.view.Gravity.CENTER
+                setTextColor(Color.parseColor(if (playableEntry != null) "#20B8FF" else "#8F9BAD"))
+                setPadding(dp(10), dp(8), dp(6), dp(8))
+                setOnClickListener {
+                    val selected = playableEntry ?: return@setOnClickListener
+                    val index = playable.indexOfFirst { it.first.id == selected.first.id }
+                    SupremacyPlaybackService.playQueue(
+                        this@MoviesActivity,
+                        playable.map { it.second },
+                        playable.map { it.third },
+                        index.coerceAtLeast(0),
+                        "The One Favorites"
+                    )
+                    dialog.dismiss()
+                    musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 150)
+                }
+            })
+
+            if (playableEntry != null) {
+                row.setOnClickListener {
+                    val index = playable.indexOfFirst { it.first.id == playableEntry.first.id }
+                    SupremacyPlaybackService.playQueue(
+                        this@MoviesActivity,
+                        playable.map { it.second },
+                        playable.map { it.third },
+                        index.coerceAtLeast(0),
+                        "The One Favorites"
+                    )
+                    dialog.dismiss()
+                    musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 150)
+                }
+            }
+
+            list.addView(
+                row,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(9) }
+            )
+        }
+
+        if (favorites.isEmpty()) {
+            list.addView(TextView(this).apply {
+                text = "Markeer bij Shared Media of The One Mixes een nummer met ☆ om het hier toe te voegen."
+                textSize = 14f
+                gravity = android.view.Gravity.CENTER
+                setTextColor(Color.parseColor("#91A4BD"))
+                setPadding(dp(14), dp(28), dp(14), dp(28))
+            })
+        }
+
+        panel.addView(
+            ScrollView(this).apply { isFillViewport = true; addView(list) },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+        )
+        panel.addView(TextView(this).apply {
+            text = "SLUITEN"
+            textSize = 13f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(Color.parseColor("#E8AA4E"))
+            setBackgroundResource(R.drawable.bg_the_one_gold_outline)
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            setOnClickListener { dialog.dismiss() }
+        })
+
+        dialog.setContentView(panel)
+        dialog.setCanceledOnTouchOutside(true)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.show()
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.90f).toInt(),
+            (resources.displayMetrics.heightPixels * 0.86f).toInt()
+        )
+    }
+
     private fun openRemoteUsbMusic() {
         loadRemoteUsbCatalog()
     }
