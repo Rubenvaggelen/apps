@@ -58,6 +58,33 @@ class WakePcActivity : AppCompatActivity() {
 
         findViewById<View>(R.id.backButton).setOnClickListener { finish() }
 
+        wakeButton.isEnabled = false
+        sleepButton.isEnabled = false
+        remoteButton.isEnabled = false
+        status.setTextColor(ContextCompat.getColor(this, R.color.text_dim))
+        status.text = "Eigenaarsrechten controleren…"
+
+        Thread {
+            runCatching { MainDeviceRegistry.heartbeat(this) }
+            val owner = MainDeviceRegistry.isLocallyOwner(this)
+            runOnUiThread {
+                if (!owner) {
+                    Toast.makeText(
+                        this,
+                        "Alleen het eigenaarstoestel mag laptops beheren.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    finish()
+                    return@runOnUiThread
+                }
+
+                wakeButton.isEnabled = true
+                sleepButton.isEnabled = true
+                remoteButton.isEnabled = true
+                status.text = "Klaar"
+            }
+        }.start()
+
         wakeButton.setOnClickListener {
             val lockedUntil = securityPrefs.getLong("locked_until", 0L)
             val now = System.currentTimeMillis()
