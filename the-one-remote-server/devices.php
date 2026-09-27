@@ -139,15 +139,18 @@ if ($action === 'heartbeat') {
         'platform' => mb_substr($platform !== '' ? $platform : 'Android', 0, 40),
         'version' => mb_substr($version, 0, 40),
         'blocked' => (bool)($old['blocked'] ?? false),
+        'music_rights' => (bool)($old['music_rights'] ?? false),
         'registered' => (string)($old['registered'] ?? gmdate('c')),
         'last_seen' => time()
     ];
     devices_save($devicesFile, $state);
     $ownerId = devices_owner_id($ownerFile);
+    $owner = $ownerId !== '' && hash_equals($ownerId, $deviceId);
     respond_devices(200, [
         'ok' => true,
         'blocked' => (bool)$state['devices'][$deviceId]['blocked'],
-        'owner' => $ownerId !== '' && hash_equals($ownerId, $deviceId),
+        'owner' => $owner,
+        'music_rights' => $owner || (bool)($state['devices'][$deviceId]['music_rights'] ?? false),
         'the_one_registered' => devices_owner_person_name($ownerFile) !== ''
     ]);
 }
@@ -255,6 +258,21 @@ if ($action === 'connection_status') {
     respond_devices(200, ['ok' => true, 'devices' => $devices]);
 }
 
+if ($action === 'music_access') {
+    $deviceId = clean_device_id((string)($body['device_id'] ?? ''));
+    $state = devices_load($devicesFile);
+    $ownerId = devices_owner_id($ownerFile);
+    $device = $state['devices'][$deviceId] ?? null;
+    $owner = $ownerId !== '' && hash_equals($ownerId, $deviceId);
+    $allowed = $owner || (is_array($device) && (bool)($device['music_rights'] ?? false));
+    respond_devices(200, [
+        'ok' => true,
+        'allowed' => $allowed,
+        'owner' => $owner,
+        'person_name' => is_array($device) ? (string)($device['person_name'] ?? '') : ''
+    ]);
+}
+
 if (!devices_owner_authorized($body, $ownerFile)) {
     usleep(300000);
     respond_devices(403, ['ok' => false, 'error' => 'Owner device required']);
@@ -270,11 +288,35 @@ if ($action === 'list') {
         $deviceId = trim((string)($d['device_id'] ?? ''));
         $d['online'] = $lastSeen > 0 && ($now - $lastSeen) <= 90;
         $d['owner'] = $ownerId !== '' && $deviceId !== '' && hash_equals($ownerId, $deviceId);
+        $d['music_rights'] = (bool)$d['owner'] || (bool)($d['music_rights'] ?? false);
         if (!isset($d['person_name'])) $d['person_name'] = '';
         return $d;
     }, $state['devices']));
     usort($devices, fn($a, $b) => ((int)($b['last_seen'] ?? 0)) <=> ((int)($a['last_seen'] ?? 0)));
     respond_devices(200, ['ok' => true, 'devices' => $devices]);
+}
+
+if ($action === 'set_music_rights') {
+    $deviceId = clean_device_id((string)($body['device_id'] ?? ''));
+    if (!isset($state['devices'][$deviceId]) || !is_array($state['devices'][$deviceId])) {
+        respond_devices(404, ['ok' => false, 'error' => 'Device not found']);
+    }
+
+    $ownerId = devices_owner_id($ownerFile);
+    $ownerTarget = $ownerId !== '' && hash_equals($ownerId, $deviceId);
+    $enabled = filter_var($body['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    if ($ownerTarget && !$enabled) {
+        respond_devices(409, ['ok' => false, 'error' => 'Owner keeps music rights']);
+    }
+
+    $state['devices'][$deviceId]['music_rights'] = $ownerTarget ? true : $enabled;
+    $state['devices'][$deviceId]['music_rights_updated'] = gmdate('c');
+    devices_save($devicesFile, $state);
+    respond_devices(200, [
+        'ok' => true,
+        'device_id' => $deviceId,
+        'music_rights' => (bool)$state['devices'][$deviceId]['music_rights']
+    ]);
 }
 
 if ($action === 'set_blocked') {
