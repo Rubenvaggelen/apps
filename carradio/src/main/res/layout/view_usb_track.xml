@@ -8,6 +8,6 @@
     android:paddingEnd="18dp"
     android:background="@color/surface_raised"
     android:textColor="@color/text_main"
-    android:textSize="18sp"
+    android:textSize="27sp"
     android:maxLines="1"
     android:ellipsize="end" />
