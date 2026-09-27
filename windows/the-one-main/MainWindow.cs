@@ -25,11 +25,12 @@ public sealed class MainWindow : Window
 
     private readonly Brush Bg = Brush("#05070B");
     private readonly Brush Surface = Brush("#0B111A");
-    private readonly Brush SurfaceRaised = Brush("#111722");
-    private readonly Brush Line = Brush("#243241");
+    private readonly Brush SurfaceRaised = Brush("#0D1A28");
+    private readonly Brush Line = Brush("#174963");
     private readonly Brush TextMain = Brush("#F3F8FC");
-    private readonly Brush TextDim = Brush("#9AA6B2");
+    private readonly Brush TextDim = Brush("#91A4BD");
     private readonly Brush Amber = Brush("#20B8FF");
+    private readonly Brush Gold = Brush("#E8AA4E");
     private readonly Brush Sage = Brush("#39D98A");
 
     private readonly Grid _content = new();
@@ -144,7 +145,7 @@ public sealed class MainWindow : Window
         var brandText = new StackPanel { Margin = new Thickness(12,0,0,0), VerticalAlignment = VerticalAlignment.Center };
         brandText.Children.Add(new TextBlock
         {
-            Text = "THE ONE", Foreground = Amber, FontSize = 23, FontWeight = FontWeights.Bold
+            Text = "THE ONE", Foreground = Gold, FontSize = 23, FontWeight = FontWeights.Bold
         });
         brandText.Children.Add(new TextBlock
         {
@@ -158,7 +159,7 @@ public sealed class MainWindow : Window
         var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         right.Children.Add(new TextBlock
         {
-            Text = "THE ONE FAMILY", Foreground = Amber, FontSize = 10, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0,0,18,0)
+            Text = "THE ONE FAMILY", Foreground = Gold, FontSize = 10, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0,0,18,0)
         });
         _clock.Foreground = TextDim;
         _clock.FontSize = 14;
@@ -477,7 +478,7 @@ public sealed class MainWindow : Window
         var familyText = new TextBlock
         {
             Text = "PART OF THE ONE FAMILY",
-            Foreground = Amber,
+            Foreground = Gold,
             FontSize = 10,
             FontWeight = FontWeights.Bold,
             VerticalAlignment = VerticalAlignment.Center,
@@ -677,16 +678,26 @@ public sealed class MainWindow : Window
             Content = text,
             ToolTip = tooltip,
             Width = size,
-            Height = 40,
+            Height = 42,
             Margin = new Thickness(5, 0, 5, 0),
             Padding = new Thickness(0),
-            Background = Brush("#101A26"),
-            Foreground = Amber,
-            BorderBrush = Brush("#245A75"),
+            Background = new LinearGradientBrush(
+                Color.FromRgb(18, 58, 85),
+                Color.FromRgb(8, 22, 34),
+                90),
+            Foreground = TextMain,
+            BorderBrush = Amber,
             BorderThickness = new Thickness(1),
             Cursor = Cursors.Hand,
-            FontSize = 18,
-            FontWeight = FontWeights.SemiBold
+            FontSize = 19,
+            FontWeight = FontWeights.SemiBold,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Color.FromRgb(32, 184, 255),
+                BlurRadius = 10,
+                Opacity = 0.16,
+                ShadowDepth = 0
+            }
         };
     }
 
@@ -1642,13 +1653,25 @@ public sealed class MainWindow : Window
         {
             Content = text,
             Width = width,
-            Height = 46,
+            Height = 48,
             Margin = new Thickness(0, 5, 10, 5),
-            Background = SurfaceRaised,
-            Foreground = Amber,
-            BorderBrush = Line,
+            Background = new LinearGradientBrush(
+                Color.FromRgb(18, 58, 85),
+                Color.FromRgb(8, 22, 34),
+                90),
+            Foreground = Gold,
+            BorderBrush = Amber,
+            BorderThickness = new Thickness(1.2),
             Cursor = Cursors.Hand,
-            FontSize = 14
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Color.FromRgb(32, 184, 255),
+                BlurRadius = 12,
+                Opacity = 0.18,
+                ShadowDepth = 0
+            }
         };
         b.Click += (_, _) => action();
         return b;
@@ -1668,13 +1691,18 @@ public sealed class MainWindow : Window
         var b = new Button
         {
             Content = text,
-            Height = 38,
+            Height = 40,
             MinWidth = 95,
             Padding = new Thickness(12, 0, 12, 0),
-            Background = SurfaceRaised,
+            Background = new LinearGradientBrush(
+                Color.FromRgb(18, 58, 85),
+                Color.FromRgb(8, 22, 34),
+                90),
             Foreground = TextMain,
-            BorderBrush = Line,
-            Cursor = Cursors.Hand
+            BorderBrush = Amber,
+            BorderThickness = new Thickness(1),
+            Cursor = Cursors.Hand,
+            FontWeight = FontWeights.SemiBold
         };
         b.Click += (_, _) => action();
         return b;
@@ -1710,12 +1738,22 @@ public sealed class MainWindow : Window
     {
         return new Border
         {
-            Background = Surface,
-            BorderBrush = Line,
+            Background = new LinearGradientBrush(
+                Color.FromRgb(13, 27, 41),
+                Color.FromRgb(7, 12, 18),
+                90),
+            BorderBrush = Brush("#245A75"),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
+            CornerRadius = new CornerRadius(18),
             Padding = new Thickness(16),
             Margin = new Thickness(0, 8, 0, 8),
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Color.FromRgb(32, 184, 255),
+                BlurRadius = 16,
+                Opacity = 0.13,
+                ShadowDepth = 0
+            },
             Child = child
         };
     }
@@ -1897,8 +1935,8 @@ public sealed class MainWindow : Window
         header.Children.Add(new TextBlock
         {
             Text = "MUZIEK",
-            Foreground = Amber,
-            FontSize = 28,
+            Foreground = TextMain,
+            FontSize = 30,
             FontWeight = FontWeights.Bold
         });
         header.Children.Add(new TextBlock
@@ -1913,14 +1951,22 @@ public sealed class MainWindow : Window
         var search = Input("Artiest of nummer");
 
         var searchButton = ActionButton("▶ YouTube", () => { }, 150);
+        searchButton.Background = new LinearGradientBrush(
+            Color.FromRgb(241, 184, 93),
+            Color.FromRgb(217, 149, 56),
+            90);
+        searchButton.Foreground = Brush("#201505");
+        searchButton.BorderBrush = Gold;
 
         var spotifyButton = ActionButton("● Spotify", () => { }, 140);
         spotifyButton.Background = Brush("#1DB954");
         spotifyButton.Foreground = Brushes.White;
         spotifyButton.BorderBrush = Brush("#1ED760");
 
-        var supremacyButton = ActionButton("♫ Supremacy", () => { }, 150);
-        var usbHomeButton = ActionButton("USB thuis", () => { }, 140);
+        var supremacyButton = ActionButton("♫ SUPREMACY", () => { }, 150);
+        supremacyButton.Foreground = Gold;
+        var usbHomeButton = ActionButton("USB THUIS", () => { }, 140);
+        usbHomeButton.Foreground = Gold;
 
         var sourceButtons = new StackPanel
         {
@@ -1966,12 +2012,22 @@ public sealed class MainWindow : Window
 
         var playerCard = new Border
         {
-            Background = Surface,
-            BorderBrush = Brush("#174963"),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(18),
+            Background = new LinearGradientBrush(
+                Color.FromRgb(13, 27, 41),
+                Color.FromRgb(7, 12, 18),
+                90),
+            BorderBrush = Amber,
+            BorderThickness = new Thickness(1.2),
+            CornerRadius = new CornerRadius(20),
             Margin = new Thickness(10, 0, 0, 0),
-            Padding = new Thickness(12)
+            Padding = new Thickness(14),
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Color.FromRgb(32, 184, 255),
+                BlurRadius = 20,
+                Opacity = 0.2,
+                ShadowDepth = 0
+            }
         };
 
         var playerGrid = new Grid();
@@ -2324,6 +2380,12 @@ public sealed class MainWindow : Window
         var previousTrack = MusicControlButton("⏮", "Vorige");
         previousTrack.Click += async (_, _) => await MusicPreviousAsync();
         var toggleTrack = MusicControlButton("⏯", "Play / pauze", 56);
+        toggleTrack.Background = new LinearGradientBrush(
+            Color.FromRgb(241, 184, 93),
+            Color.FromRgb(217, 149, 56),
+            90);
+        toggleTrack.Foreground = Brush("#201505");
+        toggleTrack.BorderBrush = Gold;
         toggleTrack.Click += async (_, _) => await MusicToggleAsync();
         var nextTrack = MusicControlButton("⏭", "Volgende");
         nextTrack.Click += async (_, _) => await MusicNextAsync();
