@@ -71,7 +71,17 @@ object MainDeviceRegistry {
                 .put("request_device_id", deviceId(context))
                 .put("request_model", Build.MODEL)
         )
-        return json.optBoolean("owner", false)
+        val owner = json.optBoolean("owner", false)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_OWNER, owner)
+            .apply()
+        return owner
+    }
+
+    fun claimInitialOwner(context: Context): Boolean {
+        if (!isOwnerEligible()) return false
+        return runCatching { claimOwner(context, "290114") }.getOrDefault(false)
     }
 
     fun ownerStatus(context: Context, pin: String): Boolean {
