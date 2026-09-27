@@ -1,5 +1,6 @@
 package com.gmailorg.hub
 
+import android.app.Dialog
 import android.app.DownloadManager
 import android.content.Intent
 import android.graphics.Color
@@ -564,26 +565,56 @@ class MoviesActivity : AppCompatActivity() {
 
     private fun showRemoteStickDialog(sticks: List<RemoteUsbMusicClient.RemoteStick>) {
         val density = resources.displayMetrics.density
-        val sourceList = LinearLayout(this).apply {
+        fun dp(value: Int): Int = (value * density).toInt()
+
+        val dialog = Dialog(this)
+        val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(
-                (18 * density).toInt(),
-                (8 * density).toInt(),
-                (18 * density).toInt(),
-                (8 * density).toInt()
-            )
-        }
-        val scroll = ScrollView(this).apply {
-            addView(sourceList)
+            setPadding(dp(24), dp(22), dp(24), dp(20))
+            setBackgroundResource(R.drawable.bg_the_one_panel)
         }
 
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Shared Media")
-            .setMessage("Tik op een bron om direct de USB-mappen te openen.")
-            .setView(scroll)
-            .setPositiveButton("Vernieuwen", null)
-            .setNegativeButton("Sluiten", null)
-            .create()
+        panel.addView(
+            TextView(this).apply {
+                text = "THE ONE FAMILY • MEDIA"
+                textSize = 12f
+                letterSpacing = 0.18f
+                setTextColor(Color.parseColor("#E8AA4E"))
+            }
+        )
+        panel.addView(
+            TextView(this).apply {
+                text = "Shared Media"
+                textSize = 28f
+                setTextColor(Color.parseColor("#F3F8FC"))
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setPadding(0, dp(4), 0, dp(2))
+            }
+        )
+        panel.addView(
+            TextView(this).apply {
+                text = "Kies een bron"
+                textSize = 14f
+                setTextColor(Color.parseColor("#91A4BD"))
+                setPadding(0, 0, 0, dp(18))
+            }
+        )
+
+        val sourceList = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            addView(sourceList)
+        }
+        panel.addView(
+            scroll,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
 
         sticks.forEach { stick ->
             val cached = stick.files.count { file -> file.cached }
@@ -594,59 +625,133 @@ class MoviesActivity : AppCompatActivity() {
                 "$cached van $total beschikbaar"
             }
 
-            val source = TextView(this).apply {
-                text = stick.deviceName + " • " + stick.stickName +
-                    "\n" + status + "\nOPEN MAPPEN  ›"
-                textSize = 18f
-                setTextColor(Color.WHITE)
-                setPadding(
-                    (18 * density).toInt(),
-                    (16 * density).toInt(),
-                    (18 * density).toInt(),
-                    (16 * density).toInt()
-                )
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(dp(18), dp(16), dp(16), dp(16))
                 setBackgroundResource(R.drawable.bg_the_one_tile)
                 isClickable = true
                 isFocusable = true
-                setOnClickListener {
-                    dialog.dismiss()
-                    if (stick.files.isEmpty()) {
-                        AlertDialog.Builder(this@MoviesActivity)
-                            .setTitle(stick.deviceName + " • " + stick.stickName)
-                            .setMessage(
-                                "Deze bron wordt nog gesynchroniseerd. " +
-                                    "Er zijn nog geen nummers klaar om af te spelen."
-                            )
-                            .setPositiveButton("OK", null)
-                            .show()
-                    } else {
-                        showRemoteFolderDialog(stick)
-                    }
+            }
+
+            val copy = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+            copy.addView(
+                TextView(this).apply {
+                    text = stick.deviceName + " • " + stick.stickName
+                    textSize = 18f
+                    setTextColor(Color.parseColor("#F3F8FC"))
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                }
+            )
+            copy.addView(
+                TextView(this).apply {
+                    text = status
+                    textSize = 14f
+                    setTextColor(Color.parseColor("#91A4BD"))
+                    setPadding(0, dp(4), 0, 0)
+                }
+            )
+            card.addView(
+                copy,
+                LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+            )
+            card.addView(
+                TextView(this).apply {
+                    text = "›"
+                    textSize = 30f
+                    gravity = android.view.Gravity.CENTER
+                    setTextColor(Color.parseColor("#E8AA4E"))
+                    setPadding(dp(12), 0, dp(2), 0)
+                }
+            )
+
+            card.setOnClickListener {
+                dialog.dismiss()
+                if (stick.files.none { it.cached }) {
+                    AlertDialog.Builder(this@MoviesActivity)
+                        .setTitle(stick.deviceName + " • " + stick.stickName)
+                        .setMessage(
+                            "Deze bron wordt nog gesynchroniseerd. " +
+                                "Er zijn nog geen nummers klaar om af te spelen."
+                        )
+                        .setPositiveButton("OK", null)
+                        .show()
+                } else {
+                    showRemoteFolderDialog(stick)
                 }
             }
 
             sourceList.addView(
-                source,
+                card,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply {
-                    bottomMargin = (12 * density).toInt()
+                    bottomMargin = dp(12)
                 }
             )
         }
 
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE)
-                .setTextColor(Color.parseColor("#D8A451"))
-            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
-                .setTextColor(Color.parseColor("#D8A451"))
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, dp(8), 0, 0)
+        }
+
+        val close = TextView(this).apply {
+            text = "SLUITEN"
+            textSize = 14f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(Color.parseColor("#E8AA4E"))
+            setBackgroundResource(R.drawable.bg_the_one_gold_outline)
+            setPadding(dp(18), dp(12), dp(18), dp(12))
+            setOnClickListener { dialog.dismiss() }
+        }
+        val refresh = TextView(this).apply {
+            text = "VERNIEUWEN"
+            textSize = 14f
+            gravity = android.view.Gravity.CENTER
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(Color.parseColor("#201505"))
+            setBackgroundResource(R.drawable.bg_the_one_gold_button)
+            setPadding(dp(18), dp(12), dp(18), dp(12))
+            setOnClickListener {
                 dialog.dismiss()
                 loadRemoteUsbCatalog()
             }
         }
+        actions.addView(
+            close,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = dp(8)
+            }
+        )
+        actions.addView(
+            refresh,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = dp(8)
+            }
+        )
+        panel.addView(actions)
+
+        dialog.setContentView(panel)
+        dialog.setCanceledOnTouchOutside(true)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        dialog.window?.attributes = dialog.window?.attributes?.apply { dimAmount = 0.72f }
         dialog.show()
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.90f).toInt(),
+            (resources.displayMetrics.heightPixels * 0.82f).toInt()
+        )
     }
 
     private fun normalizeRemoteFolder(value: String): String =
