@@ -14,8 +14,7 @@ object CarMediaKeyHandler {
         }
 
         return when (event.keyCode) {
-            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
-            KeyEvent.KEYCODE_HEADSETPHOOK -> {
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
                 UsbPlaybackService.toggle(context)
                 true
             }
