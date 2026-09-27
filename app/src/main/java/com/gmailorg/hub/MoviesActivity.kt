@@ -255,11 +255,38 @@ class MoviesActivity : AppCompatActivity() {
         folder: String,
         files: List<RemoteUsbMusicClient.RemoteFile>
     ) {
+        val trackList = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 12, 24, 12)
+        }
+
+        files.forEachIndexed { index, file ->
+            val track = TextView(this).apply {
+                text = file.name
+                textSize = 16f
+                setTextColor(Color.WHITE)
+                setPadding(18, 18, 18, 18)
+                isSingleLine = false
+                setOnClickListener {
+                    playRemoteUsbFolder(stick, files, index)
+                }
+            }
+            trackList.addView(
+                track,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+
+        val scroll = ScrollView(this).apply {
+            addView(trackList)
+        }
+
         AlertDialog.Builder(this)
             .setTitle(folder)
-            .setItems(files.map { it.name }.toTypedArray()) { _, index ->
-                playRemoteUsbFolder(stick, files, index)
-            }
+            .setView(scroll)
             .setNegativeButton("Terug") { _, _ -> showRemoteFolderDialog(stick) }
             .show()
     }
