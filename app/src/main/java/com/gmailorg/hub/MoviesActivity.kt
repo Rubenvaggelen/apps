@@ -89,6 +89,9 @@ class MoviesActivity : AppCompatActivity() {
         musicNowPlaying.setOnClickListener {
             openCurrentSharedMediaTrackFolder()
         }
+        musicPlayerCard.setOnClickListener {
+            openCurrentSharedMediaTrackFolder()
+        }
         findViewById<View>(R.id.musicPreviousButton).setOnClickListener {
             if (SupremacyPlaybackService.isActive(this)) {
                 sendSupremacyAction(SupremacyPlaybackService.ACTION_PREVIOUS)
