@@ -15,7 +15,7 @@
 
     <style name="Theme.CarRadio" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <item name="android:windowBackground">@color/bg</item>
-        <item name="colorPrimary">#0F2533</item>
+        <item name="colorPrimary">@color/gold</item>
         <item name="colorPrimaryDark">@color/bg</item>
         <item name="colorAccent">@color/amber</item>
         <item name="colorSecondary">@color/gold</item>
