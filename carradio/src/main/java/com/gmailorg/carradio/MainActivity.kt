@@ -779,7 +779,7 @@ class MainActivity : AppCompatActivity() {
                 row.addView(
                     TextView(this@MainActivity).apply {
                         text = cleanRemoteUsbTrackTitle(file.displayName)
-                        textSize = 16f
+                        textSize = 24.0f
                         // De standaard AlertDialog van deze K2401-ROM is licht.
                         // Donkere tekst voorkomt dat titels wit-op-wit verdwijnen.
                         setTextColor(android.graphics.Color.parseColor("#101925"))
@@ -800,7 +800,7 @@ class MainActivity : AppCompatActivity() {
                 row.addView(
                     TextView(this@MainActivity).apply {
                         text = "↓"
-                        textSize = 20f
+                        textSize = 30.0f
                         gravity = Gravity.CENTER
                         setTextColor(
                             android.graphics.Color.parseColor("#D8A451")
@@ -824,7 +824,7 @@ class MainActivity : AppCompatActivity() {
                 row.addView(
                     TextView(this@MainActivity).apply {
                         text = "▶"
-                        textSize = 19f
+                        textSize = 28.5f
                         gravity = Gravity.CENTER
                         setTextColor(android.graphics.Color.WHITE)
                         contentDescription = "Speel ${file.name} af"
