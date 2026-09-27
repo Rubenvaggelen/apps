@@ -57,6 +57,18 @@ jobs:
           opts=(-i "$keydir/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$keydir/known_hosts" -o ConnectTimeout=20)
           remote="$DEPLOY_USER@$DEPLOY_HOST"
 
+          # Eenmalige volledige Shared Media reset wanneer de marker in deze commit staat.
+          # Alleen servercache/catalogus wordt gewist; lokale USB-sticks blijven onaangeraakt.
+          if [ -f the-one-remote-server/RESET_SHARED_MEDIA_ONCE ]; then
+            ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" '
+              rm -f "$HOME/the-one-music-cache/files/"*.bin 2>/dev/null || true
+              rm -f "$HOME/the-one-music-cache/files/"*.part 2>/dev/null || true
+              rm -f "$HOME/the-one-music-cache/meta/"*.json 2>/dev/null || true
+              rm -f "$HOME/the-one-music-cache/meta/"*.tmp.* 2>/dev/null || true
+              echo "SHARED_MEDIA_RESET_DONE"
+            '
+          fi
+
           # Ruimte meten en alleen veilige tijdelijke rommel opruimen.
           # Geldige .bin-cache en definitieve catalogusmetadata blijven onaangeraakt.
           ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" '
