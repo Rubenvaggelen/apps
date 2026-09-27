@@ -40,6 +40,8 @@ class MoviesActivity : AppCompatActivity() {
     private var youtubePlaying = false
     private var musicSeekDragging = false
     private var musicSeekDurationMs = 0
+    private var pendingMusicTitle: String? = null
+    private var pendingMusicStartedAt = 0L
     private var currentRemoteUsbStick: RemoteUsbMusicClient.RemoteStick? = null
     private var currentRemoteUsbFolder: String = ""
     private val remoteMusicIo = Executors.newSingleThreadExecutor()
@@ -111,6 +113,8 @@ class MoviesActivity : AppCompatActivity() {
             }
             youtubeActive = false
             youtubePlaying = false
+            pendingMusicTitle = null
+            pendingMusicStartedAt = 0L
             currentRemoteUsbStick = null
             currentRemoteUsbFolder = ""
             musicNowPlaying.paintFlags = musicNowPlaying.paintFlags and android.graphics.Paint.UNDERLINE_TEXT_FLAG.inv()
@@ -152,10 +156,12 @@ class MoviesActivity : AppCompatActivity() {
 
     private fun refreshCompactPlayer() {
         if (SupremacyPlaybackService.isActive(this)) {
+            pendingMusicTitle = null
+            pendingMusicStartedAt = 0L
             musicNowPlaying.text =
                 cleanUsbTrackTitle(SupremacyPlaybackService.currentTitle(this))
             musicPlaybackState.text =
-                if (SupremacyPlaybackService.isPlaying(this)) "Speelt af" else "Gepauzeerd"
+                if (SupremacyPlaybackService.isPlaying(this)) "Speelt af" else "Laden…"
 
             val duration = SupremacyPlaybackService.currentDurationMs()
             val position = SupremacyPlaybackService.currentPositionMs(this)
@@ -164,13 +170,28 @@ class MoviesActivity : AppCompatActivity() {
         }
 
         if (youtubeActive) {
+            pendingMusicTitle = null
+            pendingMusicStartedAt = 0L
             musicPlaybackState.text = if (youtubePlaying) "Speelt af" else "Gepauzeerd"
             refreshYoutubeSeekUi()
-        } else {
-            musicNowPlaying.text = "Geen muziek actief"
-            musicPlaybackState.text = "Gestopt"
-            resetMusicSeekUi()
+            return
         }
+
+        val pendingTitle = pendingMusicTitle
+        if (
+            !pendingTitle.isNullOrBlank() &&
+            System.currentTimeMillis() - pendingMusicStartedAt < 12_000L
+        ) {
+            musicNowPlaying.text = pendingTitle
+            musicPlaybackState.text = "Laden…"
+            return
+        }
+
+        pendingMusicTitle = null
+        pendingMusicStartedAt = 0L
+        musicNowPlaying.text = "Geen muziek actief"
+        musicPlaybackState.text = "Gestopt"
+        resetMusicSeekUi()
     }
 
     private fun configureMusicSeekBar() {
@@ -918,16 +939,23 @@ class MoviesActivity : AppCompatActivity() {
 
             currentRemoteUsbStick = stick
             currentRemoteUsbFolder = normalizeRemoteFolder(folder)
-            musicNowPlaying.text = cleanUsbTrackTitle(files[index].displayName)
-            musicNowPlaying.paintFlags = musicNowPlaying.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
-            musicNowPlaying.contentDescription = "Tik om de USB-map van dit nummer te openen"
+            pendingMusicTitle = cleanUsbTrackTitle(files[index].displayName)
+            pendingMusicStartedAt = System.currentTimeMillis()
+            musicNowPlaying.text = pendingMusicTitle
+            musicNowPlaying.paintFlags =
+                musicNowPlaying.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
+            musicNowPlaying.contentDescription =
+                "Tik om de Shared Media-map van dit nummer te openen"
             musicPlaybackState.text = "Laden…"
-            // Niet meteen refreshen: de foreground service moet eerst ACTION_PLAY
-            // verwerken. Anders wordt de net gekozen titel teruggezet naar
-            // "Geen muziek actief".
-            musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 250)
-            musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 600)
-            musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 1200)
+            resetMusicSeekUi()
+
+            // Blijf snel verversen, maar laat refreshCompactPlayer de gekozen
+            // titel vasthouden totdat de audioservice hem echt heeft overgenomen.
+            refreshCompactPlayer()
+            musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 100)
+            musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 300)
+            musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 700)
+            musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 1500)
         } catch (_: RemoteUsbMusicClient.AuthRequired) {
             RemoteUsbMusicClient.clearToken(this)
             remoteMusicIo.execute {
