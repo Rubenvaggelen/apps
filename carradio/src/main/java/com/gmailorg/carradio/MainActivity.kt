@@ -822,7 +822,7 @@ class MainActivity : AppCompatActivity() {
         )
         listView.dividerHeight = 1
 
-        listView.adapter = object : android.widget.BaseAdapter() {
+        val adapter = object : android.widget.BaseAdapter() {
             override fun getCount(): Int = files.size
             override fun getItem(position: Int): Any = files[position]
             override fun getItemId(position: Int): Long = position.toLong()
@@ -833,11 +833,20 @@ class MainActivity : AppCompatActivity() {
                 parent: android.view.ViewGroup?
             ): View {
                 val file = files[position]
+                val isCurrent = isRemoteUsbTrackCurrent(file)
 
                 val row = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(12.dp, 10.dp, 12.dp, 10.dp)
+                    setBackgroundColor(
+                        android.graphics.Color.parseColor(
+                            if (isCurrent) "#DFF2FA" else "#00000000"
+                        )
+                    )
+                    contentDescription =
+                        if (isCurrent) "Nu actief: ${cleanRemoteUsbTrackTitle(file.displayName)}"
+                        else cleanRemoteUsbTrackTitle(file.displayName)
                     layoutParams = android.widget.AbsListView.LayoutParams(
                         android.widget.AbsListView.LayoutParams.MATCH_PARENT,
                         android.widget.AbsListView.LayoutParams.WRAP_CONTENT
@@ -846,11 +855,20 @@ class MainActivity : AppCompatActivity() {
 
                 row.addView(
                     TextView(this@MainActivity).apply {
-                        text = cleanRemoteUsbTrackTitle(file.displayName)
+                        text =
+                            (if (isCurrent) "▶ NU • " else "") +
+                                cleanRemoteUsbTrackTitle(file.displayName)
                         textSize = 24.0f
-                        // De standaard AlertDialog van deze K2401-ROM is licht.
-                        // Donkere tekst voorkomt dat titels wit-op-wit verdwijnen.
-                        setTextColor(android.graphics.Color.parseColor("#101925"))
+                        setTextColor(
+                            android.graphics.Color.parseColor(
+                                if (isCurrent) "#8A5A0A" else "#101925"
+                            )
+                        )
+                        setTypeface(
+                            null,
+                            if (isCurrent) android.graphics.Typeface.BOLD
+                            else android.graphics.Typeface.NORMAL
+                        )
                         maxLines = 2
                         ellipsize = android.text.TextUtils.TruncateAt.END
                         setPadding(8, 14, 14, 14)
@@ -894,9 +912,16 @@ class MainActivity : AppCompatActivity() {
                         text = "▶"
                         textSize = 28.5f
                         gravity = Gravity.CENTER
-                        setTextColor(android.graphics.Color.WHITE)
+                        setTextColor(
+                            android.graphics.Color.parseColor(
+                                if (isCurrent) "#D8A451" else "#FFFFFF"
+                            )
+                        )
                         contentDescription = "Speel ${file.name} af"
-                        setBackgroundResource(R.drawable.bg_outline)
+                        setBackgroundResource(
+                            if (isCurrent) R.drawable.bg_gold_outline
+                            else R.drawable.bg_outline
+                        )
                         setPadding(16, 12, 16, 12)
                         setOnClickListener {
                             playRemoteUsbFolder(files, position)
@@ -911,6 +936,7 @@ class MainActivity : AppCompatActivity() {
                 return row
             }
         }
+        listView.adapter = adapter
 
         val dialog = AlertDialog.Builder(this)
             .setTitle(folder)
@@ -924,12 +950,26 @@ class MainActivity : AppCompatActivity() {
             }
             .create()
 
+        val liveHighlight = object : Runnable {
+            override fun run() {
+                if (dialog.isShowing && !isFinishing && !isDestroyed) {
+                    adapter.notifyDataSetChanged()
+                    listView.postDelayed(this, 500L)
+                }
+            }
+        }
+
         dialog.setOnShowListener {
             listView.layoutParams = listView.layoutParams?.apply {
                 height = (420.dp).coerceAtMost(
                     resources.displayMetrics.heightPixels - 160.dp
                 )
             }
+            adapter.notifyDataSetChanged()
+            listView.postDelayed(liveHighlight, 500L)
+        }
+        dialog.setOnDismissListener {
+            listView.removeCallbacks(liveHighlight)
         }
         dialog.show()
     }
@@ -1014,6 +1054,24 @@ class MainActivity : AppCompatActivity() {
             .replace("_", " ")
             .replace(Regex("\\s+"), " ")
             .trim()
+
+    private fun isRemoteUsbTrackCurrent(
+        file: RemoteUsbMusicClient.RemoteFile
+    ): Boolean {
+        val state = UsbPlaybackService.snapshot()
+        if (!state.hasTrack) return false
+
+        val activeUri = state.uri.orEmpty()
+        val isSharedMedia =
+            activeUri.contains("the-one-remote-api", ignoreCase = true) ||
+                activeUri.contains("music.php", ignoreCase = true)
+        if (!isSharedMedia) return false
+
+        return state.title.equals(
+            cleanRemoteUsbTrackTitle(file.displayName),
+            ignoreCase = true
+        )
+    }
 
     private fun playRemoteUsbFolder(
         files: List<RemoteUsbMusicClient.RemoteFile>,
