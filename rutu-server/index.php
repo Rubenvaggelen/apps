@@ -15,6 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 $home = dirname((string)($_SERVER['DOCUMENT_ROOT'] ?? __DIR__));
 $dataDir = $home . '/rutu-data';
 $stateFile = $dataDir . '/orders.json';
+$devicesFile = $dataDir . '/devices.json';
 $keyFile = $dataDir . '/business.key';
 
 if (!is_dir($dataDir)) {
@@ -75,6 +76,53 @@ function test_order_access_valid(string $customer, string $code): bool {
     if (!preg_match('/^\d{5}$/', $code)) return false;
     $expectedHash = 'f1f65daea3fd178dd76a4d8ad2ae56dc4bdb5a6d46221fb8a6461c6dde441e98';
     return hash_equals($expectedHash, hash('sha256', $code));
+}
+
+function clean_rutu_device_id(string $value): string {
+    $value = trim($value);
+    if ($value === '' || strlen($value) > 100 || !preg_match('/^[A-Za-z0-9._:-]+$/', $value)) {
+        respond(400, ['ok' => false, 'error' => "Ongeldig apparaat.\nInvalid device."]);
+    }
+    return $value;
+}
+
+function with_devices_state(string $file, bool $write, callable $callback) {
+    $fh = fopen($file, 'c+');
+    if (!$fh) respond(500, ['ok' => false, 'error' => "Apparaatopslag niet beschikbaar.\nDevice storage unavailable."]);
+    try {
+        if (!flock($fh, $write ? LOCK_EX : LOCK_SH)) {
+            respond(500, ['ok' => false, 'error' => "Apparaatopslag is tijdelijk bezet.\nDevice storage temporarily busy."]);
+        }
+        rewind($fh);
+        $raw = stream_get_contents($fh) ?: '';
+        $state = json_decode($raw, true);
+        if (!is_array($state)) $state = ['devices' => []];
+        if (!isset($state['devices']) || !is_array($state['devices'])) $state['devices'] = [];
+
+        $result = $callback($state);
+
+        if ($write) {
+            rewind($fh);
+            ftruncate($fh, 0);
+            fwrite($fh, json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            fflush($fh);
+        }
+        flock($fh, LOCK_UN);
+        fclose($fh);
+        return $result;
+    } catch (Throwable $e) {
+        @flock($fh, LOCK_UN);
+        @fclose($fh);
+        throw $e;
+    }
+}
+
+function rutu_device_blocked(string $file, string $deviceId): bool {
+    if ($deviceId === '') return false;
+    return (bool)with_devices_state($file, false, function ($state) use ($deviceId) {
+        $device = $state['devices'][$deviceId] ?? null;
+        return is_array($device) && !empty($device['blocked']);
+    });
 }
 
 function ordering_schedule_status(array $schedule): array {
@@ -346,7 +394,7 @@ $catalog = [
 $action = (string)($_GET['action'] ?? 'health');
 
 if ($action === 'health') {
-    respond(200, ['ok' => true, 'service' => 'Rutu BBQ Online Orders', 'version' => 2, 'tikkie_configured' => tikkie_config($dataDir) !== null]);
+    respond(200, ['ok' => true, 'service' => 'Rutu BBQ Online Orders', 'version' => 3, 'tikkie_configured' => tikkie_config($dataDir) !== null]);
 }
 
 if ($action === 'test_access') {
@@ -358,6 +406,78 @@ if ($action === 'test_access') {
         respond(403, ['ok' => false, 'error' => "Onjuiste testcode.\nIncorrect test code."]);
     }
     respond(200, ['ok' => true, 'allowed' => true]);
+}
+
+if ($action === 'device_heartbeat') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => "POST vereist.\nPOST required."]);
+    $body = body_json();
+    $deviceId = clean_rutu_device_id((string)($body['device_id'] ?? ''));
+    $name = trim((string)($body['name'] ?? 'Android apparaat'));
+    $platform = trim((string)($body['platform'] ?? 'Android'));
+    $version = trim((string)($body['version'] ?? ''));
+    $customer = mb_substr(trim((string)($body['customer'] ?? '')), 0, 80);
+
+    $device = with_devices_state($devicesFile, true, function (&$state) use ($deviceId, $name, $platform, $version, $customer) {
+        $old = is_array($state['devices'][$deviceId] ?? null) ? $state['devices'][$deviceId] : [];
+        $state['devices'][$deviceId] = [
+            'device_id' => $deviceId,
+            'name' => mb_substr($name !== '' ? $name : 'Android apparaat', 0, 100),
+            'platform' => mb_substr($platform !== '' ? $platform : 'Android', 0, 40),
+            'version' => mb_substr($version, 0, 40),
+            'customer' => $customer,
+            'blocked' => (bool)($old['blocked'] ?? false),
+            'registered' => (string)($old['registered'] ?? gmdate('c')),
+            'last_seen' => time()
+        ];
+        return $state['devices'][$deviceId];
+    });
+
+    respond(200, ['ok' => true, 'blocked' => (bool)$device['blocked']]);
+}
+
+if ($action === 'devices_list' || $action === 'device_set_blocked') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => "POST vereist.\nPOST required."]);
+    $body = body_json();
+    $customer = mb_substr(trim((string)($body['customer'] ?? '')), 0, 80);
+    $code = trim((string)($body['code'] ?? ''));
+    if (!test_order_access_valid($customer, $code)) {
+        respond(403, ['ok' => false, 'error' => "Geen toegang tot apparatenbeheer.\nNo access to device management."]);
+    }
+
+    if ($action === 'devices_list') {
+        $devices = with_devices_state($devicesFile, false, function ($state) {
+            $now = time();
+            $items = array_values(array_map(function ($d) use ($now) {
+                $lastSeen = (int)($d['last_seen'] ?? 0);
+                $d['online'] = $lastSeen > 0 && ($now - $lastSeen) <= 90;
+                return $d;
+            }, $state['devices']));
+            usort($items, fn($a, $b) => ((int)($b['last_seen'] ?? 0)) <=> ((int)($a['last_seen'] ?? 0)));
+            return $items;
+        });
+        respond(200, ['ok' => true, 'devices' => $devices]);
+    }
+
+    $deviceId = clean_rutu_device_id((string)($body['device_id'] ?? ''));
+    $blocked = filter_var($body['blocked'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $result = with_devices_state($devicesFile, true, function (&$state) use ($deviceId, $blocked) {
+        if (!isset($state['devices'][$deviceId]) || !is_array($state['devices'][$deviceId])) return null;
+        $state['devices'][$deviceId]['blocked'] = $blocked;
+        $state['devices'][$deviceId]['blocked_updated'] = gmdate('c');
+        return $state['devices'][$deviceId];
+    });
+    if (!is_array($result)) respond(404, ['ok' => false, 'error' => "Apparaat niet gevonden.\nDevice not found."]);
+    respond(200, ['ok' => true, 'device_id' => $deviceId, 'blocked' => $blocked]);
+}
+
+$incomingDeviceId = trim((string)($_GET['device_id'] ?? ''));
+$deviceAccessExempt = in_array($action, ['health', 'test_access', 'device_heartbeat', 'devices_list', 'device_set_blocked'], true);
+if (!$deviceAccessExempt && $incomingDeviceId !== '' && rutu_device_blocked($devicesFile, $incomingDeviceId)) {
+    respond(403, [
+        'ok' => false,
+        'blocked_device' => true,
+        'error' => "Dit apparaat is geblokkeerd voor Rutu BBQ.\nThis device is blocked for Rutu BBQ."
+    ]);
 }
 
 if ($action === 'create') {
