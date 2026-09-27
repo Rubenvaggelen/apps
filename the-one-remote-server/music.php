@@ -79,6 +79,28 @@ function music_device_allowed(string $deviceId, string $devicesFile, string $own
     return is_array($device) && (bool)($device['music_rights'] ?? false);
 }
 
+function music_device_scope_allowed(
+    string $deviceId,
+    string $scope,
+    string $devicesFile,
+    string $ownerFile
+): bool {
+    $devices = load_json($devicesFile);
+    $rows = is_array($devices['devices'] ?? null) ? $devices['devices'] : [];
+    $device = is_array($rows[$deviceId] ?? null) ? $rows[$deviceId] : null;
+
+    $owner = load_json($ownerFile);
+    $ownerId = trim((string)($owner['device_id'] ?? ''));
+    if ($ownerId !== '' && hash_equals($ownerId, $deviceId)) return true;
+    if (!is_array($device)) return false;
+
+    $legacy = (bool)($device['music_rights'] ?? false);
+    $rights = is_array($device['access_rights'] ?? null)
+        ? $device['access_rights']
+        : [];
+    return (bool)($rights[$scope] ?? $legacy);
+}
+
 function safe_id(string $v): string {
     $v = trim($v);
     if ($v === '' || strlen($v) > 80 || !preg_match('/^[A-Za-z0-9._-]+$/', $v)) out(400, ['ok'=>false,'error'=>'invalid id']);
@@ -234,8 +256,8 @@ if ($action === 'favorites-list') {
     if (!token_read_ok($token,$sec)) out(401,['ok'=>false,'error'=>'auth required']);
 
     $requestDevice=safe_id((string)($_GET['request_device_id'] ?? ''));
-    if (!music_device_allowed($requestDevice,$deviceRegistryFile,$deviceOwnerFile)) {
-        out(403,['ok'=>false,'error'=>'music rights required']);
+    if (!music_device_scope_allowed($requestDevice,'favorites',$deviceRegistryFile,$deviceOwnerFile)) {
+        out(403,['ok'=>false,'error'=>'favorites rights required']);
     }
 
     $doc=load_json($favoritesFile);
