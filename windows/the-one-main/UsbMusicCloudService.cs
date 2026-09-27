@@ -22,8 +22,27 @@ public sealed class CloudUsbMusicFile
     [JsonPropertyName("cached")] public bool Cached { get; set; }
     [JsonIgnore] public string DeviceId { get; set; } = "";
     [JsonIgnore] public string StickId { get; set; } = "";
-    [JsonIgnore] public string DisplayName =>
-        string.IsNullOrWhiteSpace(Title) ? Name : Title.Trim();
+    [JsonIgnore] public string DisplayName
+    {
+        get
+        {
+            var value = string.IsNullOrWhiteSpace(Title) ? Name : Title.Trim();
+            var extensions = new[]
+            {
+                ".mp3", ".wma", ".m4a", ".aac", ".flac",
+                ".ogg", ".oga", ".opus", ".wav", ".mp4"
+            };
+            foreach (var extension in extensions)
+            {
+                if (value.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = value[..^extension.Length];
+                    break;
+                }
+            }
+            return value.Replace('_', ' ').Trim();
+        }
+    }
 }
 
 public sealed class CloudUsbMusicStick
