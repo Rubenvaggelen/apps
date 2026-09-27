@@ -548,6 +548,18 @@ class MoviesActivity : AppCompatActivity() {
                     }
                     RemoteUsbMusicClient.catalog(this)
                 }
+                val favorites = try {
+                    RemoteUsbMusicClient.favorites(this)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                favoriteUsbKeys.clear()
+                favorites
+                    .filter { it.kind.equals("usb", ignoreCase = true) }
+                    .forEach {
+                        favoriteUsbKeys += usbFavoriteKey(it.deviceId, it.stickId, it.path)
+                    }
+
                 runOnUiThread {
                     if (sticks.isEmpty()) {
                         AlertDialog.Builder(this)
@@ -1079,6 +1091,7 @@ class MoviesActivity : AppCompatActivity() {
         }
 
         val density = resources.displayMetrics.density
+        val favoriteWidth = (48 * density).toInt()
         val downloadWidth = (58 * density).toInt()
         val playWidth = (62 * density).toInt()
         val actionGap = (14 * density).toInt()
@@ -1143,6 +1156,27 @@ class MoviesActivity : AppCompatActivity() {
             row.addView(
                 title,
                 LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            )
+
+            val favorite = TextView(this).apply {
+                text = if (favoriteUsbKeys.contains(usbFavoriteKey(file))) "★" else "☆"
+                textSize = 23f
+                setTextColor(Color.parseColor("#D8A451"))
+                gravity = android.view.Gravity.CENTER
+                contentDescription = "Favoriet ${file.name}"
+                setPadding(
+                    (10 * density).toInt(),
+                    (10 * density).toInt(),
+                    (10 * density).toInt(),
+                    (10 * density).toInt()
+                )
+                setOnClickListener {
+                    toggleUsbFavorite(stick, file, this)
+                }
+            }
+            row.addView(
+                favorite,
+                LinearLayout.LayoutParams(favoriteWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
             )
 
             val download = TextView(this).apply {
@@ -1306,7 +1340,89 @@ class MoviesActivity : AppCompatActivity() {
         dialog.show()
     }
 
+    private fun usbFavoriteKey(file: RemoteUsbMusicClient.RemoteFile): String =
+        usbFavoriteKey(file.deviceId, file.stickId, file.path)
+
+    private fun usbFavoriteKey(deviceId: String, stickId: String, path: String): String =
+        deviceId + "\n" + stickId + "\n" + path
+
+    private fun toggleUsbFavorite(
+        stick: RemoteUsbMusicClient.RemoteStick,
+        file: RemoteUsbMusicClient.RemoteFile,
+        button: TextView
+    ) {
+        val key = usbFavoriteKey(file)
+        val add = !favoriteUsbKeys.contains(key)
+        button.isEnabled = false
+        remoteMusicIo.execute {
+            val allowed = try {
+                MainDeviceRegistry.refreshMusicRights(this)
+            } catch (_: Exception) {
+                false
+            }
+            val ok = if (allowed) {
+                try {
+                    if (!RemoteUsbMusicClient.hasToken(this) &&
+                        !RemoteUsbMusicClient.loginForBrowsing(this)
+                    ) {
+                        false
+                    } else {
+                        RemoteUsbMusicClient.setUsbFavorite(this, stick, file, add)
+                        true
+                    }
+                } catch (_: Exception) {
+                    false
+                }
+            } else {
+                false
+            }
+
+            runOnUiThread {
+                button.isEnabled = true
+                if (!allowed) {
+                    Toast.makeText(
+                        this,
+                        "Alleen The One of iemand met muziekrechten mag Favorites wijzigen.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } else if (ok) {
+                    if (add) favoriteUsbKeys += key else favoriteUsbKeys -= key
+                    button.text = if (add) "★" else "☆"
+                    Toast.makeText(
+                        this,
+                        if (add) "Toegevoegd aan The One Favorites"
+                        else "Verwijderd uit The One Favorites",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    Toast.makeText(this, "Favoriet opslaan mislukt", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
     private fun requestRemoteUsbDownload(file: RemoteUsbMusicClient.RemoteFile) {
+        remoteMusicIo.execute {
+            val allowed = try {
+                MainDeviceRegistry.refreshMusicRights(this)
+            } catch (_: Exception) {
+                false
+            }
+            runOnUiThread {
+                if (!allowed) {
+                    Toast.makeText(
+                        this,
+                        "Alleen The One of iemand met muziekrechten mag downloaden.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@runOnUiThread
+                }
+                showRemoteUsbDownloadPin(file)
+            }
+        }
+    }
+
+    private fun showRemoteUsbDownloadPin(file: RemoteUsbMusicClient.RemoteFile) {
         val input = EditText(this).apply {
             hint = "Pincode"
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
