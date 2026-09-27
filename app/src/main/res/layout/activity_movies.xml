@@ -344,7 +344,7 @@
                 android:letterSpacing="0.08"
                 android:textStyle="bold"
                 android:minHeight="56dp"
-                android:background="@drawable/bg_the_one_favorites_button"
+                android:background="@drawable/bg_the_one_blue_button"
                 android:backgroundTint="@null"
                 app:backgroundTint="@null"
                 android:textColor="@color/gold" />
