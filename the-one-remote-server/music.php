@@ -126,7 +126,7 @@ function stream_range(string $path, string $name): never {
 $action = (string)($_GET['action'] ?? 'health');
 $sec = secret($secretFile);
 
-if ($action === 'health') out(200, ['ok'=>true,'service'=>'The One Music Cache','version'=>1]);
+if ($action === 'health') out(200, ['ok'=>true,'service'=>'The One Music Cache','version'=>2]);
 
 if ($action === 'login') {
     $ip=(string)($_SERVER['REMOTE_ADDR'] ?? 'unknown');
@@ -299,6 +299,9 @@ if ($action === 'sync') {
             'path'=>$path,
             'name'=>basename($path),
             'folder'=>dirname($path)==='.'?'':dirname($path),
+            'title'=>mb_substr(trim((string)($item['title'] ?? '')),0,240),
+            'artist'=>mb_substr(trim((string)($item['artist'] ?? '')),0,240),
+            'album'=>mb_substr(trim((string)($item['album'] ?? '')),0,240),
             'size'=>max(0,(int)($item['size'] ?? 0)),
             'sha256'=>$sha,
             'modified'=>trim((string)($item['modified'] ?? '')),
