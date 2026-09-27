@@ -172,8 +172,71 @@ class WakePcActivity : AppCompatActivity() {
             }
             card.addView(state)
             if (device.owner) {
-                card.addView(TextView(this).apply { text = "The One • beheerder • kan niet worden geblokkeerd"; textSize = 12f; setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.amber)) })
+                card.addView(TextView(this).apply {
+                    text = "The One • beheerder • muziekrechten actief • kan niet worden geblokkeerd"
+                    textSize = 12f
+                    setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.amber))
+                })
             } else {
+                var musicRights = device.musicRights
+                val musicState = TextView(this).apply {
+                    text = if (musicRights) "Muziekrechten: toegestaan" else "Muziekrechten: niet toegestaan"
+                    textSize = 12f
+                    setTextColor(ContextCompat.getColor(this@WakePcActivity, if (musicRights) R.color.amber else R.color.text_dim))
+                    setPadding(0, 8, 0, 4)
+                }
+                card.addView(musicState)
+
+                card.addView(android.widget.Button(this).apply {
+                    fun refreshLabel() {
+                        text = if (musicRights) "Muziekrechten intrekken" else "Muziekrechten geven"
+                    }
+                    refreshLabel()
+                    setOnClickListener {
+                        isEnabled = false
+                        val enable = !musicRights
+                        Thread {
+                            val result = runCatching {
+                                MainDeviceRegistry.setMusicRights(
+                                    this@WakePcActivity,
+                                    activeDeviceAdminPin,
+                                    device.id,
+                                    enable
+                                )
+                            }
+                            runOnUiThread {
+                                result.onSuccess {
+                                    musicRights = enable
+                                    refreshLabel()
+                                    musicState.text =
+                                        if (musicRights) "Muziekrechten: toegestaan"
+                                        else "Muziekrechten: niet toegestaan"
+                                    musicState.setTextColor(
+                                        ContextCompat.getColor(
+                                            this@WakePcActivity,
+                                            if (musicRights) R.color.amber else R.color.text_dim
+                                        )
+                                    )
+                                    Toast.makeText(
+                                        this@WakePcActivity,
+                                        if (enable) "$personLabel mag nu Favorites beheren en downloaden."
+                                        else "$personLabel heeft geen muziekrechten meer.",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    isEnabled = true
+                                }.onFailure {
+                                    Toast.makeText(
+                                        this@WakePcActivity,
+                                        "Muziekrechten wijzigen mislukt: " + (it.message ?: "onbekende fout"),
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                    isEnabled = true
+                                }
+                            }
+                        }.start()
+                    }
+                })
+
                 card.addView(android.widget.Button(this).apply {
                     text = if (device.blocked) "Deblokkeren" else "Blokkeren"
                     setOnClickListener {
