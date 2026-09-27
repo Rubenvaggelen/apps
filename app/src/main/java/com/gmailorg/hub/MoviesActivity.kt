@@ -87,15 +87,7 @@ class MoviesActivity : AppCompatActivity() {
         configureMusicPlayer()
         configureMusicSeekBar()
         musicNowPlaying.setOnClickListener {
-            val stick = currentRemoteUsbStick ?: return@setOnClickListener
-            val activeIndex = SupremacyPlaybackService.currentQueueIndex(this)
-            val activeFolder = currentRemoteUsbFiles
-                .getOrNull(activeIndex)
-                ?.folder
-                ?.let(::normalizeRemoteFolder)
-                ?: currentRemoteUsbFolder
-            currentRemoteUsbFolder = activeFolder
-            showRemoteFolderLevel(stick, activeFolder, openCurrentFolder = true)
+            openCurrentSharedMediaTrackFolder()
         }
         findViewById<View>(R.id.musicPreviousButton).setOnClickListener {
             if (SupremacyPlaybackService.isActive(this)) {
@@ -161,6 +153,90 @@ class MoviesActivity : AppCompatActivity() {
             musicNowPlaying.removeCallbacks(compactPlayerRefresh)
         }
         super.onPause()
+    }
+
+    private fun openCurrentSharedMediaTrackFolder() {
+        if (!SupremacyPlaybackService.isActive(this)) return
+
+        val source = SupremacyPlaybackService.currentSource(this)
+        if (!source.startsWith("Shared Media •", ignoreCase = true)) return
+
+        val activeTitle =
+            cleanUsbTrackTitle(SupremacyPlaybackService.currentTitle(this))
+        val activeIndex = SupremacyPlaybackService.currentQueueIndex(this)
+
+        val currentStick = currentRemoteUsbStick
+        if (currentStick != null) {
+            val active = currentRemoteUsbFiles.getOrNull(activeIndex)
+                ?: currentStick.files.firstOrNull {
+                    cleanUsbTrackTitle(it.displayName)
+                        .equals(activeTitle, ignoreCase = true)
+                }
+            if (active != null) {
+                currentRemoteUsbFolder = normalizeRemoteFolder(active.folder)
+                showRemoteFolderLevel(
+                    currentStick,
+                    currentRemoteUsbFolder,
+                    openCurrentFolder = true
+                )
+                return
+            }
+        }
+
+        remoteMusicIo.execute {
+            val sticks = try {
+                RemoteUsbMusicClient.catalog(this)
+            } catch (_: RemoteUsbMusicClient.AuthRequired) {
+                val ok = try {
+                    RemoteUsbMusicClient.loginForBrowsing(this)
+                } catch (_: Exception) {
+                    false
+                }
+                if (!ok) emptyList() else try {
+                    RemoteUsbMusicClient.catalog(this)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+            } catch (_: Exception) {
+                emptyList()
+            }
+
+            val parts = source.split(" • ")
+            val deviceName = parts.getOrNull(1).orEmpty()
+            val stickName = parts.drop(2).joinToString(" • ")
+
+            val stick = sticks.firstOrNull {
+                it.deviceName.equals(deviceName, ignoreCase = true) &&
+                    it.stickName.equals(stickName, ignoreCase = true)
+            } ?: sticks.firstOrNull {
+                it.deviceName.equals(deviceName, ignoreCase = true)
+            }
+
+            val active = stick?.files?.firstOrNull {
+                cleanUsbTrackTitle(it.displayName)
+                    .equals(activeTitle, ignoreCase = true)
+            }
+
+            runOnUiThread {
+                if (stick != null && active != null) {
+                    currentRemoteUsbStick = stick
+                    currentRemoteUsbFiles = stick.files
+                    currentRemoteUsbFolder =
+                        normalizeRemoteFolder(active.folder)
+                    showRemoteFolderLevel(
+                        stick,
+                        currentRemoteUsbFolder,
+                        openCurrentFolder = true
+                    )
+                } else {
+                    Toast.makeText(
+                        this,
+                        "Map van het spelende nummer kon niet worden gevonden.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
     }
 
     private fun refreshCompactPlayer() {
