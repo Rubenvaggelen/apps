@@ -123,6 +123,7 @@ object RemoteUsbMusicClient {
             val stickName = item.optString("stick_name", "USB").trim().ifBlank { "USB" }
             val files = mutableListOf<RemoteFile>()
             val array = item.optJSONArray("files")
+            val totalFiles = array?.length() ?: 0
 
             if (array != null) {
                 for (j in 0 until array.length()) {
@@ -142,7 +143,7 @@ object RemoteUsbMusicClient {
                 }
             }
 
-            if (files.isNotEmpty()) {
+            if (totalFiles > 0) {
                 result += RemoteStick(
                     deviceId = deviceId,
                     deviceName = deviceName,
