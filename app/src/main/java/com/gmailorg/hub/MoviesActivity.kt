@@ -331,7 +331,12 @@ class MoviesActivity : AppCompatActivity() {
                 this.action = action
             }
         )
-        musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 150)
+        // De service verwerkt acties asynchroon. Een paar korte refreshes zorgen
+        // dat titel, speelstatus en seekbar meteen volgen zonder opnieuw openen.
+        refreshCompactPlayer()
+        musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 100)
+        musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 300)
+        musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 700)
     }
 
     private fun openRemoteUsbMusic() {
@@ -887,7 +892,10 @@ class MoviesActivity : AppCompatActivity() {
             musicNowPlaying.paintFlags = musicNowPlaying.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
             musicNowPlaying.contentDescription = "Tik om de USB-map van dit nummer te openen"
             musicPlaybackState.text = "Laden…"
-            musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 500)
+            refreshCompactPlayer()
+            musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 100)
+            musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 300)
+            musicNowPlaying.postDelayed({ refreshCompactPlayer() }, 700)
         } catch (_: RemoteUsbMusicClient.AuthRequired) {
             RemoteUsbMusicClient.clearToken(this)
             remoteMusicIo.execute {
