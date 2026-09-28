@@ -248,6 +248,11 @@ if ($action === 'catalog') {
 
     $sticks=[];
     foreach (glob($meta.'/*.json') ?: [] as $f) {
+        // Tijdelijke batchbestanden zijn géén echte Shared Media-bronnen.
+        // Zonder deze filter verschijnt een lopende sync als een tweede USB-stick
+        // (bijv. "Ruben • Ruben" met alleen de reeds verwerkte batches).
+        if (str_ends_with($f, '.sync.json')) continue;
+
         $v=load_json($f);
         if ($v===[]) continue;
 
