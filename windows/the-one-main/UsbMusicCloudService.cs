@@ -103,6 +103,7 @@ public static class UsbMusicCloudService
             try
             {
                 await ReportWindowsHeartbeatAsync(cancellationToken);
+                await PullDjQueueAsync(cancellationToken);
 
                 var signature = BuildDriveSignature();
                 if (!string.Equals(signature, _lastDriveSignature, StringComparison.Ordinal))
@@ -164,6 +165,163 @@ public static class UsbMusicCloudService
         catch when (!cancellationToken.IsCancellationRequested)
         {
             // Statusmelding mag Shared Media nooit blokkeren.
+        }
+    }
+
+    private static bool IsPrimaryDjHost()
+    {
+        var user = Environment.UserName;
+        var machine = Environment.MachineName;
+        var profile = Path.GetFileName(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+
+        return user.Equals("ruben", StringComparison.OrdinalIgnoreCase) ||
+               profile.Equals("ruben", StringComparison.OrdinalIgnoreCase) ||
+               machine.Equals("Ruben", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static async Task PullDjQueueAsync(CancellationToken cancellationToken)
+    {
+        if (!IsPrimaryDjHost()) return;
+
+        var djRoot = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Programs",
+            "The One Family",
+            "The One DJ");
+        if (!Directory.Exists(djRoot)) return;
+
+        await EnsureTokenAsync(cancellationToken);
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            Endpoint + "?action=dj-queue-list");
+        request.Headers.Authorization =
+            new AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await Http.SendAsync(request, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            _token = "";
+            await EnsureTokenAsync(cancellationToken);
+            return;
+        }
+        response.EnsureSuccessStatusCode();
+
+        var payload = await response.Content.ReadAsStringAsync(cancellationToken);
+        using var json = JsonDocument.Parse(payload);
+        if (!json.RootElement.TryGetProperty("items", out var items) ||
+            items.ValueKind != JsonValueKind.Array)
+            return;
+
+        var importDir = Path.Combine(djRoot, "app", "imports");
+        Directory.CreateDirectory(importDir);
+        var manifestPath = Path.Combine(importDir, "shared-media.json");
+
+        foreach (var item in items.EnumerateArray())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var id = item.TryGetProperty("id", out var idEl)
+                ? idEl.GetString() ?? ""
+                : "";
+            var device = item.TryGetProperty("device_id", out var deviceEl)
+                ? deviceEl.GetString() ?? ""
+                : "";
+            var stick = item.TryGetProperty("stick_id", out var stickEl)
+                ? stickEl.GetString() ?? ""
+                : "";
+            var relativePath = item.TryGetProperty("path", out var pathEl)
+                ? pathEl.GetString() ?? ""
+                : "";
+            var name = item.TryGetProperty("name", out var nameEl)
+                ? nameEl.GetString() ?? ""
+                : "";
+
+            if (id.Length == 0 || device.Length == 0 ||
+                stick.Length == 0 || relativePath.Length == 0)
+                continue;
+
+            if (string.IsNullOrWhiteSpace(name))
+                name = Path.GetFileName(relativePath);
+            var safeName = string.Concat(
+                name.Select(ch =>
+                    Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch))
+                .Trim();
+            if (safeName.Length == 0)
+                safeName = "TheOne-nummer.mp3";
+
+            var identity = device + "\n" + stick + "\n" + relativePath;
+            var prefix = Convert.ToHexString(
+                    SHA256.HashData(Encoding.UTF8.GetBytes(identity)))
+                .ToLowerInvariant()[..12];
+            var storedName = prefix + "-" + safeName;
+            var targetPath = Path.Combine(importDir, storedName);
+
+            if (!File.Exists(targetPath))
+            {
+                var file = new CloudUsbMusicFile
+                {
+                    DeviceId = device,
+                    StickId = stick,
+                    Path = relativePath,
+                    Name = name
+                };
+                var url = await BuildStreamUrlAsync(file, cancellationToken);
+                using var media = await Http.GetAsync(
+                    url,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cancellationToken);
+                media.EnsureSuccessStatusCode();
+
+                await using var source =
+                    await media.Content.ReadAsStreamAsync(cancellationToken);
+                await using var target = new FileStream(
+                    targetPath,
+                    FileMode.Create,
+                    FileAccess.Write,
+                    FileShare.Read,
+                    128 * 1024,
+                    useAsync: true);
+                await source.CopyToAsync(target, cancellationToken);
+            }
+
+            List<string> imports;
+            try
+            {
+                imports = File.Exists(manifestPath)
+                    ? JsonSerializer.Deserialize<List<string>>(
+                        await File.ReadAllTextAsync(manifestPath, cancellationToken)) ?? new()
+                    : new();
+            }
+            catch
+            {
+                imports = new();
+            }
+
+            if (!imports.Contains(storedName, StringComparer.OrdinalIgnoreCase))
+            {
+                imports.Add(storedName);
+                await File.WriteAllTextAsync(
+                    manifestPath,
+                    JsonSerializer.Serialize(imports),
+                    cancellationToken);
+            }
+
+            var ackBody = JsonSerializer.Serialize(new { id });
+            using var ack = new HttpRequestMessage(
+                HttpMethod.Post,
+                Endpoint + "?action=dj-queue-ack")
+            {
+                Content = new StringContent(ackBody, Encoding.UTF8, "application/json")
+            };
+            ack.Headers.Authorization =
+                new AuthenticationHeaderValue("Bearer", _token);
+            using var ackResponse = await Http.SendAsync(ack, cancellationToken);
+            ackResponse.EnsureSuccessStatusCode();
+
+            Log("DJ-import ontvangen: " + storedName);
         }
     }
 
