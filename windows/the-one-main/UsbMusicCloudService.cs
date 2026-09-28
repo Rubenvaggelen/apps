@@ -171,6 +171,57 @@ public static class UsbMusicCloudService
     private static string CurrentDjDeviceId() =>
         "windows-" + SafeId(Environment.MachineName).ToLowerInvariant();
 
+    public static async Task QueueDjImportAsync(
+        CloudUsbMusicFile file,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureTokenAsync(cancellationToken);
+
+        var body = JsonSerializer.Serialize(new
+        {
+            request_device_id = CurrentDjDeviceId(),
+            device_id = file.DeviceId,
+            stick_id = file.StickId,
+            path = file.Path,
+            name = file.Name,
+            title = file.DisplayName
+        });
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            Endpoint + "?action=dj-queue-add")
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json")
+        };
+        request.Headers.Authorization =
+            new AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await Http.SendAsync(request, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            _token = "";
+            await EnsureTokenAsync(cancellationToken);
+            throw new InvalidOperationException("DJ-import opnieuw proberen.");
+        }
+
+        var payload = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            try
+            {
+                using var json = JsonDocument.Parse(payload);
+                if (json.RootElement.TryGetProperty("error", out var error))
+                    throw new InvalidOperationException(error.GetString() ?? "Naar DJ sturen mislukt.");
+            }
+            catch (JsonException) { }
+
+            throw new InvalidOperationException(
+                $"Naar DJ sturen mislukt ({(int)response.StatusCode}).");
+        }
+
+        Log("DJ-import verstuurd vanaf " + CurrentDjDeviceId() + ": " + file.DisplayName);
+    }
+
     private static async Task PullDjQueueAsync(CancellationToken cancellationToken)
     {
 
