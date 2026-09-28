@@ -694,6 +694,8 @@ class MoviesActivity : AppCompatActivity() {
                 text = item.title
                 textSize = 16f
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
+                maxLines = 1
+                contentDescription = "Afspelen ${file.name}"
                 setTextColor(Color.parseColor(if (playableEntry != null) "#F3F8FC" else "#8F9BAD"))
                 maxLines = 2
                 ellipsize = android.text.TextUtils.TruncateAt.END
@@ -1599,7 +1601,7 @@ class MoviesActivity : AppCompatActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
                 setPadding(
-                    (50 * density).toInt(),
+                    0,
                     (9 * density).toInt(),
                     0,
                     0
@@ -1607,7 +1609,7 @@ class MoviesActivity : AppCompatActivity() {
             }
 
             val play = TextView(this).apply {
-                text = if (file.cached) "▶  AFSPELEN" else "…  SYNCHRONISEREN"
+                text = if (file.cached) "▶" else "…"
                 textSize = 13f
                 gravity = android.view.Gravity.CENTER
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
@@ -1636,9 +1638,8 @@ class MoviesActivity : AppCompatActivity() {
             actions.addView(
                 play,
                 LinearLayout.LayoutParams(
-                    0,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    1f
+                    (58 * density).toInt(),
+                    LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply {
                     marginEnd = (8 * density).toInt()
                 }
@@ -1801,9 +1802,9 @@ class MoviesActivity : AppCompatActivity() {
                 )
                 trackPlayButtons[index].text =
                     when {
-                        isCurrent -> "▶  NU"
-                        file.cached -> "▶  AFSPELEN"
-                        else -> "…  SYNCHRONISEREN"
+                        isCurrent -> "▶"
+                        file.cached -> "▶"
+                        else -> "…"
                     }
                 trackPlayButtons[index].setTextColor(
                     Color.parseColor(
