@@ -1,8 +1,8 @@
 {
-  "version": "2.0.1",
-  "build": 201,
-  "notes": "Improved Dancehall sound-system horn",
-  "sha256": "E11B2E2FB55737EF095B949325E083F726767772FEB328081119E152FFE48D5A",
+  "version": "2.0.2",
+  "build": 202,
+  "notes": "Manual update check button and heavier Boom sound",
+  "sha256": "E64929D8C623C36D3FA3550835EE82D5DF1CB0AE8F5947A92DF01D749B0C673F",
   "files": [
     "index.html"
   ]
