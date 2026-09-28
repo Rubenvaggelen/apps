@@ -1,8 +1,8 @@
 {
-  "version": "2.0.3",
-  "build": 203,
-  "notes": "Update path test build",
-  "sha256": "CA8F0FB3EEDB84EB02534FAC08A0171FA0F3C4976597CFC0BED613BB9A6D740A",
+  "version": "2.0.4",
+  "build": 204,
+  "notes": "Shared Media inbox import and restricted DJ import permissions",
+  "sha256": "B7424A1DD65419E6812E6DFE30421DAA779D744DE3A191A0226FC6AB249FC58C",
   "files": [
     "index.html"
   ]
