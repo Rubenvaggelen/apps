@@ -1,8 +1,8 @@
 {
-  "version": "2.0.2",
-  "build": 202,
-  "notes": "Manual update check button and heavier Boom sound",
-  "sha256": "E64929D8C623C36D3FA3550835EE82D5DF1CB0AE8F5947A92DF01D749B0C673F",
+  "version": "2.0.3",
+  "build": 203,
+  "notes": "Update path test build",
+  "sha256": "CA8F0FB3EEDB84EB02534FAC08A0171FA0F3C4976597CFC0BED613BB9A6D740A",
   "files": [
     "index.html"
   ]
