@@ -2549,16 +2549,6 @@ public sealed class MainWindow : Window
 
                 status.Text = "✓ Staat klaar in The One DJ: " + file.DisplayName;
                 status.Foreground = Sage;
-
-                var launcher = Path.Combine(djRoot, "Start-The-One-DJ.cmd");
-                if (File.Exists(launcher))
-                {
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(launcher)
-                    {
-                        UseShellExecute = true,
-                        WorkingDirectory = djRoot
-                    });
-                }
             }
             catch (Exception ex)
             {
