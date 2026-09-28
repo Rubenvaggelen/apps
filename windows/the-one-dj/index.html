@@ -1891,6 +1891,7 @@ async function loadSharedMediaImports(showStatus=false){
 }
 document.getElementById("sharedMediaImport")?.addEventListener("click",()=>loadSharedMediaImports(true));
 setTimeout(()=>loadSharedMediaImports(false),500);
+setInterval(()=>loadSharedMediaImports(false),2500);
 
 autoBtn.addEventListener("click",()=>{
   autoLoad=!autoLoad;autoBtn.setAttribute("aria-pressed",autoLoad);autoBtn.classList.toggle("on",autoLoad);
@@ -1969,7 +1970,7 @@ document.getElementById("libBtn").addEventListener("click",()=>library.classList
 document.getElementById("libClose").addEventListener("click",()=>library.classList.remove("open"));
 libList.addEventListener("click",e=>{if(e.target.closest("button")) library.classList.remove("open")});
 
-const WINDOWS_BUILD=209;
+const WINDOWS_BUILD=210;
 const updateBtn=document.getElementById("updateBtn");
 updateBtn?.addEventListener("click",async()=>{
   const old=updateBtn.textContent;updateBtn.disabled=true;updateBtn.textContent="Controleren…";
