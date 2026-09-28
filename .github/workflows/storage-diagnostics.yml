@@ -50,15 +50,12 @@ jobs:
             printf "part="; find "$HOME/the-one-music-cache/files" -maxdepth 1 -type f -name "*.part" 2>/dev/null | wc -l
             printf "meta_json="; find "$HOME/the-one-music-cache/meta" -maxdepth 1 -type f -name "*.json" 2>/dev/null | wc -l
             printf "sync_json="; find "$HOME/the-one-music-cache/meta" -maxdepth 1 -type f -name "*.sync.json" 2>/dev/null | wc -l
-            echo "=== CACHE BYTES ==="
-            bin_bytes=$(find "$HOME/the-one-music-cache/files" -maxdepth 1 -type f -name "*.bin" -printf "%s\n" 2>/dev/null | awk '{s+=$1} END{printf "%.0f",s+0}')
-            part_bytes=$(find "$HOME/the-one-music-cache/files" -maxdepth 1 -type f -name "*.part" -printf "%s\n" 2>/dev/null | awk '{s+=$1} END{printf "%.0f",s+0}')
-            meta_bytes=$(find "$HOME/the-one-music-cache/meta" -maxdepth 1 -type f -printf "%s\n" 2>/dev/null | awk '{s+=$1} END{printf "%.0f",s+0}')
-            echo "BIN_BYTES=$bin_bytes"
-            echo "PART_BYTES=$part_bytes"
-            echo "META_BYTES=$meta_bytes"
-            echo "=== LARGEST PART FILES ==="
-            find "$HOME/the-one-music-cache/files" -maxdepth 1 -type f -name "*.part" -printf "%s %f\n" 2>/dev/null | sort -nr | head -15 || true
+            echo "=== CACHE DETAIL ==="
+            du -sh "$HOME/the-one-music-cache/files" "$HOME/the-one-music-cache/meta" 2>/dev/null || true
+            echo "=== RECENT META ==="
+            find "$HOME/the-one-music-cache/meta" -maxdepth 1 -type f -name "*.json" -printf "%TY-%Tm-%Td %TH:%TM:%TS %s %f\n" 2>/dev/null | sort -r | head -10 || true
+            echo "=== RECENT PARTS ==="
+            find "$HOME/the-one-music-cache/files" -maxdepth 1 -type f -name "*.part" -printf "%TY-%Tm-%Td %TH:%TM:%TS %s %f\n" 2>/dev/null | sort -r | head -10 || true
             echo "=== HOME TOP LEVEL ==="
             du -sh "$HOME"/* "$HOME"/.[!.]* 2>/dev/null | sort -h | tail -25 || true
             echo "=== WRITE TEST ==="
