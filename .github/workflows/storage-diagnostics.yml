@@ -1,0 +1,64 @@
+name: Storage Diagnostics
+
+on:
+  push:
+    paths:
+      - '.github/workflows/storage-diagnostics.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Inspect server storage
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          keydir=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$keydir"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$keydir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$keydir/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$keydir/askpass"
+          chmod 600 "$keydir/key" "$keydir/known_hosts"
+          chmod 700 "$keydir/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$keydir/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$keydir/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          opts=(-i "$keydir/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$keydir/known_hosts" -o ConnectTimeout=20)
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" '
+            echo "=== FILESYSTEM ==="
+            df -h "$HOME" || true
+            df -i "$HOME" || true
+            echo "=== USER QUOTA ==="
+            quota -s 2>&1 || true
+            echo "=== CACHE SIZE ==="
+            du -sh "$HOME/the-one-music-cache" "$HOME/the-one-music-cache/files" "$HOME/the-one-music-cache/meta" 2>/dev/null || true
+            echo "=== CACHE COUNTS ==="
+            printf "bin="; find "$HOME/the-one-music-cache/files" -maxdepth 1 -type f -name "*.bin" 2>/dev/null | wc -l
+            printf "part="; find "$HOME/the-one-music-cache/files" -maxdepth 1 -type f -name "*.part" 2>/dev/null | wc -l
+            printf "meta_json="; find "$HOME/the-one-music-cache/meta" -maxdepth 1 -type f -name "*.json" 2>/dev/null | wc -l
+            printf "sync_json="; find "$HOME/the-one-music-cache/meta" -maxdepth 1 -type f -name "*.sync.json" 2>/dev/null | wc -l
+            echo "=== HOME TOP LEVEL ==="
+            du -sh "$HOME"/* "$HOME"/.[!.]* 2>/dev/null | sort -h | tail -25 || true
+            echo "=== WRITE TEST ==="
+            testfile="$HOME/the-one-music-cache/meta/.storage-write-test"
+            if printf "ok" > "$testfile" 2>/dev/null; then
+              ls -l "$testfile"
+              rm -f "$testfile"
+              echo "WRITE_TEST=OK"
+            else
+              echo "WRITE_TEST=FAILED"
+            fi
+          '
