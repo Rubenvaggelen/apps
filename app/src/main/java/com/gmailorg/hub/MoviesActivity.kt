@@ -1480,10 +1480,12 @@ class MoviesActivity : AppCompatActivity() {
         val djWidth = (58 * density).toInt()
         val playWidth = (62 * density).toInt()
         val actionGap = (14 * density).toInt()
-        val canDjImport = MainDeviceRegistry.hasAccess(
-            this,
-            MainDeviceRegistry.ACCESS_DJ
-        )
+        val canDjImport =
+            MainDeviceRegistry.isTheOneProfile(this) ||
+            MainDeviceRegistry.hasAccess(
+                this,
+                MainDeviceRegistry.ACCESS_DJ
+            )
         val trackRows = mutableListOf<LinearLayout>()
         val trackNumbers = mutableListOf<TextView>()
         val trackTitles = mutableListOf<TextView>()
