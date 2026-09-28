@@ -254,7 +254,7 @@ body:not(.hp-on) .cue-hp{display:none}
 .lib-list li[data-status="played"] .lib-name{color:var(--muted)}
 .lib-list li[data-status="error"] .lib-tag{color:#E5484D}
 .auto-load{height:32px;padding:0 10px}
-.auto-load.on{border-color:#20B8FF;color:#58D0FF;background:rgba(32,184,255,.12)}
+.auto-load.on,.auto-mix-on{border-color:#20B8FF;color:#58D0FF;background:rgba(32,184,255,.14);box-shadow:0 0 18px rgba(32,184,255,.12)}
 @media (max-width:560px){.auto-load{display:none}}
 @media (max-height:520px) and (orientation:landscape) and (max-width:740px){.sfx span{display:none}.sfx{padding:0 9px}}
 .lib-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -381,6 +381,7 @@ body:not(.hp-on) .cue-hp{display:none}
     </div>
     <div class="top-actions">
     <button class="btn small hp-btn" id="hpBtn" aria-haspopup="dialog" aria-label="Koptelefoon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15v-3a8 8 0 0 1 16 0v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="3" y="14" width="5" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="16" y="14" width="5" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg><span class="hp-label">Koptelefoon</span></button>
+    <button class="btn small" id="autoMixBtn" aria-pressed="false">Auto</button>
     <button class="btn small only-compact" id="libBtn">Nummers</button>
     <button class="btn small" id="updateBtn">Controleer op updates</button>
     <button class="btn small only-compact" id="fsBtn" hidden aria-label="Volledig scherm"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -1669,14 +1670,17 @@ function fadeDuration(ti){
   const bpm=ref?ref.bpm*ref.rate:120;
   return FADE_BEATS[fadeIdx]*60/bpm;
 }
-function startAutoFade(){
-  if(fade){cancelFade();return}
-  const ti=fadeTargetIdx(),tgt=decks[ti],src=decks[1-ti];
+function startAutoFade(targetIndex=null){
+  if(fade){if(targetIndex==null) cancelFade();return}
+  const ti=targetIndex==null?fadeTargetIdx():targetIndex,tgt=decks[ti],src=decks[1-ti];
   if(!tgt.buffer){tgt.flash(fadeBtn);return}
   ensureCtx();
   if(!tgt.playing){
-    tgt.cueHeld=false;tgt.play();
+    tgt.cueHeld=false;
+    tgt.play();
     if(src.playing&&src.bpm&&tgt.bpm) tgt.doSync();
+  }else if(src.playing&&src.bpm&&tgt.bpm&&!tgt.syncLock){
+    tgt.doSync();
   }
   fade={from:state.xf,to:ti===1?1:-1,t0:ctx.currentTime,dur:fadeDuration(ti),src,tgt};
   updateFadeUI();
@@ -1696,15 +1700,45 @@ function updateFadeUI(){
   fadeBtn.textContent=fade?"Fade stoppen":"Fade naar "+to;
   if(!fade) fadeBtn.style.setProperty("--prog",0);
 }
-fadeBtn.addEventListener("click",startAutoFade);
+fadeBtn.addEventListener("click",()=>startAutoFade());
 fadeLen.addEventListener("click",()=>{fadeIdx=(fadeIdx+1)%FADE_BEATS.length;fadeLen.textContent=FADE_BEATS[fadeIdx]+" beats"});
 document.getElementById("xfader").addEventListener("pointerdown",cancelFade,true);
 let lastFadeSide=null;
+
+/* continuous Auto mix: sync first, then use the existing beat-based fade */
+let autoMix=false,autoMixArmed=true;
+const autoMixBtn=document.getElementById("autoMixBtn");
+function updateAutoMixUI(){
+  autoMixBtn?.setAttribute("aria-pressed",String(autoMix));
+  autoMixBtn?.classList.toggle("auto-mix-on",autoMix);
+  if(autoMixBtn) autoMixBtn.textContent=autoMix?"Auto • Aan":"Auto";
+}
+autoMixBtn?.addEventListener("click",()=>{
+  autoMix=!autoMix;
+  autoMixArmed=true;
+  updateAutoMixUI();
+  if(autoMix) autoFill();
+});
+function tickAutoMix(){
+  if(!autoMix||fade||!ctx) return;
+  const playing=decks.filter(d=>d.playing&&!d.scr);
+  if(playing.length!==1){autoMixArmed=true;return}
+  const src=playing[0],ti=src===decks[0]?1:0,tgt=decks[ti];
+  if(!tgt.buffer||tgt.loading||tgt.done||tgt.scr||tgt.playing){autoMixArmed=true;return}
+  const remaining=Math.max(0,(src.dur-src.getPos())/Math.max(0.01,src.eff()));
+  const transition=fadeDuration(ti);
+  if(remaining>transition+0.35){autoMixArmed=true;return}
+  if(!autoMixArmed) return;
+  autoMixArmed=false;
+  startAutoFade(ti);
+}
+updateAutoMixUI();
 
 const covers={A:document.querySelector("#meterA .cover"),B:document.querySelector("#meterB .cover"),M:document.querySelector("#meterM .cover")};
 function frame(){
   tickFade();
   for(const d of decks) d.tick();
+  tickAutoMix();
   if(!fade){const side=fadeTargetIdx();if(side!==lastFadeSide){lastFadeSide=side;updateFadeUI()}}
   if(master){
     master.level=meterLevel(master.an,master.buf,master.level);
@@ -1829,7 +1863,7 @@ document.getElementById("libBtn").addEventListener("click",()=>library.classList
 document.getElementById("libClose").addEventListener("click",()=>library.classList.remove("open"));
 libList.addEventListener("click",e=>{if(e.target.closest("button")) library.classList.remove("open")});
 
-const WINDOWS_BUILD=204;
+const WINDOWS_BUILD=205;
 const updateBtn=document.getElementById("updateBtn");
 updateBtn?.addEventListener("click",async()=>{
   const old=updateBtn.textContent;updateBtn.disabled=true;updateBtn.textContent="Controleren…";
