@@ -1940,9 +1940,17 @@ function renderLib(){
     const name=document.createElement("span");name.className="lib-name";name.textContent=t.name;
     const a=document.createElement("button");a.className="btn small to-a";a.textContent="A";a.setAttribute("aria-label","Laad "+t.name+" in deck A");
     const b=document.createElement("button");b.className="btn small to-b";b.textContent="B";b.setAttribute("aria-label","Laad "+t.name+" in deck B");
+    const again=document.createElement("button");again.className="btn small lib-next";again.textContent="Volgende";again.title="Zet dit nummer als eerstvolgende";again.hidden=t.status!=="played";
     const x=document.createElement("button");x.className="btn small lib-remove";x.textContent="×";x.title="Verwijder uit playlist";x.setAttribute("aria-label","Verwijder "+t.name+" uit playlist");
     a.onclick=()=>{decks[0].load(t.file,t);playlistWrite()};
     b.onclick=()=>{decks[1].load(t.file,t);playlistWrite()};
+    again.onclick=e=>{
+      e.stopPropagation();
+      t.status="queued";
+      const i=lib.indexOf(t);
+      if(i>0){lib.splice(i,1);lib.unshift(t);}
+      renderLib();playlistWrite();autoFill();
+    };
     x.onclick=e=>{e.stopPropagation();removeLibItem(t)};
     li.addEventListener("dragstart",e=>{dragId=t.id;li.classList.add("dragging");e.dataTransfer.effectAllowed="move"});
     li.addEventListener("dragend",()=>{dragId=null;li.classList.remove("dragging");[...libList.children].forEach(n=>n.classList.remove("drag-over"))});
@@ -1956,7 +1964,7 @@ function renderLib(){
       const [m]=lib.splice(from,1);lib.splice(to,0,m);
       renderLib();playlistWrite();
     });
-    li.append(drag,tag,name,a,b,x);libList.appendChild(li);
+    li.append(drag,tag,name,a,b,again,x);libList.appendChild(li);
   });
 }
 document.getElementById("clearPlaylist")?.addEventListener("click",async()=>{
@@ -2002,7 +2010,7 @@ document.getElementById("libBtn").addEventListener("click",()=>library.classList
 document.getElementById("libClose").addEventListener("click",()=>library.classList.remove("open"));
 libList.addEventListener("click",e=>{if(e.target.closest("button")) library.classList.remove("open")});
 
-const WINDOWS_BUILD=214;
+const WINDOWS_BUILD=215;
 const updateBtn=document.getElementById("updateBtn");
 updateBtn?.addEventListener("click",async()=>{
   const old=updateBtn.textContent;updateBtn.disabled=true;updateBtn.textContent="Controleren…";
