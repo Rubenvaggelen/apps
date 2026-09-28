@@ -1477,9 +1477,9 @@ class MoviesActivity : AppCompatActivity() {
         }
 
         val density = resources.displayMetrics.density
-        val actionWidth = (46 * density).toInt()
-        val djWidth = (50 * density).toInt()
-        val actionGap = (7 * density).toInt()
+        val actionWidth = (44 * density).toInt()
+        val actionHeight = (40 * density).toInt()
+        val actionGap = (6 * density).toInt()
         val canDjImport =
             MainDeviceRegistry.isTheOneProfile(this) ||
             MainDeviceRegistry.hasAccess(
@@ -1522,7 +1522,7 @@ class MoviesActivity : AppCompatActivity() {
             infoRow.addView(
                 number,
                 LinearLayout.LayoutParams(
-                    (42 * density).toInt(),
+                    actionHeight,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 )
             )
@@ -1637,7 +1637,7 @@ class MoviesActivity : AppCompatActivity() {
                 play,
                 LinearLayout.LayoutParams(
                     actionWidth,
-                    (42 * density).toInt()
+                    actionHeight
                 ).apply {
                     marginEnd = actionGap
                 }
@@ -1664,7 +1664,7 @@ class MoviesActivity : AppCompatActivity() {
                 favorite,
                 LinearLayout.LayoutParams(
                     actionWidth,
-                    (42 * density).toInt()
+                    actionHeight
                 ).apply {
                     marginEnd = actionGap
                 }
@@ -1700,7 +1700,7 @@ class MoviesActivity : AppCompatActivity() {
                 download,
                 LinearLayout.LayoutParams(
                     actionWidth,
-                    (42 * density).toInt()
+                    actionHeight
                 ).apply {
                     if (canDjImport) marginEnd = actionGap
                 }
@@ -1737,8 +1737,8 @@ class MoviesActivity : AppCompatActivity() {
                 actions.addView(
                     dj,
                     LinearLayout.LayoutParams(
-                        djWidth,
-                        (42 * density).toInt()
+                        actionWidth,
+                        actionHeight
                     )
                 )
             }
