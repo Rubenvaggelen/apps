@@ -4,6 +4,7 @@ namespace TheOneMain.Windows;
 
 public partial class App : Application
 {
+    private MultiMonitorThemeManager? _multiMonitorTheme;
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -22,6 +23,11 @@ public partial class App : Application
         var window = new MainWindow();
         MainWindow = window;
         window.Show();
+
+        // Geef elk extra aangesloten scherm automatisch de The One-uitstraling.
+        // Het primaire scherm blijft het interactieve dashboard.
+        _multiMonitorTheme = new MultiMonitorThemeManager(window);
+        _multiMonitorTheme.Start();
 
         WindowsUpdateService.ShowCompletedUpdateIfNeeded(window);
 
