@@ -3072,24 +3072,11 @@ public sealed class MainWindow : Window
                                 Margin = new Thickness(0, 4, 0, 4)
                             };
 
-                            var play = SmallButton("▶ Afspelen", () => { });
-                            play.MinWidth = 105;
-                            DockPanel.SetDock(play, Dock.Right);
-                            row.Children.Add(play);
-
-                            var download = SmallButton("↓ Download", () => { });
-                            download.MinWidth = 105;
-                            download.Margin = new Thickness(6, 0, 6, 0);
-                            DockPanel.SetDock(download, Dock.Right);
-                            row.Children.Add(download);
-                            download.Click += async (_, _) =>
-                                await DownloadUsbFileAsync(file, download);
-
                             if (canImportToDj)
                             {
                                 var dj = SmallButton("→ DJ", () => { });
-                                dj.MinWidth = 72;
-                                dj.Margin = new Thickness(0, 0, 6, 0);
+                                dj.MinWidth = 108;
+                                dj.Margin = new Thickness(6, 0, 0, 0);
                                 DockPanel.SetDock(dj, Dock.Right);
                                 row.Children.Add(dj);
                                 dj.Click += async (_, _) =>
@@ -3105,52 +3092,6 @@ public sealed class MainWindow : Window
                                 VerticalAlignment = VerticalAlignment.Center,
                                 Margin = new Thickness(0, 0, 12, 0)
                             });
-
-                            play.Click += async (_, _) =>
-                            {
-                                play.IsEnabled = false;
-                                status.Text = "USB-stream controleren…";
-                                status.Foreground = TextDim;
-
-                                try
-                                {
-                                    var probe = await UsbMusicCloudService.ProbeStreamAsync(file);
-                                    if (!probe.Ok)
-                                    {
-                                        status.Text = "USB-stream kan niet worden afgespeeld: " + probe.Message;
-                                        status.Foreground = Amber;
-                                        return;
-                                    }
-
-                                    NativeUsbAudioPlayer.Stop();
-                                    _nativeUsbMusicActive = false;
-                                    _musicNowPlayingTitle =
-                                        $"{file.DisplayName}  •  {stick.DeviceName} / {stick.StickName}";
-                                    _musicSessionActive = true;
-                                    nowPlaying.Text = _musicNowPlayingTitle;
-                                    if (_musicHomeNowPlaying != null)
-                                        _musicHomeNowPlaying.Text = _musicNowPlayingTitle;
-
-                                    SetUsbFolderJump(stick, files, file.Folder);
-
-                                    var queue = new List<string>();
-                                    foreach (var queued in folderFiles.Skip(index))
-                                        queue.Add(await UsbMusicCloudService.BuildStreamUrlAsync(queued));
-
-                                    await YouTubeMusicService.PlayAudioQueueAsync(web, queue);
-                                    status.Text = "Speelt af via The One Player";
-                                    status.Foreground = Sage;
-                                }
-                                catch (Exception ex)
-                                {
-                                    status.Text = "USB afspelen mislukt: " + ex.Message;
-                                    status.Foreground = Amber;
-                                }
-                                finally
-                                {
-                                    play.IsEnabled = true;
-                                }
-                            };
 
                             tracks.Children.Add(row);
                         }
