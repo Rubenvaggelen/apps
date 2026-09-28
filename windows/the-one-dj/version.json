@@ -1,8 +1,8 @@
 {
-  "version": "2.1.2",
-  "build": 212,
-  "notes": "Hide internal import hash from deck titles",
-  "sha256": "FC43637ED3F067B0B995F61EDD0084776F30BE8202150E3EFC2BE6DAA7ACB1C5",
+  "version": "2.1.3",
+  "build": 213,
+  "notes": "Smooth equal-power crossfade so outgoing deck volume follows the fader",
+  "sha256": "286464EEC29F0656E439877801BBC882B13EF9A54DF45DE2B520424E3D4E4595",
   "files": [
     "index.html"
   ]
