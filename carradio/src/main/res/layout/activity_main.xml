@@ -26,16 +26,44 @@
             android:gravity="center_vertical"
             android:paddingBottom="12dp">
 
-            <TextView
+            <ImageView
+                android:layout_width="62dp"
+                android:layout_height="62dp"
+                android:layout_marginEnd="14dp"
+                android:src="@drawable/the_one_logo"
+                android:scaleType="fitCenter"
+                android:contentDescription="The One logo" />
+
+            <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="The One"
-                android:textColor="@color/amber"
-                android:textSize="45sp"
-                android:textStyle="bold"
-                android:fontFamily="serif"
-                android:letterSpacing="0.04" />
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="The One"
+                    android:textColor="@color/the_one_blue"
+                    android:textSize="40sp"
+                    android:textStyle="bold"
+                    android:fontFamily="serif"
+                    android:letterSpacing="0.04"
+                    android:shadowColor="#9920B8FF"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="8" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="-4dp"
+                    android:text="CAR"
+                    android:textColor="@color/the_one_blue"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.18" />
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/clockText"
