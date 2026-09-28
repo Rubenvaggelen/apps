@@ -3187,6 +3187,17 @@ public sealed class MainWindow : Window
                             download.Click += async (_, _) =>
                                 await DownloadUsbFileAsync(file, download);
 
+                            if (canImportToDj)
+                            {
+                                var dj = SmallButton("→ DJ", () => { });
+                                dj.MinWidth = 72;
+                                dj.Margin = new Thickness(0, 0, 6, 0);
+                                DockPanel.SetDock(dj, Dock.Right);
+                                row.Children.Add(dj);
+                                dj.Click += async (_, _) =>
+                                    await ImportUsbFileToDjAsync(file, dj);
+                            }
+
                             row.Children.Add(new TextBlock
                             {
                                 Text = file.DisplayName,
