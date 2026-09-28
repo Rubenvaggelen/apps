@@ -444,6 +444,7 @@ body:not(.hp-on) .cue-hp{display:none}
     <div class="lib-head">
       <h2>Nummers</h2>
       <div class="top-actions"><button class="mini auto-load on" id="autoLoad" aria-pressed="true">Automatisch naar vrije speler</button>
+      <button class="btn small" id="sharedMediaImport">Shared Media</button>
       <label class="btn small">Nummers toevoegen<input type="file" id="libInput" accept="audio/*,video/*,.mp3,.wav,.aif,.aiff,.aifc,.caf,.flac,.ogg,.oga,.opus,.m4a,.aac,.alac,.mp4,.m4v,.mov,.webm,.mka,.mkv,.wma,.ac3,.amr,.3gp" multiple hidden></label>
       <button class="btn small only-compact" id="libClose">Sluiten</button></div>
     </div>
@@ -1762,6 +1763,38 @@ function addToLib(files){
   renderLib();autoFill();
 }
 document.getElementById("libInput").addEventListener("change",e=>{addToLib([...e.target.files]);e.target.value=""});
+
+const sharedLoaded=new Set();
+async function loadSharedMediaImports(showStatus=false){
+  const btn=document.getElementById("sharedMediaImport");
+  const old=btn?.textContent;
+  if(btn){btn.disabled=true;btn.textContent="Laden…";}
+  let added=0;
+  try{
+    const mr=await fetch("imports/shared-media.json?t="+Date.now(),{cache:"no-store"});
+    if(!mr.ok) throw new Error("no manifest");
+    const names=await mr.json();
+    if(!Array.isArray(names)) throw new Error("bad manifest");
+    const files=[];
+    for(const name of names){
+      if(typeof name!=="string"||!name||sharedLoaded.has(name)) continue;
+      const r=await fetch("imports/"+encodeURIComponent(name)+"?t="+Date.now(),{cache:"no-store"});
+      if(!r.ok) continue;
+      const blob=await r.blob();
+      files.push(new File([blob],name,{type:blob.type||"audio/mpeg"}));
+      sharedLoaded.add(name);
+      added++;
+    }
+    if(files.length) addToLib(files);
+    if(showStatus) alert(added?added+" nummer(s) uit Shared Media toegevoegd.":"Geen nieuwe Shared Media-nummers gevonden.");
+  }catch(e){
+    if(showStatus) alert("Nog geen Shared Media-nummers geïmporteerd.");
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent=old;}
+  }
+}
+document.getElementById("sharedMediaImport")?.addEventListener("click",()=>loadSharedMediaImports(true));
+setTimeout(()=>loadSharedMediaImports(false),300);
 autoBtn.addEventListener("click",()=>{
   autoLoad=!autoLoad;autoBtn.setAttribute("aria-pressed",autoLoad);autoBtn.classList.toggle("on",autoLoad);
   renderLib();autoFill();
@@ -1796,7 +1829,7 @@ document.getElementById("libBtn").addEventListener("click",()=>library.classList
 document.getElementById("libClose").addEventListener("click",()=>library.classList.remove("open"));
 libList.addEventListener("click",e=>{if(e.target.closest("button")) library.classList.remove("open")});
 
-const WINDOWS_BUILD=203;
+const WINDOWS_BUILD=204;
 const updateBtn=document.getElementById("updateBtn");
 updateBtn?.addEventListener("click",async()=>{
   const old=updateBtn.textContent;updateBtn.disabled=true;updateBtn.textContent="Controleren…";
