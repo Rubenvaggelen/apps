@@ -1,8 +1,8 @@
 {
-  "version": "2.0.9",
-  "build": 209,
-  "notes": "Persistent clear playlist and per-track remove for Shared Media imports",
-  "sha256": "2F279CB6CA716FAC581E96454A72D9D645870B937FF38F65C222894BE0FC8BBF",
+  "version": "2.1.0",
+  "build": 210,
+  "notes": "Live Shared Media inbox refresh and stale-cache reconciliation",
+  "sha256": "540B8263F5E1F2825E2A9D376F6537E21949D6BAFDC16BAE8D0B6E9A6FD54D41",
   "files": [
     "index.html"
   ]
