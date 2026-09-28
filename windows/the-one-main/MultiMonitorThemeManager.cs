@@ -5,7 +5,6 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
-using Forms = System.Windows.Forms;
 
 namespace TheOneMain.Windows;
 
@@ -39,9 +38,9 @@ public sealed class MultiMonitorThemeManager : IDisposable
     {
         if (_disposed) return;
 
-        var secondary = Forms.Screen.AllScreens
-            .Where(screen => !screen.Primary)
-            .ToDictionary(screen => screen.DeviceName, StringComparer.OrdinalIgnoreCase);
+        var secondary = EnumerateDisplays()
+            .Where(display => !display.IsPrimary)
+            .ToDictionary(display => display.DeviceName, StringComparer.OrdinalIgnoreCase);
 
         foreach (var removed in _themeWindows.Keys.Where(name => !secondary.ContainsKey(name)).ToArray())
         {
@@ -61,7 +60,7 @@ public sealed class MultiMonitorThemeManager : IDisposable
         }
     }
 
-    private static Window BuildThemeWindow(Forms.Screen screen)
+    private static Window BuildThemeWindow(DisplayInfo screen)
     {
         var window = new Window
         {
@@ -79,7 +78,7 @@ public sealed class MultiMonitorThemeManager : IDisposable
         {
             var hwnd = new WindowInteropHelper(window).Handle;
             var b = screen.Bounds;
-            SetWindowPos(hwnd, HWND_TOP, b.Left, b.Top, b.Width, b.Height,
+            SetWindowPos(hwnd, HWND_TOP, b.Left, b.Top, b.Right - b.Left, b.Bottom - b.Top,
                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
         };
 
@@ -180,6 +179,43 @@ public sealed class MultiMonitorThemeManager : IDisposable
         }
         _themeWindows.Clear();
     }
+
+    private sealed record DisplayInfo(string DeviceName, RECT Bounds, bool IsPrimary);
+
+    private static List<DisplayInfo> EnumerateDisplays()
+    {
+        var displays = new List<DisplayInfo>();
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (monitor, _, _, _) =>
+        {
+            var info = new MONITORINFOEX { cbSize = Marshal.SizeOf<MONITORINFOEX>() };
+            if (GetMonitorInfo(monitor, ref info))
+                displays.Add(new DisplayInfo(info.szDevice, info.rcMonitor, (info.dwFlags & 1) != 0));
+            return true;
+        }, IntPtr.Zero);
+        return displays;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    private struct MONITORINFOEX
+    {
+        public int cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public uint dwFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string szDevice;
+    }
+
+    private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, IntPtr lprcMonitor, IntPtr dwData);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc callback, IntPtr dwData);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFOEX lpmi);
 
     private static readonly IntPtr HWND_TOP = IntPtr.Zero;
     private const uint SWP_NOACTIVATE = 0x0010;
