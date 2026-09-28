@@ -135,6 +135,31 @@ function safe_path(string $v): string {
 function key_for(string $device, string $stick, string $path): string {
     return hash('sha256', $device . "\n" . $stick . "\n" . $path);
 }
+
+function catalog_device_name(array $stick): string {
+    return mb_strtolower(trim((string)($stick['device_name'] ?? '')));
+}
+
+function catalog_total_count(array $stick): int {
+    return is_array($stick['files'] ?? null) ? count($stick['files']) : 0;
+}
+
+function catalog_playable_count(array $stick, string $filesDir): int {
+    $device = trim((string)($stick['device_id'] ?? ''));
+    $stickId = trim((string)($stick['stick_id'] ?? ''));
+    if ($device === '' || $stickId === '') return 0;
+
+    $count = 0;
+    foreach ((array)($stick['files'] ?? []) as $row) {
+        if (!is_array($row)) continue;
+        $path = trim((string)($row['path'] ?? ''));
+        if ($path === '') continue;
+        if (is_file($filesDir . '/' . key_for($device, $stickId, $path) . '.bin')) {
+            $count++;
+        }
+    }
+    return $count;
+}
 function b64u(string $v): string { return rtrim(strtr(base64_encode($v), '+/', '-_'), '='); }
 function b64ud(string $v): string|false {
     $v .= str_repeat('=', (4 - strlen($v) % 4) % 4);
@@ -264,6 +289,51 @@ if ($action === 'catalog') {
 
         $sticks[]=$v;
     }
+
+    // Surface is de primaire Shared Media-bron. De vrijwel gelijke Ruben-bron
+    // blijft op de achtergrond beschikbaar als fallback, maar wordt normaal
+    // niet aan Main/Car getoond.
+    $surfaceIndexes=[];
+    $rubenIndexes=[];
+    foreach ($sticks as $i => $stickRow) {
+        $deviceName=catalog_device_name($stickRow);
+        if ($deviceName === 'surface') $surfaceIndexes[]=$i;
+        if ($deviceName === 'ruben') $rubenIndexes[]=$i;
+    }
+
+    $surfaceHealthy=false;
+    foreach ($surfaceIndexes as $i) {
+        $total=catalog_total_count($sticks[$i]);
+        $playable=catalog_playable_count($sticks[$i],$files);
+        // Alleen bij echte schade/leegte omschakelen; kleine sync-hiaten mogen
+        // de primaire bron niet onnodig laten wisselen.
+        if ($total > 0 && $playable >= max(1,(int)floor($total * 0.50))) {
+            $surfaceHealthy=true;
+            break;
+        }
+    }
+
+    $rubenUsable=false;
+    foreach ($rubenIndexes as $i) {
+        if (catalog_playable_count($sticks[$i],$files) > 0) {
+            $rubenUsable=true;
+            break;
+        }
+    }
+
+    if ($surfaceHealthy && $rubenIndexes !== []) {
+        $sticks=array_values(array_filter(
+            $sticks,
+            fn($row)=>catalog_device_name($row) !== 'ruben'
+        ));
+    } elseif (!$surfaceHealthy && $rubenUsable && $surfaceIndexes !== []) {
+        // Surface ontbreekt/leeg/corrupt: toon automatisch Ruben als fallback.
+        $sticks=array_values(array_filter(
+            $sticks,
+            fn($row)=>catalog_device_name($row) !== 'surface'
+        ));
+    }
+
     out(200,['ok'=>true,'sticks'=>$sticks]);
 }
 
