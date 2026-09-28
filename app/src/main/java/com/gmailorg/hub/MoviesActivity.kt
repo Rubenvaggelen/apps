@@ -945,6 +945,22 @@ class MoviesActivity : AppCompatActivity() {
         }
     }
 
+    private fun remoteStickDisplayName(stick: RemoteUsbMusicClient.RemoteStick): String {
+        val isPrimaryRubenMusic =
+            stick.deviceName.equals("Surface", ignoreCase = true) &&
+                stick.stickName.equals("Ruben music", ignoreCase = true)
+        val isRubenFallback =
+            stick.deviceName.equals("Ruben", ignoreCase = true) &&
+                (stick.stickName.equals("Ruben", ignoreCase = true) ||
+                    stick.stickName.equals("Ruben music", ignoreCase = true))
+
+        return if (isPrimaryRubenMusic || isRubenFallback) {
+            "Ruben music"
+        } else {
+            remoteStickDisplayName(stick)
+        }
+    }
+
     private fun showRemoteStickDialog(sticks: List<RemoteUsbMusicClient.RemoteStick>) {
         val density = resources.displayMetrics.density
         fun dp(value: Int): Int = (value * density).toInt()
@@ -1021,7 +1037,7 @@ class MoviesActivity : AppCompatActivity() {
             }
             copy.addView(
                 TextView(this).apply {
-                    text = stick.deviceName + " • " + stick.stickName
+                    text = remoteStickDisplayName(stick)
                     textSize = 18f
                     setTextColor(Color.parseColor("#F3F8FC"))
                     setTypeface(typeface, android.graphics.Typeface.BOLD)
@@ -1059,7 +1075,7 @@ class MoviesActivity : AppCompatActivity() {
                 dialog.dismiss()
                 if (stick.files.none { it.cached }) {
                     AlertDialog.Builder(this@MoviesActivity)
-                        .setTitle(stick.deviceName + " • " + stick.stickName)
+                        .setTitle(remoteStickDisplayName(stick))
                         .setMessage(
                             "Deze bron wordt nog gesynchroniseerd. " +
                                 "Er zijn nog geen nummers klaar om af te spelen."
@@ -1213,7 +1229,7 @@ class MoviesActivity : AppCompatActivity() {
         panel.addView(
             TextView(this).apply {
                 text = if (normalized.isBlank()) {
-                    stick.deviceName + " • " + stick.stickName
+                    remoteStickDisplayName(stick)
                 } else {
                     normalized.substringAfterLast('/')
                 }
@@ -1974,7 +1990,7 @@ class MoviesActivity : AppCompatActivity() {
 
         val source = SupremacyPlaybackService.currentSource(this)
         val exactSource =
-            "Shared Media • " + stick.deviceName + " • " + stick.stickName
+            "Shared Media • " + remoteStickDisplayName(stick)
         val legacySource = "Shared Media • " + stick.deviceName
         if (!source.equals(exactSource, ignoreCase = true) &&
             !source.equals(legacySource, ignoreCase = true)
@@ -2027,7 +2043,7 @@ class MoviesActivity : AppCompatActivity() {
                     putExtra(SupremacyPlaybackService.EXTRA_INDEX, playableIndex)
                     putExtra(
                         SupremacyPlaybackService.EXTRA_SOURCE,
-                        "Shared Media • " + stick.deviceName + " • " + stick.stickName
+                        "Shared Media • " + remoteStickDisplayName(stick)
                     )
                 }
             )
