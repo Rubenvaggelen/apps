@@ -79,6 +79,11 @@ object MainDeviceRegistry {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getBoolean(KEY_MUSIC_RIGHTS, false)
 
+    fun hasAccess(context: Context, scope: String): Boolean =
+        isLocallyOwner(context) ||
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getBoolean("access_" + scope, false)
+
     fun personName(context: Context): String =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_PERSON_NAME, "")
