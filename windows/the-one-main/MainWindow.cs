@@ -2480,82 +2480,18 @@ public sealed class MainWindow : Window
             Button trigger)
         {
             trigger.IsEnabled = false;
-            status.Text = "Naar The One DJ importeren…";
+            status.Text = "Naar The One DJ sturen…";
             status.Foreground = TextDim;
 
             try
             {
-                var djRoot = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "Programs",
-                    "The One Family",
-                    "The One DJ");
-                var importDir = Path.Combine(djRoot, "app", "imports");
-                Directory.CreateDirectory(importDir);
-
-                var safeName = string.Concat(
-                    file.Name.Select(ch =>
-                        Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch))
-                    .Trim();
-                if (string.IsNullOrWhiteSpace(safeName))
-                    safeName = "TheOne-nummer.mp3";
-
-                var prefix = string.IsNullOrWhiteSpace(file.Sha256)
-                    ? ""
-                    : file.Sha256[..Math.Min(12, file.Sha256.Length)] + "-";
-                var storedName = prefix + safeName;
-                var targetPath = Path.Combine(importDir, storedName);
-
-                if (!File.Exists(targetPath) ||
-                    new FileInfo(targetPath).Length != file.Size)
-                {
-                    var url = await UsbMusicCloudService.BuildStreamUrlAsync(file);
-                    using var response = await Http.GetAsync(
-                        url,
-                        HttpCompletionOption.ResponseHeadersRead);
-                    response.EnsureSuccessStatusCode();
-
-                    await using var source =
-                        await response.Content.ReadAsStreamAsync();
-                    await using var target = new FileStream(
-                        targetPath,
-                        FileMode.Create,
-                        FileAccess.Write,
-                        FileShare.Read,
-                        128 * 1024,
-                        useAsync: true);
-                    await source.CopyToAsync(target);
-                }
-
-                var manifestPath = Path.Combine(importDir, "shared-media.json");
-                List<string> imports = new();
-                if (File.Exists(manifestPath))
-                {
-                    try
-                    {
-                        imports = JsonSerializer.Deserialize<List<string>>(
-                            File.ReadAllText(manifestPath)) ?? new();
-                    }
-                    catch
-                    {
-                        imports = new();
-                    }
-                }
-
-                if (!imports.Contains(storedName, StringComparer.OrdinalIgnoreCase))
-                {
-                    imports.Add(storedName);
-                    File.WriteAllText(
-                        manifestPath,
-                        JsonSerializer.Serialize(imports));
-                }
-
-                status.Text = "✓ Staat klaar in The One DJ: " + file.DisplayName;
+                await UsbMusicCloudService.QueueDjImportAsync(file);
+                status.Text = "✓ Naar The One DJ gestuurd: " + file.DisplayName;
                 status.Foreground = Sage;
             }
             catch (Exception ex)
             {
-                status.Text = "Importeren naar DJ mislukt: " + ex.Message;
+                status.Text = "Naar DJ sturen mislukt: " + ex.Message;
                 status.Foreground = Amber;
             }
             finally
