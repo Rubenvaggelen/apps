@@ -1864,8 +1864,9 @@ function addToLib(files,sharedNames=[]){
 document.getElementById("libInput").addEventListener("change",e=>{addToLib([...e.target.files]);e.target.value=""});
 
 let sharedMediaImportBusy=false;
+let playlistClearing=false;
 async function loadSharedMediaImports(showStatus=false){
-  if(sharedMediaImportBusy) return;
+  if(sharedMediaImportBusy||playlistClearing) return;
   sharedMediaImportBusy=true;
   const btn=document.getElementById("sharedMediaImport");
   const old=btn?.textContent;
@@ -1959,18 +1960,40 @@ function renderLib(){
   });
 }
 document.getElementById("clearPlaylist")?.addEventListener("click",async()=>{
-  if(!lib.length) return;
   if(!confirm("Hele playlist wissen?")) return;
-  lib.length=0;
-  renderLib();
-  await clearStoredPlaylist();
-  for(const d of decks){
-    try{if(d.playing) d.pause()}catch(e){}
-    d.libItem=null;d.buffer=null;d.done=false;d.pos=0;d.dur=0;
-    d.ui.title.textContent="Geen nummer geladen";d.ui.sub.textContent="";
+  playlistClearing=true;
+  try{
+    lib.length=0;
+    sharedLoaded.clear();
+    renderLib();
+    await clearStoredPlaylist();
+
+    for(const d of decks){
+      try{if(d.playing) d.pause()}catch(e){}
+      d.libItem=null;
+      d.buffer=null;
+      d.done=false;
+      d.pos=0;
+      d.dur=0;
+      d.ui.title.textContent="Geen nummer geladen";
+      d.ui.sub.textContent="";
+    }
+
+    try{
+      const r=await fetch("imports/clear",{method:"POST",cache:"no-store"});
+      if(!r.ok) throw new Error("clear failed");
+    }catch(e){
+      alert("Playlist lokaal gewist, maar Shared Media-imports konden niet volledig worden verwijderd.");
+    }
+
+    // Nogmaals lokaal wissen voor het geval een eerdere async schrijf nog bezig was.
+    lib.length=0;
+    sharedLoaded.clear();
+    renderLib();
+    await clearStoredPlaylist();
+  }finally{
+    playlistClearing=false;
   }
-  sharedLoaded.clear();
-  try{await fetch("imports/clear",{method:"POST",cache:"no-store"})}catch(e){}
 });
 playlistRead();
 
@@ -1979,7 +2002,7 @@ document.getElementById("libBtn").addEventListener("click",()=>library.classList
 document.getElementById("libClose").addEventListener("click",()=>library.classList.remove("open"));
 libList.addEventListener("click",e=>{if(e.target.closest("button")) library.classList.remove("open")});
 
-const WINDOWS_BUILD=213;
+const WINDOWS_BUILD=214;
 const updateBtn=document.getElementById("updateBtn");
 updateBtn?.addEventListener("click",async()=>{
   const old=updateBtn.textContent;updateBtn.disabled=true;updateBtn.textContent="Controleren…";
