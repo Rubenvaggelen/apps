@@ -161,20 +161,40 @@ if ($action === 'heartbeat') {
     $personName = trim((string)($body['person_name'] ?? ''));
     $platform = trim((string)($body['platform'] ?? 'Android'));
     $version = trim((string)($body['version'] ?? ''));
+    $deviceRole = strtolower(trim((string)($body['device_role'] ?? ($old['device_role'] ?? 'main'))));
+    if (!in_array($deviceRole, ['main', 'car'], true)) $deviceRole = 'main';
+
     $storedPersonName = $personName !== ''
         ? mb_substr($personName, 0, 80)
         : mb_substr((string)($old['person_name'] ?? ''), 0, 80);
+
+    // Nieuwe Family-apparaten worden pas zichtbaar nadat de gebruiker één keer
+    // zijn/haar naam heeft ingevuld.
+    if ($storedPersonName === '') {
+        respond_devices(409, [
+            'ok' => false,
+            'error' => 'person name required',
+            'name_required' => true
+        ]);
+    }
+
+    $existingRights = device_access_rights($old);
+    $carFullAccess = $deviceRole === 'car';
+    $scopedRights = $carFullAccess
+        ? ['mixes' => true, 'shared' => true, 'favorites' => true]
+        : $existingRights;
 
     $state['devices'][$deviceId] = [
         'device_id' => $deviceId,
         'name' => mb_substr($name !== '' ? $name : 'Android apparaat', 0, 100),
         'person_name' => $storedPersonName,
+        'device_role' => $deviceRole,
         'platform' => mb_substr($platform !== '' ? $platform : 'Android', 0, 40),
         'version' => mb_substr($version, 0, 40),
         'blocked' => (bool)($old['blocked'] ?? false),
-        'music_rights' => (bool)($old['music_rights'] ?? false),
-        'access_rights' => device_access_rights($old),
-        'access_requests' => device_access_requests($old),
+        'music_rights' => $carFullAccess ? true : (bool)($old['music_rights'] ?? false),
+        'access_rights' => $scopedRights,
+        'access_requests' => $carFullAccess ? [] : device_access_requests($old),
         'registered' => (string)($old['registered'] ?? gmdate('c')),
         'last_seen' => time()
     ];
@@ -374,19 +394,28 @@ $state = devices_load($devicesFile);
 if ($action === 'list') {
     $now = time();
     $ownerId = devices_owner_id($ownerFile);
-    $devices = array_values(array_map(function ($d) use ($now, $ownerId) {
+    $devices = [];
+    foreach ($state['devices'] as $d) {
+        if (!is_array($d)) continue;
         $lastSeen = (int)($d['last_seen'] ?? 0);
         $deviceId = trim((string)($d['device_id'] ?? ''));
+        $owner = $ownerId !== '' && $deviceId !== '' && hash_equals($ownerId, $deviceId);
+        $personName = trim((string)($d['person_name'] ?? ''));
+
+        // Oude installaties zonder naam blijven uit de beheerweergave. Zodra
+        // dat apparaat de nieuwe versie opent, wordt eerst om een naam gevraagd.
+        if (!$owner && $personName === '') continue;
+
         $d['online'] = $lastSeen > 0 && ($now - $lastSeen) <= 90;
-        $d['owner'] = $ownerId !== '' && $deviceId !== '' && hash_equals($ownerId, $deviceId);
-        $d['music_rights'] = (bool)$d['owner'] || (bool)($d['music_rights'] ?? false);
-        $d['access_rights'] = (bool)$d['owner']
+        $d['owner'] = $owner;
+        $d['music_rights'] = $owner || (bool)($d['music_rights'] ?? false);
+        $d['access_rights'] = $owner
             ? ['mixes' => true, 'shared' => true, 'favorites' => true]
             : device_access_rights($d);
         $d['access_requests'] = device_access_requests($d);
-        if (!isset($d['person_name'])) $d['person_name'] = '';
-        return $d;
-    }, $state['devices']));
+        $d['person_name'] = $personName;
+        $devices[] = $d;
+    }
     usort($devices, fn($a, $b) => ((int)($b['last_seen'] ?? 0)) <=> ((int)($a['last_seen'] ?? 0)));
     respond_devices(200, ['ok' => true, 'devices' => $devices]);
 }
