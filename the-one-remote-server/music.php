@@ -137,6 +137,82 @@ function key_for(string $device, string $stick, string $path): string {
     return hash('sha256', $device . "\n" . $stick . "\n" . $path);
 }
 
+function pool_file_for_sha(string $filesDir, string $sha): string {
+    return $filesDir . '/sha-' . $sha . '.bin';
+}
+
+function cache_file_for(
+    string $filesDir,
+    string $device,
+    string $stick,
+    string $path
+): string {
+    return $filesDir . '/' . key_for($device, $stick, $path) . '.bin';
+}
+
+function same_inode(string $a, string $b): bool {
+    $sa=@stat($a); $sb=@stat($b);
+    return is_array($sa) && is_array($sb) &&
+        ($sa['dev'] ?? null) === ($sb['dev'] ?? null) &&
+        ($sa['ino'] ?? null) === ($sb['ino'] ?? null);
+}
+
+function link_replace(string $source, string $dest): bool {
+    if (!is_file($source)) return false;
+    if (is_file($dest) && same_inode($source,$dest)) return true;
+
+    $tmp=$dest.'.link.'.bin2hex(random_bytes(4));
+    if (!@link($source,$tmp)) {
+        @unlink($tmp);
+        return false;
+    }
+    @chmod($tmp,0600);
+
+    if (!@rename($tmp,$dest)) {
+        @unlink($tmp);
+        return false;
+    }
+    @chmod($dest,0600);
+    return true;
+}
+
+function ensure_cached_from_pool(
+    string $filesDir,
+    string $device,
+    string $stick,
+    string $path,
+    string $sha
+): bool {
+    $dest=cache_file_for($filesDir,$device,$stick,$path);
+    if (is_file($dest)) return true;
+    if (!preg_match('/^[a-f0-9]{64}$/',$sha)) return false;
+
+    $pool=pool_file_for_sha($filesDir,$sha);
+    if (!is_file($pool)) return false;
+
+    if (@link($pool,$dest) || is_file($dest)) {
+        @chmod($dest,0600);
+        return true;
+    }
+    return false;
+}
+
+function register_pool_link(string $filesDir, string $sha, string $dest): void {
+    if (!preg_match('/^[a-f0-9]{64}$/',$sha) || !is_file($dest)) return;
+
+    $pool=pool_file_for_sha($filesDir,$sha);
+    if (is_file($pool)) {
+        if (!same_inode($pool,$dest)) {
+            link_replace($pool,$dest);
+        }
+        return;
+    }
+
+    if (@link($dest,$pool)) {
+        @chmod($pool,0600);
+    }
+}
+
 function catalog_device_name(array $stick): string {
     return mb_strtolower(trim((string)($stick['device_name'] ?? '')));
 }
@@ -230,7 +306,7 @@ function stream_range(string $path, string $name): never {
 $action = (string)($_GET['action'] ?? 'health');
 $sec = secret($secretFile);
 
-if ($action === 'health') out(200, ['ok'=>true,'service'=>'The One Music Cache','version'=>4]);
+if ($action === 'health') out(200, ['ok'=>true,'service'=>'The One Music Cache','version'=>5]);
 
 if ($action === 'browse-login') {
     out(200,['ok'=>true,'token'=>token_new($sec,'music-read'),'expires_in'=>TOKEN_TTL]);
@@ -585,7 +661,7 @@ if ($action === 'status') {
     $device=safe_id((string)($b['device_id'] ?? ''));
     $stick=safe_id((string)($b['stick_id'] ?? ''));
     $path=safe_path((string)($b['path'] ?? ''));
-    out(200,['ok'=>true,'cached'=>is_file($files.'/'.key_for($device,$stick,$path).'.bin')]);
+    out(200,['ok'=>true,'cached'=>ensure_cached_from_pool($files,$device,$stick,$path,$sha)]);
 }
 
 if ($action === 'upload-start') {
@@ -673,9 +749,19 @@ if ($action === 'upload-finish') {
         out(400,['ok'=>false,'error'=>'hash mismatch']);
     }
 
-    $dest=$files.'/'.key_for($device,$stick,$path).'.bin';
-    if (!@rename($part,$dest)) out(500,['ok'=>false,'error'=>'finalize failed']);
-    @chmod($dest,0600);
+    $dest=cache_file_for($files,$device,$stick,$path);
+    $pool=pool_file_for_sha($files,$sha);
+
+    if (is_file($pool)) {
+        @unlink($part);
+        if (!link_replace($pool,$dest)) {
+            out(500,['ok'=>false,'error'=>'finalize dedupe link failed']);
+        }
+    } else {
+        if (!@rename($part,$dest)) out(500,['ok'=>false,'error'=>'finalize failed']);
+        @chmod($dest,0600);
+        register_pool_link($files,$sha,$dest);
+    }
 
     $metaFile=$meta.'/'.$device.'__'.$stick.'.json';
     $doc=load_json($metaFile);
@@ -705,9 +791,19 @@ if ($action === 'upload') {
     if ($tmp==='' || !is_uploaded_file($tmp)) out(400,['ok'=>false,'error'=>'file required']);
     $actual=hash_file('sha256',$tmp);
     if (!is_string($actual) || !hash_equals($sha,strtolower($actual))) out(400,['ok'=>false,'error'=>'hash mismatch']);
-    $dest=$files.'/'.key_for($device,$stick,$path).'.bin';
-    if (!@move_uploaded_file($tmp,$dest)) out(500,['ok'=>false,'error'=>'upload failed']);
-    @chmod($dest,0600);
+    $dest=cache_file_for($files,$device,$stick,$path);
+    $pool=pool_file_for_sha($files,$sha);
+
+    if (is_file($pool)) {
+        if (!link_replace($pool,$dest)) {
+            out(500,['ok'=>false,'error'=>'upload dedupe link failed']);
+        }
+        @unlink($tmp);
+    } else {
+        if (!@move_uploaded_file($tmp,$dest)) out(500,['ok'=>false,'error'=>'upload failed']);
+        @chmod($dest,0600);
+        register_pool_link($files,$sha,$dest);
+    }
 
     $metaFile=$meta.'/'.$device.'__'.$stick.'.json';
     $doc=load_json($metaFile);
@@ -771,7 +867,7 @@ if ($action === 'sync-batch') {
             'size'=>max(0,(int)($item['size'] ?? 0)),
             'sha256'=>$sha,
             'modified'=>trim((string)($item['modified'] ?? '')),
-            'cached'=>is_file($files.'/'.key_for($device,$stick,$path).'.bin')
+            'cached'=>ensure_cached_from_pool($files,$device,$stick,$path,$sha)
         ];
     }
 
@@ -810,7 +906,7 @@ if ($action === 'sync') {
             'size'=>max(0,(int)($item['size'] ?? 0)),
             'sha256'=>$sha,
             'modified'=>trim((string)($item['modified'] ?? '')),
-            'cached'=>is_file($files.'/'.key_for($device,$stick,$path).'.bin')
+            'cached'=>ensure_cached_from_pool($files,$device,$stick,$path,$sha)
         ];
     }
     $doc=[
