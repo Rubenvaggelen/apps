@@ -1089,7 +1089,7 @@ class Deck{
     if(!file) return;
     ensureCtx();
     const token=++this.loadToken;this.loading=true;
-    this.ui.title.textContent=baseName(file);this.ui.sub.textContent="Bezig met laden";
+    this.ui.title.textContent=cleanImportedName(baseName(file));this.ui.sub.textContent="Bezig met laden";
     this.setBusy("Laden…");
     try{
       const buf=await decodeAnyAudio(file);
@@ -1976,7 +1976,7 @@ document.getElementById("libBtn").addEventListener("click",()=>library.classList
 document.getElementById("libClose").addEventListener("click",()=>library.classList.remove("open"));
 libList.addEventListener("click",e=>{if(e.target.closest("button")) library.classList.remove("open")});
 
-const WINDOWS_BUILD=211;
+const WINDOWS_BUILD=212;
 const updateBtn=document.getElementById("updateBtn");
 updateBtn?.addEventListener("click",async()=>{
   const old=updateBtn.textContent;updateBtn.disabled=true;updateBtn.textContent="Controleren…";
