@@ -1,8 +1,8 @@
 {
-  "version": "2.0.6",
-  "build": 206,
-  "notes": "Persistent reorderable playlist with per-track remove and clear playlist",
-  "sha256": "14766FB8455326C40F11AFEF445159D66BA9871113C0DB24A31FBF1E599E42AB",
+  "version": "2.0.7",
+  "build": 207,
+  "notes": "Fix build 206 UI break; keep persistent reorderable playlist, per-track remove and clear playlist",
+  "sha256": "DCB328FFFE0AC97B2CAF74D5DEC8D79EAE192E9C3D29DD942F3936461D2A4258",
   "files": [
     "index.html"
   ]
