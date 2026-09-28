@@ -2130,7 +2130,10 @@ public sealed class MainWindow : Window
             Environment.MachineName.Equals("Ruben", StringComparison.OrdinalIgnoreCase) ||
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
                 .Replace('/', '\\')
-                .EndsWith("\\Users\\ruben", StringComparison.OrdinalIgnoreCase);
+                .EndsWith("\\Users\\ruben", StringComparison.OrdinalIgnoreCase) ||
+            Environment.UserName.Equals("Surface Pro", StringComparison.OrdinalIgnoreCase) ||
+            userProfileName.Equals("Surface Pro", StringComparison.OrdinalIgnoreCase) ||
+            Environment.MachineName.Equals("TABLET-042GE173", StringComparison.OrdinalIgnoreCase);
 
         static string WindowsFamilyDeviceId()
         {
