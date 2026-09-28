@@ -162,7 +162,7 @@ if ($action === 'heartbeat') {
     $platform = trim((string)($body['platform'] ?? 'Android'));
     $version = trim((string)($body['version'] ?? ''));
     $deviceRole = strtolower(trim((string)($body['device_role'] ?? ($old['device_role'] ?? 'main'))));
-    if (!in_array($deviceRole, ['main', 'car'], true)) $deviceRole = 'main';
+    if (!in_array($deviceRole, ['main', 'car', 'windows'], true)) $deviceRole = 'main';
 
     $storedPersonName = $personName !== ''
         ? mb_substr($personName, 0, 80)
