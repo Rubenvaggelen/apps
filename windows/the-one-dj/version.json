@@ -1,8 +1,8 @@
 {
-  "version": "2.1.4",
-  "build": 214,
-  "notes": "Fix Wis playlist so it clears UI, IndexedDB and Shared Media imports reliably",
-  "sha256": "791623645917F44A5E0124AAFD7D0263DE8144A1E01CE3FA231E703D72D90999",
+  "version": "2.1.5",
+  "build": 215,
+  "notes": "Allow played tracks to be selected again as the next Auto track",
+  "sha256": "D3EB65EC59C2E242507411C5FE9E40BF3213618CFFD84CD2B3872B1AC0AC565D",
   "files": [
     "index.html"
   ]
