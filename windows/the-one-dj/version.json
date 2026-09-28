@@ -1,8 +1,8 @@
 {
-  "version": "2.1.0",
-  "build": 210,
-  "notes": "Live Shared Media inbox refresh and stale-cache reconciliation",
-  "sha256": "540B8263F5E1F2825E2A9D376F6537E21949D6BAFDC16BAE8D0B6E9A6FD54D41",
+  "version": "2.1.1",
+  "build": 211,
+  "notes": "Fix Shared Media button stuck on loading during background refresh",
+  "sha256": "1CF396CA6EF5DD7936364A9AD0600AFB45E54C469A4A572CA1F3115A4E10EC84",
   "files": [
     "index.html"
   ]
