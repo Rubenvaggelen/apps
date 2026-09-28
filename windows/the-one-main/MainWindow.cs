@@ -2121,8 +2121,12 @@ public sealed class MainWindow : Window
         var sharedMediaTrackVisuals =
             new List<(CloudUsbMusicFile File, TextBlock Title, DockPanel Row)>();
 
+        var userProfileName = Path.GetFileName(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         var canImportToDj =
             Environment.UserName.Equals("ruben", StringComparison.OrdinalIgnoreCase) ||
+            userProfileName.Equals("ruben", StringComparison.OrdinalIgnoreCase) ||
             Environment.MachineName.Equals("Ruben", StringComparison.OrdinalIgnoreCase);
 
         static string WindowsFamilyDeviceId()
