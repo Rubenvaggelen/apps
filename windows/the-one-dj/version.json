@@ -1,8 +1,8 @@
 {
-  "version": "2.1.5",
-  "build": 215,
-  "notes": "Allow played tracks to be selected again as the next Auto track",
-  "sha256": "D3EB65EC59C2E242507411C5FE9E40BF3213618CFFD84CD2B3872B1AC0AC565D",
+  "version": "2.1.6",
+  "build": 216,
+  "notes": "Use compact return icon for replaying a played track as next",
+  "sha256": "A48269D74451ED3F2235B093D19DCC1AFE5DD61C7D711DA98ABCF312F1D509B5",
   "files": [
     "index.html"
   ]
