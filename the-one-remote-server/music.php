@@ -13,6 +13,7 @@ $meta = $root . '/meta';
 $secretFile = $root . '/secret.key';
 $rateFile = $root . '/rate.json';
 $favoritesFile = $root . '/favorites.json';
+$djQueueFile = $root . '/dj-queue.json';
 $deviceRegistryFile = $home . '/the-one-remote-data/main-devices.json';
 $deviceOwnerFile = $home . '/the-one-remote-data/main-device-owner.json';
 
@@ -257,6 +258,84 @@ if ($action === 'stream') {
     $stick=safe_id((string)($_GET['stick'] ?? ''));
     $path=safe_path((string)($_GET['path'] ?? ''));
     stream_range($files.'/'.key_for($device,$stick,$path).'.bin',$path);
+}
+
+if ($action === 'dj-queue-add') {
+    $token=bearer();
+    if (!token_read_ok($token,$sec)) out(401,['ok'=>false,'error'=>'auth required']);
+
+    $body=read_json();
+    $requestDevice=trim((string)($body['request_device_id'] ?? ''));
+    if ($requestDevice === '' ||
+        !music_device_scope_allowed($requestDevice,'dj',$deviceRegistryFile,$deviceOwnerFile)) {
+        out(403,['ok'=>false,'error'=>'DJ import not allowed']);
+    }
+
+    $device=safe_id((string)($body['device_id'] ?? ''));
+    $stick=safe_id((string)($body['stick_id'] ?? ''));
+    $path=safe_path((string)($body['path'] ?? ''));
+    $source=$files.'/'.key_for($device,$stick,$path).'.bin';
+    if (!is_file($source)) out(409,['ok'=>false,'error'=>'track not cached yet']);
+
+    $name=trim((string)($body['name'] ?? basename($path)));
+    if ($name === '') $name=basename($path);
+    $title=trim((string)($body['title'] ?? $name));
+
+    $queue=load_json($djQueueFile);
+    $items=is_array($queue['items'] ?? null) ? $queue['items'] : [];
+    $dedupe=hash('sha256',$device."\n".$stick."\n".$path);
+    foreach ($items as $row) {
+        if (!is_array($row)) continue;
+        if (($row['status'] ?? '') === 'pending' && ($row['dedupe'] ?? '') === $dedupe) {
+            out(200,['ok'=>true,'queued'=>true,'duplicate'=>true,'id'=>(string)($row['id'] ?? '')]);
+        }
+    }
+
+    $id=bin2hex(random_bytes(12));
+    $items[]=[
+        'id'=>$id,
+        'status'=>'pending',
+        'dedupe'=>$dedupe,
+        'device_id'=>$device,
+        'stick_id'=>$stick,
+        'path'=>$path,
+        'name'=>mb_substr($name,0,240),
+        'title'=>mb_substr($title,0,240),
+        'requested_by'=>$requestDevice,
+        'created_at'=>gmdate('c')
+    ];
+    $queue['items']=$items;
+    if (!save_json($djQueueFile,$queue)) out(500,['ok'=>false,'error'=>'queue storage failed']);
+    out(200,['ok'=>true,'queued'=>true,'id'=>$id]);
+}
+
+if ($action === 'dj-queue-list') {
+    require_auth($sec);
+    $queue=load_json($djQueueFile);
+    $items=array_values(array_filter(
+        is_array($queue['items'] ?? null) ? $queue['items'] : [],
+        fn($row)=>is_array($row) && (($row['status'] ?? '') === 'pending')
+    ));
+    out(200,['ok'=>true,'items'=>$items]);
+}
+
+if ($action === 'dj-queue-ack') {
+    require_auth($sec);
+    $body=read_json();
+    $id=trim((string)($body['id'] ?? ''));
+    if ($id === '') out(400,['ok'=>false,'error'=>'id required']);
+    $queue=load_json($djQueueFile);
+    $items=is_array($queue['items'] ?? null) ? $queue['items'] : [];
+    foreach ($items as &$row) {
+        if (!is_array($row) || ($row['id'] ?? '') !== $id) continue;
+        $row['status']='done';
+        $row['completed_at']=gmdate('c');
+        break;
+    }
+    unset($row);
+    $queue['items']=$items;
+    if (!save_json($djQueueFile,$queue)) out(500,['ok'=>false,'error'=>'queue storage failed']);
+    out(200,['ok'=>true]);
 }
 
 if ($action === 'catalog') {
