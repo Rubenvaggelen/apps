@@ -695,7 +695,7 @@ class MoviesActivity : AppCompatActivity() {
                 textSize = 16f
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
                 maxLines = 1
-                contentDescription = "Afspelen ${file.name}"
+                contentDescription = "Afspelen ${item.title}"
                 setTextColor(Color.parseColor(if (playableEntry != null) "#F3F8FC" else "#8F9BAD"))
                 maxLines = 2
                 ellipsize = android.text.TextUtils.TruncateAt.END
