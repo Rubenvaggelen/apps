@@ -12,6 +12,7 @@ object CarFamilyAccess {
     private const val PREFS = "car_family_access"
     private const val KEY_DEVICE_ID = "device_id"
     private const val KEY_MUSIC_RIGHTS = "music_rights"
+    private const val KEY_PERSON_NAME = "person_name"
 
     fun deviceId(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -20,6 +21,22 @@ object CarFamilyAccess {
         val created = UUID.randomUUID().toString()
         prefs.edit().putString(KEY_DEVICE_ID, created).apply()
         return created
+    }
+
+    fun personName(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_PERSON_NAME, "")
+            .orEmpty()
+            .trim()
+
+    fun hasPersonName(context: Context): Boolean =
+        personName(context).isNotBlank()
+
+    fun savePersonName(context: Context, personName: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_PERSON_NAME, personName.trim())
+            .apply()
     }
 
     fun hasCachedMusicRights(context: Context): Boolean =
@@ -46,7 +63,8 @@ object CarFamilyAccess {
             JSONObject()
                 .put("device_id", deviceId(context))
                 .put("name", "The One Car")
-                .put("person_name", "The One Car")
+                .put("person_name", personName(context))
+                .put("device_role", "car")
                 .put("platform", "Car Android " + Build.VERSION.RELEASE)
                 .put("version", BuildConfig.VERSION_CODE.toString())
         )
