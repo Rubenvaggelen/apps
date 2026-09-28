@@ -1577,11 +1577,45 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val listView = android.widget.ListView(this)
-        listView.divider = android.graphics.drawable.ColorDrawable(
-            ContextCompat.getColor(this, R.color.line)
-        )
-        listView.dividerHeight = 1
+        val dialog = Dialog(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(28.dp, 22.dp, 28.dp, 20.dp)
+            setBackgroundResource(R.drawable.bg_player_panel)
+        }
+
+        panel.addView(TextView(this).apply {
+            text = "THE ONE FAMILY • SHARED MEDIA"
+            textSize = 12f
+            letterSpacing = 0.16f
+            setTextColor(android.graphics.Color.parseColor("#D8A451"))
+        })
+        panel.addView(TextView(this).apply {
+            text = folder
+            textSize = 28f
+            setTextColor(android.graphics.Color.WHITE)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(0, 5.dp, 0, 3.dp)
+        })
+        panel.addView(TextView(this).apply {
+            text = "${files.count { it.cached }} nummer" +
+                if (files.count { it.cached } == 1) "" else "s" +
+                " beschikbaar"
+            textSize = 15f
+            setTextColor(android.graphics.Color.parseColor("#91A4BD"))
+            setPadding(0, 0, 0, 15.dp)
+        })
+
+        val listView = android.widget.ListView(this).apply {
+            divider = android.graphics.drawable.ColorDrawable(
+                android.graphics.Color.parseColor("#24364A")
+            )
+            dividerHeight = 1
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            isVerticalScrollBarEnabled = true
+        }
 
         val adapter = object : android.widget.BaseAdapter() {
             override fun getCount(): Int = files.size
@@ -1600,11 +1634,10 @@ class MainActivity : AppCompatActivity() {
                 val row = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
-                    setPadding(12.dp, 10.dp, 12.dp, 10.dp)
-                    setBackgroundColor(
-                        android.graphics.Color.parseColor(
-                            if (isCurrent) "#DFF2FA" else "#00000000"
-                        )
+                    setPadding(16.dp, 11.dp, 14.dp, 11.dp)
+                    setBackgroundResource(
+                        if (isCurrent) R.drawable.bg_gold_outline
+                        else R.drawable.bg_outline
                     )
                     contentDescription =
                         if (isCurrent) "Nu actief: ${cleanRemoteUsbTrackTitle(file.displayName)}"
@@ -1621,13 +1654,13 @@ class MainActivity : AppCompatActivity() {
                             (if (isCurrent) "▶ NU • " else "") +
                                 cleanRemoteUsbTrackTitle(file.displayName) +
                                 if (isCached) "" else "  •  Synchroniseren…"
-                        textSize = 24.0f
+                        textSize = 21f
                         setTextColor(
                             android.graphics.Color.parseColor(
                                 when {
-                                    !isCached -> "#8F9BAD"
-                                    isCurrent -> "#8A5A0A"
-                                    else -> "#101925"
+                                    !isCached -> "#71839A"
+                                    isCurrent -> "#FFD47A"
+                                    else -> "#F5F8FC"
                                 }
                             )
                         )
@@ -1638,7 +1671,7 @@ class MainActivity : AppCompatActivity() {
                         )
                         maxLines = 2
                         ellipsize = android.text.TextUtils.TruncateAt.END
-                        setPadding(8, 14, 14, 14)
+                        setPadding(4.dp, 12.dp, 12.dp, 12.dp)
                         setOnClickListener {
                             if (isCached) {
                                 playRemoteUsbFolder(stick, files, position)
@@ -1661,34 +1694,28 @@ class MainActivity : AppCompatActivity() {
                 row.addView(
                     TextView(this@MainActivity).apply {
                         text = if (favoriteUsbKeys.contains(usbFavoriteKey(file))) "★" else "☆"
-                        textSize = 30.0f
+                        textSize = 29f
                         gravity = Gravity.CENTER
                         setTextColor(android.graphics.Color.parseColor("#D8A451"))
                         contentDescription = "Favoriet ${file.name}"
-                        setPadding(14.dp, 10.dp, 14.dp, 10.dp)
-                        setOnClickListener {
-                            toggleUsbFavorite(stick, file, this)
-                        }
+                        setPadding(10.dp, 9.dp, 10.dp, 9.dp)
+                        setOnClickListener { toggleUsbFavorite(stick, file, this) }
                     },
                     LinearLayout.LayoutParams(
-                        58.dp,
+                        52.dp,
                         LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        marginEnd = 10.dp
-                    }
+                    ).apply { marginEnd = 8.dp }
                 )
 
                 row.addView(
                     TextView(this@MainActivity).apply {
                         text = if (isCached) "↓" else "…"
-                        textSize = 30.0f
+                        textSize = 27f
                         gravity = Gravity.CENTER
-                        setTextColor(
-                            android.graphics.Color.parseColor("#D8A451")
-                        )
+                        setTextColor(android.graphics.Color.parseColor("#D8A451"))
                         contentDescription = "Download ${file.name}"
                         setBackgroundResource(R.drawable.bg_gold_outline)
-                        setPadding(16, 12, 16, 12)
+                        setPadding(13.dp, 10.dp, 13.dp, 10.dp)
                         alpha = if (isCached) 1f else 0.35f
                         setOnClickListener {
                             if (isCached) {
@@ -1703,22 +1730,22 @@ class MainActivity : AppCompatActivity() {
                         }
                     },
                     LinearLayout.LayoutParams(
-                        58.dp,
+                        54.dp,
                         LinearLayout.LayoutParams.WRAP_CONTENT
                     ).apply {
-                        marginStart = 10.dp
-                        marginEnd = 12.dp
+                        marginStart = 6.dp
+                        marginEnd = 10.dp
                     }
                 )
 
                 row.addView(
                     TextView(this@MainActivity).apply {
                         text = if (isCached) "▶" else "…"
-                        textSize = 28.5f
+                        textSize = 27f
                         gravity = Gravity.CENTER
                         setTextColor(
                             android.graphics.Color.parseColor(
-                                if (isCurrent) "#D8A451" else "#FFFFFF"
+                                if (isCurrent) "#D8A451" else "#20B8FF"
                             )
                         )
                         contentDescription = "Speel ${file.name} af"
@@ -1726,7 +1753,7 @@ class MainActivity : AppCompatActivity() {
                             if (isCurrent) R.drawable.bg_gold_outline
                             else R.drawable.bg_outline
                         )
-                        setPadding(16, 12, 16, 12)
+                        setPadding(14.dp, 10.dp, 14.dp, 10.dp)
                         setOnClickListener {
                             if (isCached) {
                                 playRemoteUsbFolder(stick, files, position)
@@ -1740,28 +1767,67 @@ class MainActivity : AppCompatActivity() {
                         }
                     },
                     LinearLayout.LayoutParams(
-                        62.dp,
+                        58.dp,
                         LinearLayout.LayoutParams.WRAP_CONTENT
                     )
                 )
 
-                return row
+                return LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(row)
+                    setPadding(0, 0, 0, 9.dp)
+                }
             }
         }
         listView.adapter = adapter
 
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(folder)
-            .setView(listView)
-            .setPositiveButton("NAAR PLAYER", null)
-            .setNegativeButton("← 1 STAP TERUG") { _, _ ->
+        panel.addView(
+            listView,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, 12.dp, 0, 0)
+        }
+        val back = TextView(this).apply {
+            text = "← 1 STAP TERUG"
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTextColor(android.graphics.Color.parseColor("#D8A451"))
+            setBackgroundResource(R.drawable.bg_gold_outline)
+            setPadding(14.dp, 13.dp, 14.dp, 13.dp)
+            setOnClickListener {
+                dialog.dismiss()
                 val parent = folder
                     .takeUnless { it == "Hoofdmap" }
                     ?.substringBeforeLast('/', "")
                     .orEmpty()
                 showRemoteFolderLevel(stick, parent)
             }
-            .create()
+        }
+        val player = TextView(this).apply {
+            text = "NAAR PLAYER  ›"
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(android.graphics.Color.parseColor("#201505"))
+            setBackgroundResource(R.drawable.bg_amber_button)
+            setPadding(14.dp, 13.dp, 14.dp, 13.dp)
+            setOnClickListener { dialog.dismiss() }
+        }
+        actions.addView(back, LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+        ).apply { marginEnd = 8.dp })
+        actions.addView(player, LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+        ).apply { marginStart = 8.dp })
+        panel.addView(actions)
 
         val liveHighlight = object : Runnable {
             override fun run() {
@@ -1772,26 +1838,21 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        dialog.setContentView(panel)
+        dialog.setCanceledOnTouchOutside(true)
         dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE)
-                .setTextColor(android.graphics.Color.parseColor("#D8A451"))
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                dialog.dismiss()
-            }
-            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
-                .setTextColor(android.graphics.Color.parseColor("#D8A451"))
-            listView.layoutParams = listView.layoutParams?.apply {
-                height = (420.dp).coerceAtMost(
-                    resources.displayMetrics.heightPixels - 160.dp
-                )
-            }
             adapter.notifyDataSetChanged()
             listView.postDelayed(liveHighlight, 500L)
         }
-        dialog.setOnDismissListener {
-            listView.removeCallbacks(liveHighlight)
-        }
+        dialog.setOnDismissListener { listView.removeCallbacks(liveHighlight) }
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        dialog.window?.attributes = dialog.window?.attributes?.apply { dimAmount = 0.72f }
         dialog.show()
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.86f).toInt(),
+            (resources.displayMetrics.heightPixels * 0.86f).toInt()
+        )
     }
 
     private fun usbFavoriteKey(file: RemoteUsbMusicClient.RemoteFile): String =
