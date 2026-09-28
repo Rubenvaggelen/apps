@@ -40,6 +40,18 @@ function load_json(string $file): array {
     $v = json_decode((string)@file_get_contents($file), true);
     return is_array($v) ? $v : [];
 }
+function cleanup_stale_upload_parts(string $filesDir, int $maxAgeSeconds = 3600): int {
+    $deleted = 0;
+    $cutoff = time() - max(300, $maxAgeSeconds);
+    foreach (glob($filesDir . '/*.part') ?: [] as $part) {
+        $mtime = @filemtime($part);
+        if ($mtime !== false && $mtime < $cutoff && @unlink($part)) {
+            $deleted++;
+        }
+    }
+    return $deleted;
+}
+
 function save_json(string $file, array $v): bool {
     $json = json_encode(
         $v,
@@ -423,6 +435,7 @@ if ($action === 'status') {
 }
 
 if ($action === 'upload-start') {
+    cleanup_stale_upload_parts($files);
     $b=read_json();
     $device=safe_id((string)($b['device_id'] ?? ''));
     $stick=safe_id((string)($b['stick_id'] ?? ''));
@@ -561,6 +574,7 @@ if ($action === 'upload') {
 }
 
 if ($action === 'sync-batch') {
+    cleanup_stale_upload_parts($files);
     $b=read_json();
     $device=safe_id((string)($b['device_id'] ?? ''));
     $stick=safe_id((string)($b['stick_id'] ?? ''));
