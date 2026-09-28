@@ -246,7 +246,7 @@ body:not(.hp-on) .cue-hp{display:none}
 .lib-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .library h2{font-size:17px;margin:0;font-weight:700}
 .lib-list{list-style:none;margin:8px 0 0;padding:0;max-height:260px;overflow:auto}
-.lib-list li{display:grid;grid-template-columns:22px 86px minmax(0,1fr) auto auto 34px;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line);cursor:grab}
+.lib-list li{display:grid;grid-template-columns:22px 86px minmax(0,1fr) auto auto 38px 34px;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line);cursor:grab}
 .lib-tag{font-size:12px;font-weight:700;color:var(--muted)}
 .lib-list li[data-status="A"] .lib-tag{color:var(--a)}
 .lib-list li[data-status="B"] .lib-tag{color:var(--b)}
@@ -1940,7 +1940,7 @@ function renderLib(){
     const name=document.createElement("span");name.className="lib-name";name.textContent=t.name;
     const a=document.createElement("button");a.className="btn small to-a";a.textContent="A";a.setAttribute("aria-label","Laad "+t.name+" in deck A");
     const b=document.createElement("button");b.className="btn small to-b";b.textContent="B";b.setAttribute("aria-label","Laad "+t.name+" in deck B");
-    const again=document.createElement("button");again.className="btn small lib-next";again.textContent="Volgende";again.title="Zet dit nummer als eerstvolgende";again.hidden=t.status!=="played";
+    const again=document.createElement("button");again.className="btn small lib-next";again.textContent="↩";again.title="Zet dit nummer opnieuw als eerstvolgende";again.setAttribute("aria-label","Zet "+t.name+" opnieuw als eerstvolgende");again.hidden=t.status!=="played";
     const x=document.createElement("button");x.className="btn small lib-remove";x.textContent="×";x.title="Verwijder uit playlist";x.setAttribute("aria-label","Verwijder "+t.name+" uit playlist");
     a.onclick=()=>{decks[0].load(t.file,t);playlistWrite()};
     b.onclick=()=>{decks[1].load(t.file,t);playlistWrite()};
@@ -2010,7 +2010,7 @@ document.getElementById("libBtn").addEventListener("click",()=>library.classList
 document.getElementById("libClose").addEventListener("click",()=>library.classList.remove("open"));
 libList.addEventListener("click",e=>{if(e.target.closest("button")) library.classList.remove("open")});
 
-const WINDOWS_BUILD=215;
+const WINDOWS_BUILD=216;
 const updateBtn=document.getElementById("updateBtn");
 updateBtn?.addEventListener("click",async()=>{
   const old=updateBtn.textContent;updateBtn.disabled=true;updateBtn.textContent="Controleren…";
