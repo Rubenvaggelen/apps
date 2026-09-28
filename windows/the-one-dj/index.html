@@ -1,4 +1,5 @@
 
+
 <!doctype html>
 <html lang="nl">
 <head>
@@ -381,6 +382,7 @@ body:not(.hp-on) .cue-hp{display:none}
     <div class="top-actions">
     <button class="btn small hp-btn" id="hpBtn" aria-haspopup="dialog" aria-label="Koptelefoon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15v-3a8 8 0 0 1 16 0v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="3" y="14" width="5" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="16" y="14" width="5" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg><span class="hp-label">Koptelefoon</span></button>
     <button class="btn small only-compact" id="libBtn">Nummers</button>
+    <button class="btn small" id="updateBtn">Controleer op updates</button>
     <button class="btn small only-compact" id="fsBtn" hidden aria-label="Volledig scherm"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     <details class="keys">
       <summary>Sneltoetsen</summary>
@@ -697,6 +699,7 @@ function readPCM(dv,off,len,nch,bits,le,kind){
     else if(kind==="ulaw") v=ULAW[dv.getUint8(p)];
     else if(kind==="alaw") v=ALAW[dv.getUint8(p)];
     ch[c][i]=v;p+=bps;
+
   }
   return ch;
 
@@ -1397,6 +1400,7 @@ async function refreshDevices(ask){
     sel.innerHTML="";
     if(!outs.length){const o=document.createElement("option");o.textContent="Geen apparaten gevonden";o.value="";sel.appendChild(o);continue}
     outs.forEach((d,i)=>{
+
       const o=document.createElement("option");o.value=d.deviceId;
       o.textContent=d.label||(d.deviceId==="default"?"Standaard uitgang":"Uitgang "+(i+1)+" (tik op Apparaten zoeken voor namen)");
       sel.appendChild(o);
@@ -1769,6 +1773,20 @@ const library=document.querySelector(".library");
 document.getElementById("libBtn").addEventListener("click",()=>library.classList.add("open"));
 document.getElementById("libClose").addEventListener("click",()=>library.classList.remove("open"));
 libList.addEventListener("click",e=>{if(e.target.closest("button")) library.classList.remove("open")});
+
+const WINDOWS_BUILD=202;
+const updateBtn=document.getElementById("updateBtn");
+updateBtn?.addEventListener("click",async()=>{
+  const old=updateBtn.textContent;updateBtn.disabled=true;updateBtn.textContent="Controleren…";
+  try{
+    const r=await fetch("https://api.github.com/repos/Rubenvaggelen/apps/contents/windows/the-one-dj/version.json?ref=main",{cache:"no-store",headers:{"Accept":"application/vnd.github.raw+json"}});
+    if(!r.ok) throw new Error("check failed");
+    const v=await r.json();
+    if((v.build||0)>WINDOWS_BUILD) alert("Update beschikbaar (build "+v.build+"). Sluit The One DJ en open hem opnieuw; de update wordt automatisch geïnstalleerd.");
+    else alert("The One DJ is up-to-date. Build "+WINDOWS_BUILD+".");
+  }catch(e){alert("Kon nu niet op updates controleren. Controleer je internetverbinding en probeer opnieuw.");}
+  finally{updateBtn.disabled=false;updateBtn.textContent=old;}
+});
 
 const IN_APP=new URLSearchParams(location.search).get("app")==="android";
 if(IN_APP) document.documentElement.classList.add("in-app");
