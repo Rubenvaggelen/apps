@@ -1,8 +1,8 @@
 {
-  "version": "2.1.1",
-  "build": 211,
-  "notes": "Fix Shared Media button stuck on loading during background refresh",
-  "sha256": "1CF396CA6EF5DD7936364A9AD0600AFB45E54C469A4A572CA1F3115A4E10EC84",
+  "version": "2.1.2",
+  "build": 212,
+  "notes": "Hide internal import hash from deck titles",
+  "sha256": "FC43637ED3F067B0B995F61EDD0084776F30BE8202150E3EFC2BE6DAA7ACB1C5",
   "files": [
     "index.html"
   ]
