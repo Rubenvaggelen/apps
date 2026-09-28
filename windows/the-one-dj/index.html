@@ -1546,19 +1546,41 @@ const SFX=[
       G.setValueAtTime(0.58,t0+st+len-0.05);G.linearRampToValueAtTime(0,t0+st+len);
     }
   },
-  function boom(){ // bass drop impact
-    const t0=ctx.currentTime+0.01,v=voice(2,2.6);v.g.gain.value=1;
-    const o=ctx.createOscillator();o.type="sine";
-    const sh=ctx.createWaveShaper(),c=new Float32Array(1024);for(let i=0;i<1024;i++){const x=i/511.5-1;c[i]=Math.tanh(1.8*x)}sh.curve=c;
-    const og=ctx.createGain();o.connect(sh);sh.connect(og);og.connect(v.g);
-    o.frequency.setValueAtTime(160,t0);o.frequency.exponentialRampToValueAtTime(42,t0+0.9);o.frequency.exponentialRampToValueAtTime(32,t0+2.4);
-    og.gain.setValueAtTime(0,t0);og.gain.linearRampToValueAtTime(0.95,t0+0.01);og.gain.exponentialRampToValueAtTime(0.001,t0+2.5);
-    o.start(t0);o.stop(t0+2.6);v.nodes.push(o);
-    const n=ctx.createBufferSource();n.buffer=noiseBuffer(0.5);
-    const nl=ctx.createBiquadFilter();nl.type="lowpass";nl.frequency.setValueAtTime(3000,t0);nl.frequency.exponentialRampToValueAtTime(200,t0+0.4);
-    const ng=ctx.createGain();n.connect(nl);nl.connect(ng);ng.connect(v.g);
-    ng.gain.setValueAtTime(0.5,t0);ng.gain.exponentialRampToValueAtTime(0.001,t0+0.45);
-    n.start(t0);n.stop(t0+0.5);v.nodes.push(n);
+  function boom(){ // heavy sound-system boom: impact + sub drop + rumble tail
+    const t0=ctx.currentTime+0.01,v=voice(2,3.4);v.g.gain.value=1;
+    const sh=ctx.createWaveShaper(),c=new Float32Array(2048);
+    for(let i=0;i<c.length;i++){const x=i/(c.length/2-0.5)-1;c[i]=Math.tanh(2.6*x)}
+    sh.curve=c;sh.oversample="4x";
+    const lp=ctx.createBiquadFilter();lp.type="lowpass";lp.frequency.value=220;
+    sh.connect(lp);lp.connect(v.g);
+
+    const sub=ctx.createOscillator();sub.type="sine";
+    const sg=ctx.createGain();sub.connect(sg);sg.connect(sh);
+    sub.frequency.setValueAtTime(115,t0);
+    sub.frequency.exponentialRampToValueAtTime(46,t0+0.42);
+    sub.frequency.exponentialRampToValueAtTime(29,t0+2.9);
+    sg.gain.setValueAtTime(0,t0);sg.gain.linearRampToValueAtTime(1.2,t0+0.008);
+    sg.gain.exponentialRampToValueAtTime(0.55,t0+0.22);
+    sg.gain.exponentialRampToValueAtTime(0.001,t0+3.2);
+    sub.start(t0);sub.stop(t0+3.3);v.nodes.push(sub);
+
+    const body=ctx.createOscillator();body.type="triangle";
+    const bg=ctx.createGain();body.connect(bg);bg.connect(sh);
+    body.frequency.setValueAtTime(220,t0);body.frequency.exponentialRampToValueAtTime(62,t0+0.22);
+    bg.gain.setValueAtTime(0.55,t0);bg.gain.exponentialRampToValueAtTime(0.001,t0+0.7);
+    body.start(t0);body.stop(t0+0.75);v.nodes.push(body);
+
+    const hit=ctx.createBufferSource();hit.buffer=noiseBuffer(0.32);
+    const hp=ctx.createBiquadFilter();hp.type="highpass";hp.frequency.value=900;
+    const hg=ctx.createGain();hit.connect(hp);hp.connect(hg);hg.connect(v.g);
+    hg.gain.setValueAtTime(0.72,t0);hg.gain.exponentialRampToValueAtTime(0.001,t0+0.22);
+    hit.start(t0);hit.stop(t0+0.33);v.nodes.push(hit);
+
+    const rum=ctx.createBufferSource();rum.buffer=noiseBuffer(2.8);
+    const rlp=ctx.createBiquadFilter();rlp.type="lowpass";rlp.frequency.value=95;
+    const rg=ctx.createGain();rum.connect(rlp);rlp.connect(rg);rg.connect(v.g);
+    rg.gain.setValueAtTime(0.18,t0+0.05);rg.gain.exponentialRampToValueAtTime(0.001,t0+2.9);
+    rum.start(t0);rum.stop(t0+3.0);v.nodes.push(rum);
   }
 ];
 const sfxBtns=[...document.querySelectorAll(".sfx")];
