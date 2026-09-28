@@ -957,7 +957,7 @@ class MoviesActivity : AppCompatActivity() {
         return if (isPrimaryRubenMusic || isRubenFallback) {
             "Ruben music"
         } else {
-            remoteStickDisplayName(stick)
+            stick.deviceName + " • " + stick.stickName
         }
     }
 
