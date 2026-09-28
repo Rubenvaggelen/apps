@@ -7,7 +7,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT%Update-The-One-DJ
 if not exist "%PAGE%" exit /b 1
 set "URL=file:///%PAGE:\=/%"
 if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" (
-  start "The One DJ" "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" --app="%URL%" --start-maximized
+  start "The One DJ" "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" --allow-file-access-from-files --app="%URL%" --start-maximized
   exit /b 0
 )
 if exist "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe" (
