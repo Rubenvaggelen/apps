@@ -53,23 +53,13 @@ jobs:
             echo "=== CACHE DETAIL ==="
             du -sh "$HOME/the-one-music-cache/files" "$HOME/the-one-music-cache/meta" 2>/dev/null || true
             echo "=== CATALOG ENTRIES ==="
-            php -r '
-              foreach (glob(getenv("HOME")."/the-one-music-cache/meta/*.json") ?: [] as $f) {
-                $v=json_decode((string)@file_get_contents($f), true);
-                if (!is_array($v)) continue;
-                printf(
-                  "%s | device=%s | device_name=%s | stick=%s | stick_name=%s | files=%d | online=%s | updated=%s\n",
-                  basename($f),
-                  (string)($v["device_id"] ?? ""),
-                  (string)($v["device_name"] ?? ""),
-                  (string)($v["stick_id"] ?? ""),
-                  (string)($v["stick_name"] ?? ""),
-                  is_array($v["files"] ?? null) ? count($v["files"]) : 0,
-                  !empty($v["online"]) ? "1" : "0",
-                  (string)($v["updated_at"] ?? "")
-                );
-              }
-            ' || true
+            for f in "$HOME"/the-one-music-cache/meta/*.json; do
+              [ -f "$f" ] || continue
+              echo "--- $(basename "$f") ---"
+              grep -E '"device_id"|"device_name"|"stick_id"|"stick_name"|"online"|"updated_at"' "$f" | head -12 || true
+              printf "path_count="
+              grep -c '"path"' "$f" || true
+            done
             echo "=== RECENT META ==="
             find "$HOME/the-one-music-cache/meta" -maxdepth 1 -type f -name "*.json" -printf "%TY-%Tm-%Td %TH:%TM:%TS %s %f\n" 2>/dev/null | sort -r | head -10 || true
             echo "=== RECENT PARTS ==="
