@@ -1872,7 +1872,9 @@ async function loadSharedMediaImports(showStatus=false){
     if(!Array.isArray(names)) throw new Error("bad manifest");
     const files=[],sharedNames=[];
     for(const name of names){
-      if(typeof name!=="string"||!name||sharedLoaded.has(name)) continue;
+      if(typeof name!=="string"||!name) continue;
+      const alreadyVisible=lib.some(t=>t.sharedName===name);
+      if(sharedLoaded.has(name)&&alreadyVisible) continue;
       const r=await fetch("imports/"+encodeURIComponent(name)+"?t="+Date.now(),{cache:"no-store"});
       if(!r.ok) continue;
       const blob=await r.blob();
