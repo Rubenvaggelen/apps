@@ -1,8 +1,8 @@
 {
-  "version": "2.0.5",
-  "build": 205,
-  "notes": "Continuous Auto mode: sync next deck and fade automatically using the configured beat fade",
-  "sha256": "557D7084131F1759DF065D56E1FD2AC96F5A894EA1AF9E23701C609AB9F89208",
+  "version": "2.0.6",
+  "build": 206,
+  "notes": "Persistent reorderable playlist with per-track remove and clear playlist",
+  "sha256": "14766FB8455326C40F11AFEF445159D66BA9871113C0DB24A31FBF1E599E42AB",
   "files": [
     "index.html"
   ]
