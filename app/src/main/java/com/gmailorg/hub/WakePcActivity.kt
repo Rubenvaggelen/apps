@@ -336,6 +336,12 @@ class WakePcActivity : AppCompatActivity() {
                     device.favoritesRights,
                     device.pendingFavorites
                 )
+                addAccessControl(
+                    "The One DJ import",
+                    MainDeviceRegistry.ACCESS_DJ,
+                    device.djRights,
+                    device.pendingDj
+                )
 
                 card.addView(android.widget.Button(this).apply {
                     text = if (device.blocked) "Deblokkeren" else "Blokkeren"
