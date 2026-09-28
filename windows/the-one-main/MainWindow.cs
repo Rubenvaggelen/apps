@@ -2127,7 +2127,10 @@ public sealed class MainWindow : Window
         var canImportToDj =
             Environment.UserName.Equals("ruben", StringComparison.OrdinalIgnoreCase) ||
             userProfileName.Equals("ruben", StringComparison.OrdinalIgnoreCase) ||
-            Environment.MachineName.Equals("Ruben", StringComparison.OrdinalIgnoreCase);
+            Environment.MachineName.Equals("Ruben", StringComparison.OrdinalIgnoreCase) ||
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+                .Replace('/', '\\')
+                .EndsWith("\\Users\\ruben", StringComparison.OrdinalIgnoreCase);
 
         static string WindowsFamilyDeviceId()
         {
@@ -2670,7 +2673,13 @@ public sealed class MainWindow : Window
                 {
                     Width = new GridLength(1, GridUnitType.Star)
                 });
-                if (canImportToDj)
+                var showDjButton =
+                    canImportToDj ||
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+                        .Replace('/', '\\')
+                        .EndsWith("\\Users\\ruben", StringComparison.OrdinalIgnoreCase);
+
+                if (showDjButton)
                     row.ColumnDefinitions.Add(new ColumnDefinition
                     {
                         Width = new GridLength(78)
@@ -2697,7 +2706,7 @@ public sealed class MainWindow : Window
                 row.Children.Add(trackTitle);
 
                 var nextColumn = 1;
-                if (canImportToDj)
+                if (showDjButton)
                 {
                     var dj = SmallButton("→ DJ", () => { });
                     dj.MinWidth = 72;
