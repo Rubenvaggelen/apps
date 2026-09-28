@@ -372,11 +372,14 @@ if ($action === 'dj-queue-add') {
         str_contains($requestKey,'tablet-042ge173') ||
         str_contains($requestKey,'surface')
     ) {
+        // Surface Windows stuurt naar Ruben DJ.
         $targetDevice='windows-ruben';
     } elseif (str_contains($requestKey,'ruben')) {
+        // Ruben Windows stuurt naar Surface DJ.
         $targetDevice='windows-tablet-042ge173';
     } else {
-        $targetDevice='windows-ruben';
+        // Main en andere geautoriseerde clients sturen naar Surface DJ.
+        $targetDevice='windows-tablet-042ge173';
     }
 
     $queue=load_json($djQueueFile);
