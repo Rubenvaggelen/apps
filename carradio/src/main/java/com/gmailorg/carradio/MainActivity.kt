@@ -169,11 +169,6 @@ class MainActivity : AppCompatActivity() {
         buildTiles(); ensurePermissionThenStart(); ensureNotificationPermission(); handler.post(clockTick); UpdateChecker.checkForUpdate(this)
     }
 
-    override fun onResume() {
-        super.onResume()
-        ensureCarPersonRegistration()
-    }
-
     private fun ensureCarPersonRegistration() {
         if (CarFamilyAccess.hasPersonName(this)) {
             remoteMusicIo.execute { runCatching { CarFamilyAccess.heartbeat(this) } }
@@ -2108,6 +2103,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        ensureCarPersonRegistration()
         statusText.text = MessageBus.currentStatus()
         buildTiles()
         refreshCarVolume()
