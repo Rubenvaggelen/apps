@@ -2611,16 +2611,8 @@ public sealed class MainWindow : Window
                 if (showDjButton)
                     row.ColumnDefinitions.Add(new ColumnDefinition
                     {
-                        Width = new GridLength(78)
+                        Width = new GridLength(120)
                     });
-                row.ColumnDefinitions.Add(new ColumnDefinition
-                {
-                    Width = new GridLength(117)
-                });
-                row.ColumnDefinitions.Add(new ColumnDefinition
-                {
-                    Width = new GridLength(111)
-                });
 
                 var trackTitle = new TextBlock
                 {
@@ -2634,41 +2626,18 @@ public sealed class MainWindow : Window
                 Grid.SetColumn(trackTitle, 0);
                 row.Children.Add(trackTitle);
 
-                var nextColumn = 1;
                 if (showDjButton)
                 {
                     var dj = SmallButton("→ DJ", () => { });
-                    dj.MinWidth = 72;
-                    dj.Margin = new Thickness(0, 0, 6, 0);
-                    Grid.SetColumn(dj, nextColumn++);
+                    dj.MinWidth = 108;
+                    dj.Margin = new Thickness(6, 0, 0, 0);
+                    Grid.SetColumn(dj, 1);
                     row.Children.Add(dj);
                     dj.Click += async (_, _) =>
                         await ImportUsbFileToDjAsync(file, dj);
                 }
 
-                var download = SmallButton("↓ Download", () => { });
-                download.MinWidth = 105;
-                download.Margin = new Thickness(6, 0, 6, 0);
-                Grid.SetColumn(download, nextColumn++);
-                row.Children.Add(download);
-                download.Click += async (_, _) =>
-                    await DownloadUsbFileAsync(file, download);
-
-                var play = SmallButton("▶ Afspelen", () => { });
-                play.MinWidth = 105;
-                Grid.SetColumn(play, nextColumn);
-                row.Children.Add(play);
-
                 sharedMediaTrackVisuals.Add((file, trackTitle, row));
-
-                play.Click += async (_, _) =>
-                    await PlayUsbFromFolderAsync(
-                        stick,
-                        allFiles,
-                        folder,
-                        directTracks,
-                        index,
-                        play);
 
                 results.Children.Add(row);
             }
