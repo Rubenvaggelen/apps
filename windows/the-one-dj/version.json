@@ -1,8 +1,8 @@
 {
-  "version": "2.0.7",
-  "build": 207,
-  "notes": "Fix build 206 UI break; keep persistent reorderable playlist, per-track remove and clear playlist",
-  "sha256": "DCB328FFFE0AC97B2CAF74D5DEC8D79EAE192E9C3D29DD942F3936461D2A4258",
+  "version": "2.0.8",
+  "build": 208,
+  "notes": "Hide internal import hashes from DJ track titles",
+  "sha256": "2BF70DB793A7DC329F22A45667E7A3DF3C958F3B5B3BEFE8FE409D33380BFA8C",
   "files": [
     "index.html"
   ]
