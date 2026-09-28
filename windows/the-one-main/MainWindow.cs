@@ -2119,7 +2119,7 @@ public sealed class MainWindow : Window
         var playingUsbStartIndex = -1;
         var playingUsbRelativeIndex = 0;
         var sharedMediaTrackVisuals =
-            new List<(CloudUsbMusicFile File, TextBlock Title, DockPanel Row)>();
+            new List<(CloudUsbMusicFile File, TextBlock Title, Panel Row)>();
 
         var userProfileName = Path.GetFileName(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
@@ -2662,34 +2662,27 @@ public sealed class MainWindow : Window
                 var index = i;
                 var file = directTracks[index];
 
-                var row = new DockPanel
+                var row = new Grid
                 {
                     Margin = new Thickness(0, 4, 0, 4)
                 };
-
-                var play = SmallButton("▶ Afspelen", () => { });
-                play.MinWidth = 105;
-                DockPanel.SetDock(play, Dock.Right);
-                row.Children.Add(play);
-
-                var download = SmallButton("↓ Download", () => { });
-                download.MinWidth = 105;
-                download.Margin = new Thickness(6, 0, 6, 0);
-                DockPanel.SetDock(download, Dock.Right);
-                row.Children.Add(download);
-                download.Click += async (_, _) =>
-                    await DownloadUsbFileAsync(file, download);
-
-                if (canImportToDj)
+                row.ColumnDefinitions.Add(new ColumnDefinition
                 {
-                    var dj = SmallButton("→ DJ", () => { });
-                    dj.MinWidth = 72;
-                    dj.Margin = new Thickness(0, 0, 6, 0);
-                    DockPanel.SetDock(dj, Dock.Right);
-                    row.Children.Add(dj);
-                    dj.Click += async (_, _) =>
-                        await ImportUsbFileToDjAsync(file, dj);
-                }
+                    Width = new GridLength(1, GridUnitType.Star)
+                });
+                if (canImportToDj)
+                    row.ColumnDefinitions.Add(new ColumnDefinition
+                    {
+                        Width = new GridLength(78)
+                    });
+                row.ColumnDefinitions.Add(new ColumnDefinition
+                {
+                    Width = new GridLength(117)
+                });
+                row.ColumnDefinitions.Add(new ColumnDefinition
+                {
+                    Width = new GridLength(111)
+                });
 
                 var trackTitle = new TextBlock
                 {
@@ -2700,7 +2693,34 @@ public sealed class MainWindow : Window
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = new Thickness(0, 0, 12, 0)
                 };
+                Grid.SetColumn(trackTitle, 0);
                 row.Children.Add(trackTitle);
+
+                var nextColumn = 1;
+                if (canImportToDj)
+                {
+                    var dj = SmallButton("→ DJ", () => { });
+                    dj.MinWidth = 72;
+                    dj.Margin = new Thickness(0, 0, 6, 0);
+                    Grid.SetColumn(dj, nextColumn++);
+                    row.Children.Add(dj);
+                    dj.Click += async (_, _) =>
+                        await ImportUsbFileToDjAsync(file, dj);
+                }
+
+                var download = SmallButton("↓ Download", () => { });
+                download.MinWidth = 105;
+                download.Margin = new Thickness(6, 0, 6, 0);
+                Grid.SetColumn(download, nextColumn++);
+                row.Children.Add(download);
+                download.Click += async (_, _) =>
+                    await DownloadUsbFileAsync(file, download);
+
+                var play = SmallButton("▶ Afspelen", () => { });
+                play.MinWidth = 105;
+                Grid.SetColumn(play, nextColumn);
+                row.Children.Add(play);
+
                 sharedMediaTrackVisuals.Add((file, trackTitle, row));
 
                 play.Click += async (_, _) =>
