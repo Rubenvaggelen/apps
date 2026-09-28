@@ -357,13 +357,31 @@ if ($action === 'dj-queue-add') {
     if ($name === '') $name=basename($path);
     $title=trim((string)($body['title'] ?? $name));
 
+    // DJ-imports zijn gericht: Surface stuurt naar Ruben, Ruben stuurt naar Surface.
+    // Main/andere clients blijven naar Ruben sturen.
+    $requestKey=strtolower($requestDevice);
+    if (
+        str_contains($requestKey,'tablet-042ge173') ||
+        str_contains($requestKey,'surface')
+    ) {
+        $targetDevice='windows-ruben';
+    } elseif (str_contains($requestKey,'ruben')) {
+        $targetDevice='windows-tablet-042ge173';
+    } else {
+        $targetDevice='windows-ruben';
+    }
+
     $queue=load_json($djQueueFile);
     $items=is_array($queue['items'] ?? null) ? $queue['items'] : [];
-    $dedupe=hash('sha256',$device."\n".$stick."\n".$path);
+    $dedupe=hash('sha256',$device."\n".$stick."\n".$path."\n".$targetDevice);
     foreach ($items as $row) {
         if (!is_array($row)) continue;
-        if (($row['status'] ?? '') === 'pending' && ($row['dedupe'] ?? '') === $dedupe) {
-            out(200,['ok'=>true,'queued'=>true,'duplicate'=>true,'id'=>(string)($row['id'] ?? '')]);
+        if (
+            ($row['status'] ?? '') === 'pending' &&
+            ($row['dedupe'] ?? '') === $dedupe &&
+            strtolower((string)($row['target_device_id'] ?? 'windows-ruben')) === $targetDevice
+        ) {
+            out(200,['ok'=>true,'queued'=>true,'duplicate'=>true,'id'=>(string)($row['id'] ?? ''),'target_device_id'=>$targetDevice]);
         }
     }
 
@@ -378,19 +396,28 @@ if ($action === 'dj-queue-add') {
         'name'=>mb_substr($name,0,240),
         'title'=>mb_substr($title,0,240),
         'requested_by'=>$requestDevice,
+        'target_device_id'=>$targetDevice,
         'created_at'=>gmdate('c')
     ];
     $queue['items']=$items;
     if (!save_json($djQueueFile,$queue)) out(500,['ok'=>false,'error'=>'queue storage failed']);
-    out(200,['ok'=>true,'queued'=>true,'id'=>$id]);
+    out(200,['ok'=>true,'queued'=>true,'id'=>$id,'target_device_id'=>$targetDevice]);
 }
 
 if ($action === 'dj-queue-list') {
     require_auth($sec);
+    $requestDevice=strtolower(safe_id((string)($_GET['request_device_id'] ?? '')));
+    if ($requestDevice === '') out(400,['ok'=>false,'error'=>'request_device_id required']);
+
     $queue=load_json($djQueueFile);
     $items=array_values(array_filter(
         is_array($queue['items'] ?? null) ? $queue['items'] : [],
-        fn($row)=>is_array($row) && (($row['status'] ?? '') === 'pending')
+        function($row) use ($requestDevice) {
+            if (!is_array($row) || (($row['status'] ?? '') !== 'pending')) return false;
+            // Legacy queue-items zonder doel horen bij Ruben.
+            $target=strtolower((string)($row['target_device_id'] ?? 'windows-ruben'));
+            return $target === $requestDevice;
+        }
     ));
     out(200,['ok'=>true,'items'=>$items]);
 }
@@ -399,16 +426,25 @@ if ($action === 'dj-queue-ack') {
     require_auth($sec);
     $body=read_json();
     $id=trim((string)($body['id'] ?? ''));
+    $requestDevice=strtolower(safe_id((string)($body['request_device_id'] ?? '')));
     if ($id === '') out(400,['ok'=>false,'error'=>'id required']);
+    if ($requestDevice === '') out(400,['ok'=>false,'error'=>'request_device_id required']);
+
     $queue=load_json($djQueueFile);
     $items=is_array($queue['items'] ?? null) ? $queue['items'] : [];
+    $found=false;
     foreach ($items as &$row) {
         if (!is_array($row) || ($row['id'] ?? '') !== $id) continue;
+        $target=strtolower((string)($row['target_device_id'] ?? 'windows-ruben'));
+        if ($target !== $requestDevice) out(403,['ok'=>false,'error'=>'wrong DJ target']);
         $row['status']='done';
         $row['completed_at']=gmdate('c');
+        $row['completed_by']=$requestDevice;
+        $found=true;
         break;
     }
     unset($row);
+    if (!$found) out(404,['ok'=>false,'error'=>'queue item not found']);
     $queue['items']=$items;
     if (!save_json($djQueueFile,$queue)) out(500,['ok'=>false,'error'=>'queue storage failed']);
     out(200,['ok'=>true]);
