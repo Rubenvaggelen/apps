@@ -99,6 +99,7 @@ class MainActivity : AppCompatActivity() {
     private var draggingView: View? = null
     private var currentFamilyStick: RemoteUsbMusicClient.RemoteStick? = null
     private var currentFamilyFiles: List<RemoteUsbMusicClient.RemoteFile> = emptyList()
+    private var carPersonDialogShowing = false
 
     private data class FixedTile(val id: String, val label: String, val icon: Int, val featured: Boolean = false, val action: (MainActivity) -> Unit)
     private data class RenderTile(
@@ -164,8 +165,76 @@ class MainActivity : AppCompatActivity() {
         MessageBus.addDataListener(dataListener)
         tileGrid.setOnDragListener { _, event -> handleTileDrag(event) }
         UsbPlaybackService.resumeLastSessionIfNeeded(this)
-        remoteMusicIo.execute { runCatching { CarFamilyAccess.heartbeat(this) } }
+        ensureCarPersonRegistration()
         buildTiles(); ensurePermissionThenStart(); ensureNotificationPermission(); handler.post(clockTick); UpdateChecker.checkForUpdate(this)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        ensureCarPersonRegistration()
+    }
+
+    private fun ensureCarPersonRegistration() {
+        if (CarFamilyAccess.hasPersonName(this)) {
+            remoteMusicIo.execute { runCatching { CarFamilyAccess.heartbeat(this) } }
+            return
+        }
+        if (carPersonDialogShowing || isFinishing || isDestroyed) return
+        carPersonDialogShowing = true
+
+        val input = EditText(this).apply {
+            hint = "Jouw naam"
+            isSingleLine = true
+            maxLines = 1
+            setPadding(24, 14, 24, 14)
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Wie gebruikt The One Car?")
+            .setMessage(
+                "Vul één keer je naam in. Deze naam wordt aan deze Car gekoppeld " +
+                    "zodat The One kan zien van wie dit apparaat is."
+            )
+            .setView(input)
+            .setPositiveButton("Opslaan", null)
+            .setCancelable(false)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val personName = input.text.toString().trim()
+                if (personName.length < 2) {
+                    input.error = "Vul je naam in"
+                    return@setOnClickListener
+                }
+
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
+                CarFamilyAccess.savePersonName(this, personName)
+
+                remoteMusicIo.execute {
+                    val ok = runCatching {
+                        CarFamilyAccess.heartbeat(this)
+                    }.isSuccess
+                    runOnUiThread {
+                        if (ok) {
+                            dialog.dismiss()
+                            Toast.makeText(
+                                this,
+                                "$personName is gekoppeld aan The One Car • alle mediarechten actief",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        } else {
+                            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
+                            input.error = "Registreren mislukt. Probeer opnieuw."
+                        }
+                    }
+                }
+            }
+        }
+        dialog.setOnDismissListener {
+            carPersonDialogShowing = false
+        }
+        dialog.show()
     }
 
     private fun buildTiles() {
