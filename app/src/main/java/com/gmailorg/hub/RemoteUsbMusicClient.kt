@@ -317,6 +317,41 @@ object RemoteUsbMusicClient {
             "&path=" + enc(file.path)
     }
 
+    fun queueDjImport(context: Context, file: RemoteFile): Boolean {
+        val token = token(context)
+        val body = JSONObject()
+            .put("request_device_id", MainDeviceRegistry.deviceId(context))
+            .put("device_id", file.deviceId)
+            .put("stick_id", file.stickId)
+            .put("path", file.path)
+            .put("name", file.name)
+            .put("title", file.displayName)
+
+        val connection = open(ENDPOINT + "?action=dj-queue-add", "POST")
+        connection.setRequestProperty("Authorization", "Bearer " + token)
+        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        connection.doOutput = true
+        OutputStreamWriter(connection.outputStream, StandardCharsets.UTF_8).use {
+            it.write(body.toString())
+        }
+
+        val code = connection.responseCode
+        if (code == 401) {
+            connection.disconnect()
+            clearToken(context)
+            throw AuthRequired()
+        }
+        val json = JSONObject(readBody(connection))
+        connection.disconnect()
+        if (code == 403) {
+            throw IllegalStateException("Geen toestemming voor DJ-import")
+        }
+        if (code !in 200..299 || !json.optBoolean("queued", false)) {
+            throw IllegalStateException(json.optString("error", "Naar DJ sturen mislukt"))
+        }
+        return true
+    }
+
     fun streamUrl(context: Context, favorite: FavoriteItem): String {
         if (!favorite.kind.equals("usb", ignoreCase = true)) {
             return favorite.url
