@@ -612,10 +612,13 @@ function smooth(param,v){param.setTargetAtTime(v,ctx.currentTime,0.015)}
 function applyMaster(){if(master) smooth(master.gain.gain,state.master*state.master*1.25)}
 function applyXfade(){
   if(!ctx) return;
-  const t=(state.xf+1)/2;
-  const gA=t<=0.5?1:Math.cos((t-0.5)*Math.PI);
-  const gB=t>=0.5?1:Math.cos((0.5-t)*Math.PI);
-  smooth(decks[0].n.xf.gain,gA);smooth(decks[1].n.xf.gain,gB);
+  const t=clamp((state.xf+1)/2,0,1);
+  // Equal-power crossfade: zodra je richting het andere deck beweegt,
+  // zakt het huidige deck direct soepel mee en komt het andere deck op.
+  const gA=Math.cos(t*Math.PI/2);
+  const gB=Math.sin(t*Math.PI/2);
+  smooth(decks[0].n.xf.gain,gA);
+  smooth(decks[1].n.xf.gain,gB);
 }
 
 /* tempo + waveform analysis */
@@ -1976,7 +1979,7 @@ document.getElementById("libBtn").addEventListener("click",()=>library.classList
 document.getElementById("libClose").addEventListener("click",()=>library.classList.remove("open"));
 libList.addEventListener("click",e=>{if(e.target.closest("button")) library.classList.remove("open")});
 
-const WINDOWS_BUILD=212;
+const WINDOWS_BUILD=213;
 const updateBtn=document.getElementById("updateBtn");
 updateBtn?.addEventListener("click",async()=>{
   const old=updateBtn.textContent;updateBtn.disabled=true;updateBtn.textContent="Controleren…";
