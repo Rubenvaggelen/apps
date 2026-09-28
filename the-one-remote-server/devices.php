@@ -204,7 +204,7 @@ if ($action === 'heartbeat') {
     $owner = $ownerId !== '' && hash_equals($ownerId, $deviceId);
     $rights = device_access_rights($state['devices'][$deviceId]);
     if ($owner) {
-        $rights = ['mixes' => true, 'shared' => true, 'favorites' => true];
+        $rights = ['mixes' => true, 'shared' => true, 'favorites' => true, 'dj' => true];
     }
     respond_devices(200, [
         'ok' => true,
@@ -411,7 +411,7 @@ if ($action === 'list') {
         $d['owner'] = $owner;
         $d['music_rights'] = $owner || (bool)($d['music_rights'] ?? false);
         $d['access_rights'] = $owner
-            ? ['mixes' => true, 'shared' => true, 'favorites' => true, 'dj' => false]
+            ? ['mixes' => true, 'shared' => true, 'favorites' => true, 'dj' => true]
             : device_access_rights($d);
         $d['access_requests'] = device_access_requests($d);
         $d['person_name'] = $personName;
