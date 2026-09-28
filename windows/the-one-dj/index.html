@@ -1906,13 +1906,16 @@ function autoFill(){
     t.status="loading";renderLib();playlistWrite();d.load(t.file,t);
   }
 }
-function removeLibItem(t){
+async function removeLibItem(t){
   const d=decks.find(x=>x.libItem===t);
-  if(d&&d.playing) d.pause();
+  try{if(d&&d.playing) d.pause()}catch(e){}
   if(d&&d.libItem===t){d.libItem=null;d.buffer=null;d.done=false;d.pos=0;d.dur=0;d.ui.title.textContent="Geen nummer geladen";d.ui.sub.textContent=""}
   const i=lib.indexOf(t);if(i>=0) lib.splice(i,1);
-  if(t.sharedName) sharedLoaded.delete(t.sharedName);
   renderLib();playlistWrite();autoFill();
+  if(t.sharedName){
+    sharedLoaded.delete(t.sharedName);
+    try{await fetch("imports/remove?name="+encodeURIComponent(t.sharedName),{method:"POST",cache:"no-store"})}catch(e){}
+  }
 }
 function renderLib(){
   libEmpty.hidden=lib.length>0;libList.innerHTML="";
@@ -1945,15 +1948,19 @@ function renderLib(){
     li.append(drag,tag,name,a,b,x);libList.appendChild(li);
   });
 }
-document.getElementById("clearPlaylist")?.addEventListener("click",()=>{
+document.getElementById("clearPlaylist")?.addEventListener("click",async()=>{
   if(!lib.length) return;
   if(!confirm("Hele playlist wissen?")) return;
+  lib.length=0;
+  renderLib();
+  await clearStoredPlaylist();
   for(const d of decks){
-    if(d.playing) d.pause();
+    try{if(d.playing) d.pause()}catch(e){}
     d.libItem=null;d.buffer=null;d.done=false;d.pos=0;d.dur=0;
     d.ui.title.textContent="Geen nummer geladen";d.ui.sub.textContent="";
   }
-  lib.length=0;sharedLoaded.clear();renderLib();clearStoredPlaylist();
+  sharedLoaded.clear();
+  try{await fetch("imports/clear",{method:"POST",cache:"no-store"})}catch(e){}
 });
 playlistRead();
 
@@ -1962,7 +1969,7 @@ document.getElementById("libBtn").addEventListener("click",()=>library.classList
 document.getElementById("libClose").addEventListener("click",()=>library.classList.remove("open"));
 libList.addEventListener("click",e=>{if(e.target.closest("button")) library.classList.remove("open")});
 
-const WINDOWS_BUILD=208;
+const WINDOWS_BUILD=209;
 const updateBtn=document.getElementById("updateBtn");
 updateBtn?.addEventListener("click",async()=>{
   const old=updateBtn.textContent;updateBtn.disabled=true;updateBtn.textContent="Controleren…";
