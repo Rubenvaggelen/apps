@@ -1477,8 +1477,13 @@ class MoviesActivity : AppCompatActivity() {
         val density = resources.displayMetrics.density
         val favoriteWidth = (48 * density).toInt()
         val downloadWidth = (58 * density).toInt()
+        val djWidth = (58 * density).toInt()
         val playWidth = (62 * density).toInt()
         val actionGap = (14 * density).toInt()
+        val canDjImport = MainDeviceRegistry.hasAccess(
+            this,
+            MainDeviceRegistry.ACCESS_DJ
+        )
         val trackRows = mutableListOf<LinearLayout>()
         val trackNumbers = mutableListOf<TextView>()
         val trackTitles = mutableListOf<TextView>()
@@ -1695,8 +1700,47 @@ class MoviesActivity : AppCompatActivity() {
                 LinearLayout.LayoutParams(
                     downloadWidth,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                )
+                ).apply {
+                    if (canDjImport) marginEnd = (8 * density).toInt()
+                }
             )
+
+            if (canDjImport) {
+                val dj = TextView(this).apply {
+                    text = "DJ"
+                    textSize = 14f
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    setTextColor(Color.parseColor("#20B8FF"))
+                    gravity = android.view.Gravity.CENTER
+                    contentDescription = "Stuur ${file.name} naar The One DJ"
+                    setBackgroundResource(R.drawable.bg_the_one_blue_button)
+                    setPadding(
+                        (10 * density).toInt(),
+                        (9 * density).toInt(),
+                        (10 * density).toInt(),
+                        (9 * density).toInt()
+                    )
+                    alpha = if (file.cached) 1f else 0.35f
+                    setOnClickListener {
+                        if (file.cached) {
+                            requestRemoteUsbDjImport(file, this)
+                        } else {
+                            Toast.makeText(
+                                this@MoviesActivity,
+                                "DJ-import beschikbaar zodra synchronisatie klaar is.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                }
+                actions.addView(
+                    dj,
+                    LinearLayout.LayoutParams(
+                        djWidth,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                )
+            }
 
             row.addView(
                 actions,
@@ -1874,6 +1918,62 @@ class MoviesActivity : AppCompatActivity() {
                     ).show()
                 } else {
                     Toast.makeText(this, "Favoriet opslaan mislukt", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    private fun requestRemoteUsbDjImport(
+        file: RemoteUsbMusicClient.RemoteFile,
+        button: TextView
+    ) {
+        button.isEnabled = false
+        remoteMusicIo.execute {
+            val access = try {
+                MainDeviceRegistry.refreshAccess(
+                    this,
+                    MainDeviceRegistry.ACCESS_DJ
+                )
+            } catch (_: Exception) {
+                null
+            }
+
+            val result = if (access?.allowed == true) {
+                try {
+                    if (!RemoteUsbMusicClient.hasToken(this) &&
+                        !RemoteUsbMusicClient.loginForBrowsing(this)
+                    ) {
+                        false
+                    } else {
+                        RemoteUsbMusicClient.queueDjImport(this, file)
+                    }
+                } catch (_: Exception) {
+                    false
+                }
+            } else {
+                false
+            }
+
+            runOnUiThread {
+                button.isEnabled = true
+                if (access?.allowed != true) {
+                    Toast.makeText(
+                        this,
+                        "Geen toestemming voor The One DJ import.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } else if (result) {
+                    Toast.makeText(
+                        this,
+                        "Naar The One DJ gestuurd: ${cleanUsbTrackTitle(file.displayName)}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    Toast.makeText(
+                        this,
+                        "Naar DJ sturen mislukt.",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
         }
