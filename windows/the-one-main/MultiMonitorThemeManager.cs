@@ -145,7 +145,6 @@ public sealed class MultiMonitorThemeManager : IDisposable
             Foreground = new SolidColorBrush(Color.FromRgb(145, 164, 189)),
             FontSize = 13,
             FontWeight = FontWeights.SemiBold,
-            CharacterSpacing = 180,
             HorizontalAlignment = HorizontalAlignment.Center,
             Margin = new Thickness(0, 7, 0, 0)
         });
