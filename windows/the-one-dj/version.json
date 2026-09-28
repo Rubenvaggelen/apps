@@ -1,8 +1,8 @@
 {
-  "version": "2.1.3",
-  "build": 213,
-  "notes": "Smooth equal-power crossfade so outgoing deck volume follows the fader",
-  "sha256": "286464EEC29F0656E439877801BBC882B13EF9A54DF45DE2B520424E3D4E4595",
+  "version": "2.1.4",
+  "build": 214,
+  "notes": "Fix Wis playlist so it clears UI, IndexedDB and Shared Media imports reliably",
+  "sha256": "791623645917F44A5E0124AAFD7D0263DE8144A1E01CE3FA231E703D72D90999",
   "files": [
     "index.html"
   ]
