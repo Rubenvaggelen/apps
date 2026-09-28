@@ -466,6 +466,7 @@ body:not(.hp-on) .cue-hp{display:none}
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 const nextFrame=()=>new Promise(r=>requestAnimationFrame(()=>setTimeout(r,0)));
 const baseName=f=>f.name.replace(/\.[^.]+$/,"");
+const cleanImportedName=name=>String(name||"").replace(/^[0-9a-f]{12}-/i,"");
 function fmtTime(t){
   t=Math.max(0,t||0);const tt=Math.floor(t*10);
   const m=Math.floor(tt/600),s=Math.floor((tt%600)/10),d=tt%10;
@@ -1831,7 +1832,7 @@ async function playlistRead(){
       for(const r of rows){
         if(!r||!r.file) continue;
         const status=["played","error"].includes(r.status)?r.status:"queued";
-        const item={id:r.id||playlistId(),file:r.file,name:r.name||baseName(r.file),status,sharedName:r.sharedName||""};
+        const item={id:r.id||playlistId(),file:r.file,name:cleanImportedName(r.name||baseName(r.file)),status,sharedName:r.sharedName||""};
         lib.push(item);
         if(item.sharedName) sharedLoaded.add(item.sharedName);
       }
@@ -1853,7 +1854,7 @@ async function clearStoredPlaylist(){
 function addToLib(files,sharedNames=[]){
   files.forEach((f,i)=>{
     if(!f||/^(image|text)\//.test(f.type)) return;
-    lib.push({id:playlistId(),file:f,name:baseName(f),status:"queued",sharedName:sharedNames[i]||""});
+    lib.push({id:playlistId(),file:f,name:cleanImportedName(baseName(f)),status:"queued",sharedName:sharedNames[i]||""});
   });
   renderLib();playlistWrite();autoFill();
 }
@@ -1961,7 +1962,7 @@ document.getElementById("libBtn").addEventListener("click",()=>library.classList
 document.getElementById("libClose").addEventListener("click",()=>library.classList.remove("open"));
 libList.addEventListener("click",e=>{if(e.target.closest("button")) library.classList.remove("open")});
 
-const WINDOWS_BUILD=207;
+const WINDOWS_BUILD=208;
 const updateBtn=document.getElementById("updateBtn");
 updateBtn?.addEventListener("click",async()=>{
   const old=updateBtn.textContent;updateBtn.disabled=true;updateBtn.textContent="Controleren…";
