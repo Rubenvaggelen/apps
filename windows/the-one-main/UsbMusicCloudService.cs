@@ -168,22 +168,11 @@ public static class UsbMusicCloudService
         }
     }
 
-    private static bool IsPrimaryDjHost()
-    {
-        var user = Environment.UserName;
-        var machine = Environment.MachineName;
-        var profile = Path.GetFileName(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-
-        return user.Equals("ruben", StringComparison.OrdinalIgnoreCase) ||
-               profile.Equals("ruben", StringComparison.OrdinalIgnoreCase) ||
-               machine.Equals("Ruben", StringComparison.OrdinalIgnoreCase);
-    }
+    private static string CurrentDjDeviceId() =>
+        "windows-" + SafeId(Environment.MachineName).ToLowerInvariant();
 
     private static async Task PullDjQueueAsync(CancellationToken cancellationToken)
     {
-        if (!IsPrimaryDjHost()) return;
 
         var djRoot = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -194,9 +183,11 @@ public static class UsbMusicCloudService
 
         await EnsureTokenAsync(cancellationToken);
 
+        var currentDjDeviceId = CurrentDjDeviceId();
         using var request = new HttpRequestMessage(
             HttpMethod.Get,
-            Endpoint + "?action=dj-queue-list");
+            Endpoint + "?action=dj-queue-list&request_device_id=" +
+            Uri.EscapeDataString(currentDjDeviceId));
         request.Headers.Authorization =
             new AuthenticationHeaderValue("Bearer", _token);
 
@@ -309,7 +300,11 @@ public static class UsbMusicCloudService
                     cancellationToken);
             }
 
-            var ackBody = JsonSerializer.Serialize(new { id });
+            var ackBody = JsonSerializer.Serialize(new
+            {
+                id,
+                request_device_id = currentDjDeviceId
+            });
             using var ack = new HttpRequestMessage(
                 HttpMethod.Post,
                 Endpoint + "?action=dj-queue-ack")
