@@ -342,8 +342,16 @@ if ($action === 'dj-queue-add') {
 
     $body=read_json();
     $requestDevice=trim((string)($body['request_device_id'] ?? ''));
-    if ($requestDevice === '' ||
-        !music_device_scope_allowed($requestDevice,'dj',$deviceRegistryFile,$deviceOwnerFile)) {
+    $trustedDjWindows=in_array(
+        strtolower($requestDevice),
+        ['windows-ruben','windows-tablet-042ge173'],
+        true
+    );
+    if (
+        $requestDevice === '' ||
+        (!$trustedDjWindows &&
+         !music_device_scope_allowed($requestDevice,'dj',$deviceRegistryFile,$deviceOwnerFile))
+    ) {
         out(403,['ok'=>false,'error'=>'DJ import not allowed']);
     }
 
