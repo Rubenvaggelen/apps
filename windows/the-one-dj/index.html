@@ -1860,10 +1860,13 @@ function addToLib(files,sharedNames=[]){
 }
 document.getElementById("libInput").addEventListener("change",e=>{addToLib([...e.target.files]);e.target.value=""});
 
+let sharedMediaImportBusy=false;
 async function loadSharedMediaImports(showStatus=false){
+  if(sharedMediaImportBusy) return;
+  sharedMediaImportBusy=true;
   const btn=document.getElementById("sharedMediaImport");
   const old=btn?.textContent;
-  if(btn){btn.disabled=true;btn.textContent="Laden…";}
+  if(showStatus&&btn){btn.disabled=true;btn.textContent="Laden…";}
   let added=0;
   try{
     const mr=await fetch("imports/shared-media.json?t="+Date.now(),{cache:"no-store"});
@@ -1888,7 +1891,8 @@ async function loadSharedMediaImports(showStatus=false){
   }catch(e){
     if(showStatus) alert("Nog geen Shared Media-nummers geïmporteerd.");
   }finally{
-    if(btn){btn.disabled=false;btn.textContent=old;}
+    sharedMediaImportBusy=false;
+    if(showStatus&&btn){btn.disabled=false;btn.textContent=old||"Shared Media";}
   }
 }
 document.getElementById("sharedMediaImport")?.addEventListener("click",()=>loadSharedMediaImports(true));
@@ -1972,7 +1976,7 @@ document.getElementById("libBtn").addEventListener("click",()=>library.classList
 document.getElementById("libClose").addEventListener("click",()=>library.classList.remove("open"));
 libList.addEventListener("click",e=>{if(e.target.closest("button")) library.classList.remove("open")});
 
-const WINDOWS_BUILD=210;
+const WINDOWS_BUILD=211;
 const updateBtn=document.getElementById("updateBtn");
 updateBtn?.addEventListener("click",async()=>{
   const old=updateBtn.textContent;updateBtn.disabled=true;updateBtn.textContent="Controleren…";
