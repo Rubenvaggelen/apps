@@ -2121,6 +2121,47 @@ public sealed class MainWindow : Window
         var sharedMediaTrackVisuals =
             new List<(CloudUsbMusicFile File, TextBlock Title, DockPanel Row)>();
 
+        var canImportToDj =
+            Environment.UserName.Equals("ruben", StringComparison.OrdinalIgnoreCase) ||
+            Environment.MachineName.Equals("Ruben", StringComparison.OrdinalIgnoreCase);
+
+        static string WindowsFamilyDeviceId()
+        {
+            var value = Environment.MachineName;
+            var safe = new StringBuilder();
+            foreach (var ch in value)
+                safe.Append(char.IsLetterOrDigit(ch) || ch is '.' or '_' or '-' ? ch : '-');
+            return "windows-" + safe.ToString().Trim('-');
+        }
+
+        async Task RefreshDjImportPermissionAsync()
+        {
+            if (canImportToDj) return;
+
+            try
+            {
+                var body = JsonSerializer.Serialize(new
+                {
+                    device_id = WindowsFamilyDeviceId(),
+                    scope = "dj"
+                });
+                using var response = await Http.PostAsync(
+                    "https://rubenvanaggelen.com/the-one-remote-api/devices.php?action=access_status",
+                    new StringContent(body, Encoding.UTF8, "application/json"));
+                if (!response.IsSuccessStatusCode) return;
+
+                var raw = await response.Content.ReadAsStringAsync();
+                using var json = JsonDocument.Parse(raw);
+                canImportToDj =
+                    json.RootElement.TryGetProperty("allowed", out var allowed) &&
+                    allowed.GetBoolean();
+            }
+            catch
+            {
+                canImportToDj = false;
+            }
+        }
+
         static bool SameSharedMediaFile(
             CloudUsbMusicFile left,
             CloudUsbMusicFile right) =>
@@ -2635,13 +2676,16 @@ public sealed class MainWindow : Window
                 download.Click += async (_, _) =>
                     await DownloadUsbFileAsync(file, download);
 
-                var dj = SmallButton("→ DJ", () => { });
-                dj.MinWidth = 72;
-                dj.Margin = new Thickness(0, 0, 6, 0);
-                DockPanel.SetDock(dj, Dock.Right);
-                row.Children.Add(dj);
-                dj.Click += async (_, _) =>
-                    await ImportUsbFileToDjAsync(file, dj);
+                if (canImportToDj)
+                {
+                    var dj = SmallButton("→ DJ", () => { });
+                    dj.MinWidth = 72;
+                    dj.Margin = new Thickness(0, 0, 6, 0);
+                    DockPanel.SetDock(dj, Dock.Right);
+                    row.Children.Add(dj);
+                    dj.Click += async (_, _) =>
+                        await ImportUsbFileToDjAsync(file, dj);
+                }
 
                 var trackTitle = new TextBlock
                 {
@@ -2670,6 +2714,8 @@ public sealed class MainWindow : Window
             RefreshSharedMediaTrackHighlights();
             resultsScroll.ScrollToTop();
         }
+
+        _ = RefreshDjImportPermissionAsync();
 
         _openCurrentUsbFolderAction = () =>
         {
