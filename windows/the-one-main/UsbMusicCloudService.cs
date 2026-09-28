@@ -146,7 +146,8 @@ public static class UsbMusicCloudService
             {
                 device_id = "windows-" + SafeId(rawMachine),
                 name = displayName,
-                person_name = "",
+                person_name = displayName,
+                device_role = "windows",
                 platform = "Windows",
                 version = ""
             });
