@@ -1,8 +1,8 @@
 {
-  "version": "2.0.8",
-  "build": 208,
-  "notes": "Hide internal import hashes from DJ track titles",
-  "sha256": "2BF70DB793A7DC329F22A45667E7A3DF3C958F3B5B3BEFE8FE409D33380BFA8C",
+  "version": "2.0.9",
+  "build": 209,
+  "notes": "Persistent clear playlist and per-track remove for Shared Media imports",
+  "sha256": "2F279CB6CA716FAC581E96454A72D9D645870B937FF38F65C222894BE0FC8BBF",
   "files": [
     "index.html"
   ]
