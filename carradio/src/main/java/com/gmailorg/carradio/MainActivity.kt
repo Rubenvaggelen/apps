@@ -1145,6 +1145,22 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun remoteStickDisplayName(stick: RemoteUsbMusicClient.RemoteStick): String {
+        val isPrimaryRubenMusic =
+            stick.deviceName.equals("Surface", ignoreCase = true) &&
+                stick.stickName.equals("Ruben music", ignoreCase = true)
+        val isRubenFallback =
+            stick.deviceName.equals("Ruben", ignoreCase = true) &&
+                (stick.stickName.equals("Ruben", ignoreCase = true) ||
+                    stick.stickName.equals("Ruben music", ignoreCase = true))
+
+        return if (isPrimaryRubenMusic || isRubenFallback) {
+            "Ruben music"
+        } else {
+            remoteStickDisplayName(stick)
+        }
+    }
+
     private fun showRemoteStickDialog(sticks: List<RemoteUsbMusicClient.RemoteStick>) {
         val dialog = Dialog(this)
         val panel = LinearLayout(this).apply {
@@ -1217,7 +1233,7 @@ class MainActivity : AppCompatActivity() {
             }
             copy.addView(
                 TextView(this).apply {
-                    text = stick.deviceName + " • " + stick.stickName
+                    text = remoteStickDisplayName(stick)
                     textSize = 21f
                     setTextColor(android.graphics.Color.WHITE)
                     setTypeface(typeface, android.graphics.Typeface.BOLD)
@@ -1254,7 +1270,7 @@ class MainActivity : AppCompatActivity() {
                 dialog.dismiss()
                 if (stick.files.none { it.cached }) {
                     AlertDialog.Builder(this@MainActivity)
-                        .setTitle(stick.deviceName + " • " + stick.stickName)
+                        .setTitle(remoteStickDisplayName(stick))
                         .setMessage(
                             "Deze bron wordt nog gesynchroniseerd. " +
                                 "Er zijn nog geen nummers klaar om af te spelen."
@@ -1391,7 +1407,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(android.graphics.Color.parseColor("#D8A451"))
         })
         panel.addView(TextView(this).apply {
-            text = if (normalizedPrefix.isBlank()) stick.deviceName + " • " + stick.stickName else normalizedPrefix.substringAfterLast('/')
+            text = if (normalizedPrefix.isBlank()) remoteStickDisplayName(stick) else normalizedPrefix.substringAfterLast('/')
             textSize = 28f
             setTextColor(android.graphics.Color.WHITE)
             setTypeface(typeface, android.graphics.Typeface.BOLD)
