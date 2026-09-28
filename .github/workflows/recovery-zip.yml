@@ -1,0 +1,31 @@
+name: Create Recovery ZIP
+
+on:
+  push:
+    paths:
+      - ".github/workflows/recovery-zip.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout recovery snapshot
+        uses: actions/checkout@v4
+        with:
+          ref: recovery
+          fetch-depth: 1
+
+      - name: Create recovery zip
+        run: |
+          zip -r recovery.zip . -x ".git/*" "./.git/*"
+
+      - name: Upload recovery zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery
+          path: recovery.zip
+          if-no-files-found: error
