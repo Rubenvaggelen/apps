@@ -1050,7 +1050,7 @@ class MoviesActivity : AppCompatActivity() {
             copy.addView(
                 TextView(this).apply {
                     text = status
-                    textSize = 14f
+                    textSize = 13f
                     setTextColor(Color.parseColor("#91A4BD"))
                     setPadding(0, dp(4), 0, 0)
                 }
@@ -1250,7 +1250,7 @@ class MoviesActivity : AppCompatActivity() {
                 } else {
                     normalized
                 }
-                textSize = 13f
+                textSize = 20f
                 setTextColor(Color.parseColor("#91A4BD"))
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.START
@@ -1477,11 +1477,9 @@ class MoviesActivity : AppCompatActivity() {
         }
 
         val density = resources.displayMetrics.density
-        val favoriteWidth = (48 * density).toInt()
-        val downloadWidth = (58 * density).toInt()
-        val djWidth = (58 * density).toInt()
-        val playWidth = (62 * density).toInt()
-        val actionGap = (14 * density).toInt()
+        val actionWidth = (46 * density).toInt()
+        val djWidth = (50 * density).toInt()
+        val actionGap = (7 * density).toInt()
         val canDjImport =
             MainDeviceRegistry.isTheOneProfile(this) ||
             MainDeviceRegistry.hasAccess(
@@ -1599,10 +1597,10 @@ class MoviesActivity : AppCompatActivity() {
 
             val actions = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
+                gravity = android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL
                 setPadding(
                     0,
-                    (9 * density).toInt(),
+                    (8 * density).toInt(),
                     0,
                     0
                 )
@@ -1638,10 +1636,10 @@ class MoviesActivity : AppCompatActivity() {
             actions.addView(
                 play,
                 LinearLayout.LayoutParams(
-                    (58 * density).toInt(),
-                    LinearLayout.LayoutParams.WRAP_CONTENT
+                    actionWidth,
+                    (42 * density).toInt()
                 ).apply {
-                    marginEnd = (8 * density).toInt()
+                    marginEnd = actionGap
                 }
             )
 
@@ -1665,10 +1663,10 @@ class MoviesActivity : AppCompatActivity() {
             actions.addView(
                 favorite,
                 LinearLayout.LayoutParams(
-                    favoriteWidth,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
+                    actionWidth,
+                    (42 * density).toInt()
                 ).apply {
-                    marginEnd = (8 * density).toInt()
+                    marginEnd = actionGap
                 }
             )
 
@@ -1701,10 +1699,10 @@ class MoviesActivity : AppCompatActivity() {
             actions.addView(
                 download,
                 LinearLayout.LayoutParams(
-                    downloadWidth,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
+                    actionWidth,
+                    (42 * density).toInt()
                 ).apply {
-                    if (canDjImport) marginEnd = (8 * density).toInt()
+                    if (canDjImport) marginEnd = actionGap
                 }
             )
 
@@ -1740,7 +1738,7 @@ class MoviesActivity : AppCompatActivity() {
                     dj,
                     LinearLayout.LayoutParams(
                         djWidth,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
+                        (42 * density).toInt()
                     )
                 )
             }
