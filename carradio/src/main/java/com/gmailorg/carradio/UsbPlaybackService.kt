@@ -626,12 +626,14 @@ class UsbPlaybackService : Service() {
 
     private fun createDeckPlayer(): ExoPlayer =
         ExoPlayer.Builder(this).build().apply {
+            // Beide decks moeten gelijktijdig hoorbaar kunnen zijn.
+            // Daarom vragen de individuele ExoPlayers geen exclusieve audio-focus.
             setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
                     .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                     .build(),
-                true
+                false
             )
         }
 
