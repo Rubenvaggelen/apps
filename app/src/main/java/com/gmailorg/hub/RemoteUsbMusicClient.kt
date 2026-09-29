@@ -246,6 +246,46 @@ object RemoteUsbMusicClient {
             .put("favorite", favorite)
     )
 
+    fun deleteSharedTrack(
+        context: Context,
+        file: RemoteFile
+    ): Long {
+        val token = token(context)
+        val connection = open(ENDPOINT + "?action=shared-delete", "POST")
+        connection.setRequestProperty("Authorization", "Bearer " + token)
+        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        connection.doOutput = true
+
+        val body = JSONObject()
+            .put("request_device_id", MainDeviceRegistry.deviceId(context))
+            .put("device_id", file.deviceId)
+            .put("stick_id", file.stickId)
+            .put("path", file.path)
+
+        OutputStreamWriter(connection.outputStream, StandardCharsets.UTF_8).use {
+            it.write(body.toString())
+        }
+
+        val code = connection.responseCode
+        if (code == 401 || code == 403) {
+            connection.disconnect()
+            throw IllegalStateException("Alleen The One owner mag nummers verwijderen")
+        }
+        if (code !in 200..299) {
+            val message = runCatching {
+                JSONObject(readBody(connection)).optString("error")
+            }.getOrDefault("")
+            connection.disconnect()
+            throw IllegalStateException(
+                message.ifBlank { "Nummer verwijderen mislukt" }
+            )
+        }
+
+        val json = JSONObject(readBody(connection))
+        connection.disconnect()
+        return json.optLong("freed_bytes", 0L)
+    }
+
     fun setUsbFavorite(
         context: Context,
         stick: RemoteStick,
