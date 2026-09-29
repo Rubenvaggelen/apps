@@ -72,8 +72,6 @@ class UsbPlaybackService : Service() {
         private const val KEY_TITLE = "title"
         private const val KEY_URI = "uri"
         private const val KEY_SAVED_AT = "saved_at"
-        private const val KEY_AUTO_PLAY = "auto_play_enabled"
-        private const val KEY_MUTED = "muted"
 
         @Volatile private var pendingQueue: List<QueueItem> = emptyList()
         @Volatile private var instance: UsbPlaybackService? = null
@@ -209,41 +207,18 @@ class UsbPlaybackService : Service() {
 
         fun currentIndex(): Int = instance?.index ?: -1
 
-        fun isAutoPlayEnabled(context: Context): Boolean {
-            val active = instance
-            if (active != null) return autoPlayEnabled
-            return context.applicationContext
-                .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getBoolean(KEY_AUTO_PLAY, true)
-        }
+        fun isAutoPlayEnabled(context: Context): Boolean = autoPlayEnabled
 
         fun setAutoPlayEnabled(context: Context, enabled: Boolean) {
             autoPlayEnabled = enabled
-            context.applicationContext
-                .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean(KEY_AUTO_PLAY, enabled)
-                .apply()
         }
 
-        fun isMuted(context: Context): Boolean {
-            val active = instance
-            if (active != null) return muted
-            return context.applicationContext
-                .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getBoolean(KEY_MUTED, false)
-        }
+        fun isMuted(context: Context): Boolean = muted
 
         fun toggleMute(context: Context): Boolean {
-            val next = !isMuted(context)
-            muted = next
-            context.applicationContext
-                .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean(KEY_MUTED, next)
-                .apply()
+            muted = !muted
             instance?.applyDuckingVolume()
-            return next
+            return muted
         }
 
         fun fadeToNext(context: Context) {
@@ -278,9 +253,8 @@ class UsbPlaybackService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        autoPlayEnabled = prefs.getBoolean(KEY_AUTO_PLAY, true)
-        muted = prefs.getBoolean(KEY_MUTED, false)
+        autoPlayEnabled = true
+        muted = false
         createChannel()
         configureMediaSession()
         stateHandler.post(saveTick)
@@ -564,6 +538,16 @@ class UsbPlaybackService : Service() {
         val stepDelay = 90L
         val handler = Handler(Looper.getMainLooper())
 
+        fun rampUp(step: Int) {
+            if (player !== exo) return
+            if (step > steps) {
+                applyDuckingVolume()
+                return
+            }
+            if (!muted) exo.volume = startVolume * (step.toFloat() / steps)
+            handler.postDelayed({ rampUp(step + 1) }, stepDelay)
+        }
+
         fun rampDown(step: Int) {
             if (player !== exo) return
             if (step > steps) {
@@ -575,16 +559,6 @@ class UsbPlaybackService : Service() {
             }
             if (!muted) exo.volume = startVolume * (1f - step.toFloat() / steps)
             handler.postDelayed({ rampDown(step + 1) }, stepDelay)
-        }
-
-        fun rampUp(step: Int) {
-            if (player !== exo) return
-            if (step > steps) {
-                applyDuckingVolume()
-                return
-            }
-            if (!muted) exo.volume = startVolume * (step.toFloat() / steps)
-            handler.postDelayed({ rampUp(step + 1) }, stepDelay)
         }
 
         rampDown(0)
