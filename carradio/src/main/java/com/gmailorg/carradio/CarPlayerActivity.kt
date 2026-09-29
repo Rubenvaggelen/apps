@@ -48,20 +48,9 @@ class CarPlayerActivity : AppCompatActivity() {
     private lateinit var bottomTitle: TextView
     private lateinit var volumeSeek: SeekBar
     private lateinit var masterVolumeLabel: TextView
+    private lateinit var whatsappButton: TextView
     private lateinit var audioManager: AudioManager
     private var playlistSignature = ""
-
-    private val addTracksLauncher = registerForActivityResult(
-        ActivityResultContracts.OpenMultipleDocuments()
-    ) { uris ->
-        if (uris.isNotEmpty()) addImportedUris(uris)
-    }
-
-    private val addFolderLauncher = registerForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
-    ) { uri ->
-        if (uri != null) importFolder(uri)
-    }
 
     private val refreshTick = object : Runnable {
         override fun run() {
@@ -95,6 +84,7 @@ class CarPlayerActivity : AppCompatActivity() {
         bottomTitle = findViewById(R.id.playerBottomTitle)
         volumeSeek = findViewById(R.id.playerVolumeSeek)
         masterVolumeLabel = findViewById(R.id.playerMasterVolumeLabel)
+        whatsappButton = findViewById(R.id.playerWhatsappButton)
 
         currentWaveform.accentColor = Color.parseColor("#20B8FF")
         nextWaveform.accentColor = Color.parseColor("#E8AA4E")
@@ -128,7 +118,9 @@ class CarPlayerActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.playerRadioButton).setOnClickListener {
             openCarScreen(RadioStationsActivity::class.java)
         }
-        findViewById<TextView>(R.id.playerWhatsappButton).setOnClickListener {
+        whatsappButton.setOnClickListener {
+            DashboardUnreadStore.clear(this)
+            refreshWhatsappBadge()
             openCarScreen(WhatsAppConversationsActivity::class.java)
         }
         findViewById<TextView>(R.id.playerRouteButton).setOnClickListener {
@@ -197,12 +189,17 @@ class CarPlayerActivity : AppCompatActivity() {
 
     private fun showAddMusicMenu() {
         AlertDialog.Builder(this)
-            .setTitle("Muziek toevoegen")
+            .setTitle("Muziek toevoegen uit Shared Media")
             .setItems(arrayOf("Losse nummers", "Complete map")) { _, which ->
-                when (which) {
-                    0 -> addTracksLauncher.launch(arrayOf("audio/*"))
-                    1 -> addFolderLauncher.launch(null)
+                val mode = if (which == 0) {
+                    SharedMediaImportActivity.MODE_TRACKS
+                } else {
+                    SharedMediaImportActivity.MODE_FOLDER
                 }
+                startActivity(
+                    Intent(this, SharedMediaImportActivity::class.java)
+                        .putExtra(SharedMediaImportActivity.EXTRA_MODE, mode)
+                )
             }
             .setNegativeButton("Annuleren", null)
             .show()
@@ -364,30 +361,58 @@ class CarPlayerActivity : AppCompatActivity() {
     private fun configureVolume() {
         val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
         volumeSeek.max = max
-        volumeSeek.progress = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        refreshMasterVolumeUi()
+
         volumeSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser) {
-                    audioManager.setStreamVolume(
+                if (!fromUser) return
+                if (progress > 0) {
+                    audioManager.adjustStreamVolume(
                         AudioManager.STREAM_MUSIC,
-                        progress.coerceIn(0, max),
+                        AudioManager.ADJUST_UNMUTE,
                         0
                     )
                 }
+                audioManager.setStreamVolume(
+                    AudioManager.STREAM_MUSIC,
+                    progress.coerceIn(0, max),
+                    AudioManager.FLAG_SHOW_UI
+                )
+                refreshMasterVolumeUi()
             }
+
             override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
-            override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                refreshMasterVolumeUi()
+            }
         })
 
         findViewById<TextView>(R.id.playerVolumeDown).setOnClickListener {
-            val now = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (now - 1).coerceAtLeast(0), 0)
-            volumeSeek.progress = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+            audioManager.adjustStreamVolume(
+                AudioManager.STREAM_MUSIC,
+                AudioManager.ADJUST_LOWER,
+                AudioManager.FLAG_SHOW_UI
+            )
+            refreshMasterVolumeUi()
         }
+
         findViewById<TextView>(R.id.playerVolumeUp).setOnClickListener {
-            val now = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (now + 1).coerceAtMost(max), 0)
-            volumeSeek.progress = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+            audioManager.adjustStreamVolume(
+                AudioManager.STREAM_MUSIC,
+                AudioManager.ADJUST_RAISE,
+                AudioManager.FLAG_SHOW_UI
+            )
+            refreshMasterVolumeUi()
+        }
+
+        masterVolumeLabel.setOnClickListener {
+            audioManager.adjustStreamVolume(
+                AudioManager.STREAM_MUSIC,
+                AudioManager.ADJUST_TOGGLE_MUTE,
+                AudioManager.FLAG_SHOW_UI
+            )
+            refreshMasterVolumeUi()
         }
     }
 
@@ -433,6 +458,7 @@ class CarPlayerActivity : AppCompatActivity() {
             )
         )
 
+        refreshWhatsappBadge()
         refreshMasterVolumeUi()
 
         val signature =
@@ -441,6 +467,20 @@ class CarPlayerActivity : AppCompatActivity() {
             playlistSignature = signature
             rebuildPlaylist(queue, currentIndex)
         }
+    }
+
+    private fun refreshWhatsappBadge() {
+        val unread = DashboardUnreadStore.count(this)
+        whatsappButton.text = if (unread > 0) "WhatsApp  ● " + unread else "WhatsApp"
+        whatsappButton.setTextColor(
+            ContextCompat.getColor(
+                this,
+                if (unread > 0) R.color.gold else R.color.text_main
+            )
+        )
+        whatsappButton.setBackgroundResource(
+            if (unread > 0) R.drawable.bg_gold_outline else R.drawable.bg_outline
+        )
     }
 
     private fun refreshMasterVolumeUi() {

@@ -60,6 +60,9 @@
             android:name=".CarPlayerActivity"
             android:screenOrientation="landscape"
             android:launchMode="singleTask" />
+        <activity
+            android:name=".SharedMediaImportActivity"
+            android:screenOrientation="landscape" />
         <activity android:name=".WhatsAppConversationsActivity" android:screenOrientation="landscape" />
         <activity android:name=".ChatActivity" android:screenOrientation="landscape" />
         <activity android:name=".ImageViewerActivity" android:screenOrientation="landscape" />

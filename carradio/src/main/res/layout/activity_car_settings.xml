@@ -1,70 +1,87 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="@color/bg"
-    android:padding="18dp">
-    <TextView
+    android:fillViewport="true"
+    android:background="@color/bg">
+
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="The One Car • Instellingen"
-        android:textColor="@color/amber"
-        android:textSize="37.5sp"
-        android:textStyle="bold" />
-    <TextView
-        android:id="@+id/settingsStatus"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textColor="@color/text_dim"
-        android:textSize="22.5sp"
-        android:paddingVertical="10dp" />
-    <Button
-        android:id="@+id/choosePhoneButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="📱 Kies telefoon" />
-    <Button
-        android:id="@+id/homeAppButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="🏠 Forceer The One bij opstarten" />
-    <Button
-        android:id="@+id/contactsButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="💬 Toegestane WhatsApp-contacten" />
-    <Button
-        android:id="@+id/tilesButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="🧩 Tegels beheren" />
-    <Button
-        android:id="@+id/checkUpdatesButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="↻ Zoek nieuwe updates" />
-    <Button
-        android:id="@+id/diagnosticsButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="🛠 Verbinding testen" />
-    <Button
-        android:id="@+id/clearAllButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="🗑 Alles wissen" />
-    <TextView
-        android:id="@+id/diagnosticsText"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textColor="@color/text_main"
-        android:textSize="21sp"
-        android:paddingTop="14dp" />
-</LinearLayout>
+        android:orientation="vertical"
+        android:padding="18dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="The One Car • Instellingen"
+            android:textColor="@color/amber"
+            android:textSize="37.5sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/settingsStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/text_dim"
+            android:textSize="22.5sp"
+            android:paddingVertical="10dp" />
+
+        <Button
+            android:id="@+id/checkUpdatesButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="↻ Zoek nieuwe updates"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/choosePhoneButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="📱 Kies telefoon" />
+
+        <Button
+            android:id="@+id/homeAppButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="🏠 Forceer The One bij opstarten" />
+
+        <Button
+            android:id="@+id/contactsButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="💬 Toegestane WhatsApp-contacten" />
+
+        <Button
+            android:id="@+id/tilesButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="🧩 Tegels beheren" />
+
+        <Button
+            android:id="@+id/diagnosticsButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="🛠 Verbinding testen" />
+
+        <Button
+            android:id="@+id/clearAllButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="🗑 Alles wissen" />
+
+        <TextView
+            android:id="@+id/diagnosticsText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/text_main"
+            android:textSize="21sp"
+            android:paddingTop="14dp" />
+    </LinearLayout>
+</ScrollView>

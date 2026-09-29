@@ -883,11 +883,14 @@ class MainActivity : AppCompatActivity() {
             )
 
             row.addView(TextView(this).apply {
-                text = "★"
-                textSize = 31f
+                text = "WISSEN"
+                textSize = 14f
                 gravity = Gravity.CENTER
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
                 setTextColor(android.graphics.Color.parseColor("#D8A451"))
-                setPadding(12.dp, 10.dp, 12.dp, 10.dp)
+                setBackgroundResource(R.drawable.bg_gold_outline)
+                setPadding(14.dp, 11.dp, 14.dp, 11.dp)
+                contentDescription = "Verwijder " + item.title + " uit favorieten"
                 setOnClickListener {
                     isEnabled = false
                     remoteMusicIo.execute {
