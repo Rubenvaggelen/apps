@@ -769,9 +769,9 @@ if ($action === 'favorites-set') {
     );
     if (
         !$trustedFavoritesWindows &&
-        !music_device_allowed($requestDevice,$deviceRegistryFile,$deviceOwnerFile)
+        !music_device_scope_allowed($requestDevice,'favorites',$deviceRegistryFile,$deviceOwnerFile)
     ) {
-        out(403,['ok'=>false,'error'=>'music rights required']);
+        out(403,['ok'=>false,'error'=>'favorites rights required']);
     }
 
     $kind=strtolower(trim((string)($b['kind'] ?? '')));
