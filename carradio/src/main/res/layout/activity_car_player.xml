@@ -1,0 +1,499 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/carPlayerRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg"
+    android:padding="12dp">
+
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/playerMenuButton"
+                android:layout_width="150dp"
+                android:layout_height="50dp"
+                android:gravity="center"
+                android:text="← Menu"
+                android:textSize="19sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_main"
+                android:background="@drawable/bg_outline"/>
+
+            <TextView
+                android:id="@+id/playerMusicButton"
+                android:layout_width="120dp"
+                android:layout_height="50dp"
+                android:layout_marginStart="8dp"
+                android:gravity="center"
+                android:text="♫ Muziek"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/the_one_blue"
+                android:background="@drawable/bg_outline"/>
+
+            <TextView
+                android:id="@+id/playerRadioButton"
+                android:layout_width="115dp"
+                android:layout_height="50dp"
+                android:layout_marginStart="8dp"
+                android:gravity="center"
+                android:text="Radio"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_main"
+                android:background="@drawable/bg_outline"/>
+
+            <TextView
+                android:id="@+id/playerWhatsappButton"
+                android:layout_width="145dp"
+                android:layout_height="50dp"
+                android:layout_marginStart="8dp"
+                android:gravity="center"
+                android:text="WhatsApp"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_main"
+                android:background="@drawable/bg_outline"/>
+
+            <TextView
+                android:id="@+id/playerRouteButton"
+                android:layout_width="115dp"
+                android:layout_height="50dp"
+                android:layout_marginStart="8dp"
+                android:gravity="center"
+                android:text="Route"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/gold"
+                android:background="@drawable/bg_gold_outline"/>
+
+            <TextView
+                android:id="@+id/playerParkingButton"
+                android:layout_width="125dp"
+                android:layout_height="50dp"
+                android:layout_marginStart="8dp"
+                android:gravity="center"
+                android:text="Parkeren"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_main"
+                android:background="@drawable/bg_outline"/>
+
+            <TextView
+                android:id="@+id/playerPhoneButton"
+                android:layout_width="125dp"
+                android:layout_height="50dp"
+                android:layout_marginStart="8dp"
+                android:gravity="center"
+                android:text="Telefoon"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_main"
+                android:background="@drawable/bg_outline"/>
+
+            <TextView
+                android:id="@+id/playerSettingsButton"
+                android:layout_width="145dp"
+                android:layout_height="50dp"
+                android:layout_marginStart="8dp"
+                android:gravity="center"
+                android:text="Instellingen"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_main"
+                android:background="@drawable/bg_outline"/>
+
+            <TextView
+                android:id="@+id/playerPlaylistButton"
+                android:layout_width="145dp"
+                android:layout_height="50dp"
+                android:layout_marginStart="8dp"
+                android:gravity="center"
+                android:text="☷ Afspeellijst"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_main"
+                android:background="@drawable/bg_outline"/>
+
+            <TextView
+                android:id="@+id/playerAutoButton"
+                android:layout_width="135dp"
+                android:layout_height="50dp"
+                android:layout_marginStart="8dp"
+                android:gravity="center"
+                android:text="Auto • Aan"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/the_one_blue"
+                android:background="@drawable/bg_outline"/>
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp">
+
+        <LinearLayout
+            android:id="@+id/playerDeckArea"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:padding="12dp"
+                android:background="@drawable/bg_player_panel">
+
+                <TextView
+                    android:id="@+id/playerCurrentBadge"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="A   NU SPEELT"
+                    android:textColor="@color/the_one_blue"
+                    android:textStyle="bold"
+                    android:textSize="19sp"/>
+
+                <TextView
+                    android:id="@+id/playerCurrentTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:maxLines="2"
+                    android:ellipsize="end"
+                    android:text="Geen nummer geselecteerd"
+                    android:textColor="@color/text_main"
+                    android:textStyle="bold"
+                    android:textSize="24sp"/>
+
+                <com.gmailorg.carradio.CarWaveformView
+                    android:id="@+id/playerCurrentWaveform"
+                    android:layout_width="match_parent"
+                    android:layout_height="115dp"
+                    android:layout_marginTop="10dp"/>
+
+                <TextView
+                    android:id="@+id/playerCurrentTime"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="0:00 / 0:00"
+                    android:textColor="@color/text_main"
+                    android:textStyle="bold"
+                    android:textSize="21sp"/>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="70dp"
+                    android:layout_marginTop="12dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/playerPauseA"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="Pauze"
+                        android:textColor="@color/text_main"
+                        android:textSize="19sp"
+                        android:textStyle="bold"
+                        android:background="@drawable/bg_outline"/>
+
+                    <TextView
+                        android:id="@+id/playerPlayPauseA"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1.35"
+                        android:layout_marginHorizontal="8dp"
+                        android:gravity="center"
+                        android:text="⏸"
+                        android:textColor="@color/on_amber"
+                        android:textSize="34sp"
+                        android:textStyle="bold"
+                        android:background="@drawable/bg_amber_button"/>
+
+                    <TextView
+                        android:id="@+id/playerMuteA"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="🔊 Mute"
+                        android:textColor="@color/text_main"
+                        android:textSize="19sp"
+                        android:textStyle="bold"
+                        android:background="@drawable/bg_outline"/>
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="150dp"
+                android:layout_height="match_parent"
+                android:layout_marginHorizontal="8dp"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:padding="10dp"
+                android:background="@drawable/bg_player_panel">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:text="OVERGANG"
+                    android:textColor="@color/text_dim"
+                    android:textStyle="bold"
+                    android:textSize="14sp"/>
+
+                <View
+                    android:layout_width="5dp"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:layout_marginVertical="10dp"
+                    android:background="@color/the_one_blue"/>
+
+                <TextView
+                    android:id="@+id/playerFadeButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="58dp"
+                    android:gravity="center"
+                    android:text="Fade"
+                    android:textColor="@color/text_main"
+                    android:textStyle="bold"
+                    android:textSize="23sp"
+                    android:background="@drawable/bg_outline"/>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:padding="12dp"
+                android:background="@drawable/bg_player_panel">
+
+                <TextView
+                    android:id="@+id/playerNextBadge"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="B   VOLGENDE"
+                    android:textColor="@color/gold"
+                    android:textStyle="bold"
+                    android:textSize="19sp"/>
+
+                <TextView
+                    android:id="@+id/playerNextTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:maxLines="2"
+                    android:ellipsize="end"
+                    android:text="Geen volgend nummer"
+                    android:textColor="@color/text_main"
+                    android:textStyle="bold"
+                    android:textSize="24sp"/>
+
+                <com.gmailorg.carradio.CarWaveformView
+                    android:id="@+id/playerNextWaveform"
+                    android:layout_width="match_parent"
+                    android:layout_height="115dp"
+                    android:layout_marginTop="10dp"/>
+
+                <TextView
+                    android:id="@+id/playerNextStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Automatisch geladen"
+                    android:textColor="@color/text_dim"
+                    android:textSize="18sp"/>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="70dp"
+                    android:layout_marginTop="12dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/playerPauseB"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="Pauze"
+                        android:textColor="@color/text_main"
+                        android:textSize="19sp"
+                        android:textStyle="bold"
+                        android:background="@drawable/bg_gold_outline"/>
+
+                    <TextView
+                        android:id="@+id/playerPlayB"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1.35"
+                        android:layout_marginHorizontal="8dp"
+                        android:gravity="center"
+                        android:text="▶"
+                        android:textColor="@color/on_gold"
+                        android:textSize="34sp"
+                        android:textStyle="bold"
+                        android:background="@drawable/bg_amber_button"/>
+
+                    <TextView
+                        android:id="@+id/playerMuteB"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="🔊 Mute"
+                        android:textColor="@color/text_main"
+                        android:textSize="19sp"
+                        android:textStyle="bold"
+                        android:background="@drawable/bg_gold_outline"/>
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/playerPlaylistPanel"
+            android:layout_width="330dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="8dp"
+            android:orientation="vertical"
+            android:padding="10dp"
+            android:visibility="gone"
+            android:background="@drawable/bg_player_panel">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="☷  Afspeellijst"
+                android:textColor="@color/text_main"
+                android:textStyle="bold"
+                android:textSize="24sp"/>
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:layout_marginTop="8dp">
+
+                <LinearLayout
+                    android:id="@+id/playerPlaylistList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"/>
+            </ScrollView>
+
+            <TextView
+                android:id="@+id/playerPlaylistClose"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:text="Lijst sluiten"
+                android:textColor="@color/text_main"
+                android:textStyle="bold"
+                android:textSize="18sp"
+                android:background="@drawable/bg_outline"/>
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="68dp"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="8dp"
+        android:background="@drawable/bg_player_panel">
+
+        <TextView
+            android:id="@+id/playerPrevious"
+            android:layout_width="66dp"
+            android:layout_height="52dp"
+            android:gravity="center"
+            android:text="⏮"
+            android:textSize="30sp"
+            android:textColor="@color/text_main"
+            android:background="@drawable/bg_outline"/>
+
+        <TextView
+            android:id="@+id/playerBottomPlayPause"
+            android:layout_width="76dp"
+            android:layout_height="52dp"
+            android:layout_marginStart="8dp"
+            android:gravity="center"
+            android:text="⏸"
+            android:textSize="30sp"
+            android:textStyle="bold"
+            android:textColor="@color/on_amber"
+            android:background="@drawable/bg_amber_button"/>
+
+        <TextView
+            android:id="@+id/playerNext"
+            android:layout_width="66dp"
+            android:layout_height="52dp"
+            android:layout_marginStart="8dp"
+            android:gravity="center"
+            android:text="⏭"
+            android:textSize="30sp"
+            android:textColor="@color/text_main"
+            android:background="@drawable/bg_outline"/>
+
+        <TextView
+            android:id="@+id/playerBottomTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginHorizontal="14dp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:text="Geen muziek actief"
+            android:textSize="19sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_main"/>
+
+        <TextView
+            android:id="@+id/playerVolumeDown"
+            android:layout_width="56dp"
+            android:layout_height="48dp"
+            android:gravity="center"
+            android:text="−"
+            android:textSize="30sp"
+            android:textColor="@color/text_main"
+            android:background="@drawable/bg_outline"/>
+
+        <SeekBar
+            android:id="@+id/playerVolumeSeek"
+            android:layout_width="230dp"
+            android:layout_height="48dp"
+            android:layout_marginHorizontal="8dp"/>
+
+        <TextView
+            android:id="@+id/playerVolumeUp"
+            android:layout_width="56dp"
+            android:layout_height="48dp"
+            android:gravity="center"
+            android:text="+"
+            android:textSize="30sp"
+            android:textColor="@color/text_main"
+            android:background="@drawable/bg_outline"/>
+    </LinearLayout>
+</LinearLayout>
