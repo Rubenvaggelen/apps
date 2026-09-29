@@ -142,8 +142,7 @@ class UsbMusicActivity : AppCompatActivity() {
             when {
                 entry.track != null -> playTrack(entry.track)
                 entry.folderPath != null -> {
-                    currentFolder = entry.folderPath
-                    rebuildBrowser()
+                    playFolder(entry.folderPath)
                 }
                 entry.volumeKey != null -> {
                     currentVolumeKey = entry.volumeKey
@@ -305,7 +304,7 @@ class UsbMusicActivity : AppCompatActivity() {
             browserEntries += BrowserEntry(
                 volumeKey = selectedVolume,
                 folderPath = path,
-                label = "📁 ${path.substringAfterLast('/')}"
+                label = "📁 ${path.substringAfterLast('/')}  •  map afspelen"
             )
         }
         directTracks.sortedBy { it.displayName.lowercase(Locale.ROOT) }.forEach { track ->
@@ -528,6 +527,52 @@ class UsbMusicActivity : AppCompatActivity() {
         } else {
             "Map geopend: $currentFolder"
         }
+    }
+
+    private fun playFolder(folderPath: String) {
+        val selectedVolume = currentVolumeKey ?: return
+        val normalized = folderPath.trim('/')
+
+        val queueTracks = allTracks
+            .filter { track ->
+                if (track.volumeKey != selectedVolume) {
+                    false
+                } else {
+                    val trackFolder = track.folder.trim('/')
+                    trackFolder == normalized ||
+                        trackFolder.startsWith("$normalized/")
+                }
+            }
+            .sortedWith(
+                compareBy<Track> { it.folder.lowercase(Locale.ROOT) }
+                    .thenBy { it.displayName.lowercase(Locale.ROOT) }
+            )
+
+        if (queueTracks.isEmpty()) {
+            Toast.makeText(
+                this,
+                "Geen afspeelbare nummers in deze map.",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        playbackQueue = queueTracks
+        val serviceQueue = queueTracks.map {
+            UsbPlaybackService.QueueItem(it.uri.toString(), it.playerTitle)
+        }
+        UsbPlaybackService.play(this, serviceQueue, 0)
+        nowPlayingText.text = queueTracks.first().playerTitle
+        Toast.makeText(
+            this,
+            "${queueTracks.size} nummers uit ${normalized.substringAfterLast('/')} geladen",
+            Toast.LENGTH_SHORT
+        ).show()
+        startActivity(
+            android.content.Intent(this, CarPlayerActivity::class.java).apply {
+                flags = android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+            }
+        )
     }
 
     private fun playTrack(track: Track) {
