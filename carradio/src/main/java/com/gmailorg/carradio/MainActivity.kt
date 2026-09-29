@@ -468,7 +468,7 @@ class MainActivity : AppCompatActivity() {
             openCurrentMusicTrack()
         }
         carAudioPlayer.setOnClickListener {
-            openCurrentMusicTrack()
+            openCarPlayer()
         }
 
         carAudioPrevious.setOnClickListener {
