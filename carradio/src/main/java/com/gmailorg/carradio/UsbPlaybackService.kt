@@ -267,6 +267,16 @@ class UsbPlaybackService : Service() {
             instance?.pauseDeckBInternal()
         }
 
+        fun seekDeckB(context: Context, positionMs: Int) {
+            instance?.seekDeckBInternal(positionMs.coerceAtLeast(0))
+        }
+
+        fun isCrossfading(context: Context): Boolean =
+            instance?.fadeRunning == true || instance?.fadePending == true
+
+        fun crossfadeProgress(context: Context): Float =
+            instance?.fadeProgress ?: 0f
+
         fun toggleDeckBMute(context: Context): Boolean {
             val active = instance ?: return false
             return active.toggleDeckBMuteInternal()
@@ -313,6 +323,7 @@ class UsbPlaybackService : Service() {
     @Volatile private var deckBMuted = false
     @Volatile private var fadeRunning = false
     @Volatile private var fadePending = false
+    @Volatile private var fadeProgress = 0f
     private lateinit var mediaSession: MediaSessionCompat
     private var queue: List<QueueItem> = emptyList()
     private var index = -1
@@ -602,6 +613,7 @@ class UsbPlaybackService : Service() {
         deckBPreparing = false
         fadeRunning = false
         fadePending = false
+        fadeProgress = 0f
 
         oldA?.let {
             try { it.stop() } catch (_: Exception) {}
@@ -621,6 +633,7 @@ class UsbPlaybackService : Service() {
         deckBIndex = -1
         deckBPreparing = false
         fadePending = false
+        fadeProgress = 0f
         old?.let {
             try { it.stop() } catch (_: Exception) {}
             try { it.release() } catch (_: Exception) {}
@@ -775,6 +788,17 @@ class UsbPlaybackService : Service() {
         try { deckB?.pause() } catch (_: Exception) {}
     }
 
+    private fun seekDeckBInternal(positionMs: Int) {
+        val exo = deckB ?: return
+        val duration = exo.duration
+        val safePosition = if (duration > 0 && duration != C.TIME_UNSET) {
+            positionMs.toLong().coerceAtMost(duration)
+        } else {
+            positionMs.toLong()
+        }
+        exo.seekTo(safePosition.coerceAtLeast(0L))
+    }
+
     private fun toggleDeckBMuteInternal(): Boolean {
         deckBMuted = !deckBMuted
         applyDuckingVolume()
@@ -833,6 +857,7 @@ class UsbPlaybackService : Service() {
         deckBMuted = false
         fadeRunning = false
         fadePending = false
+        fadeProgress = 0f
 
         try {
             nextPlayer.volume = if (muted) 0f else targetVolume()
@@ -894,6 +919,7 @@ class UsbPlaybackService : Service() {
 
         fadePending = false
         fadeRunning = true
+        fadeProgress = 0f
 
         val base = targetVolume()
         val handler = Handler(Looper.getMainLooper())
@@ -916,6 +942,7 @@ class UsbPlaybackService : Service() {
             }
         } catch (_: Exception) {
             fadeRunning = false
+            fadeProgress = 0f
             return
         }
 
@@ -926,6 +953,7 @@ class UsbPlaybackService : Service() {
             }
 
             val fraction = (n.toFloat() / steps.toFloat()).coerceIn(0f, 1f)
+            fadeProgress = fraction
             try {
                 // Linear crossfade: totale gain blijft stabiel en beide decks
                 // zijn gedurende de overgang duidelijk tegelijk hoorbaar.

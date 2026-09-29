@@ -40,6 +40,8 @@ class CarPlayerActivity : AppCompatActivity() {
     private lateinit var nextStatus: TextView
     private lateinit var currentWaveform: CarWaveformView
     private lateinit var nextWaveform: CarWaveformView
+    private lateinit var seekA: SeekBar
+    private lateinit var seekB: SeekBar
     private lateinit var playPauseA: TextView
     private lateinit var bottomPlayPause: TextView
     private lateinit var muteA: TextView
@@ -76,6 +78,8 @@ class CarPlayerActivity : AppCompatActivity() {
         nextStatus = findViewById(R.id.playerNextStatus)
         currentWaveform = findViewById(R.id.playerCurrentWaveform)
         nextWaveform = findViewById(R.id.playerNextWaveform)
+        seekA = findViewById(R.id.playerSeekA)
+        seekB = findViewById(R.id.playerSeekB)
         playPauseA = findViewById(R.id.playerPlayPauseA)
         bottomPlayPause = findViewById(R.id.playerBottomPlayPause)
         muteA = findViewById(R.id.playerMuteA)
@@ -93,6 +97,7 @@ class CarPlayerActivity : AppCompatActivity() {
 
         configureNavigation()
         configurePlaybackControls()
+        configureDeckSeekControls()
         configureVolume()
 
         handler.post(refreshTick)
@@ -352,6 +357,66 @@ class CarPlayerActivity : AppCompatActivity() {
         }
     }
 
+    private fun configureDeckSeekControls() {
+        seekA.max = 1000
+        seekB.max = 1000
+
+        seekA.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                val state = UsbPlaybackService.snapshot()
+                if (state.durationMs > 0) {
+                    UsbPlaybackService.seek(
+                        this@CarPlayerActivity,
+                        (state.durationMs * (progress / 1000f)).toInt()
+                    )
+                }
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+            override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+        })
+
+        seekB.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                val state = UsbPlaybackService.deckBSnapshot()
+                if (state.durationMs > 0) {
+                    UsbPlaybackService.seekDeckB(
+                        this@CarPlayerActivity,
+                        (state.durationMs * (progress / 1000f)).toInt()
+                    )
+                }
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+            override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+        })
+
+        findViewById<TextView>(R.id.playerSeekBackA).setOnClickListener {
+            val state = UsbPlaybackService.snapshot()
+            UsbPlaybackService.seek(this, (state.positionMs - 15_000).coerceAtLeast(0))
+        }
+        findViewById<TextView>(R.id.playerSeekForwardA).setOnClickListener {
+            val state = UsbPlaybackService.snapshot()
+            val target = state.positionMs + 15_000
+            UsbPlaybackService.seek(
+                this,
+                if (state.durationMs > 0) target.coerceAtMost(state.durationMs) else target
+            )
+        }
+        findViewById<TextView>(R.id.playerSeekBackB).setOnClickListener {
+            val state = UsbPlaybackService.deckBSnapshot()
+            UsbPlaybackService.seekDeckB(this, (state.positionMs - 15_000).coerceAtLeast(0))
+        }
+        findViewById<TextView>(R.id.playerSeekForwardB).setOnClickListener {
+            val state = UsbPlaybackService.deckBSnapshot()
+            val target = state.positionMs + 15_000
+            UsbPlaybackService.seekDeckB(
+                this,
+                if (state.durationMs > 0) target.coerceAtMost(state.durationMs) else target
+            )
+        }
+    }
+
     private fun configureVolume() {
         volumeSeek.max = CarVolumeControl.max(this)
         refreshMasterVolumeUi()
@@ -396,6 +461,14 @@ class CarPlayerActivity : AppCompatActivity() {
         currentWaveform.titleSeed = state.title
         currentWaveform.progress =
             if (state.durationMs > 0) state.positionMs.toFloat() / state.durationMs.toFloat() else 0f
+        currentWaveform.isPlaying = state.isPlaying
+        currentWaveform.energy =
+            if (UsbPlaybackService.isCrossfading(this)) {
+                0.45f + UsbPlaybackService.crossfadeProgress(this) * 0.55f
+            } else if (state.isPlaying) 0.22f else 0f
+        seekA.progress =
+            if (state.durationMs > 0) ((state.positionMs.toFloat() / state.durationMs) * 1000f).toInt()
+            else 0
         currentTime.text = "${formatTime(state.positionMs)} / ${formatTime(state.durationMs)}"
 
         nextTitle.text = if (deckBState.hasTrack) deckBState.title else "Geen volgend nummer"
@@ -404,6 +477,15 @@ class CarPlayerActivity : AppCompatActivity() {
             if (deckBState.durationMs > 0) {
                 deckBState.positionMs.toFloat() / deckBState.durationMs.toFloat()
             } else 0f
+        nextWaveform.isPlaying = deckBState.isPlaying
+        nextWaveform.energy =
+            if (UsbPlaybackService.isCrossfading(this)) {
+                0.45f + UsbPlaybackService.crossfadeProgress(this) * 0.55f
+            } else if (deckBState.isPlaying) 0.22f else 0f
+        seekB.progress =
+            if (deckBState.durationMs > 0) {
+                ((deckBState.positionMs.toFloat() / deckBState.durationMs) * 1000f).toInt()
+            } else 0
         nextStatus.text = when {
             !deckBState.hasTrack -> "B • GEEN TRACK"
             deckBState.isPreparing ->

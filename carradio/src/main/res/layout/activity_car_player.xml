@@ -182,8 +182,45 @@
 
                 <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="70dp"
-                    android:layout_marginTop="12dp"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="4dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:id="@+id/playerSeekBackA"
+                        android:layout_width="64dp"
+                        android:layout_height="44dp"
+                        android:gravity="center"
+                        android:text="−15s"
+                        android:textColor="@color/the_one_blue"
+                        android:textStyle="bold"
+                        android:textSize="16sp"
+                        android:background="@drawable/bg_outline"/>
+
+                    <SeekBar
+                        android:id="@+id/playerSeekA"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:layout_marginHorizontal="6dp"/>
+
+                    <TextView
+                        android:id="@+id/playerSeekForwardA"
+                        android:layout_width="64dp"
+                        android:layout_height="44dp"
+                        android:gravity="center"
+                        android:text="+15s"
+                        android:textColor="@color/the_one_blue"
+                        android:textStyle="bold"
+                        android:textSize="16sp"
+                        android:background="@drawable/bg_outline"/>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="62dp"
+                    android:layout_marginTop="6dp"
                     android:orientation="horizontal">
 
                     <TextView
@@ -308,8 +345,45 @@
 
                 <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="70dp"
-                    android:layout_marginTop="12dp"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="4dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:id="@+id/playerSeekBackB"
+                        android:layout_width="64dp"
+                        android:layout_height="44dp"
+                        android:gravity="center"
+                        android:text="−15s"
+                        android:textColor="@color/gold"
+                        android:textStyle="bold"
+                        android:textSize="16sp"
+                        android:background="@drawable/bg_gold_outline"/>
+
+                    <SeekBar
+                        android:id="@+id/playerSeekB"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:layout_marginHorizontal="6dp"/>
+
+                    <TextView
+                        android:id="@+id/playerSeekForwardB"
+                        android:layout_width="64dp"
+                        android:layout_height="44dp"
+                        android:gravity="center"
+                        android:text="+15s"
+                        android:textColor="@color/gold"
+                        android:textStyle="bold"
+                        android:textSize="16sp"
+                        android:background="@drawable/bg_gold_outline"/>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="62dp"
+                    android:layout_marginTop="6dp"
                     android:orientation="horizontal">
 
                     <TextView
