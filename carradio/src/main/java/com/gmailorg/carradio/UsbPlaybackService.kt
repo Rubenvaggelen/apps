@@ -139,6 +139,20 @@ class UsbPlaybackService : Service() {
             return added.size
         }
 
+        fun removeAt(context: Context, removeIndex: Int): Boolean {
+            val active = instance
+            if (active != null) return active.removeQueueItemInternal(removeIndex)
+
+            val current = pendingQueue.toMutableList()
+            if (removeIndex !in current.indices) return false
+            current.removeAt(removeIndex)
+            pendingQueue = current
+            if (current.isEmpty()) {
+                lastState = PlaybackState()
+            }
+            return true
+        }
+
         fun toggle(context: Context) {
             val active = instance
             if (active != null) {
@@ -328,6 +342,43 @@ class UsbPlaybackService : Service() {
             updateNotification()
         }
         return added.size
+    }
+
+    private fun removeQueueItemInternal(removeIndex: Int): Boolean {
+        if (removeIndex !in queue.indices) return false
+
+        if (queue.size == 1) {
+            stopPlaybackAndService()
+            return true
+        }
+
+        val wasPlaying = snapshotInternal().isPlaying
+        val oldIndex = index
+        val updated = queue.toMutableList().apply { removeAt(removeIndex) }
+
+        if (removeIndex == oldIndex) {
+            queue = updated
+            pendingQueue = queue.toList()
+            val nextIndex = oldIndex.coerceAtMost(queue.lastIndex)
+            playIndex(nextIndex, 0, wasPlaying, false)
+            return true
+        }
+
+        queue = updated
+        pendingQueue = queue.toList()
+        if (removeIndex < oldIndex) index = (oldIndex - 1).coerceAtLeast(0)
+
+        try {
+            player?.removeMediaItem(removeIndex)
+        } catch (_: Exception) {
+            playIndex(index.coerceIn(0, queue.lastIndex), 0, wasPlaying, false)
+            return true
+        }
+
+        updateStateCache()
+        persistSession()
+        updateNotification()
+        return true
     }
 
     private fun playIndex(

@@ -123,21 +123,8 @@ class CarPlayerActivity : AppCompatActivity() {
             refreshWhatsappBadge()
             openCarScreen(WhatsAppConversationsActivity::class.java)
         }
-        findViewById<TextView>(R.id.playerRouteButton).setOnClickListener {
-            openCarScreen(RouteCarActivity::class.java)
-        }
-        findViewById<TextView>(R.id.playerParkingButton).setOnClickListener {
-            openCarScreen(ParkingCarActivity::class.java)
-        }
         findViewById<TextView>(R.id.playerSettingsButton).setOnClickListener {
             openCarScreen(CarSettingsActivity::class.java)
-        }
-        findViewById<TextView>(R.id.playerPhoneButton).setOnClickListener {
-            try {
-                startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:")))
-            } catch (_: Exception) {
-                Toast.makeText(this, "Telefoon-app niet gevonden", Toast.LENGTH_SHORT).show()
-            }
         }
 
         findViewById<TextView>(R.id.playerPlaylistButton).setOnClickListener {
@@ -359,59 +346,34 @@ class CarPlayerActivity : AppCompatActivity() {
     }
 
     private fun configureVolume() {
-        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
-        volumeSeek.max = max
+        volumeSeek.max = CarVolumeControl.max(this)
         refreshMasterVolumeUi()
 
         volumeSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (!fromUser) return
-                if (progress > 0) {
-                    audioManager.adjustStreamVolume(
-                        AudioManager.STREAM_MUSIC,
-                        AudioManager.ADJUST_UNMUTE,
-                        0
-                    )
-                }
-                audioManager.setStreamVolume(
-                    AudioManager.STREAM_MUSIC,
-                    progress.coerceIn(0, max),
-                    AudioManager.FLAG_SHOW_UI
-                )
+                CarVolumeControl.set(this@CarPlayerActivity, progress)
                 refreshMasterVolumeUi()
             }
 
             override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
-
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
                 refreshMasterVolumeUi()
             }
         })
 
         findViewById<TextView>(R.id.playerVolumeDown).setOnClickListener {
-            audioManager.adjustStreamVolume(
-                AudioManager.STREAM_MUSIC,
-                AudioManager.ADJUST_LOWER,
-                AudioManager.FLAG_SHOW_UI
-            )
+            CarVolumeControl.lower(this)
             refreshMasterVolumeUi()
         }
 
         findViewById<TextView>(R.id.playerVolumeUp).setOnClickListener {
-            audioManager.adjustStreamVolume(
-                AudioManager.STREAM_MUSIC,
-                AudioManager.ADJUST_RAISE,
-                AudioManager.FLAG_SHOW_UI
-            )
+            CarVolumeControl.raise(this)
             refreshMasterVolumeUi()
         }
 
         masterVolumeLabel.setOnClickListener {
-            audioManager.adjustStreamVolume(
-                AudioManager.STREAM_MUSIC,
-                AudioManager.ADJUST_TOGGLE_MUTE,
-                AudioManager.FLAG_SHOW_UI
-            )
+            CarVolumeControl.toggleMute(this)
             refreshMasterVolumeUi()
         }
     }
@@ -484,8 +446,8 @@ class CarPlayerActivity : AppCompatActivity() {
     }
 
     private fun refreshMasterVolumeUi() {
-        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
-        val current = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).coerceIn(0, max)
+        val max = CarVolumeControl.max(this)
+        val current = CarVolumeControl.current(this).coerceIn(0, max)
         volumeSeek.max = max
         volumeSeek.progress = current
         masterVolumeLabel.text = "MASTER • ${current * 100 / max}%"
@@ -520,7 +482,12 @@ class CarPlayerActivity : AppCompatActivity() {
 
         queue.forEachIndexed { index, item ->
             val active = index == currentIndex
-            val row = TextView(this).apply {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+            }
+
+            val title = TextView(this).apply {
                 text = if (active) "▶  ${index + 1}. ${item.title}" else "${index + 1}.  ${item.title}"
                 textSize = 17f
                 maxLines = 2
@@ -535,14 +502,14 @@ class CarPlayerActivity : AppCompatActivity() {
                     typeface,
                     if (active) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL
                 )
-                setPadding(12.dp, 11.dp, 12.dp, 11.dp)
+                setPadding(12.dp, 11.dp, 10.dp, 11.dp)
                 setBackgroundResource(
                     if (active) R.drawable.bg_amber_button else R.drawable.bg_outline
                 )
                 setOnClickListener {
                     UsbPlaybackService.play(
                         this@CarPlayerActivity,
-                        queue,
+                        UsbPlaybackService.queueSnapshot(),
                         index
                     )
                     playlistSignature = ""
@@ -554,6 +521,46 @@ class CarPlayerActivity : AppCompatActivity() {
                     ).show()
                 }
             }
+            row.addView(
+                title,
+                LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+            )
+
+            row.addView(
+                TextView(this).apply {
+                    text = "WISSEN"
+                    textSize = 13f
+                    gravity = android.view.Gravity.CENTER
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    setTextColor(ContextCompat.getColor(context, R.color.gold))
+                    setBackgroundResource(R.drawable.bg_gold_outline)
+                    setPadding(10.dp, 10.dp, 10.dp, 10.dp)
+                    setOnClickListener {
+                        val removed = UsbPlaybackService.removeAt(
+                            this@CarPlayerActivity,
+                            index
+                        )
+                        if (removed) {
+                            playlistSignature = ""
+                            refreshPlayer()
+                            Toast.makeText(
+                                this@CarPlayerActivity,
+                                "Verwijderd: ${item.title}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                },
+                LinearLayout.LayoutParams(
+                    82.dp,
+                    LinearLayout.LayoutParams.MATCH_PARENT
+                ).apply { marginStart = 7.dp }
+            )
+
             playlistList.addView(
                 row,
                 LinearLayout.LayoutParams(

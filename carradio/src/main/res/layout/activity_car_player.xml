@@ -65,41 +65,11 @@
                 android:textColor="@color/text_main"
                 android:background="@drawable/bg_outline"/>
 
-            <TextView
-                android:id="@+id/playerRouteButton"
-                android:layout_width="115dp"
-                android:layout_height="50dp"
-                android:layout_marginStart="8dp"
-                android:gravity="center"
-                android:text="Route"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:textColor="@color/gold"
-                android:background="@drawable/bg_gold_outline"/>
 
-            <TextView
-                android:id="@+id/playerParkingButton"
-                android:layout_width="125dp"
-                android:layout_height="50dp"
-                android:layout_marginStart="8dp"
-                android:gravity="center"
-                android:text="Parkeren"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:textColor="@color/text_main"
-                android:background="@drawable/bg_outline"/>
 
-            <TextView
-                android:id="@+id/playerPhoneButton"
-                android:layout_width="125dp"
-                android:layout_height="50dp"
-                android:layout_marginStart="8dp"
-                android:gravity="center"
-                android:text="Telefoon"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:textColor="@color/text_main"
-                android:background="@drawable/bg_outline"/>
+
+
+
 
             <TextView
                 android:id="@+id/playerSettingsButton"

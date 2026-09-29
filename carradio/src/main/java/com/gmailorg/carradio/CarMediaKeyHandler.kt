@@ -1,7 +1,6 @@
 package com.gmailorg.carradio
 
 import android.content.Context
-import android.media.AudioManager
 import android.view.KeyEvent
 
 /**
@@ -16,20 +15,17 @@ object CarMediaKeyHandler {
 
         return when (event.keyCode) {
             KeyEvent.KEYCODE_VOLUME_UP -> {
-                val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-                audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, 0)
+                CarVolumeControl.raise(context)
                 true
             }
 
             KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-                audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, 0)
+                CarVolumeControl.lower(context)
                 true
             }
 
             KeyEvent.KEYCODE_VOLUME_MUTE -> {
-                val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-                audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_TOGGLE_MUTE, 0)
+                CarVolumeControl.toggleMute(context)
                 true
             }
 
