@@ -522,7 +522,7 @@ class MainActivity : AppCompatActivity() {
 
             currentFamilyStick = stick
             currentFamilyFiles = files
-            showRemoteFolderLevel(stick, active.folder)
+            showRemoteFolderLevel(stick, active.folder, false)
             return true
         }
 
@@ -562,7 +562,7 @@ class MainActivity : AppCompatActivity() {
                     val (stick, file) = match
                     currentFamilyStick = stick
                     currentFamilyFiles = stick.files
-                    showRemoteFolderLevel(stick, file.folder)
+                    showRemoteFolderLevel(stick, file.folder, false)
                 } else {
                     Toast.makeText(
                         this,
@@ -1384,7 +1384,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun showRemoteFolderLevel(
         stick: RemoteUsbMusicClient.RemoteStick,
-        prefix: String
+        prefix: String,
+        selectFolder: Boolean = true
     ) {
         val normalizedPrefix = prefix.trim('/')
         val childFolders = linkedSetOf<String>()
@@ -1408,7 +1409,15 @@ class MainActivity : AppCompatActivity() {
         val sortedFiles = directFiles.sortedBy { it.displayName.lowercase(Locale.ROOT) }
 
         if (folders.isEmpty()) {
-            showRemoteTrackDialog(stick, normalizedPrefix.ifBlank { "Hoofdmap" }, sortedFiles)
+            if (selectFolder) {
+                playRemoteUsbSelectedFolder(stick, normalizedPrefix)
+            } else {
+                showRemoteTrackDialog(
+                    stick,
+                    normalizedPrefix.ifBlank { "Hoofdmap" },
+                    sortedFiles
+                )
+            }
             return
         }
 
@@ -1461,7 +1470,8 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(android.graphics.Color.parseColor("#20B8FF"))
             }, LinearLayout.LayoutParams(42.dp, LinearLayout.LayoutParams.WRAP_CONTENT))
             card.addView(TextView(this).apply {
-                text = folderPath.substringAfterLast('/')
+                text = folderPath.substringAfterLast('/') +
+                    if (selectFolder) "  •  map afspelen" else ""
                 textSize = 22f
                 setTextColor(android.graphics.Color.WHITE)
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
@@ -1477,7 +1487,11 @@ class MainActivity : AppCompatActivity() {
             })
             card.setOnClickListener {
                 dialog.dismiss()
-                showRemoteFolderLevel(stick, folderPath)
+                if (selectFolder) {
+                    playRemoteUsbSelectedFolder(stick, folderPath)
+                } else {
+                    showRemoteFolderLevel(stick, folderPath, false)
+                }
             }
             list.addView(card, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1514,7 +1528,15 @@ class MainActivity : AppCompatActivity() {
             })
             trackCard.setOnClickListener {
                 dialog.dismiss()
-                showRemoteTrackDialog(stick, normalizedPrefix.ifBlank { "Hoofdmap" }, sortedFiles)
+                if (selectFolder) {
+                    playRemoteUsbSelectedFolder(stick, normalizedPrefix)
+                } else {
+                    showRemoteTrackDialog(
+                        stick,
+                        normalizedPrefix.ifBlank { "Hoofdmap" },
+                        sortedFiles
+                    )
+                }
             }
             list.addView(trackCard, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1546,7 +1568,11 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener {
                 dialog.dismiss()
                 if (normalizedPrefix.isNotBlank()) {
-                    showRemoteFolderLevel(stick, normalizedPrefix.substringBeforeLast('/', ""))
+                    showRemoteFolderLevel(
+                        stick,
+                        normalizedPrefix.substringBeforeLast('/', ""),
+                        selectFolder
+                    )
                 }
             }
         }
@@ -1595,7 +1621,7 @@ class MainActivity : AppCompatActivity() {
                         .takeUnless { it == "Hoofdmap" }
                         ?.substringBeforeLast('/', "")
                         .orEmpty()
-                    showRemoteFolderLevel(stick, parent)
+                    showRemoteFolderLevel(stick, parent, false)
                 }
                 .show()
             return
@@ -1832,7 +1858,7 @@ class MainActivity : AppCompatActivity() {
                     .takeUnless { it == "Hoofdmap" }
                     ?.substringBeforeLast('/', "")
                     .orEmpty()
-                showRemoteFolderLevel(stick, parent)
+                showRemoteFolderLevel(stick, parent, false)
             }
         }
         val player = TextView(this).apply {
@@ -2056,6 +2082,89 @@ class MainActivity : AppCompatActivity() {
             cleanRemoteUsbTrackTitle(file.displayName),
             ignoreCase = true
         )
+    }
+
+    private fun playRemoteUsbSelectedFolder(
+        stick: RemoteUsbMusicClient.RemoteStick,
+        folderPath: String
+    ) {
+        val normalized = folderPath.replace('\\', '/').trim('/')
+
+        val playableFiles = stick.files
+            .filter { file ->
+                if (!file.cached) {
+                    false
+                } else {
+                    val folder = file.folder.replace('\\', '/').trim('/')
+                    if (normalized.isBlank()) {
+                        folder.isBlank()
+                    } else {
+                        folder == normalized || folder.startsWith("$normalized/")
+                    }
+                }
+            }
+            .sortedWith(
+                compareBy<RemoteUsbMusicClient.RemoteFile> {
+                    it.folder.lowercase(Locale.ROOT)
+                }.thenBy {
+                    it.displayName.lowercase(Locale.ROOT)
+                }
+            )
+
+        if (playableFiles.isEmpty()) {
+            Toast.makeText(
+                this,
+                "In deze map zijn nog geen afspeelbare nummers beschikbaar.",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        try {
+            val queue = playableFiles.map {
+                UsbPlaybackService.QueueItem(
+                    RemoteUsbMusicClient.streamUrl(this, it),
+                    cleanRemoteUsbTrackTitle(it.displayName)
+                )
+            }
+            currentFamilyStick = stick
+            currentFamilyFiles = playableFiles.toList()
+            UsbPlaybackService.play(this, queue, 0)
+            Toast.makeText(
+                this,
+                "${playableFiles.size} nummers uit " +
+                    (normalized.substringAfterLast('/').ifBlank { "Hoofdmap" }) +
+                    " geladen",
+                Toast.LENGTH_SHORT
+            ).show()
+            openCarPlayer()
+        } catch (_: RemoteUsbMusicClient.AuthRequired) {
+            RemoteUsbMusicClient.clearToken(this)
+            remoteMusicIo.execute {
+                val ok = try {
+                    RemoteUsbMusicClient.loginForBrowsing(this)
+                } catch (_: Exception) {
+                    false
+                }
+                runOnUiThread {
+                    if (ok) {
+                        playRemoteUsbSelectedFolder(stick, normalized)
+                    } else {
+                        Toast.makeText(
+                            this,
+                            "Shared Media kon niet opnieuw verbinden.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Toast.makeText(
+                this,
+                e.message ?: "Map laden mislukt",
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     private fun playRemoteUsbFolder(
