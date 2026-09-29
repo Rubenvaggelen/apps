@@ -1,8 +1,8 @@
 {
-  "version": "2.1.7",
-  "build": 217,
-  "notes": "Add persistent Auto Sync toggle; Auto mix can fade without forced sync",
-  "sha256": "0DB2B54C3100C8A3D41096FC90EE0F2376C7510FA9AFD2AA2ED6A5749DBC20A3",
+  "version": "2.1.8",
+  "build": 218,
+  "notes": "Add recursive folder loading: select one folder and automatically queue all supported audio from it and its subfolders",
+  "sha256": "A8583A425E8CBE7D4E11A4E24BB8E6F8AE3BEFA21D308709B85F49A4ED828256",
   "files": [
     "index.html"
   ]
