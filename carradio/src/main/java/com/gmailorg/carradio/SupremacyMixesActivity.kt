@@ -28,6 +28,10 @@ import java.util.Locale
 import java.util.concurrent.Executors
 
 class SupremacyMixesActivity : AppCompatActivity() {
+    companion object {
+        const val EXTRA_ADD_TO_PLAYLIST = "add_to_playlist"
+    }
+
     private data class Mix(val title: String, val url: String, val genre: String)
     private lateinit var list: LinearLayout
     private lateinit var status: TextView
@@ -47,10 +51,12 @@ class SupremacyMixesActivity : AppCompatActivity() {
     private val io = Executors.newSingleThreadExecutor()
     private val favoriteMixUrls = linkedSetOf<String>()
     private var focusTitle: String = ""
+    private var addToPlaylistMode = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         focusTitle = intent.getStringExtra("focus_title").orEmpty().trim()
+        addToPlaylistMode = intent.getBooleanExtra(EXTRA_ADD_TO_PLAYLIST, false)
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -66,20 +72,20 @@ class SupremacyMixesActivity : AppCompatActivity() {
             setOnClickListener { finish() }
         })
         header.addView(TextView(this).apply {
-            text = "The One Mixes"
+            text = if (addToPlaylistMode) "The One Mixes • toevoegen" else "The One Mixes"
             textSize = 42.0f
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(ContextCompat.getColor(context, R.color.amber))
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         header.addView(TextView(this).apply {
-            text = "NAAR PLAYER  ›"
+            text = if (addToPlaylistMode) "KLAAR  ›" else "NAAR PLAYER  ›"
             textSize = 18f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(android.graphics.Color.parseColor("#201505"))
             setBackgroundResource(R.drawable.bg_amber_button)
             setPadding(18.dp, 12.dp, 18.dp, 12.dp)
-            setOnClickListener { openPlayer() }
+            setOnClickListener { if (addToPlaylistMode) finish() else openPlayer() }
         })
         root.addView(header)
 
@@ -367,14 +373,16 @@ class SupremacyMixesActivity : AppCompatActivity() {
             marginEnd = 12.dp
         })
         row.addView(TextView(this).apply {
-            text = "▶ Afspelen"
+            text = if (addToPlaylistMode) "＋ Playlist" else "▶ Afspelen"
             textSize = 18f
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(android.graphics.Color.parseColor("#201505"))
             setBackgroundResource(R.drawable.bg_amber_button)
             setPadding(18.dp, 12.dp, 18.dp, 12.dp)
-            setOnClickListener { play(mixes, index) }
+            setOnClickListener {
+                if (addToPlaylistMode) addMixToPlaylist(mix) else play(mixes, index)
+            }
         })
         parent.addView(row)
         parent.addView(
@@ -543,6 +551,32 @@ class SupremacyMixesActivity : AppCompatActivity() {
                         e.message ?: "Download starten mislukt",
                         Toast.LENGTH_LONG
                     ).show()
+                }
+            }
+        }
+    }
+
+    private fun addMixToPlaylist(mix: Mix) {
+        status.text = "Toevoegen: " + mix.title
+        io.execute {
+            try {
+                val playableUrl = resolvePlayableUrl(mix.url)
+                runOnUiThread {
+                    val added = UsbPlaybackService.append(
+                        this,
+                        listOf(UsbPlaybackService.QueueItem(playableUrl, mix.title))
+                    )
+                    status.text = if (added > 0) "Toegevoegd aan afspeellijst" else "Staat al in de afspeellijst"
+                    Toast.makeText(
+                        this,
+                        if (added > 0) "Toegevoegd: " + mix.title else "Deze mix staat al in de afspeellijst",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    status.text = "Toevoegen mislukt"
+                    Toast.makeText(this, e.message ?: "Deze mix kon niet worden toegevoegd", Toast.LENGTH_LONG).show()
                 }
             }
         }
