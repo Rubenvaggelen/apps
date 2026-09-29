@@ -405,10 +405,13 @@ class CarPlayerActivity : AppCompatActivity() {
                 deckBState.positionMs.toFloat() / deckBState.durationMs.toFloat()
             } else 0f
         nextStatus.text = when {
-            !deckBState.hasTrack -> "Einde afspeellijst"
-            deckBState.isPreparing -> "Player B wordt geladen…"
-            deckBState.isPlaying -> "Player B speelt"
-            else -> "Player B klaar • druk ▶ om apart te starten"
+            !deckBState.hasTrack -> "B • GEEN TRACK"
+            deckBState.isPreparing ->
+                "B • LADEN • ${formatTime(deckBState.positionMs)}"
+            deckBState.isPlaying ->
+                "B • PLAYING • ${formatTime(deckBState.positionMs)} / ${formatTime(deckBState.durationMs)}"
+            else ->
+                "B • READY/PAUZE • ${formatTime(deckBState.positionMs)} / ${formatTime(deckBState.durationMs)}"
         }
 
         val playLabel = if (state.isPlaying) "⏸" else "▶"
