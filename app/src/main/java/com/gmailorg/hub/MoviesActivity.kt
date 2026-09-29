@@ -704,7 +704,7 @@ class MoviesActivity : AppCompatActivity() {
                 text = item.sourceLabel.ifBlank {
                     if (item.kind.equals("mix", true)) "The One Mixes" else "Shared Media"
                 } + if (playableEntry == null) " • Bron niet beschikbaar" else ""
-                textSize = 12f
+                textSize = 11f
                 setTextColor(Color.parseColor("#91A4BD"))
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
@@ -1050,7 +1050,7 @@ class MoviesActivity : AppCompatActivity() {
             copy.addView(
                 TextView(this).apply {
                     text = status
-                    textSize = 13f
+                    textSize = 11.5f
                     setTextColor(Color.parseColor("#91A4BD"))
                     setPadding(0, dp(4), 0, 0)
                 }
@@ -1326,7 +1326,7 @@ class MoviesActivity : AppCompatActivity() {
             row.addView(
                 TextView(this).apply {
                     text = if (current) "▶" else "♪"
-                    textSize = 17f
+                    textSize = 15.5f
                     gravity = android.view.Gravity.CENTER
                     setTextColor(Color.parseColor(if (current) "#E8AA4E" else "#20B8FF"))
                 },
@@ -1471,15 +1471,17 @@ class MoviesActivity : AppCompatActivity() {
         files: List<RemoteUsbMusicClient.RemoteFile>
     ) {
         val normalized = normalizeRemoteFolder(folder)
+        val density = resources.displayMetrics.density
+        fun dp(value: Int): Int = (value * density).toInt()
+
         val trackList = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(18, 8, 18, 8)
+            setPadding(dp(4), dp(2), dp(4), dp(2))
         }
 
-        val density = resources.displayMetrics.density
-        val actionWidth = (44 * density).toInt()
-        val actionHeight = (40 * density).toInt()
-        val actionGap = (6 * density).toInt()
+        val actionWidth = dp(40)
+        val actionHeight = dp(38)
+        val actionGap = dp(6)
         val canDjImport =
             MainDeviceRegistry.isTheOneProfile(this) ||
             MainDeviceRegistry.hasAccess(
@@ -1494,12 +1496,7 @@ class MoviesActivity : AppCompatActivity() {
         files.forEachIndexed { index, file ->
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(
-                    (12 * density).toInt(),
-                    (12 * density).toInt(),
-                    (12 * density).toInt(),
-                    (10 * density).toInt()
-                )
+                setPadding(dp(10), dp(9), dp(10), dp(9))
             }
 
             val infoRow = LinearLayout(this).apply {
@@ -1514,7 +1511,7 @@ class MoviesActivity : AppCompatActivity() {
                 gravity = android.view.Gravity.CENTER
                 setPadding(
                     0,
-                    (5 * density).toInt(),
+                    dp(3),
                     0,
                     0
                 )
@@ -1522,7 +1519,7 @@ class MoviesActivity : AppCompatActivity() {
             infoRow.addView(
                 number,
                 LinearLayout.LayoutParams(
-                    actionHeight,
+                    dp(34),
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 )
             )
@@ -1530,9 +1527,9 @@ class MoviesActivity : AppCompatActivity() {
             val metadata = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(
-                    (8 * density).toInt(),
+                    dp(6),
                     0,
-                    (8 * density).toInt(),
+                    dp(4),
                     0
                 )
             }
@@ -1568,7 +1565,7 @@ class MoviesActivity : AppCompatActivity() {
                     ellipsize = android.text.TextUtils.TruncateAt.END
                     setPadding(
                         0,
-                        (4 * density).toInt(),
+                        dp(2),
                         0,
                         0
                     )
@@ -1597,13 +1594,8 @@ class MoviesActivity : AppCompatActivity() {
 
             val actions = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL
-                setPadding(
-                    0,
-                    (8 * density).toInt(),
-                    0,
-                    0
-                )
+                gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
+                setPadding(dp(40), dp(7), 0, 0)
             }
 
             val play = TextView(this).apply {
@@ -1615,12 +1607,7 @@ class MoviesActivity : AppCompatActivity() {
                     Color.parseColor(if (file.cached) "#20B8FF" else "#8F9BAD")
                 )
                 setBackgroundResource(R.drawable.bg_the_one_blue_button)
-                setPadding(
-                    (14 * density).toInt(),
-                    (9 * density).toInt(),
-                    (14 * density).toInt(),
-                    (9 * density).toInt()
-                )
+                setPadding(0, 0, 0, 0)
                 setOnClickListener {
                     if (file.cached) {
                         playRemoteUsbFolder(stick, files, index, normalized)
@@ -1650,12 +1637,7 @@ class MoviesActivity : AppCompatActivity() {
                 gravity = android.view.Gravity.CENTER
                 contentDescription = "Favoriet ${file.name}"
                 setBackgroundResource(R.drawable.bg_the_one_gold_outline)
-                setPadding(
-                    (12 * density).toInt(),
-                    (8 * density).toInt(),
-                    (12 * density).toInt(),
-                    (8 * density).toInt()
-                )
+                setPadding(0, 0, 0, 0)
                 setOnClickListener {
                     toggleUsbFavorite(stick, file, this)
                 }
@@ -1677,12 +1659,7 @@ class MoviesActivity : AppCompatActivity() {
                 gravity = android.view.Gravity.CENTER
                 contentDescription = "Download ${file.name}"
                 setBackgroundResource(R.drawable.bg_the_one_gold_outline)
-                setPadding(
-                    (12 * density).toInt(),
-                    (8 * density).toInt(),
-                    (12 * density).toInt(),
-                    (8 * density).toInt()
-                )
+                setPadding(0, 0, 0, 0)
                 alpha = if (file.cached) 1f else 0.35f
                 setOnClickListener {
                     if (file.cached) {
@@ -1715,12 +1692,7 @@ class MoviesActivity : AppCompatActivity() {
                     gravity = android.view.Gravity.CENTER
                     contentDescription = "Stuur ${file.name} naar The One DJ"
                     setBackgroundResource(R.drawable.bg_the_one_blue_button)
-                    setPadding(
-                        (10 * density).toInt(),
-                        (9 * density).toInt(),
-                        (10 * density).toInt(),
-                        (9 * density).toInt()
-                    )
+                    setPadding(0, 0, 0, 0)
                     alpha = if (file.cached) 1f else 0.35f
                     setOnClickListener {
                         if (file.cached) {
@@ -1819,19 +1791,82 @@ class MoviesActivity : AppCompatActivity() {
             }
         }
 
-        val scroll = ScrollView(this).apply {
-            isFillViewport = true
-            addView(trackList)
+        val dialog = Dialog(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(16), dp(18), dp(14))
+            setBackgroundResource(R.drawable.bg_the_one_panel)
         }
 
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(if (normalized.isBlank()) "Hoofdmap" else normalized)
-            .setView(scroll)
-            .setPositiveButton("NAAR PLAYER", null)
-            .setNegativeButton("← 1 stap terug") { _, _ ->
-                showRemoteFolderLevel(stick, parentRemoteFolder(normalized))
+        panel.addView(TextView(this).apply {
+            text = "THE ONE FAMILY • SHARED MEDIA"
+            textSize = 10.5f
+            letterSpacing = 0.14f
+            setTextColor(Color.parseColor("#E8AA4E"))
+        })
+        panel.addView(TextView(this).apply {
+            text = if (normalized.isBlank()) remoteStickDisplayName(stick)
+                   else normalized.substringAfterLast('/')
+            textSize = 22f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(Color.parseColor("#F3F8FC"))
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(0, dp(4), 0, dp(10))
+        })
+
+        panel.addView(
+            ScrollView(this).apply {
+                isFillViewport = true
+                addView(trackList)
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+
+        val footer = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, dp(10), 0, 0)
+        }
+        footer.addView(
+            TextView(this).apply {
+                text = if (normalized.isBlank()) "SLUITEN" else "← TERUG"
+                textSize = 12.5f
+                gravity = android.view.Gravity.CENTER
+                setTextColor(Color.parseColor("#E8AA4E"))
+                setBackgroundResource(R.drawable.bg_the_one_gold_outline)
+                setPadding(dp(10), dp(10), dp(10), dp(10))
+                setOnClickListener {
+                    dialog.dismiss()
+                    if (normalized.isNotBlank()) {
+                        showRemoteFolderLevel(stick, parentRemoteFolder(normalized))
+                    }
+                }
+            },
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = dp(5)
             }
-            .create()
+        )
+        footer.addView(
+            TextView(this).apply {
+                text = "NAAR PLAYER ›"
+                textSize = 12.5f
+                gravity = android.view.Gravity.CENTER
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setTextColor(Color.parseColor("#201505"))
+                setBackgroundResource(R.drawable.bg_the_one_gold_button)
+                setPadding(dp(10), dp(10), dp(10), dp(10))
+                setOnClickListener { dialog.dismiss() }
+            },
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = dp(5)
+            }
+        )
+        panel.addView(footer)
 
         val liveHighlight = object : Runnable {
             override fun run() {
@@ -1842,21 +1877,23 @@ class MoviesActivity : AppCompatActivity() {
             }
         }
 
+        dialog.setContentView(panel)
+        dialog.setCanceledOnTouchOutside(true)
         dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE)
-                .setTextColor(Color.parseColor("#D8A451"))
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                dialog.dismiss()
-            }
-            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
-                .setTextColor(Color.parseColor("#D8A451"))
             refreshPlayingTrackHighlight()
             trackList.postDelayed(liveHighlight, 500L)
         }
         dialog.setOnDismissListener {
             trackList.removeCallbacks(liveHighlight)
         }
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        dialog.window?.attributes = dialog.window?.attributes?.apply { dimAmount = 0.72f }
         dialog.show()
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.94f).toInt(),
+            (resources.displayMetrics.heightPixels * 0.88f).toInt()
+        )
     }
 
     private fun usbFavoriteKey(file: RemoteUsbMusicClient.RemoteFile): String =
