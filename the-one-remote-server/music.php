@@ -726,6 +726,37 @@ if ($action === 'favorites-list') {
     out(200,['ok'=>true,'items'=>array_values($items)]);
 }
 
+if ($action === 'favorites-owner-list') {
+    $token=bearer();
+    if (!token_read_ok($token,$sec)) out(401,['ok'=>false,'error'=>'auth required']);
+
+    $requestDevice=safe_id((string)($_GET['request_device_id'] ?? ''));
+    if (!music_device_scope_allowed($requestDevice,'favorites',$deviceRegistryFile,$deviceOwnerFile)) {
+        out(403,['ok'=>false,'error'=>'favorites rights required']);
+    }
+
+    $doc=load_json($favoritesFile);
+    $byDevice=is_array($doc['by_device'] ?? null) ? $doc['by_device'] : [];
+    $owner=load_json($deviceOwnerFile);
+    $ownerId=safe_id((string)($owner['device_id'] ?? ''));
+    if ($ownerId==='') out(404,['ok'=>false,'error'=>'owner not configured']);
+
+    $bucket=is_array($byDevice[$ownerId] ?? null)
+        ? $byDevice[$ownerId]
+        : [];
+    $items=is_array($bucket['items'] ?? null) ? $bucket['items'] : [];
+
+    if ($items===[] && is_array($doc['items'] ?? null)) {
+        $items=$doc['items'];
+    }
+
+    out(200,[
+        'ok'=>true,
+        'source_device_id'=>$ownerId,
+        'items'=>array_values($items)
+    ]);
+}
+
 if ($action === 'favorites-set') {
     $token=bearer();
     if (!token_read_ok($token,$sec)) out(401,['ok'=>false,'error'=>'auth required']);
