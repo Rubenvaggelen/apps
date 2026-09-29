@@ -896,14 +896,24 @@ class UsbPlaybackService : Service() {
         fadeRunning = true
 
         val base = targetVolume()
-        val steps = 24
-        val stepDelay = 70L
         val handler = Handler(Looper.getMainLooper())
+        val introHoldMs = 900L
+        val fadeDurationMs = 8000L
+        val stepDelayMs = 80L
+        val steps = (fadeDurationMs / stepDelayMs).toInt().coerceAtLeast(1)
 
         try {
             a.volume = if (muted) 0f else base
-            b.volume = 0f
-            if (!b.isPlaying) b.play()
+
+            if (!b.isPlaying) {
+                // Een klaargezet Deck B begint bij Fade altijd vanaf het begin.
+                b.seekTo(0L)
+                b.volume = 0f
+                b.play()
+            } else {
+                // Als B handmatig al speelt, laat hem op zijn huidige positie staan.
+                b.volume = if (deckBMuted) 0f else 0f
+            }
         } catch (_: Exception) {
             fadeRunning = false
             return
@@ -917,18 +927,21 @@ class UsbPlaybackService : Service() {
 
             val fraction = (n.toFloat() / steps.toFloat()).coerceIn(0f, 1f)
             try {
+                // Linear crossfade: totale gain blijft stabiel en beide decks
+                // zijn gedurende de overgang duidelijk tegelijk hoorbaar.
                 a.volume = if (muted) 0f else base * (1f - fraction)
                 b.volume = if (deckBMuted) 0f else base * fraction
             } catch (_: Exception) {}
 
             if (n >= steps) {
+                // Pas NA de volledige hoorbare fade wordt B de nieuwe A.
                 promoteDeckBImmediate(true)
             } else {
-                handler.postDelayed({ step(n + 1) }, stepDelay)
+                handler.postDelayed({ step(n + 1) }, stepDelayMs)
             }
         }
 
-        step(0)
+        handler.postDelayed({ step(0) }, introHoldMs)
     }
 
     private fun snapshotInternal(): PlaybackState {
