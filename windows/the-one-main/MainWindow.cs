@@ -2120,6 +2120,66 @@ public sealed class MainWindow : Window
         var playingUsbRelativeIndex = 0;
         var sharedMediaTrackVisuals =
             new List<(CloudUsbMusicFile File, TextBlock Title, Panel Row)>();
+        var sharedMediaFavoriteButtons =
+            new List<(CloudUsbMusicFile File, Button Button)>();
+        var sharedMediaFavoriteKeys =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        async Task RefreshSharedMediaFavoritesAsync()
+        {
+            try
+            {
+                sharedMediaFavoriteKeys =
+                    await UsbMusicCloudService.GetUsbFavoriteKeysAsync();
+
+                foreach (var visual in sharedMediaFavoriteButtons)
+                {
+                    visual.Button.Content =
+                        sharedMediaFavoriteKeys.Contains(
+                            UsbMusicCloudService.UsbFavoriteKey(visual.File))
+                            ? "★"
+                            : "☆";
+                }
+            }
+            catch
+            {
+                // Favorieten mogen Shared Media nooit blokkeren.
+            }
+        }
+
+        async Task ToggleSharedMediaFavoriteAsync(
+            CloudUsbMusicStick stick,
+            CloudUsbMusicFile file,
+            Button button)
+        {
+            var key = UsbMusicCloudService.UsbFavoriteKey(file);
+            var makeFavorite = !sharedMediaFavoriteKeys.Contains(key);
+            button.IsEnabled = false;
+
+            try
+            {
+                await UsbMusicCloudService.SetUsbFavoriteAsync(
+                    stick,
+                    file,
+                    makeFavorite);
+
+                if (makeFavorite)
+                    sharedMediaFavoriteKeys.Add(key);
+                else
+                    sharedMediaFavoriteKeys.Remove(key);
+
+                button.Content = makeFavorite ? "★" : "☆";
+            }
+            catch (Exception ex)
+            {
+                status.Text = "Favoriet wijzigen mislukt: " + ex.Message;
+                status.Foreground = Amber;
+            }
+            finally
+            {
+                button.IsEnabled = true;
+            }
+        }
 
         var userProfileName = Path.GetFileName(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
@@ -2509,6 +2569,7 @@ public sealed class MainWindow : Window
             currentUsbFolder = folder;
             results.Children.Clear();
             sharedMediaTrackVisuals.Clear();
+            sharedMediaFavoriteButtons.Clear();
 
             var nav = new DockPanel
             {
@@ -2602,6 +2663,10 @@ public sealed class MainWindow : Window
                 {
                     Width = new GridLength(1, GridUnitType.Star)
                 });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(48) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(48) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(48) });
+
                 var showDjButton =
                     canImportToDj ||
                     Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
@@ -2611,7 +2676,7 @@ public sealed class MainWindow : Window
                 if (showDjButton)
                     row.ColumnDefinitions.Add(new ColumnDefinition
                     {
-                        Width = new GridLength(120)
+                        Width = new GridLength(54)
                     });
 
                 var trackTitle = new TextBlock
@@ -2621,17 +2686,57 @@ public sealed class MainWindow : Window
                     FontSize = 13,
                     TextWrapping = TextWrapping.Wrap,
                     VerticalAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(0, 0, 12, 0)
+                    Margin = new Thickness(0, 0, 10, 0)
                 };
                 Grid.SetColumn(trackTitle, 0);
                 row.Children.Add(trackTitle);
 
+                var play = SmallButton("▶", () => { });
+                play.MinWidth = 40;
+                play.ToolTip = "Afspelen";
+                play.Margin = new Thickness(3, 0, 3, 0);
+                Grid.SetColumn(play, 1);
+                row.Children.Add(play);
+                play.Click += async (_, _) =>
+                    await PlayUsbFromFolderAsync(
+                        stick,
+                        allFiles,
+                        folder,
+                        directTracks,
+                        index,
+                        play);
+
+                var favorite = SmallButton(
+                    sharedMediaFavoriteKeys.Contains(
+                        UsbMusicCloudService.UsbFavoriteKey(file))
+                        ? "★"
+                        : "☆",
+                    () => { });
+                favorite.MinWidth = 40;
+                favorite.ToolTip = "Favoriet";
+                favorite.Margin = new Thickness(3, 0, 3, 0);
+                Grid.SetColumn(favorite, 2);
+                row.Children.Add(favorite);
+                sharedMediaFavoriteButtons.Add((file, favorite));
+                favorite.Click += async (_, _) =>
+                    await ToggleSharedMediaFavoriteAsync(stick, file, favorite);
+
+                var download = SmallButton("↓", () => { });
+                download.MinWidth = 40;
+                download.ToolTip = "Download";
+                download.Margin = new Thickness(3, 0, 3, 0);
+                Grid.SetColumn(download, 3);
+                row.Children.Add(download);
+                download.Click += async (_, _) =>
+                    await DownloadUsbFileAsync(file, download);
+
                 if (showDjButton)
                 {
-                    var dj = SmallButton("→ DJ", () => { });
-                    dj.MinWidth = 108;
-                    dj.Margin = new Thickness(6, 0, 0, 0);
-                    Grid.SetColumn(dj, 1);
+                    var dj = SmallButton("DJ", () => { });
+                    dj.MinWidth = 46;
+                    dj.ToolTip = "Naar The One DJ";
+                    dj.Margin = new Thickness(3, 0, 0, 0);
+                    Grid.SetColumn(dj, 4);
                     row.Children.Add(dj);
                     dj.Click += async (_, _) =>
                         await ImportUsbFileToDjAsync(file, dj);
@@ -2643,6 +2748,7 @@ public sealed class MainWindow : Window
             }
 
             RefreshSharedMediaTrackHighlights();
+            _ = RefreshSharedMediaFavoritesAsync();
             resultsScroll.ScrollToTop();
         }
 
@@ -3074,14 +3180,54 @@ public sealed class MainWindow : Window
 
                             if (canImportToDj)
                             {
-                                var dj = SmallButton("→ DJ", () => { });
-                                dj.MinWidth = 108;
-                                dj.Margin = new Thickness(6, 0, 0, 0);
+                                var dj = SmallButton("DJ", () => { });
+                                dj.MinWidth = 46;
+                                dj.ToolTip = "Naar The One DJ";
+                                dj.Margin = new Thickness(3, 0, 0, 0);
                                 DockPanel.SetDock(dj, Dock.Right);
                                 row.Children.Add(dj);
                                 dj.Click += async (_, _) =>
                                     await ImportUsbFileToDjAsync(file, dj);
                             }
+
+                            var download = SmallButton("↓", () => { });
+                            download.MinWidth = 40;
+                            download.ToolTip = "Download";
+                            download.Margin = new Thickness(3, 0, 3, 0);
+                            DockPanel.SetDock(download, Dock.Right);
+                            row.Children.Add(download);
+                            download.Click += async (_, _) =>
+                                await DownloadUsbFileAsync(file, download);
+
+                            var favorite = SmallButton(
+                                sharedMediaFavoriteKeys.Contains(
+                                    UsbMusicCloudService.UsbFavoriteKey(file))
+                                    ? "★"
+                                    : "☆",
+                                () => { });
+                            favorite.MinWidth = 40;
+                            favorite.ToolTip = "Favoriet";
+                            favorite.Margin = new Thickness(3, 0, 3, 0);
+                            DockPanel.SetDock(favorite, Dock.Right);
+                            row.Children.Add(favorite);
+                            sharedMediaFavoriteButtons.Add((file, favorite));
+                            favorite.Click += async (_, _) =>
+                                await ToggleSharedMediaFavoriteAsync(stick, file, favorite);
+
+                            var play = SmallButton("▶", () => { });
+                            play.MinWidth = 40;
+                            play.ToolTip = "Afspelen";
+                            play.Margin = new Thickness(3, 0, 3, 0);
+                            DockPanel.SetDock(play, Dock.Right);
+                            row.Children.Add(play);
+                            play.Click += async (_, _) =>
+                                await PlayUsbFromFolderAsync(
+                                    stick,
+                                    files,
+                                    NormalizeUsbFolder(file.Folder),
+                                    folderFiles,
+                                    index,
+                                    play);
 
                             row.Children.Add(new TextBlock
                             {
@@ -3103,6 +3249,8 @@ public sealed class MainWindow : Window
                     stickSection.Content = stickContent;
                     results.Children.Add(stickSection);
                 }
+
+                await RefreshSharedMediaFavoritesAsync();
             }
             catch (Exception ex)
             {
