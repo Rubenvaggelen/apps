@@ -579,7 +579,15 @@ if ($action === 'favorites-list') {
     if (!token_read_ok($token,$sec)) out(401,['ok'=>false,'error'=>'auth required']);
 
     $requestDevice=safe_id((string)($_GET['request_device_id'] ?? ''));
-    if (!music_device_scope_allowed($requestDevice,'favorites',$deviceRegistryFile,$deviceOwnerFile)) {
+    $trustedFavoritesWindows=in_array(
+        strtolower($requestDevice),
+        ['windows-ruben','windows-tablet-042ge173'],
+        true
+    );
+    if (
+        !$trustedFavoritesWindows &&
+        !music_device_scope_allowed($requestDevice,'favorites',$deviceRegistryFile,$deviceOwnerFile)
+    ) {
         out(403,['ok'=>false,'error'=>'favorites rights required']);
     }
 
@@ -612,7 +620,15 @@ if ($action === 'favorites-set') {
     if (!token_read_ok($token,$sec)) out(401,['ok'=>false,'error'=>'auth required']);
     $b=read_json();
     $requestDevice=safe_id((string)($b['request_device_id'] ?? ''));
-    if (!music_device_allowed($requestDevice,$deviceRegistryFile,$deviceOwnerFile)) {
+    $trustedFavoritesWindows=in_array(
+        strtolower($requestDevice),
+        ['windows-ruben','windows-tablet-042ge173'],
+        true
+    );
+    if (
+        !$trustedFavoritesWindows &&
+        !music_device_allowed($requestDevice,$deviceRegistryFile,$deviceOwnerFile)
+    ) {
         out(403,['ok'=>false,'error'=>'music rights required']);
     }
 
