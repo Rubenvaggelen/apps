@@ -1366,20 +1366,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showRemoteFolderDialog(stick: RemoteUsbMusicClient.RemoteStick) {
-        val firstSegments = stick.files
-            .filter { it.cached }
-            .map { it.folder.replace('\\', '/').trim('/') }
-            .filter { it.isNotBlank() }
-            .map { it.substringBefore('/') }
-            .distinctBy { it.lowercase(Locale.ROOT) }
-
-        val startFolder = if (firstSegments.size == 1) {
-            firstSegments.first()
-        } else {
-            ""
-        }
-
-        showRemoteFolderLevel(stick, startFolder)
+        // Nooit automatisch een map overslaan. Ook als een bron maar één
+        // bovenste map heeft, moet Car die eerst tonen zodat de bestuurder
+        // bewust kiest welke map als afspeellijst geladen wordt.
+        showRemoteFolderLevel(stick, "")
     }
 
     private fun showRemoteFolderLevel(
