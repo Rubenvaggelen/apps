@@ -118,6 +118,27 @@ class UsbPlaybackService : Service() {
             })
         }
 
+        fun append(context: Context, items: List<QueueItem>): Int {
+            val clean = items
+                .filter { it.uri.isNotBlank() }
+                .distinctBy { it.uri }
+            if (clean.isEmpty()) return 0
+
+            val active = instance
+            if (active != null) return active.appendQueueInternal(clean)
+
+            val known = pendingQueue.mapTo(linkedSetOf()) { it.uri }
+            val added = clean.filter { known.add(it.uri) }
+            if (added.isEmpty()) return 0
+
+            val hadQueue = pendingQueue.isNotEmpty()
+            pendingQueue = pendingQueue + added
+            if (!hadQueue) {
+                play(context, pendingQueue, 0)
+            }
+            return added.size
+        }
+
         fun toggle(context: Context) {
             val active = instance
             if (active != null) {
@@ -288,6 +309,26 @@ class UsbPlaybackService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun appendQueueInternal(items: List<QueueItem>): Int {
+        val known = queue.mapTo(linkedSetOf()) { it.uri }
+        val added = items.filter { known.add(it.uri) }
+        if (added.isEmpty()) return 0
+
+        if (queue.isEmpty()) {
+            queue = added
+            pendingQueue = queue.toList()
+            playIndex(0, 0, true, false)
+        } else {
+            queue = queue + added
+            pendingQueue = queue.toList()
+            player?.addMediaItems(added.map { MediaItem.fromUri(it.uri) })
+            persistSession()
+            updateStateCache()
+            updateNotification()
+        }
+        return added.size
+    }
 
     private fun playIndex(
         requestedIndex: Int,

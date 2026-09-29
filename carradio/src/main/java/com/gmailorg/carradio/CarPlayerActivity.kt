@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.OpenableColumns
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowInsets
@@ -17,8 +18,11 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.documentfile.provider.DocumentFile
 
 class CarPlayerActivity : AppCompatActivity() {
 
@@ -43,8 +47,21 @@ class CarPlayerActivity : AppCompatActivity() {
     private lateinit var playlistList: LinearLayout
     private lateinit var bottomTitle: TextView
     private lateinit var volumeSeek: SeekBar
+    private lateinit var masterVolumeLabel: TextView
     private lateinit var audioManager: AudioManager
     private var playlistSignature = ""
+
+    private val addTracksLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNotEmpty()) addImportedUris(uris)
+    }
+
+    private val addFolderLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) importFolder(uri)
+    }
 
     private val refreshTick = object : Runnable {
         override fun run() {
@@ -77,6 +94,7 @@ class CarPlayerActivity : AppCompatActivity() {
         playlistList = findViewById(R.id.playerPlaylistList)
         bottomTitle = findViewById(R.id.playerBottomTitle)
         volumeSeek = findViewById(R.id.playerVolumeSeek)
+        masterVolumeLabel = findViewById(R.id.playerMasterVolumeLabel)
 
         currentWaveform.accentColor = Color.parseColor("#20B8FF")
         nextWaveform.accentColor = Color.parseColor("#E8AA4E")
@@ -133,6 +151,9 @@ class CarPlayerActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.playerPlaylistButton).setOnClickListener {
             togglePlaylist()
         }
+        findViewById<TextView>(R.id.playerAddButton).setOnClickListener {
+            showAddMusicMenu()
+        }
         findViewById<TextView>(R.id.playerPlaylistClose).setOnClickListener {
             playlistPanel.visibility = View.GONE
         }
@@ -142,6 +163,121 @@ class CarPlayerActivity : AppCompatActivity() {
         startActivity(
             Intent(this, clazz).putExtra(EXTRA_FROM_PLAYER, true)
         )
+    }
+
+
+    private fun showAddMusicMenu() {
+        AlertDialog.Builder(this)
+            .setTitle("Muziek toevoegen")
+            .setItems(arrayOf("Losse nummers", "Complete map")) { _, which ->
+                when (which) {
+                    0 -> addTracksLauncher.launch(arrayOf("audio/*"))
+                    1 -> addFolderLauncher.launch(null)
+                }
+            }
+            .setNegativeButton("Annuleren", null)
+            .show()
+    }
+
+    private fun addImportedUris(uris: List<Uri>) {
+        val items = uris.map { uri ->
+            runCatching {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            val title = queryDisplayName(uri).ifBlank {
+                uri.lastPathSegment?.substringAfterLast('/') ?: "Muziek"
+            }
+            UsbPlaybackService.QueueItem(uri.toString(), title)
+        }
+        appendImportedItems(items)
+    }
+
+    private fun importFolder(treeUri: Uri) {
+        runCatching {
+            contentResolver.takePersistableUriPermission(
+                treeUri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        }
+        Toast.makeText(this, "Map wordt geladen…", Toast.LENGTH_SHORT).show()
+
+        Thread {
+            val root = DocumentFile.fromTreeUri(this, treeUri)
+            val audioFiles = if (root == null) emptyList() else collectAudioFiles(root)
+            val items = audioFiles
+                .sortedBy { it.name.orEmpty().lowercase() }
+                .map {
+                    UsbPlaybackService.QueueItem(
+                        it.uri.toString(),
+                        it.name?.substringBeforeLast('.', it.name.orEmpty()).orEmpty()
+                            .ifBlank { "Muziek" }
+                    )
+                }
+
+            runOnUiThread {
+                appendImportedItems(items)
+            }
+        }.start()
+    }
+
+    private fun collectAudioFiles(root: DocumentFile): List<DocumentFile> {
+        val result = mutableListOf<DocumentFile>()
+        val stack = ArrayDeque<DocumentFile>()
+        stack.add(root)
+
+        while (stack.isNotEmpty() && result.size < 5000) {
+            val folder = stack.removeLast()
+            folder.listFiles().forEach { file ->
+                when {
+                    file.isDirectory -> stack.add(file)
+                    file.isFile && isAudioFile(file) -> result += file
+                }
+            }
+        }
+        return result
+    }
+
+    private fun isAudioFile(file: DocumentFile): Boolean {
+        if (file.type?.startsWith("audio/", ignoreCase = true) == true) return true
+        val ext = file.name.orEmpty().substringAfterLast('.', "").lowercase()
+        return ext in setOf(
+            "mp3", "wav", "flac", "m4a", "aac", "ogg", "oga",
+            "opus", "wma", "aif", "aiff", "alac", "mka", "ac3", "amr"
+        )
+    }
+
+    private fun queryDisplayName(uri: Uri): String {
+        return runCatching {
+            contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                val col = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (col >= 0 && cursor.moveToFirst()) cursor.getString(col).orEmpty() else ""
+            }.orEmpty()
+        }.getOrDefault("")
+    }
+
+    private fun appendImportedItems(items: List<UsbPlaybackService.QueueItem>) {
+        if (items.isEmpty()) {
+            Toast.makeText(this, "Geen muziek gevonden.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val added = UsbPlaybackService.append(this, items)
+        playlistSignature = ""
+        refreshPlayer()
+        playlistPanel.visibility = View.VISIBLE
+        Toast.makeText(
+            this,
+            "$added nummer${if (added == 1) "" else "s"} toegevoegd",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     private fun configurePlaybackControls() {
@@ -268,7 +404,7 @@ class CarPlayerActivity : AppCompatActivity() {
             )
         )
 
-        volumeSeek.progress = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        refreshMasterVolumeUi()
 
         val signature =
             queue.joinToString("|") { it.uri + "\n" + it.title } + "#" + currentIndex
@@ -276,6 +412,14 @@ class CarPlayerActivity : AppCompatActivity() {
             playlistSignature = signature
             rebuildPlaylist(queue, currentIndex)
         }
+    }
+
+    private fun refreshMasterVolumeUi() {
+        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        val current = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).coerceIn(0, max)
+        volumeSeek.max = max
+        volumeSeek.progress = current
+        masterVolumeLabel.text = "MASTER • ${current * 100 / max}%"
     }
 
     private fun togglePlaylist() {

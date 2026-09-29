@@ -455,7 +455,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openCarPlayer() {
-        if (!UsbPlaybackService.snapshot().hasTrack) return
         startActivity(
             Intent(this, CarPlayerActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
@@ -464,6 +463,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun configureCarAudioPlayer() {
+        findViewById<TextView>(R.id.carOpenPlayerButton).setOnClickListener {
+            openCarPlayer()
+        }
         carAudioTitle.setOnClickListener {
             openCurrentMusicTrack()
         }
@@ -1007,7 +1009,10 @@ class MainActivity : AppCompatActivity() {
             setTextColor(android.graphics.Color.parseColor("#D8A451"))
             setBackgroundResource(R.drawable.bg_gold_outline)
             setPadding(18.dp, 13.dp, 18.dp, 13.dp)
-            setOnClickListener { dialog.dismiss() }
+            setOnClickListener {
+                dialog.dismiss()
+                openCarPlayer()
+            }
         })
 
         dialog.setContentView(panel)
@@ -1605,7 +1610,7 @@ class MainActivity : AppCompatActivity() {
             AlertDialog.Builder(this)
                 .setTitle(folder)
                 .setMessage("In deze map zijn nog geen afspeelbare nummers gecachet.")
-                .setPositiveButton("NAAR PLAYER", null)
+                .setPositiveButton("NAAR PLAYER") { _, _ -> openCarPlayer() }
                 .setNegativeButton("Terug") { _, _ ->
                     val parent = folder
                         .takeUnless { it == "Hoofdmap" }

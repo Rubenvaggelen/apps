@@ -126,6 +126,18 @@
                 android:background="@drawable/bg_outline"/>
 
             <TextView
+                android:id="@+id/playerAddButton"
+                android:layout_width="135dp"
+                android:layout_height="50dp"
+                android:layout_marginStart="8dp"
+                android:gravity="center"
+                android:text="+ Toevoegen"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/the_one_blue"
+                android:background="@drawable/bg_outline"/>
+
+            <TextView
                 android:id="@+id/playerAutoButton"
                 android:layout_width="135dp"
                 android:layout_height="50dp"
@@ -471,6 +483,17 @@
             android:textColor="@color/text_main"/>
 
         <TextView
+            android:id="@+id/playerMasterVolumeLabel"
+            android:layout_width="145dp"
+            android:layout_height="48dp"
+            android:gravity="center"
+            android:text="MASTER • 0%"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            android:textColor="@color/the_one_blue"
+            android:background="@drawable/bg_outline"/>
+
+        <TextView
             android:id="@+id/playerVolumeDown"
             android:layout_width="56dp"
             android:layout_height="48dp"
@@ -482,7 +505,7 @@
 
         <SeekBar
             android:id="@+id/playerVolumeSeek"
-            android:layout_width="230dp"
+            android:layout_width="190dp"
             android:layout_height="48dp"
             android:layout_marginHorizontal="8dp"/>
 
