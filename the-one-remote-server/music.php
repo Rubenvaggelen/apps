@@ -14,6 +14,7 @@ $secretFile = $root . '/secret.key';
 $rateFile = $root . '/rate.json';
 $favoritesFile = $root . '/favorites.json';
 $djQueueFile = $root . '/dj-queue.json';
+$deletedFile = $root . '/deleted-shared-media.json';
 $deviceRegistryFile = $home . '/the-one-remote-data/main-devices.json';
 $deviceOwnerFile = $home . '/the-one-remote-data/main-device-owner.json';
 
@@ -334,6 +335,116 @@ if ($action === 'stream') {
     $stick=safe_id((string)($_GET['stick'] ?? ''));
     $path=safe_path((string)($_GET['path'] ?? ''));
     stream_range($files.'/'.key_for($device,$stick,$path).'.bin',$path);
+}
+
+if ($action === 'shared-delete') {
+    $token=bearer();
+    if (!token_read_ok($token,$sec)) out(401,['ok'=>false,'error'=>'auth required']);
+
+    $b=read_json();
+    $requestDevice=safe_id((string)($b['request_device_id'] ?? ''));
+    $owner=load_json($deviceOwnerFile);
+    $ownerId=safe_id((string)($owner['device_id'] ?? ''));
+    if ($ownerId==='' || $requestDevice==='' || !hash_equals($ownerId,$requestDevice)) {
+        out(403,['ok'=>false,'error'=>'owner only']);
+    }
+
+    $device=safe_id((string)($b['device_id'] ?? ''));
+    $stick=safe_id((string)($b['stick_id'] ?? ''));
+    $path=safe_path((string)($b['path'] ?? ''));
+    $metaFile=$meta.'/'.$device.'__'.$stick.'.json';
+    $doc=load_json($metaFile);
+    $rows=is_array($doc['files'] ?? null) ? $doc['files'] : [];
+
+    $kept=[];
+    $removed=null;
+    foreach ($rows as $row) {
+        if (!is_array($row)) continue;
+        if ((string)($row['path'] ?? '') === $path && $removed===null) {
+            $removed=$row;
+            continue;
+        }
+        $kept[]=$row;
+    }
+    if ($removed===null) out(404,['ok'=>false,'error'=>'track not found']);
+
+    $doc['files']=$kept;
+    $doc['updated_at']=gmdate('c');
+    if (!save_json($metaFile,$doc)) {
+        out(507,['ok'=>false,'error'=>'catalog storage unavailable']);
+    }
+
+    $deletedDoc=load_json($deletedFile);
+    $deletedItems=is_array($deletedDoc['items'] ?? null) ? $deletedDoc['items'] : [];
+    $deleteKey=key_for($device,$stick,$path);
+    $sha=strtolower(trim((string)($removed['sha256'] ?? '')));
+    $deletedItems[$deleteKey]=[
+        'device_id'=>$device,
+        'stick_id'=>$stick,
+        'path'=>$path,
+        'sha256'=>$sha,
+        'deleted_at'=>gmdate('c'),
+        'deleted_by'=>$requestDevice
+    ];
+    if (!save_json($deletedFile,[
+        'items'=>$deletedItems,
+        'updated_at'=>gmdate('c')
+    ])) {
+        out(507,['ok'=>false,'error'=>'delete marker storage unavailable']);
+    }
+
+    $cacheFile=cache_file_for($files,$device,$stick,$path);
+    $freedBytes=0;
+    $cacheSize=is_file($cacheFile) ? (int)(@filesize($cacheFile) ?: 0) : 0;
+    if (is_file($cacheFile)) @unlink($cacheFile);
+
+    if (preg_match('/^[a-f0-9]{64}$/',$sha)) {
+        $pool=pool_file_for_sha($files,$sha);
+        if (is_file($pool)) {
+            $stat=@stat($pool);
+            $links=is_array($stat) ? (int)($stat['nlink'] ?? 0) : 0;
+            if ($links <= 1) {
+                $poolSize=(int)(@filesize($pool) ?: $cacheSize);
+                if (@unlink($pool)) $freedBytes=max($freedBytes,$poolSize);
+            }
+        } elseif ($cacheSize>0) {
+            $freedBytes=$cacheSize;
+        }
+    } elseif ($cacheSize>0) {
+        $freedBytes=$cacheSize;
+    }
+
+    // Verwijder eventuele favoriet-verwijzingen naar dit inmiddels verwijderde nummer.
+    $fav=load_json($favoritesFile);
+    $byDevice=is_array($fav['by_device'] ?? null) ? $fav['by_device'] : [];
+    $favChanged=false;
+    foreach ($byDevice as $bucketId => $bucket) {
+        if (!is_array($bucket)) continue;
+        $items=is_array($bucket['items'] ?? null) ? $bucket['items'] : [];
+        $filtered=array_values(array_filter($items,function($row) use ($device,$stick,$path) {
+            if (!is_array($row) || strtolower((string)($row['kind'] ?? ''))!=='usb') return true;
+            return !(
+                (string)($row['device_id'] ?? '')===$device &&
+                (string)($row['stick_id'] ?? '')===$stick &&
+                (string)($row['path'] ?? '')===$path
+            );
+        }));
+        if (count($filtered)!==count($items)) {
+            $bucket['items']=$filtered;
+            $bucket['updated_at']=gmdate('c');
+            $byDevice[$bucketId]=$bucket;
+            $favChanged=true;
+        }
+    }
+    if ($favChanged) {
+        save_json($favoritesFile,['by_device'=>$byDevice,'updated_at'=>gmdate('c')]);
+    }
+
+    out(200,[
+        'ok'=>true,
+        'deleted'=>true,
+        'freed_bytes'=>$freedBytes
+    ]);
 }
 
 if ($action === 'dj-queue-add') {
@@ -770,6 +881,12 @@ if ($action === 'upload-start') {
     $sha=strtolower(trim((string)($b['sha256'] ?? '')));
     if (!preg_match('/^[a-f0-9]{64}$/',$sha)) out(400,['ok'=>false,'error'=>'invalid hash']);
 
+    $deletedDoc=load_json($deletedFile);
+    $deletedItems=is_array($deletedDoc['items'] ?? null) ? $deletedDoc['items'] : [];
+    if (isset($deletedItems[key_for($device,$stick,$path)])) {
+        out(200,['ok'=>true,'offset'=>0,'deleted'=>true]);
+    }
+
     $part=$files.'/'.key_for($device,$stick,$path).'.'.$sha.'.part';
     if (@file_put_contents($part, '', LOCK_EX) === false) {
         out(500,['ok'=>false,'error'=>'cannot start upload']);
@@ -790,6 +907,12 @@ if ($action === 'upload-chunk') {
     $encoded=(string)($b['data'] ?? '');
     $chunk=base64_decode($encoded,true);
     if (!is_string($chunk) || $chunk==='') out(400,['ok'=>false,'error'=>'invalid chunk']);
+
+    $deletedDoc=load_json($deletedFile);
+    $deletedItems=is_array($deletedDoc['items'] ?? null) ? $deletedDoc['items'] : [];
+    if (isset($deletedItems[key_for($device,$stick,$path)])) {
+        out(200,['ok'=>true,'offset'=>$offset+strlen($chunk),'deleted'=>true]);
+    }
 
     $part=$files.'/'.key_for($device,$stick,$path).'.'.$sha.'.part';
     if (!is_file($part)) out(409,['ok'=>false,'error'=>'upload not started']);
@@ -836,6 +959,13 @@ if ($action === 'upload-finish') {
     $path=safe_path((string)($b['path'] ?? ''));
     $sha=strtolower(trim((string)($b['sha256'] ?? '')));
     if (!preg_match('/^[a-f0-9]{64}$/',$sha)) out(400,['ok'=>false,'error'=>'invalid hash']);
+
+    $deletedDoc=load_json($deletedFile);
+    $deletedItems=is_array($deletedDoc['items'] ?? null) ? $deletedDoc['items'] : [];
+    if (isset($deletedItems[key_for($device,$stick,$path)])) {
+        @unlink($files.'/'.key_for($device,$stick,$path).'.'.$sha.'.part');
+        out(200,['ok'=>true,'deleted'=>true]);
+    }
 
     $part=$files.'/'.key_for($device,$stick,$path).'.'.$sha.'.part';
     if (!is_file($part)) out(409,['ok'=>false,'error'=>'upload not started']);
@@ -884,6 +1014,15 @@ if ($action === 'upload') {
     $path=safe_path((string)($_POST['path'] ?? ''));
     $sha=strtolower(trim((string)($_POST['sha256'] ?? '')));
     if (!preg_match('/^[a-f0-9]{64}$/',$sha)) out(400,['ok'=>false,'error'=>'invalid hash']);
+
+    $deletedDoc=load_json($deletedFile);
+    $deletedItems=is_array($deletedDoc['items'] ?? null) ? $deletedDoc['items'] : [];
+    if (isset($deletedItems[key_for($device,$stick,$path)])) {
+        $tmp=(string)($_FILES['file']['tmp_name'] ?? '');
+        if ($tmp!=='' && is_uploaded_file($tmp)) @unlink($tmp);
+        out(200,['ok'=>true,'deleted'=>true]);
+    }
+
     $tmp=(string)($_FILES['file']['tmp_name'] ?? '');
     if ($tmp==='' || !is_uploaded_file($tmp)) out(400,['ok'=>false,'error'=>'file required']);
     $actual=hash_file('sha256',$tmp);
@@ -932,6 +1071,8 @@ if ($action === 'sync-batch') {
     }
 
     $syncId=safe_id((string)($b['sync_id'] ?? 'default'));
+    $deletedDoc=load_json($deletedFile);
+    $deletedItems=is_array($deletedDoc['items'] ?? null) ? $deletedDoc['items'] : [];
     $tmpMeta=$meta.'/'.$device.'__'.$stick.'__'.$syncId.'.sync.json';
     if ($batchIndex===0) {
         $doc=[
@@ -952,6 +1093,7 @@ if ($action === 'sync-batch') {
     foreach ((array)($b['files'] ?? []) as $item) {
         if (!is_array($item)) continue;
         $path=safe_path((string)($item['path'] ?? ''));
+        if (isset($deletedItems[key_for($device,$stick,$path)])) continue;
         $sha=strtolower(trim((string)($item['sha256'] ?? '')));
         if ($sha !== '' && !preg_match('/^[a-f0-9]{64}$/',$sha)) continue;
         $doc['files'][]=[
@@ -987,10 +1129,13 @@ if ($action === 'sync') {
     $b=read_json();
     $device=safe_id((string)($b['device_id'] ?? ''));
     $stick=safe_id((string)($b['stick_id'] ?? ''));
+    $deletedDoc=load_json($deletedFile);
+    $deletedItems=is_array($deletedDoc['items'] ?? null) ? $deletedDoc['items'] : [];
     $rows=[];
     foreach ((array)($b['files'] ?? []) as $item) {
         if (!is_array($item)) continue;
         $path=safe_path((string)($item['path'] ?? ''));
+        if (isset($deletedItems[key_for($device,$stick,$path)])) continue;
         $sha=strtolower(trim((string)($item['sha256'] ?? '')));
         if ($sha !== '' && !preg_match('/^[a-f0-9]{64}$/',$sha)) continue;
         $rows[]=[
