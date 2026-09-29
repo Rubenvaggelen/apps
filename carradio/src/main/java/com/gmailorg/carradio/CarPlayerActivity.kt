@@ -183,20 +183,69 @@ class CarPlayerActivity : AppCompatActivity() {
 
     private fun showAddMusicMenu() {
         AlertDialog.Builder(this)
-            .setTitle("Muziek toevoegen uit Shared Media")
-            .setItems(arrayOf("Losse nummers", "Complete map")) { _, which ->
-                val mode = if (which == 0) {
-                    SharedMediaImportActivity.MODE_TRACKS
-                } else {
-                    SharedMediaImportActivity.MODE_FOLDER
+            .setTitle("Muziek toevoegen aan afspeellijst")
+            .setItems(arrayOf(
+                "🗂 Shared Media • losse nummers",
+                "🗂 Shared Media • complete map",
+                "★ The One Favorites",
+                "🎧 The One Mixes"
+            )) { _, which ->
+                when (which) {
+                    0 -> startActivity(Intent(this, SharedMediaImportActivity::class.java).putExtra(SharedMediaImportActivity.EXTRA_MODE, SharedMediaImportActivity.MODE_TRACKS))
+                    1 -> startActivity(Intent(this, SharedMediaImportActivity::class.java).putExtra(SharedMediaImportActivity.EXTRA_MODE, SharedMediaImportActivity.MODE_FOLDER))
+                    2 -> showFavoritesForPlaylist()
+                    3 -> startActivity(Intent(this, SupremacyMixesActivity::class.java).putExtra(SupremacyMixesActivity.EXTRA_ADD_TO_PLAYLIST, true))
                 }
-                startActivity(
-                    Intent(this, SharedMediaImportActivity::class.java)
-                        .putExtra(SharedMediaImportActivity.EXTRA_MODE, mode)
-                )
             }
             .setNegativeButton("Annuleren", null)
             .show()
+    }
+
+    private fun showFavoritesForPlaylist() {
+        Toast.makeText(this, "The One Favorites laden…", Toast.LENGTH_SHORT).show()
+        Thread {
+            try {
+                if (!RemoteUsbMusicClient.hasToken(this) && !RemoteUsbMusicClient.loginForBrowsing(this)) {
+                    throw IllegalStateException("The One Family is tijdelijk niet bereikbaar")
+                }
+                val favorites = RemoteUsbMusicClient.favorites(this)
+                val playable = favorites.mapNotNull { item ->
+                    when {
+                        item.kind.equals("mix", true) && item.url.isNotBlank() ->
+                            item to UsbPlaybackService.QueueItem(item.url, item.title)
+                        item.kind.equals("usb", true) && item.deviceId.isNotBlank() && item.stickId.isNotBlank() && item.path.isNotBlank() ->
+                            item to UsbPlaybackService.QueueItem(RemoteUsbMusicClient.streamUrl(this, item), item.title)
+                        else -> null
+                    }
+                }
+                runOnUiThread {
+                    if (playable.isEmpty()) {
+                        Toast.makeText(this, "Geen afspeelbare The One Favorites gevonden.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        val labels = ArrayList<String>()
+                        labels += "＋ Alle favorieten toevoegen (" + playable.size + ")"
+                        playable.forEach { labels += "＋ " + it.first.title }
+                        AlertDialog.Builder(this)
+                            .setTitle("★ The One Favorites")
+                            .setItems(labels.toTypedArray()) { dialog, which ->
+                                val items = if (which == 0) playable.map { it.second } else listOf(playable[which - 1].second)
+                                val added = UsbPlaybackService.append(this, items)
+                                playlistSignature = ""
+                                refreshPlayer()
+                                playlistPanel.visibility = View.VISIBLE
+                                Toast.makeText(this, added.toString() + " toegevoegd aan afspeellijst", Toast.LENGTH_SHORT).show()
+                                dialog.dismiss()
+                            }
+                            .setNegativeButton("Sluiten", null)
+                            .show()
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(this, e.message ?: "The One Favorites konden niet worden geladen", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
     }
 
     private fun addImportedUris(uris: List<Uri>) {
