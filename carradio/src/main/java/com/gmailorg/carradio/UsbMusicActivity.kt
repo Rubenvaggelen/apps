@@ -538,6 +538,11 @@ class UsbMusicActivity : AppCompatActivity() {
         }
         UsbPlaybackService.play(this, serviceQueue, index)
         nowPlayingText.text = track.playerTitle
+        startActivity(
+            android.content.Intent(this, CarPlayerActivity::class.java).apply {
+                flags = android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+            }
+        )
     }
 
     private fun togglePlayPause() {
