@@ -167,6 +167,19 @@ class MainActivity : AppCompatActivity() {
         UsbPlaybackService.resumeLastSessionIfNeeded(this)
         ensureCarPersonRegistration()
         buildTiles(); ensurePermissionThenStart(); ensureNotificationPermission(); handler.post(clockTick); UpdateChecker.checkForUpdate(this)
+        if (intent?.getBooleanExtra(CarPlayerActivity.EXTRA_OPEN_MUSIC, false) == true) {
+            intent.removeExtra(CarPlayerActivity.EXTRA_OPEN_MUSIC)
+            carRoot.post { showMusicChooser() }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent?.getBooleanExtra(CarPlayerActivity.EXTRA_OPEN_MUSIC, false) == true) {
+            intent.removeExtra(CarPlayerActivity.EXTRA_OPEN_MUSIC)
+            carRoot.post { showMusicChooser() }
+        }
     }
 
     private fun ensureCarPersonRegistration() {
@@ -439,6 +452,15 @@ class MainActivity : AppCompatActivity() {
         if (!::audioManager.isInitialized || !::carVolumeSeek.isInitialized) return
         carVolumeSeek.progress =
             audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+    }
+
+    private fun openCarPlayer() {
+        if (!UsbPlaybackService.snapshot().hasTrack) return
+        startActivity(
+            Intent(this, CarPlayerActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+            }
+        )
     }
 
     private fun configureCarAudioPlayer() {
@@ -927,6 +949,7 @@ class MainActivity : AppCompatActivity() {
                             .coerceAtLeast(0)
                     UsbPlaybackService.play(this@MainActivity, queue, index)
                     dialog.dismiss()
+                    openCarPlayer()
                     carAudioPlayer.postDelayed({ refreshCarAudioPlayer() }, 120L)
                 }
             })
@@ -941,6 +964,7 @@ class MainActivity : AppCompatActivity() {
                             .coerceAtLeast(0)
                     UsbPlaybackService.play(this@MainActivity, queue, index)
                     dialog.dismiss()
+                    openCarPlayer()
                     carAudioPlayer.postDelayed({ refreshCarAudioPlayer() }, 120L)
                 }
             }
