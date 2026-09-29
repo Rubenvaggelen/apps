@@ -171,6 +171,93 @@ public static class UsbMusicCloudService
     private static string CurrentDjDeviceId() =>
         "windows-" + SafeId(Environment.MachineName).ToLowerInvariant();
 
+    public static string UsbFavoriteKey(CloudUsbMusicFile file) =>
+        file.DeviceId + "\n" + file.StickId + "\n" + NormalizePath(file.Path);
+
+    public static async Task<HashSet<string>> GetUsbFavoriteKeysAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureTokenAsync(cancellationToken);
+        var requestDeviceId = CurrentDjDeviceId();
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            Endpoint + "?action=favorites-list&request_device_id=" +
+            Uri.EscapeDataString(requestDeviceId));
+        request.Headers.Authorization =
+            new AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await Http.SendAsync(request, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            _token = "";
+            await EnsureTokenAsync(cancellationToken);
+            return await GetUsbFavoriteKeysAsync(cancellationToken);
+        }
+
+        response.EnsureSuccessStatusCode();
+        var payload = await response.Content.ReadAsStringAsync(cancellationToken);
+        using var json = JsonDocument.Parse(payload);
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (!json.RootElement.TryGetProperty("items", out var items) ||
+            items.ValueKind != JsonValueKind.Array)
+            return keys;
+
+        foreach (var item in items.EnumerateArray())
+        {
+            if (!item.TryGetProperty("kind", out var kind) ||
+                !string.Equals(kind.GetString(), "usb", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var device = item.TryGetProperty("device_id", out var d) ? d.GetString() ?? "" : "";
+            var stick = item.TryGetProperty("stick_id", out var s) ? s.GetString() ?? "" : "";
+            var path = item.TryGetProperty("path", out var p) ? p.GetString() ?? "" : "";
+            if (device.Length == 0 || stick.Length == 0 || path.Length == 0) continue;
+            keys.Add(device + "\n" + stick + "\n" + NormalizePath(path));
+        }
+
+        return keys;
+    }
+
+    public static async Task SetUsbFavoriteAsync(
+        CloudUsbMusicStick stick,
+        CloudUsbMusicFile file,
+        bool favorite,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureTokenAsync(cancellationToken);
+        var body = JsonSerializer.Serialize(new
+        {
+            request_device_id = CurrentDjDeviceId(),
+            kind = "usb",
+            title = file.DisplayName,
+            source_label = "Shared Media • " + stick.DeviceName + " • " + stick.StickName,
+            device_id = file.DeviceId,
+            stick_id = file.StickId,
+            path = file.Path,
+            favorite
+        });
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            Endpoint + "?action=favorites-set")
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json")
+        };
+        request.Headers.Authorization =
+            new AuthenticationHeaderValue("Bearer", _token);
+
+        using var response = await Http.SendAsync(request, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            _token = "";
+            await EnsureTokenAsync(cancellationToken);
+            throw new InvalidOperationException("Favoriet opnieuw proberen.");
+        }
+        response.EnsureSuccessStatusCode();
+    }
+
     public static async Task QueueDjImportAsync(
         CloudUsbMusicFile file,
         CancellationToken cancellationToken = default)
