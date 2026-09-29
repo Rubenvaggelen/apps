@@ -1,8 +1,8 @@
 {
-  "version": "2.1.6",
-  "build": 216,
-  "notes": "Use compact return icon for replaying a played track as next",
-  "sha256": "A48269D74451ED3F2235B093D19DCC1AFE5DD61C7D711DA98ABCF312F1D509B5",
+  "version": "2.1.7",
+  "build": 217,
+  "notes": "Add persistent Auto Sync toggle; Auto mix can fade without forced sync",
+  "sha256": "0DB2B54C3100C8A3D41096FC90EE0F2376C7510FA9AFD2AA2ED6A5749DBC20A3",
   "files": [
     "index.html"
   ]
