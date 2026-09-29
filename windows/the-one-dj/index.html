@@ -388,6 +388,7 @@ body:not(.hp-on) .cue-hp{display:none}
     <div class="top-actions">
     <button class="btn small hp-btn" id="hpBtn" aria-haspopup="dialog" aria-label="Koptelefoon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15v-3a8 8 0 0 1 16 0v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="3" y="14" width="5" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="16" y="14" width="5" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg><span class="hp-label">Koptelefoon</span></button>
     <button class="btn small" id="autoMixBtn" aria-pressed="false">Auto</button>
+    <button class="btn small auto-mix-on" id="autoSyncBtn" aria-pressed="true">Auto Sync • Aan</button>
     <button class="btn small only-compact" id="libBtn">Nummers</button>
     <button class="btn small" id="updateBtn">Controleer op updates</button>
     <button class="btn small only-compact" id="fsBtn" hidden aria-label="Volledig scherm"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -1693,8 +1694,8 @@ function startAutoFade(targetIndex=null){
   if(!tgt.playing){
     tgt.cueHeld=false;
     tgt.play();
-    if(src.playing&&src.bpm&&tgt.bpm) tgt.doSync();
-  }else if(src.playing&&src.bpm&&tgt.bpm&&!tgt.syncLock){
+    if(autoSync&&src.playing&&src.bpm&&tgt.bpm) tgt.doSync();
+  }else if(autoSync&&src.playing&&src.bpm&&tgt.bpm&&!tgt.syncLock){
     tgt.doSync();
   }
   fade={from:state.xf,to:ti===1?1:-1,t0:ctx.currentTime,dur:fadeDuration(ti),src,tgt};
@@ -1720,7 +1721,22 @@ fadeLen.addEventListener("click",()=>{fadeIdx=(fadeIdx+1)%FADE_BEATS.length;fade
 document.getElementById("xfader").addEventListener("pointerdown",cancelFade,true);
 let lastFadeSide=null;
 
-/* continuous Auto mix: sync first, then use the existing beat-based fade */
+/* Auto Sync is independent from Auto mix/fade and can be disabled permanently. */
+let autoSync=localStorage.getItem("theOneDjAutoSync")!=="off";
+const autoSyncBtn=document.getElementById("autoSyncBtn");
+function updateAutoSyncUI(){
+  autoSyncBtn?.setAttribute("aria-pressed",String(autoSync));
+  autoSyncBtn?.classList.toggle("auto-mix-on",autoSync);
+  if(autoSyncBtn) autoSyncBtn.textContent=autoSync?"Auto Sync • Aan":"Auto Sync • Uit";
+}
+autoSyncBtn?.addEventListener("click",()=>{
+  autoSync=!autoSync;
+  localStorage.setItem("theOneDjAutoSync",autoSync?"on":"off");
+  updateAutoSyncUI();
+});
+updateAutoSyncUI();
+
+/* continuous Auto mix: fade at the end; Auto Sync only applies when enabled above. */
 let autoMix=false,autoMixArmed=true;
 const autoMixBtn=document.getElementById("autoMixBtn");
 function updateAutoMixUI(){
