@@ -1483,7 +1483,7 @@ class MoviesActivity : AppCompatActivity() {
         val actionHeight = dp(38)
         val actionGap = dp(6)
         val canDeleteSharedMedia = MainDeviceRegistry.isLocallyOwner(this)
-        lateinit var dialog: Dialog
+        val dialog = Dialog(this)
         val canDjImport =
             MainDeviceRegistry.isTheOneProfile(this) ||
             MainDeviceRegistry.hasAccess(
@@ -1873,7 +1873,6 @@ class MoviesActivity : AppCompatActivity() {
             }
         }
 
-        dialog = Dialog(this)
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(16), dp(18), dp(14))
