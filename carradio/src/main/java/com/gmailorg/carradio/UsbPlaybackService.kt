@@ -312,6 +312,7 @@ class UsbPlaybackService : Service() {
     @Volatile private var deckBPreparing = false
     @Volatile private var deckBMuted = false
     @Volatile private var fadeRunning = false
+    @Volatile private var fadePending = false
     private lateinit var mediaSession: MediaSessionCompat
     private var queue: List<QueueItem> = emptyList()
     private var index = -1
@@ -600,6 +601,7 @@ class UsbPlaybackService : Service() {
         deckBIndex = -1
         deckBPreparing = false
         fadeRunning = false
+        fadePending = false
 
         oldA?.let {
             try { it.stop() } catch (_: Exception) {}
@@ -618,6 +620,7 @@ class UsbPlaybackService : Service() {
         deckB = null
         deckBIndex = -1
         deckBPreparing = false
+        fadePending = false
         old?.let {
             try { it.stop() } catch (_: Exception) {}
             try { it.release() } catch (_: Exception) {}
@@ -674,7 +677,11 @@ class UsbPlaybackService : Service() {
                         when (playbackState) {
                             Player.STATE_READY -> {
                                 deckBPreparing = false
-                                applyDuckingVolume()
+                                if (fadePending) {
+                                    startCrossfadeInternal()
+                                } else {
+                                    applyDuckingVolume()
+                                }
                             }
 
                             Player.STATE_ENDED -> {
@@ -825,6 +832,7 @@ class UsbPlaybackService : Service() {
         muted = promotedWasMuted
         deckBMuted = false
         fadeRunning = false
+        fadePending = false
 
         try {
             nextPlayer.volume = if (muted) 0f else targetVolume()
@@ -854,16 +862,42 @@ class UsbPlaybackService : Service() {
     }
 
     private fun fadeToNextInternal() {
-        if (fadeRunning || queue.isEmpty()) return
+        if (fadeRunning || fadePending || queue.isEmpty()) return
         if (deckB == null) prepareDeckBInternal()
 
-        val a = player ?: return
         val b = deckB ?: return
 
+        if (b.playbackState == Player.STATE_READY) {
+            startCrossfadeInternal()
+        } else {
+            fadePending = true
+            try {
+                b.volume = 0f
+                b.playWhenReady = true
+            } catch (_: Exception) {
+                fadePending = false
+            }
+        }
+    }
+
+    private fun startCrossfadeInternal() {
+        if (fadeRunning) return
+
+        val a = player ?: run {
+            fadePending = false
+            return
+        }
+        val b = deckB ?: run {
+            fadePending = false
+            return
+        }
+
+        fadePending = false
         fadeRunning = true
+
         val base = targetVolume()
-        val steps = 20
-        val stepDelay = 75L
+        val steps = 24
+        val stepDelay = 70L
         val handler = Handler(Looper.getMainLooper())
 
         try {
