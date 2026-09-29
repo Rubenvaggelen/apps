@@ -1482,6 +1482,8 @@ class MoviesActivity : AppCompatActivity() {
         val actionWidth = dp(40)
         val actionHeight = dp(38)
         val actionGap = dp(6)
+        val canDeleteSharedMedia = MainDeviceRegistry.isLocallyOwner(this)
+        lateinit var dialog: Dialog
         val canDjImport =
             MainDeviceRegistry.isTheOneProfile(this) ||
             MainDeviceRegistry.hasAccess(
@@ -1584,6 +1586,86 @@ class MoviesActivity : AppCompatActivity() {
                     1f
                 )
             )
+
+            if (canDeleteSharedMedia) {
+                val info = TextView(this).apply {
+                    text = "ⓘ"
+                    textSize = 18f
+                    gravity = android.view.Gravity.CENTER
+                    setTextColor(Color.parseColor("#91A4BD"))
+                    contentDescription = "Beheer ${file.name}"
+                    setPadding(dp(6), dp(2), dp(6), dp(2))
+                    setOnClickListener {
+                        AlertDialog.Builder(this@MoviesActivity)
+                            .setTitle(cleanUsbTrackTitle(file.displayName))
+                            .setMessage(
+                                "Dit nummer verwijderen uit Shared Media? " +
+                                    "De bron op USB/Windows blijft bestaan, maar dit nummer " +
+                                    "komt niet opnieuw terug bij synchronisatie."
+                            )
+                            .setNegativeButton("Annuleren", null)
+                            .setPositiveButton("Verwijderen") { _, _ ->
+                                remoteMusicIo.execute {
+                                    try {
+                                        val freed = RemoteUsbMusicClient.deleteSharedTrack(
+                                            this@MoviesActivity,
+                                            file
+                                        )
+                                        val refreshed = RemoteUsbMusicClient.catalog(
+                                            this@MoviesActivity
+                                        )
+                                        val refreshedStick = refreshed.firstOrNull {
+                                            it.deviceId.equals(stick.deviceId, true) &&
+                                                it.stickId.equals(stick.stickId, true)
+                                        }
+
+                                        runOnUiThread {
+                                            dialog.dismiss()
+                                            val freedText = if (freed > 0L) {
+                                                val mb = freed.toDouble() / 1024.0 / 1024.0
+                                                " • %.1f MB vrij".format(mb)
+                                            } else {
+                                                ""
+                                            }
+                                            Toast.makeText(
+                                                this@MoviesActivity,
+                                                "Verwijderd uit Shared Media$freedText",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+
+                                            if (refreshedStick != null) {
+                                                showRemoteFolderLevel(
+                                                    refreshedStick,
+                                                    normalized,
+                                                    openCurrentFolder = true
+                                                )
+                                            } else {
+                                                loadRemoteUsbCatalog()
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        runOnUiThread {
+                                            Toast.makeText(
+                                                this@MoviesActivity,
+                                                e.message ?: "Verwijderen mislukt",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                        }
+                                    }
+                                }
+                            }
+                            .show()
+                    }
+                }
+                infoRow.addView(
+                    info,
+                    LinearLayout.LayoutParams(
+                        dp(34),
+                        dp(34)
+                    )
+                )
+            }
+
             row.addView(
                 infoRow,
                 LinearLayout.LayoutParams(
@@ -1791,7 +1873,7 @@ class MoviesActivity : AppCompatActivity() {
             }
         }
 
-        val dialog = Dialog(this)
+        dialog = Dialog(this)
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(16), dp(18), dp(14))
