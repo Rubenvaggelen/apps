@@ -252,6 +252,29 @@ class UsbPlaybackService : Service() {
 
         fun snapshot(): PlaybackState = instance?.snapshotInternal() ?: lastState
 
+        fun deckBSnapshot(): PlaybackState =
+            instance?.deckBSnapshotInternal() ?: PlaybackState()
+
+        fun pauseDeckA(context: Context) {
+            instance?.pauseDeckAInternal()
+        }
+
+        fun toggleDeckB(context: Context) {
+            instance?.toggleDeckBInternal()
+        }
+
+        fun pauseDeckB(context: Context) {
+            instance?.pauseDeckBInternal()
+        }
+
+        fun toggleDeckBMute(context: Context): Boolean {
+            val active = instance ?: return false
+            return active.toggleDeckBMuteInternal()
+        }
+
+        fun isDeckBMuted(context: Context): Boolean =
+            instance?.deckBMuted ?: false
+
         fun queueSnapshot(): List<QueueItem> = instance?.queue?.toList() ?: pendingQueue.toList()
 
         fun currentIndex(): Int = instance?.index ?: -1
@@ -284,6 +307,11 @@ class UsbPlaybackService : Service() {
     }
 
     private var player: ExoPlayer? = null
+    private var deckB: ExoPlayer? = null
+    private var deckBIndex = -1
+    @Volatile private var deckBPreparing = false
+    @Volatile private var deckBMuted = false
+    @Volatile private var fadeRunning = false
     private lateinit var mediaSession: MediaSessionCompat
     private var queue: List<QueueItem> = emptyList()
     private var index = -1
@@ -350,7 +378,7 @@ class UsbPlaybackService : Service() {
         } else {
             queue = queue + added
             pendingQueue = queue.toList()
-            player?.addMediaItems(added.map { MediaItem.fromUri(it.uri) })
+            prepareDeckBInternal()
             persistSession()
             updateStateCache()
             updateNotification()
@@ -362,42 +390,20 @@ class UsbPlaybackService : Service() {
         if (fromIndex !in queue.indices || toIndex !in queue.indices) return false
         if (fromIndex == toIndex) return true
 
+        val currentUri = queue.getOrNull(index)?.uri
         val updated = queue.toMutableList()
         val moved = updated.removeAt(fromIndex)
         updated.add(toIndex, moved)
         queue = updated
         pendingQueue = queue.toList()
 
-        val exo = player
-        if (exo != null) {
-            try {
-                exo.moveMediaItem(fromIndex, toIndex)
-                index = exo.currentMediaItemIndex.coerceIn(0, queue.lastIndex)
-            } catch (_: Exception) {
-                val state = snapshotInternal()
-                val currentUri = state.uri
-                val newIndex = queue.indexOfFirst { it.uri == currentUri }
-                    .takeIf { it >= 0 }
-                    ?: index.coerceIn(0, queue.lastIndex)
-                playIndex(
-                    newIndex,
-                    state.positionMs,
-                    state.isPlaying,
-                    false
-                )
-                return true
-            }
-        } else {
-            index = when {
-                index == fromIndex -> toIndex
-                fromIndex < index && toIndex >= index -> index - 1
-                fromIndex > index && toIndex <= index -> index + 1
-                else -> index
-            }.coerceIn(-1, queue.lastIndex)
-        }
+        index = queue.indexOfFirst { it.uri == currentUri }
+            .takeIf { it >= 0 }
+            ?: index.coerceIn(0, queue.lastIndex)
 
+        prepareDeckBInternal()
         updateStateCache()
-        if (index in queue.indices) persistSession()
+        persistSession()
         updateNotification()
         return true
     }
@@ -410,29 +416,23 @@ class UsbPlaybackService : Service() {
             return true
         }
 
-        val wasPlaying = snapshotInternal().isPlaying
+        val stateBefore = snapshotInternal()
         val oldIndex = index
-        val updated = queue.toMutableList().apply { removeAt(removeIndex) }
+        val currentUri = queue.getOrNull(oldIndex)?.uri
+        queue = queue.toMutableList().apply { removeAt(removeIndex) }
+        pendingQueue = queue.toList()
 
         if (removeIndex == oldIndex) {
-            queue = updated
-            pendingQueue = queue.toList()
             val nextIndex = oldIndex.coerceAtMost(queue.lastIndex)
-            playIndex(nextIndex, 0, wasPlaying, false)
+            playIndex(nextIndex, 0, stateBefore.isPlaying, false)
             return true
         }
 
-        queue = updated
-        pendingQueue = queue.toList()
-        if (removeIndex < oldIndex) index = (oldIndex - 1).coerceAtLeast(0)
+        index = queue.indexOfFirst { it.uri == currentUri }
+            .takeIf { it >= 0 }
+            ?: oldIndex.coerceIn(0, queue.lastIndex)
 
-        try {
-            player?.removeMediaItem(removeIndex)
-        } catch (_: Exception) {
-            playIndex(index.coerceIn(0, queue.lastIndex), 0, wasPlaying, false)
-            return true
-        }
-
+        prepareDeckBInternal()
         updateStateCache()
         persistSession()
         updateNotification()
@@ -470,86 +470,12 @@ class UsbPlaybackService : Service() {
         )
         updateNotification()
 
-        val exo = ExoPlayer.Builder(this).build()
+        val exo = createDeckPlayer()
         player = exo
-
-        exo.setAudioAttributes(
-            AudioAttributes.Builder()
-                .setUsage(C.USAGE_MEDIA)
-                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                .build(),
-            true
-        )
-
-        // Eén vaste ExoPlayer-queue: volgende nummers worden vooraf voorbereid
-        // zodat er geen harde stop meer zit tussen twee tracks.
-        exo.setMediaItems(queue.map { MediaItem.fromUri(it.uri) })
-        exo.seekTo(index, requestedStartPositionMs.toLong())
+        exo.setMediaItem(MediaItem.fromUri(queue[index].uri))
+        exo.seekTo(requestedStartPositionMs.toLong())
         exo.playWhenReady = autoStart
-
-        exo.addListener(object : Player.Listener {
-            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                if (player !== exo) return
-                index = exo.currentMediaItemIndex.coerceIn(0, queue.lastIndex)
-                requestedStartPositionMs = 0
-                preparing = false
-                restoring = false
-
-                if (
-                    reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO &&
-                    !autoPlayEnabled
-                ) {
-                    exo.pause()
-                    exo.seekTo(0L)
-                }
-
-                updateStateCache()
-                persistSession()
-                updateNotification()
-            }
-
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                if (player !== exo) return
-
-                when (playbackState) {
-                    Player.STATE_READY -> {
-                        preparing = false
-                        restoring = false
-                        applyDuckingVolume()
-                        updateStateCache()
-                        persistSession()
-                        updateNotification()
-                    }
-
-                    Player.STATE_ENDED -> {
-                        preparing = false
-                        updateStateCache()
-                        persistSession()
-                        updateNotification()
-                    }
-                }
-            }
-
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (player !== exo) return
-                updateStateCache()
-                persistSession()
-                updateNotification()
-            }
-
-            override fun onPlayerError(error: PlaybackException) {
-                if (player !== exo) return
-                preparing = false
-                updateStateCache()
-                updateNotification()
-
-                if (restoring) {
-                    restoring = false
-                    stopForeground(Service.STOP_FOREGROUND_REMOVE)
-                    stopSelf()
-                }
-            }
-        })
+        attachDeckListener(exo)
 
         try {
             exo.prepare()
@@ -614,23 +540,26 @@ class UsbPlaybackService : Service() {
     private fun playRelative(delta: Int) {
         val exo = player
         if (exo == null) {
-            if (queue.isNotEmpty()) playIndex((if (index in queue.indices) index else 0), 0, true, false)
+            if (queue.isNotEmpty()) {
+                playIndex(if (index in queue.indices) index else 0, 0, true, false)
+            }
             return
         }
 
         if (delta > 0) {
-            if (exo.hasNextMediaItem()) exo.seekToNextMediaItem()
-            else exo.seekTo(0, 0L)
+            if (!promoteDeckBImmediate(true)) {
+                val next = (index + 1).coerceAtMost(queue.lastIndex)
+                if (next != index) playIndex(next, 0, true, false)
+            }
         } else {
             if (exo.currentPosition > 3000L) {
                 exo.seekTo(0L)
-            } else if (exo.hasPreviousMediaItem()) {
-                exo.seekToPreviousMediaItem()
             } else {
-                exo.seekTo(0, 0L)
+                val previous = (index - 1).coerceAtLeast(0)
+                if (previous != index) playIndex(previous, 0, true, false)
+                else exo.seekTo(0L)
             }
         }
-        exo.play()
     }
 
     private fun seekInternal(positionMs: Int) {
@@ -664,54 +593,306 @@ class UsbPlaybackService : Service() {
     }
 
     private fun releasePlayer() {
-        // Eerst ontkoppelen zodat callbacks tijdens stop/release de gewiste
-        // sessie niet opnieuw kunnen opslaan.
-        val oldPlayer = player
+        val oldA = player
+        val oldB = deckB
         player = null
-        oldPlayer?.let {
+        deckB = null
+        deckBIndex = -1
+        deckBPreparing = false
+        fadeRunning = false
+
+        oldA?.let {
+            try { it.stop() } catch (_: Exception) {}
+            try { it.release() } catch (_: Exception) {}
+        }
+        oldB?.let {
+            if (oldB !== oldA) {
+                try { it.stop() } catch (_: Exception) {}
+                try { it.release() } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private fun releaseDeckB() {
+        val old = deckB
+        deckB = null
+        deckBIndex = -1
+        deckBPreparing = false
+        old?.let {
             try { it.stop() } catch (_: Exception) {}
             try { it.release() } catch (_: Exception) {}
         }
     }
 
+    private fun createDeckPlayer(): ExoPlayer =
+        ExoPlayer.Builder(this).build().apply {
+            setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                    .build(),
+                true
+            )
+        }
+
+    private fun attachDeckListener(exo: ExoPlayer) {
+        exo.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                when {
+                    player === exo -> {
+                        when (playbackState) {
+                            Player.STATE_READY -> {
+                                preparing = false
+                                restoring = false
+                                applyDuckingVolume()
+                                prepareDeckBInternal()
+                                updateStateCache()
+                                persistSession()
+                                updateNotification()
+                            }
+
+                            Player.STATE_ENDED -> {
+                                preparing = false
+                                if (autoPlayEnabled && !fadeRunning) {
+                                    if (!promoteDeckBImmediate(true)) {
+                                        updateStateCache()
+                                        persistSession()
+                                        updateNotification()
+                                    }
+                                } else {
+                                    updateStateCache()
+                                    persistSession()
+                                    updateNotification()
+                                }
+                            }
+                        }
+                    }
+
+                    deckB === exo -> {
+                        when (playbackState) {
+                            Player.STATE_READY -> {
+                                deckBPreparing = false
+                                applyDuckingVolume()
+                            }
+
+                            Player.STATE_ENDED -> {
+                                deckBPreparing = false
+                                try {
+                                    exo.pause()
+                                    exo.seekTo(0L)
+                                } catch (_: Exception) {}
+                            }
+                        }
+                    }
+                }
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (player === exo) {
+                    updateStateCache()
+                    persistSession()
+                    updateNotification()
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                when {
+                    player === exo -> {
+                        preparing = false
+                        updateStateCache()
+                        updateNotification()
+                        if (restoring) {
+                            restoring = false
+                            stopForeground(Service.STOP_FOREGROUND_REMOVE)
+                            stopSelf()
+                        }
+                    }
+
+                    deckB === exo -> {
+                        deckBPreparing = false
+                        releaseDeckB()
+                    }
+                }
+            }
+        })
+    }
+
+    private fun prepareDeckBInternal() {
+        if (queue.isEmpty() || index !in queue.indices) {
+            releaseDeckB()
+            return
+        }
+
+        val nextIndex = index + 1
+        if (nextIndex !in queue.indices) {
+            releaseDeckB()
+            return
+        }
+
+        if (deckB != null && deckBIndex == nextIndex) return
+
+        releaseDeckB()
+        deckBIndex = nextIndex
+        deckBPreparing = true
+
+        val exo = createDeckPlayer()
+        deckB = exo
+        exo.setMediaItem(MediaItem.fromUri(queue[nextIndex].uri))
+        exo.volume = if (deckBMuted) 0f else targetVolume()
+        exo.playWhenReady = false
+        attachDeckListener(exo)
+
+        try {
+            exo.prepare()
+        } catch (_: Exception) {
+            releaseDeckB()
+        }
+    }
+
+    private fun pauseDeckAInternal() {
+        try { player?.pause() } catch (_: Exception) {}
+        updateStateCache()
+        persistSession()
+        updateNotification()
+    }
+
+    private fun toggleDeckBInternal() {
+        if (deckB == null) prepareDeckBInternal()
+        val exo = deckB ?: return
+        if (exo.isPlaying) exo.pause() else exo.play()
+    }
+
+    private fun pauseDeckBInternal() {
+        try { deckB?.pause() } catch (_: Exception) {}
+    }
+
+    private fun toggleDeckBMuteInternal(): Boolean {
+        deckBMuted = !deckBMuted
+        applyDuckingVolume()
+        return deckBMuted
+    }
+
+    private fun deckBSnapshotInternal(): PlaybackState {
+        val item = queue.getOrNull(deckBIndex)
+        val exo = deckB
+        var duration = 0
+        var position = 0
+        var playing = false
+
+        if (exo != null) {
+            val rawDuration = exo.duration
+            if (rawDuration > 0 && rawDuration != C.TIME_UNSET) {
+                duration = rawDuration.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            }
+            position = exo.currentPosition
+                .coerceAtLeast(0L)
+                .coerceAtMost(Int.MAX_VALUE.toLong())
+                .toInt()
+            playing = exo.isPlaying
+        }
+
+        return PlaybackState(
+            hasTrack = item != null,
+            title = item?.title ?: "Geen volgend nummer",
+            uri = item?.uri,
+            durationMs = duration,
+            positionMs = position,
+            isPlaying = playing,
+            isPreparing = deckBPreparing
+        )
+    }
+
+    private fun promoteDeckBImmediate(forcePlay: Boolean): Boolean {
+        val nextPlayer = deckB ?: return false
+        val nextIndex = deckBIndex
+        if (nextIndex !in queue.indices) return false
+
+        val oldA = player
+        val promotedWasMuted = deckBMuted
+
+        deckB = null
+        deckBIndex = -1
+        deckBPreparing = false
+        player = nextPlayer
+        index = nextIndex
+        preparing = false
+        requestedStartPositionMs = nextPlayer.currentPosition
+            .coerceAtLeast(0L)
+            .coerceAtMost(Int.MAX_VALUE.toLong())
+            .toInt()
+        muted = promotedWasMuted
+        deckBMuted = false
+        fadeRunning = false
+
+        try {
+            nextPlayer.volume = if (muted) 0f else targetVolume()
+            if (forcePlay) nextPlayer.play()
+        } catch (_: Exception) {}
+
+        oldA?.let {
+            if (it !== nextPlayer) {
+                try { it.stop() } catch (_: Exception) {}
+                try { it.release() } catch (_: Exception) {}
+            }
+        }
+
+        updateStateCache()
+        persistSession()
+        updateNotification()
+        prepareDeckBInternal()
+        return true
+    }
+
     private fun applyDuckingVolume() {
-        val volume = if (muted) 0.0f else targetVolume()
-        try { player?.volume = volume } catch (_: Exception) {}
+        val base = targetVolume()
+        if (!fadeRunning) {
+            try { player?.volume = if (muted) 0f else base } catch (_: Exception) {}
+            try { deckB?.volume = if (deckBMuted) 0f else base } catch (_: Exception) {}
+        }
     }
 
     private fun fadeToNextInternal() {
-        val exo = player ?: return
-        if (queue.isEmpty()) return
+        if (fadeRunning || queue.isEmpty()) return
+        if (deckB == null) prepareDeckBInternal()
 
-        val startVolume = if (muted) 0.0f else targetVolume()
-        val steps = 12
-        val stepDelay = 90L
+        val a = player ?: return
+        val b = deckB ?: return
+
+        fadeRunning = true
+        val base = targetVolume()
+        val steps = 20
+        val stepDelay = 75L
         val handler = Handler(Looper.getMainLooper())
 
-        fun rampUp(step: Int) {
-            if (player !== exo) return
-            if (step > steps) {
-                applyDuckingVolume()
-                return
-            }
-            if (!muted) exo.volume = startVolume * (step.toFloat() / steps)
-            handler.postDelayed({ rampUp(step + 1) }, stepDelay)
+        try {
+            a.volume = if (muted) 0f else base
+            b.volume = 0f
+            if (!b.isPlaying) b.play()
+        } catch (_: Exception) {
+            fadeRunning = false
+            return
         }
 
-        fun rampDown(step: Int) {
-            if (player !== exo) return
-            if (step > steps) {
-                if (exo.hasNextMediaItem()) exo.seekToNextMediaItem()
-                else exo.seekTo(0, 0L)
-                exo.play()
-                rampUp(0)
+        fun step(n: Int) {
+            if (player !== a || deckB !== b) {
+                fadeRunning = false
                 return
             }
-            if (!muted) exo.volume = startVolume * (1f - step.toFloat() / steps)
-            handler.postDelayed({ rampDown(step + 1) }, stepDelay)
+
+            val fraction = (n.toFloat() / steps.toFloat()).coerceIn(0f, 1f)
+            try {
+                a.volume = if (muted) 0f else base * (1f - fraction)
+                b.volume = if (deckBMuted) 0f else base * fraction
+            } catch (_: Exception) {}
+
+            if (n >= steps) {
+                promoteDeckBImmediate(true)
+            } else {
+                handler.postDelayed({ step(n + 1) }, stepDelay)
+            }
         }
 
-        rampDown(0)
+        step(0)
     }
 
     private fun snapshotInternal(): PlaybackState {

@@ -296,15 +296,15 @@ class CarPlayerActivity : AppCompatActivity() {
     }
 
     private fun configurePlaybackControls() {
-        fun pauseOnly() {
-            if (UsbPlaybackService.snapshot().isPlaying) {
-                UsbPlaybackService.toggle(this)
-                refreshPlayer()
-            }
+        findViewById<TextView>(R.id.playerPauseA).setOnClickListener {
+            UsbPlaybackService.pauseDeckA(this)
+            refreshPlayer()
         }
 
-        findViewById<TextView>(R.id.playerPauseA).setOnClickListener { pauseOnly() }
-        findViewById<TextView>(R.id.playerPauseB).setOnClickListener { pauseOnly() }
+        findViewById<TextView>(R.id.playerPauseB).setOnClickListener {
+            UsbPlaybackService.pauseDeckB(this)
+            refreshPlayer()
+        }
 
         playPauseA.setOnClickListener {
             UsbPlaybackService.toggle(this)
@@ -312,16 +312,19 @@ class CarPlayerActivity : AppCompatActivity() {
         }
 
         findViewById<TextView>(R.id.playerPlayB).setOnClickListener {
-            UsbPlaybackService.next(this)
+            UsbPlaybackService.toggleDeckB(this)
             refreshPlayer()
         }
 
-        val muteAction = View.OnClickListener {
+        muteA.setOnClickListener {
             UsbPlaybackService.toggleMute(this)
             refreshPlayer()
         }
-        muteA.setOnClickListener(muteAction)
-        muteB.setOnClickListener(muteAction)
+
+        muteB.setOnClickListener {
+            UsbPlaybackService.toggleDeckBMute(this)
+            refreshPlayer()
+        }
 
         findViewById<TextView>(R.id.playerFadeButton).setOnClickListener {
             UsbPlaybackService.fadeToNext(this)
@@ -337,10 +340,12 @@ class CarPlayerActivity : AppCompatActivity() {
             UsbPlaybackService.previous(this)
             refreshPlayer()
         }
+
         bottomPlayPause.setOnClickListener {
             UsbPlaybackService.toggle(this)
             refreshPlayer()
         }
+
         findViewById<TextView>(R.id.playerNext).setOnClickListener {
             UsbPlaybackService.next(this)
             refreshPlayer()
@@ -382,11 +387,9 @@ class CarPlayerActivity : AppCompatActivity() {
 
     private fun refreshPlayer() {
         val state = UsbPlaybackService.snapshot()
+        val deckBState = UsbPlaybackService.deckBSnapshot()
         val queue = UsbPlaybackService.queueSnapshot()
         val currentIndex = UsbPlaybackService.currentIndex()
-        val next = if (currentIndex >= 0 && currentIndex + 1 < queue.size) {
-            queue[currentIndex + 1]
-        } else null
 
         currentTitle.text = if (state.hasTrack) state.title else "Geen nummer geselecteerd"
         bottomTitle.text = currentTitle.text
@@ -395,23 +398,27 @@ class CarPlayerActivity : AppCompatActivity() {
             if (state.durationMs > 0) state.positionMs.toFloat() / state.durationMs.toFloat() else 0f
         currentTime.text = "${formatTime(state.positionMs)} / ${formatTime(state.durationMs)}"
 
-        nextTitle.text = next?.title ?: "Geen volgend nummer"
-        nextWaveform.titleSeed = next?.title.orEmpty()
-        nextWaveform.progress = 0f
+        nextTitle.text = if (deckBState.hasTrack) deckBState.title else "Geen volgend nummer"
+        nextWaveform.titleSeed = deckBState.title
+        nextWaveform.progress =
+            if (deckBState.durationMs > 0) {
+                deckBState.positionMs.toFloat() / deckBState.durationMs.toFloat()
+            } else 0f
         nextStatus.text = when {
-            next == null -> "Einde afspeellijst"
-            UsbPlaybackService.isAutoPlayEnabled(this) -> "Automatisch geladen • start vanzelf"
-            else -> "Automatisch geladen • Auto staat uit"
+            !deckBState.hasTrack -> "Einde afspeellijst"
+            deckBState.isPreparing -> "Player B wordt geladen…"
+            deckBState.isPlaying -> "Player B speelt"
+            else -> "Player B klaar • druk ▶ om apart te starten"
         }
 
         val playLabel = if (state.isPlaying) "⏸" else "▶"
         playPauseA.text = playLabel
         bottomPlayPause.text = playLabel
 
-        val muted = UsbPlaybackService.isMuted(this)
-        val muteLabel = if (muted) "🔇 Muted" else "🔊 Mute"
-        muteA.text = muteLabel
-        muteB.text = muteLabel
+        muteA.text =
+            if (UsbPlaybackService.isMuted(this)) "🔇 Muted" else "🔊 Mute"
+        muteB.text =
+            if (UsbPlaybackService.isDeckBMuted(this)) "🔇 Muted" else "🔊 Mute"
 
         val auto = UsbPlaybackService.isAutoPlayEnabled(this)
         autoButton.text = if (auto) "Auto • Aan" else "Auto • Uit"
