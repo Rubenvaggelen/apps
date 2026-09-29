@@ -453,10 +453,11 @@ body:not(.hp-on) .cue-hp{display:none}
       <h2>Nummers</h2>
       <div class="top-actions"><button class="mini auto-load on" id="autoLoad" aria-pressed="true">Automatisch naar vrije speler</button>
       <button class="btn small" id="sharedMediaImport">Shared Media</button>
+      <label class="btn small">Map laden<input type="file" id="folderInput" webkitdirectory directory multiple hidden></label>
       <label class="btn small">Nummers toevoegen<input type="file" id="libInput" accept="audio/*,video/*,.mp3,.wav,.aif,.aiff,.aifc,.caf,.flac,.ogg,.oga,.opus,.m4a,.aac,.alac,.mp4,.m4v,.mov,.webm,.mka,.mkv,.wma,.ac3,.amr,.3gp" multiple hidden></label>
       <button class="btn small only-compact" id="libClose">Sluiten</button></div>
     </div>
-    <p class="empty" id="libEmpty">Voeg je MP3's toe. Ze gaan vanzelf naar een vrije speler, en zodra een nummer klaar is laadt dat deck het volgende.</p>
+    <p class="empty" id="libEmpty">Kies een map of voeg losse nummers toe. Alle muziek uit een gekozen map en de submappen wordt automatisch in de playlist geladen.</p>
     <ul class="lib-list" id="libList"></ul>
     <div class="lib-footer"><button class="btn small clear-playlist" id="clearPlaylist">Wis playlist</button></div>
   </section>
@@ -1870,6 +1871,12 @@ async function clearStoredPlaylist(){
     });
   }catch(e){}
 }
+const AUDIO_EXT=/\.(mp3|wav|aif|aiff|aifc|caf|flac|ogg|oga|opus|m4a|aac|alac|mka|wma|ac3|amr)$/i;
+const playableFile=f=>{
+  if(!f) return false;
+  if(/^audio\//i.test(f.type||"")) return true;
+  return AUDIO_EXT.test(f.name||"");
+};
 function addToLib(files,sharedNames=[]){
   files.forEach((f,i)=>{
     if(!f||/^(image|text)\//.test(f.type)) return;
@@ -1878,6 +1885,22 @@ function addToLib(files,sharedNames=[]){
   renderLib();playlistWrite();autoFill();
 }
 document.getElementById("libInput").addEventListener("change",e=>{addToLib([...e.target.files]);e.target.value=""});
+document.getElementById("folderInput")?.addEventListener("change",e=>{
+  const input=e.currentTarget;
+  const files=[...(input.files||[])]
+    .filter(playableFile)
+    .sort((a,b)=>{
+      const pa=(a.webkitRelativePath||a.name||"").toLocaleLowerCase();
+      const pb=(b.webkitRelativePath||b.name||"").toLocaleLowerCase();
+      return pa.localeCompare(pb,undefined,{numeric:true,sensitivity:"base"});
+    });
+  if(files.length){
+    addToLib(files);
+  }else{
+    alert("In deze map zijn geen ondersteunde audiobestanden gevonden.");
+  }
+  input.value="";
+});
 
 let sharedMediaImportBusy=false;
 let playlistClearing=false;
