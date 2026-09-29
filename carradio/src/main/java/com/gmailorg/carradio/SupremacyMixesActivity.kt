@@ -571,6 +571,11 @@ class SupremacyMixesActivity : AppCompatActivity() {
                     UsbPlaybackService.play(this, queue, selectedIndex)
                     status.text = "Speelt af: ${selected.title}"
                     refreshPlayerBar()
+                    startActivity(
+                        Intent(this, CarPlayerActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                        }
+                    )
                     Toast.makeText(
                         this,
                         "The One Mixes speelt af",
