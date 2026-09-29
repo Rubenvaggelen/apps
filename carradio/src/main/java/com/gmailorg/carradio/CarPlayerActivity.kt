@@ -154,6 +154,12 @@ class CarPlayerActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.playerAddButton).setOnClickListener {
             showAddMusicMenu()
         }
+        findViewById<TextView>(R.id.playerPlaylistAdd).setOnClickListener {
+            showAddMusicMenu()
+        }
+        findViewById<TextView>(R.id.playerPlaylistClear).setOnClickListener {
+            clearPlaylist()
+        }
         findViewById<TextView>(R.id.playerPlaylistClose).setOnClickListener {
             playlistPanel.visibility = View.GONE
         }
@@ -165,6 +171,29 @@ class CarPlayerActivity : AppCompatActivity() {
         )
     }
 
+
+    private fun clearPlaylist() {
+        val queue = UsbPlaybackService.queueSnapshot()
+        if (queue.isEmpty()) {
+            Toast.makeText(this, "De afspeellijst is al leeg.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Afspeellijst wissen?")
+            .setMessage("Alle nummers worden uit de player verwijderd en de muziek stopt.")
+            .setNegativeButton("Annuleren", null)
+            .setPositiveButton("Wissen") { _, _ ->
+                UsbPlaybackService.stop(this)
+                playlistSignature = ""
+                handler.postDelayed({
+                    refreshPlayer()
+                    rebuildPlaylist(emptyList(), -1)
+                }, 120L)
+                Toast.makeText(this, "Afspeellijst gewist", Toast.LENGTH_SHORT).show()
+            }
+            .show()
+    }
 
     private fun showAddMusicMenu() {
         AlertDialog.Builder(this)
@@ -476,7 +505,13 @@ class CarPlayerActivity : AppCompatActivity() {
                         queue,
                         index
                     )
+                    playlistSignature = ""
                     refreshPlayer()
+                    Toast.makeText(
+                        this@CarPlayerActivity,
+                        "Speelt: ${item.title}",
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
             }
             playlistList.addView(
