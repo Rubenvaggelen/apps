@@ -197,7 +197,7 @@ object RemoteUsbMusicClient {
     fun favorites(context: Context): List<FavoriteItem> {
         val token = token(context)
         val connection = open(
-            ENDPOINT + "?action=favorites-list" +
+            ENDPOINT + "?action=favorites-owner-list" +
                 "&request_device_id=" + enc(CarFamilyAccess.deviceId(context))
         , "GET")
         connection.setRequestProperty("Authorization", "Bearer " + token)
