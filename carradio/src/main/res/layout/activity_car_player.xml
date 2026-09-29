@@ -374,7 +374,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:text="Tik op een nummer om het direct af te spelen"
+                android:text="Tik om af te spelen • houd ☰ vast en sleep om de volgorde te wijzigen"
                 android:textColor="@color/text_dim"
                 android:textSize="14sp"/>
 

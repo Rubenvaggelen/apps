@@ -1,5 +1,6 @@
 package com.gmailorg.carradio
 
+import android.content.ClipData
 import android.content.Intent
 import android.graphics.Color
 import android.media.AudioManager
@@ -9,6 +10,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
+import android.view.DragEvent
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowInsets
@@ -487,6 +489,34 @@ class CarPlayerActivity : AppCompatActivity() {
                 gravity = android.view.Gravity.CENTER_VERTICAL
             }
 
+            val dragHandle = TextView(this).apply {
+                text = "☰"
+                textSize = 24f
+                gravity = android.view.Gravity.CENTER
+                setTextColor(ContextCompat.getColor(context, R.color.the_one_blue))
+                setBackgroundResource(R.drawable.bg_outline)
+                setPadding(8.dp, 8.dp, 8.dp, 8.dp)
+                contentDescription = "Sleep ${item.title}"
+                setOnLongClickListener {
+                    val clip = ClipData.newPlainText("playlist_index", index.toString())
+                    val shadow = View.DragShadowBuilder(row)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        startDragAndDrop(clip, shadow, index, 0)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        startDrag(clip, shadow, index, 0)
+                    }
+                    true
+                }
+            }
+            row.addView(
+                dragHandle,
+                LinearLayout.LayoutParams(
+                    52.dp,
+                    LinearLayout.LayoutParams.MATCH_PARENT
+                ).apply { marginEnd = 7.dp }
+            )
+
             val title = TextView(this).apply {
                 text = if (active) "▶  ${index + 1}. ${item.title}" else "${index + 1}.  ${item.title}"
                 textSize = 17f
@@ -560,6 +590,51 @@ class CarPlayerActivity : AppCompatActivity() {
                     LinearLayout.LayoutParams.MATCH_PARENT
                 ).apply { marginStart = 7.dp }
             )
+
+            row.setOnDragListener { view, event ->
+                when (event.action) {
+                    DragEvent.ACTION_DRAG_STARTED ->
+                        event.clipDescription?.hasMimeType("text/plain") == true
+
+                    DragEvent.ACTION_DRAG_ENTERED -> {
+                        view.alpha = 0.65f
+                        true
+                    }
+
+                    DragEvent.ACTION_DRAG_EXITED -> {
+                        view.alpha = 1f
+                        true
+                    }
+
+                    DragEvent.ACTION_DROP -> {
+                        view.alpha = 1f
+                        val from = event.localState as? Int ?: return@setOnDragListener false
+                        if (from == index) return@setOnDragListener true
+
+                        val moved = UsbPlaybackService.move(
+                            this@CarPlayerActivity,
+                            from,
+                            index
+                        )
+                        if (moved) {
+                            playlistSignature = ""
+                            rebuildPlaylist(
+                                UsbPlaybackService.queueSnapshot(),
+                                UsbPlaybackService.currentIndex()
+                            )
+                            refreshPlayer()
+                        }
+                        moved
+                    }
+
+                    DragEvent.ACTION_DRAG_ENDED -> {
+                        view.alpha = 1f
+                        true
+                    }
+
+                    else -> true
+                }
+            }
 
             playlistList.addView(
                 row,

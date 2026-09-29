@@ -139,6 +139,20 @@ class UsbPlaybackService : Service() {
             return added.size
         }
 
+        fun move(context: Context, fromIndex: Int, toIndex: Int): Boolean {
+            val active = instance
+            if (active != null) return active.moveQueueItemInternal(fromIndex, toIndex)
+
+            val current = pendingQueue.toMutableList()
+            if (fromIndex !in current.indices || toIndex !in current.indices) return false
+            if (fromIndex == toIndex) return true
+
+            val item = current.removeAt(fromIndex)
+            current.add(toIndex, item)
+            pendingQueue = current
+            return true
+        }
+
         fun removeAt(context: Context, removeIndex: Int): Boolean {
             val active = instance
             if (active != null) return active.removeQueueItemInternal(removeIndex)
@@ -342,6 +356,50 @@ class UsbPlaybackService : Service() {
             updateNotification()
         }
         return added.size
+    }
+
+    private fun moveQueueItemInternal(fromIndex: Int, toIndex: Int): Boolean {
+        if (fromIndex !in queue.indices || toIndex !in queue.indices) return false
+        if (fromIndex == toIndex) return true
+
+        val updated = queue.toMutableList()
+        val moved = updated.removeAt(fromIndex)
+        updated.add(toIndex, moved)
+        queue = updated
+        pendingQueue = queue.toList()
+
+        val exo = player
+        if (exo != null) {
+            try {
+                exo.moveMediaItem(fromIndex, toIndex)
+                index = exo.currentMediaItemIndex.coerceIn(0, queue.lastIndex)
+            } catch (_: Exception) {
+                val state = snapshotInternal()
+                val currentUri = state.uri
+                val newIndex = queue.indexOfFirst { it.uri == currentUri }
+                    .takeIf { it >= 0 }
+                    ?: index.coerceIn(0, queue.lastIndex)
+                playIndex(
+                    newIndex,
+                    state.positionMs,
+                    state.isPlaying,
+                    false
+                )
+                return true
+            }
+        } else {
+            index = when {
+                index == fromIndex -> toIndex
+                fromIndex < index && toIndex >= index -> index - 1
+                fromIndex > index && toIndex <= index -> index + 1
+                else -> index
+            }.coerceIn(-1, queue.lastIndex)
+        }
+
+        updateStateCache()
+        if (index in queue.indices) persistSession()
+        updateNotification()
+        return true
     }
 
     private fun removeQueueItemInternal(removeIndex: Int): Boolean {
