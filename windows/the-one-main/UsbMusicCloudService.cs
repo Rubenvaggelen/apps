@@ -82,6 +82,9 @@ public static class UsbMusicCloudService
     {
         ".mp3", ".m4a", ".aac", ".ogg", ".oga", ".opus", ".flac", ".wav", ".wma"
     };
+    private static readonly string HubInboxRoot =
+        Path.Combine(@"C:\TheOne\SharedMedia\Music", "Nieuwe downloads");
+    private static readonly SemaphoreSlim HubInboxGate = new(1, 1);
 
     private static CancellationTokenSource? _backgroundCts;
     private static string _token = "";
@@ -455,6 +458,145 @@ public static class UsbMusicCloudService
             ackResponse.EnsureSuccessStatusCode();
 
             Log("DJ-import ontvangen: " + storedName);
+        }
+    }
+
+    public static async Task<int> SyncHubInboxAsync(CancellationToken cancellationToken = default)
+    {
+        if (!await HubInboxGate.WaitAsync(0, cancellationToken)) return 0;
+        try
+        {
+            Directory.CreateDirectory(HubInboxRoot);
+
+            var catalog = await GetCatalogAsync(cancellationToken, includeInactive: true);
+            var hub = catalog.FirstOrDefault(x =>
+                x.DeviceId.Equals("THEONE-HUB", StringComparison.OrdinalIgnoreCase) &&
+                x.StickId.Equals("hub-primary", StringComparison.OrdinalIgnoreCase));
+
+            if (hub == null)
+                throw new InvalidOperationException("THEONE-HUB catalogus ontbreekt.");
+
+            var existingInbox = hub.Files
+                .Where(x => NormalizePath(x.Path)
+                    .StartsWith("Nieuwe downloads/", StringComparison.OrdinalIgnoreCase))
+                .ToDictionary(
+                    x => NormalizePath(x.Path),
+                    x => x,
+                    StringComparer.OrdinalIgnoreCase);
+
+            var manifest = hub.Files
+                .Where(x => !NormalizePath(x.Path)
+                    .StartsWith("Nieuwe downloads/", StringComparison.OrdinalIgnoreCase))
+                .Select(x => new LocalManifestFile
+                {
+                    Path = NormalizePath(x.Path),
+                    Size = x.Size,
+                    Sha256 = x.Sha256,
+                    Modified = x.Modified,
+                    Title = x.Title,
+                    Artist = x.Artist,
+                    Album = x.Album
+                })
+                .ToList();
+
+            var localFiles = EnumerateAudioFiles(HubInboxRoot)
+                .OrderBy(x => x.FullName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var localManifest = new List<(FileInfo File, LocalManifestFile Item)>();
+            foreach (var file in localFiles)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var relative = "Nieuwe downloads/" +
+                    NormalizePath(Path.GetRelativePath(HubInboxRoot, file.FullName));
+                var modified = file.LastWriteTimeUtc.ToString("O");
+
+                var useExisting =
+                    existingInbox.TryGetValue(relative, out var old) &&
+                    old.Size == file.Length &&
+                    string.Equals(old.Modified, modified, StringComparison.Ordinal) &&
+                    !string.IsNullOrWhiteSpace(old.Sha256);
+
+                var sha = useExisting
+                    ? old!.Sha256
+                    : await HashFileAsync(file.FullName, cancellationToken);
+
+                var tags = ReadMetadata(file.FullName);
+                var item = new LocalManifestFile
+                {
+                    Path = relative,
+                    Size = file.Length,
+                    Sha256 = sha,
+                    Modified = modified,
+                    Title = tags.Title,
+                    Artist = tags.Artist,
+                    Album = tags.Album
+                };
+
+                manifest.Add(item);
+                localManifest.Add((file, item));
+            }
+
+            await SendManifestAsync(
+                "THEONE-HUB",
+                "THEONE-HUB",
+                "hub-primary",
+                string.IsNullOrWhiteSpace(hub.StickName) ? "Ruben music" : hub.StickName,
+                manifest,
+                cancellationToken);
+
+            var refreshedCatalog =
+                await GetCatalogAsync(cancellationToken, includeInactive: true);
+            var refreshedHub = refreshedCatalog.FirstOrDefault(x =>
+                x.DeviceId.Equals("THEONE-HUB", StringComparison.OrdinalIgnoreCase) &&
+                x.StickId.Equals("hub-primary", StringComparison.OrdinalIgnoreCase));
+
+            var refreshed = (refreshedHub?.Files ?? new List<CloudUsbMusicFile>())
+                .ToDictionary(
+                    x => NormalizePath(x.Path),
+                    x => x,
+                    StringComparer.OrdinalIgnoreCase);
+
+            var uploaded = 0;
+            foreach (var local in localManifest)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var needsUpload =
+                    !refreshed.TryGetValue(local.Item.Path, out var remote) ||
+                    !remote.Cached ||
+                    !string.Equals(
+                        remote.Sha256,
+                        local.Item.Sha256,
+                        StringComparison.OrdinalIgnoreCase);
+
+                if (!needsUpload) continue;
+
+                await UploadAsync(
+                    "THEONE-HUB",
+                    "hub-primary",
+                    local.Item.Path,
+                    local.Item.Sha256,
+                    local.File.FullName,
+                    cancellationToken);
+                uploaded++;
+            }
+
+            await SendManifestAsync(
+                "THEONE-HUB",
+                "THEONE-HUB",
+                "hub-primary",
+                string.IsNullOrWhiteSpace(hub.StickName) ? "Ruben music" : hub.StickName,
+                manifest,
+                cancellationToken);
+
+            Log($"THEONE-HUB Nieuwe downloads gepubliceerd: {localManifest.Count} bestand(en), {uploaded} upload(s).");
+            return uploaded;
+        }
+        finally
+        {
+            HubInboxGate.Release();
         }
     }
 
