@@ -41,6 +41,15 @@ object RemoteUsbMusicClient {
         val totalFiles: Int
     )
 
+    data class PlayerBroadcastEvent(
+        val id: String,
+        val title: String,
+        val url: String,
+        val source: String,
+        val positionMs: Int,
+        val ageMs: Long
+    )
+
     data class FavoriteItem(
         val id: String,
         val kind: String,
@@ -243,6 +252,112 @@ object RemoteUsbMusicClient {
             )
         }
         return result
+    }
+
+    fun publishPlayerBroadcast(
+        context: Context,
+        title: String,
+        url: String,
+        source: String,
+        positionMs: Int
+    ): Int {
+        val token = readToken(context)
+        val connection = open(ENDPOINT + "?action=player-broadcast-publish", "POST")
+        connection.setRequestProperty("Authorization", "Bearer " + token)
+        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        connection.doOutput = true
+
+        val body = JSONObject()
+            .put("request_device_id", MainDeviceRegistry.deviceId(context))
+            .put("title", title)
+            .put("url", url)
+            .put("source", source)
+            .put("position_ms", positionMs.coerceAtLeast(0))
+
+        OutputStreamWriter(connection.outputStream, StandardCharsets.UTF_8).use {
+            it.write(body.toString())
+        }
+
+        val code = connection.responseCode
+        val json = JSONObject(readBody(connection))
+        connection.disconnect()
+
+        if (code == 401) {
+            clearToken(context)
+            throw AuthRequired()
+        }
+        if (code == 403) {
+            throw IllegalStateException("Alleen The One owner kan broadcast starten")
+        }
+        if (code !in 200..299 || !json.optBoolean("ok", false)) {
+            throw IllegalStateException(
+                json.optString("error", "Broadcast starten mislukt")
+            )
+        }
+        return json.optInt("target_count", 0).coerceAtLeast(0)
+    }
+
+    fun pollPlayerBroadcast(
+        context: Context,
+        sessionId: String
+    ): PlayerBroadcastEvent? {
+        val token = readToken(context)
+        val connection = open(ENDPOINT + "?action=player-broadcast-poll", "POST")
+        connection.setRequestProperty("Authorization", "Bearer " + token)
+        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        connection.doOutput = true
+
+        val body = JSONObject()
+            .put("request_device_id", MainDeviceRegistry.deviceId(context))
+            .put("session_id", sessionId)
+
+        OutputStreamWriter(connection.outputStream, StandardCharsets.UTF_8).use {
+            it.write(body.toString())
+        }
+
+        val code = connection.responseCode
+        val json = JSONObject(readBody(connection))
+        connection.disconnect()
+
+        if (code == 401) {
+            clearToken(context)
+            throw AuthRequired()
+        }
+        if (code !in 200..299 || !json.optBoolean("ok", false)) return null
+
+        val event = json.optJSONObject("event") ?: return null
+        val serverNow = json.optLong("server_now_ms", 0L)
+        val created = event.optLong("created_at_ms", 0L)
+        return PlayerBroadcastEvent(
+            id = event.optString("id").trim(),
+            title = event.optString("title", "Muziek").trim().ifBlank { "Muziek" },
+            url = event.optString("url").trim(),
+            source = event.optString("source", "The One").trim().ifBlank { "The One" },
+            positionMs = event.optInt("position_ms", 0).coerceAtLeast(0),
+            ageMs = (serverNow - created).coerceAtLeast(0L)
+        ).takeIf { it.id.isNotBlank() && it.url.isNotBlank() }
+    }
+
+    fun closePlayerBroadcastSession(
+        context: Context,
+        sessionId: String
+    ) {
+        if (sessionId.isBlank()) return
+        val token = readToken(context)
+        val connection = open(ENDPOINT + "?action=player-broadcast-close", "POST")
+        connection.setRequestProperty("Authorization", "Bearer " + token)
+        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        connection.doOutput = true
+
+        val body = JSONObject()
+            .put("request_device_id", MainDeviceRegistry.deviceId(context))
+            .put("session_id", sessionId)
+
+        OutputStreamWriter(connection.outputStream, StandardCharsets.UTF_8).use {
+            it.write(body.toString())
+        }
+        connection.responseCode
+        connection.disconnect()
     }
 
     fun setMixFavorite(
@@ -455,6 +570,13 @@ object RemoteUsbMusicClient {
             "&device=" + enc(favorite.deviceId) +
             "&stick=" + enc(favorite.stickId) +
             "&path=" + enc(favorite.path)
+    }
+
+    private fun readToken(context: Context): String {
+        if (!hasToken(context) && !loginForBrowsing(context)) {
+            throw AuthRequired()
+        }
+        return token(context)
     }
 
     private fun token(context: Context): String {
