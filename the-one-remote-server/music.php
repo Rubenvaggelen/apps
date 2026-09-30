@@ -637,28 +637,32 @@ if ($action === 'catalog') {
         $sticks[]=$v;
     }
 
-    // Surface is de primaire Shared Media-bron. De vrijwel gelijke Ruben-bron
-    // blijft op de achtergrond beschikbaar als fallback, maar wordt normaal
-    // niet aan Main/Car getoond.
+    // THEONE-HUB is de primaire Shared Media-bron.
+    // Surface blijft eerste fallback en Ruben tweede fallback.
+    // Slechts één van deze vrijwel gelijke bibliotheken wordt aan clients getoond.
+    $hubIndexes=[];
     $surfaceIndexes=[];
     $rubenIndexes=[];
     foreach ($sticks as $i => $stickRow) {
         $deviceName=catalog_device_name($stickRow);
+        if ($deviceName === 'theone-hub') $hubIndexes[]=$i;
         if ($deviceName === 'surface') $surfaceIndexes[]=$i;
         if ($deviceName === 'ruben') $rubenIndexes[]=$i;
     }
 
-    $surfaceHealthy=false;
-    foreach ($surfaceIndexes as $i) {
-        $total=catalog_total_count($sticks[$i]);
-        $playable=catalog_playable_count($sticks[$i],$files);
-        // Alleen bij echte schade/leegte omschakelen; kleine sync-hiaten mogen
-        // de primaire bron niet onnodig laten wisselen.
-        if ($total > 0 && $playable >= max(1,(int)floor($total * 0.50))) {
-            $surfaceHealthy=true;
-            break;
+    $sourceHealthy=function(array $indexes) use ($sticks,$files): bool {
+        foreach ($indexes as $i) {
+            $total=catalog_total_count($sticks[$i]);
+            $playable=catalog_playable_count($sticks[$i],$files);
+            if ($total > 0 && $playable >= max(1,(int)floor($total * 0.50))) {
+                return true;
+            }
         }
-    }
+        return false;
+    };
+
+    $hubHealthy=$sourceHealthy($hubIndexes);
+    $surfaceHealthy=$sourceHealthy($surfaceIndexes);
 
     $rubenUsable=false;
     foreach ($rubenIndexes as $i) {
@@ -668,16 +672,26 @@ if ($action === 'catalog') {
         }
     }
 
-    if ($surfaceHealthy && $rubenIndexes !== []) {
+    if ($hubHealthy) {
         $sticks=array_values(array_filter(
             $sticks,
-            fn($row)=>catalog_device_name($row) !== 'ruben'
+            fn($row)=>!in_array(catalog_device_name($row),['surface','ruben'],true)
         ));
-    } elseif (!$surfaceHealthy && $rubenUsable && $surfaceIndexes !== []) {
-        // Surface ontbreekt/leeg/corrupt: toon automatisch Ruben als fallback.
+    } elseif ($surfaceHealthy) {
         $sticks=array_values(array_filter(
             $sticks,
-            fn($row)=>catalog_device_name($row) !== 'surface'
+            fn($row)=>!in_array(catalog_device_name($row),['theone-hub','ruben'],true)
+        ));
+    } elseif ($rubenUsable) {
+        $sticks=array_values(array_filter(
+            $sticks,
+            fn($row)=>!in_array(catalog_device_name($row),['theone-hub','surface'],true)
+        ));
+    } else {
+        // Een onvolledige Hub-catalogus mag nooit een lege bron aan clients tonen.
+        $sticks=array_values(array_filter(
+            $sticks,
+            fn($row)=>catalog_device_name($row) !== 'theone-hub'
         ));
     }
 
