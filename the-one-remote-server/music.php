@@ -325,6 +325,30 @@ if ($action === 'hub-login') {
     out(200,['ok'=>true,'token'=>token_new($sec,'music-hub'),'expires_in'=>TOKEN_TTL]);
 }
 
+if ($action === 'hub-inbox-list') {
+    if (token_scope(bearer(),$sec) !== 'music-hub') {
+        out(401,['ok'=>false,'error'=>'hub auth required']);
+    }
+
+    $metaFile=$meta.'/THEONE-HUB__hub-primary.json';
+    $doc=load_json($metaFile);
+    if ($doc===[]) out(404,['ok'=>false,'error'=>'hub catalog missing']);
+
+    $items=[];
+    foreach ((array)($doc['files'] ?? []) as $row) {
+        if (!is_array($row)) continue;
+        $path=(string)($row['path'] ?? '');
+        if (!str_starts_with($path,'Nieuwe downloads/')) continue;
+        $items[]=[
+            'path'=>$path,
+            'name'=>(string)($row['name'] ?? basename($path)),
+            'cached'=>(bool)($row['cached'] ?? false)
+        ];
+    }
+
+    out(200,['ok'=>true,'items'=>$items]);
+}
+
 if ($action === 'hub-inbox-prune') {
     if (token_scope(bearer(),$sec) !== 'music-hub') {
         out(401,['ok'=>false,'error'=>'hub auth required']);
