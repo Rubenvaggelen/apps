@@ -37,6 +37,7 @@ object RemoteUsbMusicClient {
         val stickId: String,
         val stickName: String,
         val files: List<RemoteFile>,
+        val folders: List<String>,
         val totalFiles: Int
     )
 
@@ -139,6 +140,14 @@ object RemoteUsbMusicClient {
             val deviceName = item.optString("device_name", deviceId).trim().ifBlank { deviceId }
             val stickName = item.optString("stick_name", "USB").trim().ifBlank { "USB" }
             val files = mutableListOf<RemoteFile>()
+            val folders = mutableListOf<String>()
+            val folderArray = item.optJSONArray("folders")
+            if (folderArray != null) {
+                for (j in 0 until folderArray.length()) {
+                    val folder = folderArray.optString(j).replace('\\', '/').trim('/')
+                    if (folder.isNotBlank()) folders += folder
+                }
+            }
             val fileArray = item.optJSONArray("files")
             val totalFiles = fileArray?.length() ?: 0
 
@@ -164,13 +173,14 @@ object RemoteUsbMusicClient {
                 }
             }
 
-            if (totalFiles > 0) {
+            if (totalFiles > 0 || folders.isNotEmpty()) {
                 result += RemoteStick(
                     deviceId = deviceId,
                     deviceName = deviceName,
                     stickId = stickId,
                     stickName = stickName,
                     files = files,
+                    folders = folders.distinctBy { it.lowercase() },
                     totalFiles = totalFiles
                 )
             }
