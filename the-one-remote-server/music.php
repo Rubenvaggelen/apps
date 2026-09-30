@@ -440,10 +440,17 @@ if ($action === 'hub-move-complete') {
     $metaFile=$meta.'/THEONE-HUB__hub-primary.json';
     $doc=load_json($metaFile);
     $rows=is_array($doc['files'] ?? null) ? $doc['files'] : [];
-    $changed=false;
-    foreach ($rows as &$row) {
-        if (!is_array($row) || (string)($row['path'] ?? '')!==$source) continue;
+    $sourceIndex=null;
+    $targetIndex=null;
+    foreach ($rows as $i=>$row) {
+        if (!is_array($row)) continue;
+        $path=(string)($row['path'] ?? '');
+        if ($path===$source && $sourceIndex===null) $sourceIndex=$i;
+        if ($path===$newPath && $targetIndex===null) $targetIndex=$i;
+    }
 
+    if ($sourceIndex!==null) {
+        $row=$rows[$sourceIndex];
         $sha=strtolower(trim((string)($row['sha256'] ?? '')));
         $oldCache=cache_file_for($files,'THEONE-HUB','hub-primary',$source);
 
@@ -458,14 +465,22 @@ if ($action === 'hub-move-complete') {
             $sha
         );
 
+        if ($targetIndex!==null && $targetIndex!==$sourceIndex) {
+            $rows[$targetIndex]=$row;
+            unset($rows[$sourceIndex]);
+            $rows=array_values($rows);
+        } else {
+            $rows[$sourceIndex]=$row;
+        }
+
         if ($source!==$newPath && is_file($oldCache)) @unlink($oldCache);
-        $changed=true;
-        break;
+    } elseif ($targetIndex===null) {
+        out(404,['ok'=>false,'error'=>'bron en doel ontbreken uit catalogus']);
     }
-    unset($row);
 
-    if (!$changed) out(404,['ok'=>false,'error'=>'bronnummer ontbreekt uit catalogus']);
-
+    // Idempotent: als de bron al fysiek/catalogisch is verplaatst, markeren we
+    // dezelfde queue-opdracht alsnog als afgerond in plaats van hem eeuwig te herhalen.
+    $doc['files']=array_values($rows);
     $doc['updated_at']=gmdate('c');
     $doc['presence_updated_at']=gmdate('c');
     if (!save_json($metaFile,$doc)) {
