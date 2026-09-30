@@ -325,6 +325,52 @@ if ($action === 'hub-login') {
     out(200,['ok'=>true,'token'=>token_new($sec,'music-hub'),'expires_in'=>TOKEN_TTL]);
 }
 
+if ($action === 'hub-inbox-prune') {
+    if (token_scope(bearer(),$sec) !== 'music-hub') {
+        out(401,['ok'=>false,'error'=>'hub auth required']);
+    }
+
+    $b=read_json();
+    $keep=[];
+    foreach ((array)($b['paths'] ?? []) as $raw) {
+        if (!is_string($raw)) continue;
+        $path=safe_path($raw);
+        if (!str_starts_with($path,'Nieuwe downloads/')) continue;
+        $keep[$path]=true;
+    }
+
+    $metaFile=$meta.'/THEONE-HUB__hub-primary.json';
+    $doc=load_json($metaFile);
+    if ($doc===[]) out(404,['ok'=>false,'error'=>'hub catalog missing']);
+
+    $rows=is_array($doc['files'] ?? null) ? $doc['files'] : [];
+    $next=[];
+    $removed=0;
+    foreach ($rows as $row) {
+        if (!is_array($row)) continue;
+        $path=(string)($row['path'] ?? '');
+        if (
+            str_starts_with($path,'Nieuwe downloads/') &&
+            !isset($keep[$path])
+        ) {
+            $cache=cache_file_for($files,'THEONE-HUB','hub-primary',$path);
+            if (is_file($cache)) @unlink($cache);
+            $removed++;
+            continue;
+        }
+        $next[]=$row;
+    }
+
+    $doc['files']=$next;
+    $doc['updated_at']=gmdate('c');
+    $doc['presence_updated_at']=gmdate('c');
+    if (!save_json($metaFile,$doc)) {
+        out(507,['ok'=>false,'error'=>'catalog storage unavailable']);
+    }
+
+    out(200,['ok'=>true,'removed'=>$removed,'remaining'=>count($next)]);
+}
+
 if ($action === 'hub-folders-sync') {
     if (token_scope(bearer(),$sec) !== 'music-hub') {
         out(401,['ok'=>false,'error'=>'hub auth required']);
