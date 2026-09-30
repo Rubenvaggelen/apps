@@ -13,6 +13,18 @@ public partial class App : Application
             e.Args,
             arg => string.Equals(
                 arg,
+                "--background-sync",
+                System.StringComparison.OrdinalIgnoreCase)))
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            UsbMusicCloudService.StartBackgroundSync();
+            return;
+        }
+
+        if (System.Array.Exists(
+            e.Args,
+            arg => string.Equals(
+                arg,
                 "--hub-sync-once",
                 System.StringComparison.OrdinalIgnoreCase)))
         {
