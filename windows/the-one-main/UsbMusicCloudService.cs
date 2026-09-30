@@ -87,6 +87,7 @@ public static class UsbMusicCloudService
     private static readonly SemaphoreSlim HubInboxGate = new(1, 1);
 
     private static CancellationTokenSource? _backgroundCts;
+    private static Mutex? BackgroundProcessMutex;
     private static string _token = "";
     private static DateTime _tokenValidUntil = DateTime.MinValue;
     private static string _lastDriveSignature = "__not_initialized__";
@@ -94,6 +95,27 @@ public static class UsbMusicCloudService
     public static void StartBackgroundSync()
     {
         if (_backgroundCts != null) return;
+
+        try
+        {
+            BackgroundProcessMutex = new Mutex(
+                initiallyOwned: false,
+                name: @"Local\TheOneSharedMediaBackgroundSync");
+
+            if (!BackgroundProcessMutex.WaitOne(0))
+            {
+                Log("Background sync draait al in een ander The One-proces.");
+                BackgroundProcessMutex.Dispose();
+                BackgroundProcessMutex = null;
+                return;
+            }
+        }
+        catch
+        {
+            // Als de procesmutex niet beschikbaar is, laat de bestaande
+            // in-process bescherming de app gewoon doorgaan.
+        }
+
         Log("Background sync gestart.");
         _backgroundCts = new CancellationTokenSource();
         _ = Task.Run(() => BackgroundLoopAsync(_backgroundCts.Token));
