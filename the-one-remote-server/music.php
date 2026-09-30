@@ -16,6 +16,8 @@ $rateFile = $root . '/rate.json';
 $favoritesFile = $root . '/favorites.json';
 $djQueueFile = $root . '/dj-queue.json';
 $moveQueueFile = $root . '/hub-move-queue.json';
+$playerBroadcastFile = $root . '/player-broadcast.json';
+$playerSessionsFile = $root . '/player-sessions.json';
 $deletedFile = $root . '/deleted-shared-media.json';
 $deviceRegistryFile = $home . '/the-one-remote-data/main-devices.json';
 $deviceOwnerFile = $home . '/the-one-remote-data/main-device-owner.json';
@@ -323,6 +325,147 @@ if ($action === 'hub-login') {
         out(403,['ok'=>false,'error'=>'invalid hub credential']);
     }
     out(200,['ok'=>true,'token'=>token_new($sec,'music-hub'),'expires_in'=>TOKEN_TTL]);
+}
+
+if ($action === 'player-broadcast-publish') {
+    $token=bearer();
+    if (!token_read_ok($token,$sec)) out(401,['ok'=>false,'error'=>'auth required']);
+
+    $b=read_json();
+    $requestDevice=safe_id((string)($b['request_device_id'] ?? ''));
+    $owner=load_json($deviceOwnerFile);
+    $ownerId=safe_id((string)($owner['device_id'] ?? ''));
+    if ($ownerId==='' || $requestDevice==='' || !hash_equals($ownerId,$requestDevice)) {
+        out(403,['ok'=>false,'error'=>'owner only']);
+    }
+
+    $url=trim((string)($b['url'] ?? ''));
+    $title=mb_substr(trim((string)($b['title'] ?? '')),0,240);
+    $source=mb_substr(trim((string)($b['source'] ?? '')),0,240);
+    $position=max(0,(int)($b['position_ms'] ?? 0));
+    if ($url==='' || !preg_match('#^https?://#i',$url)) {
+        out(400,['ok'=>false,'error'=>'invalid stream']);
+    }
+
+    $now=(int)round(microtime(true)*1000);
+    $sessions=load_json($playerSessionsFile);
+    $byDevice=is_array($sessions['by_device'] ?? null) ? $sessions['by_device'] : [];
+    $targets=[];
+    foreach ($byDevice as $deviceId=>$session) {
+        if (!is_array($session)) continue;
+        if ($deviceId===$requestDevice) continue;
+        $sessionId=trim((string)($session['session_id'] ?? ''));
+        $seen=(int)($session['last_seen_ms'] ?? 0);
+        if ($sessionId==='' || $seen < ($now-5000)) continue;
+        $targets[]=[
+            'device_id'=>(string)$deviceId,
+            'session_id'=>$sessionId
+        ];
+    }
+
+    $event=[
+        'id'=>'cast-'.bin2hex(random_bytes(10)),
+        'sender_device_id'=>$requestDevice,
+        'title'=>$title===''?'Muziek':$title,
+        'source'=>$source===''?'The One':$source,
+        'url'=>$url,
+        'position_ms'=>$position,
+        'created_at_ms'=>$now,
+        'targets'=>$targets
+    ];
+    if (!save_json($playerBroadcastFile,$event)) {
+        out(507,['ok'=>false,'error'=>'broadcast storage unavailable']);
+    }
+
+    out(200,[
+        'ok'=>true,
+        'id'=>$event['id'],
+        'target_count'=>count($targets)
+    ]);
+}
+
+if ($action === 'player-broadcast-poll') {
+    $token=bearer();
+    if (!token_read_ok($token,$sec)) out(401,['ok'=>false,'error'=>'auth required']);
+
+    $b=read_json();
+    $requestDevice=safe_id((string)($b['request_device_id'] ?? ''));
+    $sessionId=trim((string)($b['session_id'] ?? ''));
+    if ($requestDevice==='' || $sessionId==='') {
+        out(400,['ok'=>false,'error'=>'device and session required']);
+    }
+
+    $now=(int)round(microtime(true)*1000);
+    $sessions=load_json($playerSessionsFile);
+    $byDevice=is_array($sessions['by_device'] ?? null) ? $sessions['by_device'] : [];
+
+    foreach ($byDevice as $deviceId=>$session) {
+        if (!is_array($session)) {
+            unset($byDevice[$deviceId]);
+            continue;
+        }
+        if ((int)($session['last_seen_ms'] ?? 0) < ($now-15000)) {
+            unset($byDevice[$deviceId]);
+        }
+    }
+
+    $byDevice[$requestDevice]=[
+        'session_id'=>$sessionId,
+        'last_seen_ms'=>$now
+    ];
+    save_json($playerSessionsFile,[
+        'by_device'=>$byDevice,
+        'updated_at_ms'=>$now
+    ]);
+
+    $event=load_json($playerBroadcastFile);
+    $deliver=null;
+    if ($event!==[]) {
+        $created=(int)($event['created_at_ms'] ?? 0);
+        if ($created >= ($now-8000)) {
+            foreach ((array)($event['targets'] ?? []) as $target) {
+                if (!is_array($target)) continue;
+                if (
+                    (string)($target['device_id'] ?? '')===$requestDevice &&
+                    hash_equals((string)($target['session_id'] ?? ''),$sessionId)
+                ) {
+                    $deliver=$event;
+                    break;
+                }
+            }
+        }
+    }
+
+    out(200,[
+        'ok'=>true,
+        'server_now_ms'=>$now,
+        'event'=>$deliver
+    ]);
+}
+
+if ($action === 'player-broadcast-close') {
+    $token=bearer();
+    if (!token_read_ok($token,$sec)) out(401,['ok'=>false,'error'=>'auth required']);
+
+    $b=read_json();
+    $requestDevice=safe_id((string)($b['request_device_id'] ?? ''));
+    $sessionId=trim((string)($b['session_id'] ?? ''));
+    if ($requestDevice==='' || $sessionId==='') out(200,['ok'=>true]);
+
+    $sessions=load_json($playerSessionsFile);
+    $byDevice=is_array($sessions['by_device'] ?? null) ? $sessions['by_device'] : [];
+    $current=$byDevice[$requestDevice] ?? null;
+    if (
+        is_array($current) &&
+        hash_equals((string)($current['session_id'] ?? ''),$sessionId)
+    ) {
+        unset($byDevice[$requestDevice]);
+        save_json($playerSessionsFile,[
+            'by_device'=>$byDevice,
+            'updated_at_ms'=>(int)round(microtime(true)*1000)
+        ]);
+    }
+    out(200,['ok'=>true]);
 }
 
 if ($action === 'hub-inbox-list') {
