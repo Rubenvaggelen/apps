@@ -137,7 +137,8 @@ class SupremacyPlaybackService : Service() {
                     }
                 }
 
-                requestedStartPositionMs = 0
+                requestedStartPositionMs =
+                    intent.getIntExtra(EXTRA_POSITION, 0).coerceAtLeast(0)
                 requestedAutoStart = true
                 startCurrent()
             }
@@ -621,6 +622,57 @@ class SupremacyPlaybackService : Service() {
                     action = ACTION_PLAY
                     putExtra(EXTRA_INDEX, safeIndex)
                 }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                app.startForegroundService(intent)
+            } else {
+                app.startService(intent)
+            }
+        }
+
+        fun currentUrl(context: Context): String {
+            val live = instance
+            if (live != null && live.urls.isNotEmpty() && live.index in live.urls.indices) {
+                return live.urls[live.index]
+            }
+
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val raw = prefs.getString(KEY_QUEUE_URLS, null).orEmpty()
+            if (raw.isBlank()) return ""
+            return try {
+                val array = JSONArray(raw)
+                val index = prefs.getInt(KEY_INDEX, 0)
+                    .coerceIn(0, (array.length() - 1).coerceAtLeast(0))
+                if (array.length() == 0) "" else array.optString(index)
+            } catch (_: Exception) {
+                ""
+            }
+        }
+
+        fun playBroadcast(
+            context: Context,
+            url: String,
+            title: String,
+            source: String,
+            positionMs: Int
+        ) {
+            if (url.isBlank()) return
+
+            val app = context.applicationContext
+            app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_ACTIVE, true)
+                .putBoolean(KEY_PLAYING, false)
+                .putString(KEY_TITLE, title.ifBlank { "Muziek" })
+                .putString(KEY_SOURCE, source.ifBlank { "The One Broadcast" })
+                .apply()
+
+            val intent = Intent(app, SupremacyPlaybackService::class.java).apply {
+                action = ACTION_PLAY
+                putExtra(EXTRA_URL, url)
+                putExtra(EXTRA_TITLE, title.ifBlank { "Muziek" })
+                putExtra(EXTRA_SOURCE, source.ifBlank { "The One Broadcast" })
+                putExtra(EXTRA_POSITION, positionMs.coerceAtLeast(0))
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 app.startForegroundService(intent)
             } else {
