@@ -591,14 +591,17 @@ if ($action === 'new-downloads-move') {
         $deviceRegistryFile,
         $deviceOwnerFile
     )) {
-        out(403,['ok'=>false,'error'=>'Nieuwe downloads beheerrecht vereist']);
+        out(403,['ok'=>false,'error'=>'muziek organiseren recht vereist']);
     }
 
     $source=safe_path((string)($b['source_path'] ?? ''));
     $target=rtrim(safe_path((string)($b['target_folder'] ?? '')),'/');
 
-    if (!str_starts_with($source,'Nieuwe downloads/')) {
-        out(400,['ok'=>false,'error'=>'alleen Nieuwe downloads kan worden verplaatst']);
+    if (
+        !str_starts_with($source,'Nieuwe downloads/') &&
+        !str_starts_with($source,'Ruben/')
+    ) {
+        out(400,['ok'=>false,'error'=>'ongeldige bron']);
     }
     if ($target !== 'Ruben' && !str_starts_with($target,'Ruben/')) {
         out(400,['ok'=>false,'error'=>'ongeldige doelmap']);
