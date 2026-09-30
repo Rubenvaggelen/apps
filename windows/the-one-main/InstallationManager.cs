@@ -80,6 +80,7 @@ public static class InstallationManager
             DeleteIfExists(Path.Combine(startMenu, "The One Main.lnk"));
             DeleteIfExists(Path.Combine(desktop, "The One Main.lnk"));
             RegisterInstalledApp();
+            RegisterBackgroundSyncAgent();
             CleanupLegacyInstall();
         }
         catch
@@ -114,6 +115,23 @@ public static class InstallationManager
                 Marshal.FinalReleaseComObject(shortcut);
             if (shell != null && Marshal.IsComObject(shell))
                 Marshal.FinalReleaseComObject(shell);
+        }
+    }
+
+    private static void RegisterBackgroundSyncAgent()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Run");
+            key?.SetValue(
+                "The One Shared Media Sync",
+                $"\"{InstalledExe}\" --background-sync",
+                RegistryValueKind.String);
+        }
+        catch
+        {
+            // Auto-start is a resilience feature; failure may not block the app.
         }
     }
 
