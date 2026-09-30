@@ -343,7 +343,7 @@ class WakePcActivity : AppCompatActivity() {
                     device.pendingDj
                 )
                 addAccessControl(
-                    "Nieuwe downloads beheren",
+                    "Muziek organiseren",
                     MainDeviceRegistry.ACCESS_DOWNLOADS,
                     device.downloadsRights,
                     device.pendingDownloads
