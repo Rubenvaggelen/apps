@@ -325,6 +325,47 @@ if ($action === 'hub-login') {
     out(200,['ok'=>true,'token'=>token_new($sec,'music-hub'),'expires_in'=>TOKEN_TTL]);
 }
 
+if ($action === 'hub-folders-sync') {
+    if (token_scope(bearer(),$sec) !== 'music-hub') {
+        out(401,['ok'=>false,'error'=>'hub auth required']);
+    }
+
+    $b=read_json();
+    $incoming=is_array($b['folders'] ?? null) ? $b['folders'] : [];
+    $folders=[];
+    foreach ($incoming as $value) {
+        if (!is_string($value)) continue;
+        $folder=safe_path($value);
+        if (
+            $folder !== 'Ruben' &&
+            !str_starts_with($folder,'Ruben/') &&
+            $folder !== 'Nieuwe downloads' &&
+            !str_starts_with($folder,'Nieuwe downloads/')
+        ) {
+            continue;
+        }
+        $folders[$folder]=true;
+    }
+    $folders=array_keys($folders);
+    natcasesort($folders);
+    $folders=array_values($folders);
+
+    $metaFile=$meta.'/THEONE-HUB__hub-primary.json';
+    $doc=load_json($metaFile);
+    if ($doc===[]) out(404,['ok'=>false,'error'=>'hub catalog missing']);
+
+    $doc['folders']=$folders;
+    $doc['folders_updated_at']=gmdate('c');
+    $doc['updated_at']=gmdate('c');
+    $doc['presence_updated_at']=gmdate('c');
+
+    if (!save_json($metaFile,$doc)) {
+        out(507,['ok'=>false,'error'=>'folder catalog storage unavailable']);
+    }
+
+    out(200,['ok'=>true,'folders'=>count($folders)]);
+}
+
 if ($action === 'new-downloads-move') {
     $token=bearer();
     if (!token_read_ok($token,$sec)) out(401,['ok'=>false,'error'=>'auth required']);
@@ -1010,6 +1051,13 @@ if ($action === 'catalog') {
                 $rows,
                 fn($row)=>!is_array($row) ||
                     !str_starts_with((string)($row['path'] ?? ''),'Nieuwe downloads/')
+            ));
+            $folderRows=is_array($stickRow['folders'] ?? null) ? $stickRow['folders'] : [];
+            $stickRow['folders']=array_values(array_filter(
+                $folderRows,
+                fn($folder)=>is_string($folder) &&
+                    $folder !== 'Nieuwe downloads' &&
+                    !str_starts_with($folder,'Nieuwe downloads/')
             ));
         }
         unset($stickRow);
