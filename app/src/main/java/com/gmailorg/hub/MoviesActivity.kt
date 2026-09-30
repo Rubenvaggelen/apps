@@ -22,6 +22,7 @@ import android.webkit.WebViewClient
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import java.util.UUID
 import java.util.concurrent.Executors
 
 class MoviesActivity : AppCompatActivity() {
@@ -37,6 +38,7 @@ class MoviesActivity : AppCompatActivity() {
     private lateinit var musicSeekBar: SeekBar
     private lateinit var musicTimeText: TextView
     private lateinit var musicWebPlayer: WebView
+    private lateinit var musicBroadcastButton: View
     private var youtubeActive = false
     private var youtubePlaying = false
     private var musicSeekDragging = false
@@ -47,7 +49,65 @@ class MoviesActivity : AppCompatActivity() {
     private var currentRemoteUsbFolder: String = ""
     private var currentRemoteUsbFiles: List<RemoteUsbMusicClient.RemoteFile> = emptyList()
     private val remoteMusicIo = Executors.newSingleThreadExecutor()
+    private val playerBroadcastIo = Executors.newSingleThreadExecutor()
     private val favoriteUsbKeys = linkedSetOf<String>()
+    private var playerBroadcastSessionId = ""
+    private var lastPlayerBroadcastId = ""
+    @Volatile private var playerBroadcastPollBusy = false
+    private val playerBroadcastPoll = object : Runnable {
+        override fun run() {
+            if (
+                isFinishing ||
+                isDestroyed ||
+                !::musicNowPlaying.isInitialized ||
+                playerBroadcastSessionId.isBlank()
+            ) return
+
+            val sessionId = playerBroadcastSessionId
+            if (!playerBroadcastPollBusy) {
+                playerBroadcastPollBusy = true
+                playerBroadcastIo.execute {
+                    val event = runCatching {
+                        RemoteUsbMusicClient.pollPlayerBroadcast(
+                            this@MoviesActivity,
+                            sessionId
+                        )
+                    }.getOrNull()
+
+                    runOnUiThread {
+                        playerBroadcastPollBusy = false
+                        if (
+                            playerBroadcastSessionId == sessionId &&
+                            event != null &&
+                            event.id != lastPlayerBroadcastId
+                        ) {
+                            lastPlayerBroadcastId = event.id
+                            val adjustedPosition =
+                                (event.positionMs.toLong() + event.ageMs + 250L)
+                                    .coerceAtMost(Int.MAX_VALUE.toLong())
+                                    .toInt()
+
+                            SupremacyPlaybackService.playBroadcast(
+                                this@MoviesActivity,
+                                event.url,
+                                event.title,
+                                event.source,
+                                adjustedPosition
+                            )
+                            Toast.makeText(
+                                this@MoviesActivity,
+                                "📡 Broadcast • ${event.title}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                }
+            }
+
+            musicNowPlaying.postDelayed(this, 1000L)
+        }
+    }
+
     private val compactPlayerRefresh = object : Runnable {
         override fun run() {
             if (!isFinishing && !isDestroyed && ::musicNowPlaying.isInitialized) {
@@ -86,6 +146,12 @@ class MoviesActivity : AppCompatActivity() {
         musicSeekBar = findViewById(R.id.musicSeekBar)
         musicTimeText = findViewById(R.id.musicTimeText)
         musicWebPlayer = findViewById(R.id.musicWebPlayer)
+        musicBroadcastButton = findViewById(R.id.musicBroadcastButton)
+        musicBroadcastButton.visibility =
+            if (MainDeviceRegistry.isLocallyOwner(this)) View.VISIBLE else View.GONE
+        musicBroadcastButton.setOnClickListener {
+            broadcastCurrentTrack()
+        }
         configureMusicPlayer()
         configureMusicSeekBar()
         musicNowPlaying.setOnClickListener {
@@ -170,13 +236,103 @@ class MoviesActivity : AppCompatActivity() {
         SupremacyPlaybackService.resumeLastSessionIfNeeded(this)
         musicNowPlaying.removeCallbacks(compactPlayerRefresh)
         musicNowPlaying.postDelayed(compactPlayerRefresh, 250)
+
+        playerBroadcastSessionId = UUID.randomUUID().toString()
+        lastPlayerBroadcastId = ""
+        playerBroadcastPollBusy = false
+        musicNowPlaying.removeCallbacks(playerBroadcastPoll)
+        musicNowPlaying.post(playerBroadcastPoll)
     }
 
     override fun onPause() {
         if (::musicNowPlaying.isInitialized) {
             musicNowPlaying.removeCallbacks(compactPlayerRefresh)
+            musicNowPlaying.removeCallbacks(playerBroadcastPoll)
+        }
+
+        val closingSession = playerBroadcastSessionId
+        playerBroadcastSessionId = ""
+        playerBroadcastPollBusy = false
+        if (closingSession.isNotBlank()) {
+            playerBroadcastIo.execute {
+                runCatching {
+                    RemoteUsbMusicClient.closePlayerBroadcastSession(
+                        this@MoviesActivity,
+                        closingSession
+                    )
+                }
+            }
         }
         super.onPause()
+    }
+
+    private fun broadcastCurrentTrack() {
+        if (!MainDeviceRegistry.isLocallyOwner(this)) {
+            Toast.makeText(
+                this,
+                "Alleen The One owner kan broadcast starten.",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        if (!SupremacyPlaybackService.isActive(this)) {
+            Toast.makeText(
+                this,
+                "Start eerst een nummer in The One player.",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        val url = SupremacyPlaybackService.currentUrl(this)
+        if (url.isBlank()) {
+            Toast.makeText(
+                this,
+                "Dit nummer kan nog niet worden gebroadcast.",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        val title = SupremacyPlaybackService.currentTitle(this)
+        val source = SupremacyPlaybackService.currentSource(this)
+        val position = SupremacyPlaybackService.currentPositionMs(this)
+
+        musicBroadcastButton.isEnabled = false
+        playerBroadcastIo.execute {
+            val result = runCatching {
+                RemoteUsbMusicClient.publishPlayerBroadcast(
+                    this@MoviesActivity,
+                    title,
+                    url,
+                    source,
+                    position
+                )
+            }
+
+            runOnUiThread {
+                musicBroadcastButton.isEnabled = true
+                result.onSuccess { count ->
+                    Toast.makeText(
+                        this@MoviesActivity,
+                        if (count == 0) {
+                            "Geen andere The One players staan nu open."
+                        } else {
+                            "📡 Broadcast gestart naar $count player" +
+                                if (count == 1) "." else "s."
+                        },
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }.onFailure { error ->
+                    Toast.makeText(
+                        this@MoviesActivity,
+                        error.message ?: "Broadcast starten mislukt",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
     }
 
     private fun openCurrentMusicSource() {
@@ -2787,8 +2943,10 @@ class MoviesActivity : AppCompatActivity() {
     override fun onDestroy() {
         if (::musicNowPlaying.isInitialized) {
             musicNowPlaying.removeCallbacks(compactPlayerRefresh)
+            musicNowPlaying.removeCallbacks(playerBroadcastPoll)
         }
         remoteMusicIo.shutdownNow()
+        playerBroadcastIo.shutdownNow()
         if (isFinishing && ::musicWebPlayer.isInitialized) {
             musicWebPlayer.stopLoading()
             musicWebPlayer.destroy()
