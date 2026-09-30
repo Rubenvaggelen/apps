@@ -246,6 +246,21 @@
 
         </LinearLayout>
 
+        <Button
+            android:id="@+id/musicBroadcastButton"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:layout_marginTop="8dp"
+            android:text="📡  BROADCAST"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.08"
+            android:background="@drawable/bg_the_one_gold_outline"
+            android:backgroundTint="@null"
+            app:backgroundTint="@null"
+            android:textColor="@color/gold"
+            android:visibility="gone" />
+
     </LinearLayout>
 
     <ScrollView
