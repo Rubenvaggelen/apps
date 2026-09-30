@@ -124,7 +124,7 @@ public static class UsbMusicCloudService
 
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(20), cancellationToken);
+                await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
             }
             catch (OperationCanceledException)
             {
