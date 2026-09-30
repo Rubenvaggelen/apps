@@ -107,7 +107,11 @@ object RemoteUsbMusicClient {
 
     fun catalog(context: Context): List<RemoteStick> {
         val token = token(context)
-        val connection = open(ENDPOINT + "?action=catalog&include_inactive=1", "GET")
+        val connection = open(
+            ENDPOINT + "?action=catalog&include_inactive=1" +
+                "&request_device_id=" + enc(MainDeviceRegistry.deviceId(context)),
+            "GET"
+        )
         connection.setRequestProperty("Authorization", "Bearer " + token)
 
         val code = connection.responseCode
@@ -284,6 +288,45 @@ object RemoteUsbMusicClient {
         val json = JSONObject(readBody(connection))
         connection.disconnect()
         return json.optLong("freed_bytes", 0L)
+    }
+
+    fun moveNewDownload(
+        context: Context,
+        file: RemoteFile,
+        targetFolder: String
+    ): Boolean {
+        val token = token(context)
+        val connection = open(ENDPOINT + "?action=new-downloads-move", "POST")
+        connection.setRequestProperty("Authorization", "Bearer " + token)
+        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        connection.doOutput = true
+
+        val body = JSONObject()
+            .put("request_device_id", MainDeviceRegistry.deviceId(context))
+            .put("source_path", file.path)
+            .put("target_folder", targetFolder)
+
+        OutputStreamWriter(connection.outputStream, StandardCharsets.UTF_8).use {
+            it.write(body.toString())
+        }
+
+        val code = connection.responseCode
+        val json = JSONObject(readBody(connection))
+        connection.disconnect()
+
+        if (code == 401) {
+            clearToken(context)
+            throw AuthRequired()
+        }
+        if (code == 403) {
+            throw IllegalStateException("Geen toestemming om Nieuwe downloads te beheren")
+        }
+        if (code !in 200..299 || !json.optBoolean("queued", false)) {
+            throw IllegalStateException(
+                json.optString("error", "Nummer verplaatsen mislukt")
+            )
+        }
+        return true
     }
 
     fun setUsbFavorite(
