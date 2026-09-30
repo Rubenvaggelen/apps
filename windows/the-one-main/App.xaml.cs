@@ -9,6 +9,26 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        if (System.Array.Exists(
+            e.Args,
+            arg => string.Equals(
+                arg,
+                "--hub-sync-once",
+                System.StringComparison.OrdinalIgnoreCase)))
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            try
+            {
+                UsbMusicCloudService.SyncHubInboxAsync().GetAwaiter().GetResult();
+                Shutdown(0);
+            }
+            catch
+            {
+                Shutdown(2);
+            }
+            return;
+        }
+
         // De eerste keer mag The One vanuit Downloads/een ZIP gestart worden.
         // Daarna verhuist de app zichzelf naar een vaste gebruikersmap en maakt
         // hij Startmenu- en bureaubladkoppelingen. Updates blijven daarna in-place.
