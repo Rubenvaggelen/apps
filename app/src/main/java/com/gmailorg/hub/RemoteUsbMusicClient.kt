@@ -444,7 +444,7 @@ object RemoteUsbMusicClient {
             throw AuthRequired()
         }
         if (code == 403) {
-            throw IllegalStateException("Geen toestemming om Nieuwe downloads te beheren")
+            throw IllegalStateException("Geen toestemming om muziek te organiseren")
         }
         if (code !in 200..299 || !json.optBoolean("queued", false)) {
             throw IllegalStateException(
@@ -453,6 +453,12 @@ object RemoteUsbMusicClient {
         }
         return true
     }
+
+    fun moveSharedTrack(
+        context: Context,
+        file: RemoteFile,
+        targetFolder: String
+    ): Boolean = moveNewDownload(context, file, targetFolder)
 
     fun setUsbFavorite(
         context: Context,
