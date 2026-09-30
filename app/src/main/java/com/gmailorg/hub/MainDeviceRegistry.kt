@@ -20,10 +20,12 @@ data class MainRegisteredDevice(
     val sharedRights: Boolean,
     val favoritesRights: Boolean,
     val djRights: Boolean,
+    val downloadsRights: Boolean,
     val pendingMixes: Boolean,
     val pendingShared: Boolean,
     val pendingFavorites: Boolean,
     val pendingDj: Boolean,
+    val pendingDownloads: Boolean,
     val online: Boolean,
     val lastSeen: Long
 )
@@ -47,6 +49,7 @@ object MainDeviceRegistry {
     const val ACCESS_SHARED = "shared"
     const val ACCESS_FAVORITES = "favorites"
     const val ACCESS_DJ = "dj"
+    const val ACCESS_DOWNLOADS = "downloads"
 
     private const val ENDPOINT = "https://rubenvanaggelen.com/the-one-remote-api/devices.php"
     private const val PREFS = "main_device_registry"
@@ -135,6 +138,7 @@ object MainDeviceRegistry {
             .putBoolean("access_shared", accessRights.optBoolean(ACCESS_SHARED, owner || musicRights))
             .putBoolean("access_favorites", accessRights.optBoolean(ACCESS_FAVORITES, owner || musicRights))
             .putBoolean("access_dj", accessRights.optBoolean(ACCESS_DJ, owner))
+            .putBoolean("access_downloads", accessRights.optBoolean(ACCESS_DOWNLOADS, owner))
             .apply()
         return blocked
     }
@@ -228,10 +232,14 @@ object MainDeviceRegistry {
                         djRights = item.optJSONObject("access_rights")
                             ?.optBoolean(ACCESS_DJ, item.optBoolean("owner", false))
                             ?: item.optBoolean("owner", false),
+                        downloadsRights = item.optJSONObject("access_rights")
+                            ?.optBoolean(ACCESS_DOWNLOADS, item.optBoolean("owner", false))
+                            ?: item.optBoolean("owner", false),
                         pendingMixes = item.optJSONObject("access_requests")?.has(ACCESS_MIXES) == true,
                         pendingShared = item.optJSONObject("access_requests")?.has(ACCESS_SHARED) == true,
                         pendingFavorites = item.optJSONObject("access_requests")?.has(ACCESS_FAVORITES) == true,
                         pendingDj = item.optJSONObject("access_requests")?.has(ACCESS_DJ) == true,
+                        pendingDownloads = item.optJSONObject("access_requests")?.has(ACCESS_DOWNLOADS) == true,
                         online = item.optBoolean("online", false),
                         lastSeen = item.optLong("last_seen", 0L)
                     )
