@@ -662,6 +662,40 @@ if ($action === 'hub-move-list') {
     out(200,['ok'=>true,'items'=>$items]);
 }
 
+if ($action === 'hub-move-fail') {
+    if (token_scope(bearer(),$sec) !== 'music-hub') {
+        out(401,['ok'=>false,'error'=>'hub auth required']);
+    }
+
+    $b=read_json();
+    $id=trim((string)($b['id'] ?? ''));
+    $error=mb_substr(trim((string)($b['error'] ?? 'verplaatsing mislukt')),0,240);
+    if ($id==='') out(400,['ok'=>false,'error'=>'id required']);
+
+    $queue=load_json($moveQueueFile);
+    $items=is_array($queue['items'] ?? null) ? $queue['items'] : [];
+    $found=false;
+    foreach ($items as &$row) {
+        if (!is_array($row) || (string)($row['id'] ?? '')!==$id) continue;
+        $row['status']='failed';
+        $row['error']=$error;
+        $row['failed_at']=gmdate('c');
+        $found=true;
+        break;
+    }
+    unset($row);
+
+    if (!$found) out(404,['ok'=>false,'error'=>'move request not found']);
+
+    $queue['items']=$items;
+    $queue['updated_at']=gmdate('c');
+    if (!save_json($moveQueueFile,$queue)) {
+        out(507,['ok'=>false,'error'=>'verplaatswachtrij niet beschikbaar']);
+    }
+
+    out(200,['ok'=>true,'id'=>$id,'status'=>'failed']);
+}
+
 if ($action === 'hub-move-complete') {
     if (token_scope(bearer(),$sec) !== 'music-hub') {
         out(401,['ok'=>false,'error'=>'hub auth required']);
