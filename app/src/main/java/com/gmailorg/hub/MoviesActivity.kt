@@ -1677,6 +1677,68 @@ class MoviesActivity : AppCompatActivity() {
             (resources.displayMetrics.widthPixels * 0.90f).toInt(),
             (resources.displayMetrics.heightPixels * 0.86f).toInt()
         )
+
+        if (isNewDownloadsFolder) {
+            val initialSignature = remoteFolderSignature(stick, normalized)
+            val refresh = object : Runnable {
+                override fun run() {
+                    if (!dialog.isShowing || isFinishing || isDestroyed) return
+
+                    remoteMusicIo.execute {
+                        val freshStick = runCatching {
+                            val refreshed = RemoteUsbMusicClient.catalog(
+                                this@MoviesActivity
+                            )
+                            refreshed.firstOrNull {
+                                it.deviceId.equals(stick.deviceId, true) &&
+                                    it.stickId.equals(stick.stickId, true)
+                            }
+                        }.getOrNull()
+
+                        runOnUiThread {
+                            if (!dialog.isShowing || freshStick == null) return@runOnUiThread
+
+                            val freshSignature =
+                                remoteFolderSignature(freshStick, normalized)
+                            if (freshSignature != initialSignature) {
+                                dialog.dismiss()
+                                showRemoteFolderLevel(freshStick, normalized)
+                            } else {
+                                dialog.window?.decorView?.postDelayed(this, 5_000L)
+                            }
+                        }
+                    }
+                }
+            }
+            dialog.window?.decorView?.postDelayed(refresh, 5_000L)
+        }
+    }
+
+    private fun remoteFolderSignature(
+        stick: RemoteUsbMusicClient.RemoteStick,
+        folder: String
+    ): String {
+        val normalized = normalizeRemoteFolder(folder)
+        val prefix = if (normalized.isBlank()) "" else "$normalized/"
+
+        val files = stick.files
+            .filter {
+                val f = normalizeRemoteFolder(it.folder)
+                f.equals(normalized, true) ||
+                    f.startsWith(prefix, true)
+            }
+            .map { it.path + "|" + it.cached }
+            .sorted()
+
+        val folders = stick.folders
+            .map { normalizeRemoteFolder(it) }
+            .filter {
+                it.equals(normalized, true) ||
+                    it.startsWith(prefix, true)
+            }
+            .sortedWith(String.CASE_INSENSITIVE_ORDER)
+
+        return (folders + files).joinToString("\n")
     }
 
     private fun showNewDownloadDestinationDialog(
