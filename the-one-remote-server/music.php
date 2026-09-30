@@ -324,6 +324,55 @@ if ($action === 'hub-login') {
     out(200,['ok'=>true,'token'=>token_new($sec,'music-hub'),'expires_in'=>TOKEN_TTL]);
 }
 
+if ($action === 'hub-repath') {
+    if (token_scope(bearer(),$sec) !== 'music-hub') {
+        out(401,['ok'=>false,'error'=>'hub auth required']);
+    }
+
+    $b=read_json();
+    $from=rtrim(safe_path((string)($b['from_prefix'] ?? '')),'/').'/';
+    $to=rtrim(safe_path((string)($b['to_prefix'] ?? '')),'/').'/';
+
+    $device='THEONE-HUB';
+    $stick='hub-primary';
+    $metaFile=$meta.'/'.$device.'__'.$stick.'.json';
+    $doc=load_json($metaFile);
+    if ($doc===[]) out(404,['ok'=>false,'error'=>'hub catalog missing']);
+
+    $rows=is_array($doc['files'] ?? null) ? $doc['files'] : [];
+    $changed=0;
+    foreach ($rows as &$row) {
+        if (!is_array($row)) continue;
+        $old=(string)($row['path'] ?? '');
+        if (!str_starts_with($old,$from)) continue;
+
+        $new=$to.substr($old,strlen($from));
+        $sha=strtolower(trim((string)($row['sha256'] ?? '')));
+        $oldCache=cache_file_for($files,$device,$stick,$old);
+
+        $row['path']=$new;
+        $row['name']=basename($new);
+        $row['folder']=dirname($new)==='.'?'':dirname($new);
+        $row['cached']=ensure_cached_from_pool($files,$device,$stick,$new,$sha);
+
+        if ($old !== $new && is_file($oldCache)) {
+            @unlink($oldCache);
+        }
+        $changed++;
+    }
+    unset($row);
+
+    if ($changed===0) out(200,['ok'=>true,'changed'=>0]);
+
+    $doc['updated_at']=gmdate('c');
+    $doc['presence_updated_at']=gmdate('c');
+    if (!save_json($metaFile,$doc)) {
+        out(507,['ok'=>false,'error'=>'catalog storage unavailable']);
+    }
+
+    out(200,['ok'=>true,'changed'=>$changed,'from'=>$from,'to'=>$to]);
+}
+
 if ($action === 'hub-upsert') {
     if (token_scope(bearer(),$sec) !== 'music-hub') {
         out(401,['ok'=>false,'error'=>'hub auth required']);
