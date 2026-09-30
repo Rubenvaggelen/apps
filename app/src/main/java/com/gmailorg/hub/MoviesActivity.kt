@@ -10,6 +10,7 @@ import android.os.Environment
 import android.text.InputType
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -1446,6 +1447,32 @@ class MoviesActivity : AppCompatActivity() {
             }
         )
 
+        if (canOrganizeNewDownloads && directFiles.isNotEmpty()) {
+            panel.addView(
+                TextView(this).apply {
+                    text = "☑  SELECTEER MEERDERE"
+                    textSize = 13f
+                    gravity = android.view.Gravity.CENTER
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    setTextColor(Color.parseColor("#20B8FF"))
+                    setBackgroundResource(R.drawable.bg_the_one_blue_button)
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                    setOnClickListener {
+                        showMultiTrackSelectDialog(
+                            stick,
+                            directFiles,
+                            dialog,
+                            normalized
+                        )
+                    }
+                },
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(12) }
+            )
+        }
+
         val list = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
@@ -1741,16 +1768,20 @@ class MoviesActivity : AppCompatActivity() {
         return (folders + files).joinToString("\n")
     }
 
-    private fun showNewDownloadDestinationDialog(
-        stick: RemoteUsbMusicClient.RemoteStick,
-        file: RemoteUsbMusicClient.RemoteFile,
-        parentDialog: Dialog,
-        sourceFolder: String
-    ) {
-        val density = resources.displayMetrics.density
-        fun dp(value: Int): Int = (value * density).toInt()
+    private fun isUsableSharedMediaMoveTarget(folder: String): Boolean {
+        val invalid = "<>:\"\\|?*"
+        return folder
+            .split('/')
+            .filter { it.isNotBlank() }
+            .all { part -> part.none { ch -> invalid.indexOf(ch) >= 0 } }
+    }
 
-        val folders = (
+    private fun availableSharedMediaMoveTargets(
+        stick: RemoteUsbMusicClient.RemoteStick,
+        sourceFolder: String
+    ): List<String> {
+        val source = normalizeRemoteFolder(sourceFolder)
+        return (
             stick.folders +
                 stick.files.flatMap { remoteFile ->
                     val full = normalizeRemoteFolder(remoteFile.folder)
@@ -1766,10 +1797,327 @@ class MoviesActivity : AppCompatActivity() {
                     !it.equals("Nieuwe downloads", ignoreCase = true) &&
                     !it.startsWith("Nieuwe downloads/", ignoreCase = true) &&
                     (it.equals("Ruben", ignoreCase = true) ||
-                        it.startsWith("Ruben/", ignoreCase = true))
+                        it.startsWith("Ruben/", ignoreCase = true)) &&
+                    !it.equals(source, ignoreCase = true) &&
+                    isUsableSharedMediaMoveTarget(it)
             }
             .distinctBy { it.lowercase() }
             .sortedWith(String.CASE_INSENSITIVE_ORDER)
+    }
+
+    private fun showMultiTrackSelectDialog(
+        stick: RemoteUsbMusicClient.RemoteStick,
+        files: List<RemoteUsbMusicClient.RemoteFile>,
+        parentDialog: Dialog,
+        sourceFolder: String
+    ) {
+        val density = resources.displayMetrics.density
+        fun dp(value: Int): Int = (value * density).toInt()
+
+        val dialog = Dialog(this)
+        val selected = linkedSetOf<String>()
+        val byPath = files.associateBy { it.path }
+
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(18), dp(20), dp(16))
+            setBackgroundResource(R.drawable.bg_the_one_panel)
+        }
+
+        panel.addView(TextView(this).apply {
+            text = "MEERDERE NUMMERS"
+            textSize = 11f
+            letterSpacing = 0.14f
+            setTextColor(Color.parseColor("#E8AA4E"))
+        })
+
+        panel.addView(TextView(this).apply {
+            text = if (sourceFolder.startsWith("Nieuwe downloads", true)) {
+                "Nieuwe downloads"
+            } else {
+                sourceFolder.substringAfterLast('/').ifBlank { "Shared Media" }
+            }
+            textSize = 21f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            setPadding(0, dp(4), 0, dp(10))
+        })
+
+        val moveButton = TextView(this).apply {
+            text = "VERPLAATS (0)"
+            textSize = 13f
+            gravity = android.view.Gravity.CENTER
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(Color.parseColor("#201505"))
+            setBackgroundResource(R.drawable.bg_the_one_gold_button)
+            setPadding(dp(12), dp(11), dp(12), dp(11))
+            alpha = 0.45f
+            isEnabled = false
+        }
+
+        fun refreshMoveButton() {
+            moveButton.text = "VERPLAATS (${selected.size})"
+            moveButton.isEnabled = selected.isNotEmpty()
+            moveButton.alpha = if (selected.isNotEmpty()) 1f else 0.45f
+        }
+
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        files.forEach { file ->
+            val check = CheckBox(this).apply {
+                text = cleanUsbTrackTitle(file.displayName)
+                textSize = 15.5f
+                setTextColor(Color.parseColor("#F3F8FC"))
+                buttonTintList = android.content.res.ColorStateList.valueOf(
+                    Color.parseColor("#20B8FF")
+                )
+                setPadding(dp(4), dp(9), dp(4), dp(9))
+                setOnCheckedChangeListener { _, checked ->
+                    if (checked) selected += file.path else selected -= file.path
+                    refreshMoveButton()
+                }
+            }
+            list.addView(
+                check,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+
+        panel.addView(
+            ScrollView(this).apply {
+                isFillViewport = true
+                addView(list)
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+
+        moveButton.setOnClickListener {
+            val chosen = selected.mapNotNull { byPath[it] }
+            if (chosen.isNotEmpty()) {
+                showBulkMoveDestinationDialog(
+                    stick,
+                    chosen,
+                    dialog,
+                    parentDialog,
+                    sourceFolder
+                )
+            }
+        }
+        panel.addView(moveButton)
+
+        panel.addView(TextView(this).apply {
+            text = "ANNULEREN"
+            textSize = 13f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(Color.parseColor("#E8AA4E"))
+            setBackgroundResource(R.drawable.bg_the_one_gold_outline)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setOnClickListener { dialog.dismiss() }
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(8) })
+
+        dialog.setContentView(panel)
+        dialog.setCanceledOnTouchOutside(true)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.show()
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.92f).toInt(),
+            (resources.displayMetrics.heightPixels * 0.86f).toInt()
+        )
+    }
+
+    private fun showBulkMoveDestinationDialog(
+        stick: RemoteUsbMusicClient.RemoteStick,
+        files: List<RemoteUsbMusicClient.RemoteFile>,
+        selectionDialog: Dialog,
+        parentDialog: Dialog,
+        sourceFolder: String
+    ) {
+        val density = resources.displayMetrics.density
+        fun dp(value: Int): Int = (value * density).toInt()
+
+        val folders = availableSharedMediaMoveTargets(stick, sourceFolder)
+        if (folders.isEmpty()) {
+            Toast.makeText(
+                this,
+                "Geen geldige doelmappen gevonden.",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        val dialog = Dialog(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(18), dp(20), dp(16))
+            setBackgroundResource(R.drawable.bg_the_one_panel)
+        }
+
+        panel.addView(TextView(this).apply {
+            text = "VERPLAATS ${files.size} NUMMER${if (files.size == 1) "" else "S"}"
+            textSize = 11f
+            letterSpacing = 0.12f
+            setTextColor(Color.parseColor("#E8AA4E"))
+        })
+        panel.addView(TextView(this).apply {
+            text = "Kies de doelmap"
+            textSize = 21f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            setPadding(0, dp(4), 0, dp(12))
+        })
+
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        folders.forEach { folder ->
+            val label = folder.removePrefix("Ruben/").ifBlank { "Ruben" }
+            list.addView(
+                TextView(this).apply {
+                    text = "📁  $label"
+                    textSize = 16f
+                    setTextColor(Color.WHITE)
+                    setBackgroundResource(R.drawable.bg_the_one_tile)
+                    setPadding(dp(16), dp(14), dp(16), dp(14))
+                    setOnClickListener {
+                        isEnabled = false
+                        remoteMusicIo.execute {
+                            var queued = 0
+                            var failed = 0
+                            files.forEach { file ->
+                                runCatching {
+                                    RemoteUsbMusicClient.moveSharedTrack(
+                                        this@MoviesActivity,
+                                        file,
+                                        folder
+                                    )
+                                }.onSuccess {
+                                    queued++
+                                }.onFailure {
+                                    failed++
+                                }
+                            }
+
+                            var refreshedStick: RemoteUsbMusicClient.RemoteStick? = null
+                            if (queued > 0) {
+                                repeat(12) {
+                                    if (refreshedStick != null) return@repeat
+                                    try {
+                                        Thread.sleep(if (it == 0) 900L else 1200L)
+                                        val refreshed = RemoteUsbMusicClient.catalog(
+                                            this@MoviesActivity
+                                        )
+                                        val sameStick = refreshed.firstOrNull {
+                                            it.deviceId.equals(stick.deviceId, true) &&
+                                                it.stickId.equals(stick.stickId, true)
+                                        }
+                                        val remaining = sameStick?.files?.count { remote ->
+                                            files.any { chosen ->
+                                                chosen.path.equals(remote.path, true)
+                                            }
+                                        } ?: files.size
+                                        if (sameStick != null && remaining == 0) {
+                                            refreshedStick = sameStick
+                                        }
+                                    } catch (_: Exception) {
+                                    }
+                                }
+                            }
+
+                            runOnUiThread {
+                                dialog.dismiss()
+                                selectionDialog.dismiss()
+                                parentDialog.dismiss()
+
+                                val fresh = refreshedStick
+                                if (fresh != null) {
+                                    Toast.makeText(
+                                        this@MoviesActivity,
+                                        if (failed == 0) {
+                                            "$queued nummers verplaatst"
+                                        } else {
+                                            "$queued verplaatst • $failed mislukt"
+                                        },
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    showRemoteFolderLevel(fresh, sourceFolder)
+                                } else {
+                                    Toast.makeText(
+                                        this@MoviesActivity,
+                                        if (failed == 0) {
+                                            "$queued nummers worden verplaatst…"
+                                        } else {
+                                            "$queued in wachtrij • $failed mislukt"
+                                        },
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    showFreshRemoteFolderLevel(stick, sourceFolder)
+                                }
+                            }
+                        }
+                    }
+                },
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(8) }
+            )
+        }
+
+        panel.addView(
+            ScrollView(this).apply {
+                isFillViewport = true
+                addView(list)
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+
+        panel.addView(TextView(this).apply {
+            text = "ANNULEREN"
+            textSize = 13f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(Color.parseColor("#E8AA4E"))
+            setBackgroundResource(R.drawable.bg_the_one_gold_outline)
+            setPadding(dp(16), dp(11), dp(16), dp(11))
+            setOnClickListener { dialog.dismiss() }
+        })
+
+        dialog.setContentView(panel)
+        dialog.setCanceledOnTouchOutside(true)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.show()
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.90f).toInt(),
+            (resources.displayMetrics.heightPixels * 0.84f).toInt()
+        )
+    }
+
+    private fun showNewDownloadDestinationDialog(
+        stick: RemoteUsbMusicClient.RemoteStick,
+        file: RemoteUsbMusicClient.RemoteFile,
+        parentDialog: Dialog,
+        sourceFolder: String
+    ) {
+        val density = resources.displayMetrics.density
+        fun dp(value: Int): Int = (value * density).toInt()
+
+        val folders = availableSharedMediaMoveTargets(stick, sourceFolder)
 
         if (folders.isEmpty()) {
             Toast.makeText(
@@ -2402,6 +2750,32 @@ class MoviesActivity : AppCompatActivity() {
             ellipsize = android.text.TextUtils.TruncateAt.END
             setPadding(0, dp(4), 0, dp(10))
         })
+
+        if (canOrganizeNewDownloads && files.isNotEmpty()) {
+            panel.addView(
+                TextView(this).apply {
+                    text = "☑  SELECTEER MEERDERE"
+                    textSize = 13f
+                    gravity = android.view.Gravity.CENTER
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    setTextColor(Color.parseColor("#20B8FF"))
+                    setBackgroundResource(R.drawable.bg_the_one_blue_button)
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                    setOnClickListener {
+                        showMultiTrackSelectDialog(
+                            stick,
+                            files,
+                            dialog,
+                            normalized
+                        )
+                    }
+                },
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(10) }
+            )
+        }
 
         panel.addView(
             ScrollView(this).apply {
