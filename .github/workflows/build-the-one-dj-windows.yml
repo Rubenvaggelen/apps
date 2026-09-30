@@ -1,0 +1,51 @@
+name: Package The One DJ Windows
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'windows/the-one-dj/**'
+      - 'dev-hub/the-one-dj-windows.json'
+      - '.github/workflows/build-the-one-dj-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package-dj-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read DJ build
+        id: version
+        shell: pwsh
+        run: |
+          $v = Get-Content .\windows\the-one-dj\version.json -Raw | ConvertFrom-Json
+          "build=$($v.build)" >> $env:GITHUB_OUTPUT
+          "version=$($v.version)" >> $env:GITHUB_OUTPUT
+
+      - name: Package Windows DJ
+        shell: pwsh
+        run: |
+          Compress-Archive -Path .\windows\the-one-dj\* -DestinationPath .\The-One-DJ-Windows.zip -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: The-One-DJ-Windows
+          path: The-One-DJ-Windows.zip
+          if-no-files-found: error
+
+      - name: Publish Windows DJ download
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dj-windows-v${{ steps.version.outputs.build }}
+          name: "The One DJ Windows — build ${{ steps.version.outputs.build }}"
+          prerelease: true
+          make_latest: false
+          files: The-One-DJ-Windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
