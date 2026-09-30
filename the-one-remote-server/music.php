@@ -5,6 +5,7 @@ header('Cache-Control: no-store');
 
 const PIN_HASH = 'eaf2067e34d6876930d2b304db688ab6b9d5064b7e682f7831297d39fbe01c92';
 const TOKEN_TTL = 86400;
+const HUB_SYNC_SECRET_HASH = '90c09d64bb3d96b2cf7b1be1e27ac49096a0087577e1d2ac22cc53adbd55dae6';
 
 $home = dirname((string)($_SERVER['DOCUMENT_ROOT'] ?? __DIR__));
 $root = $home . '/the-one-music-cache';
@@ -311,6 +312,15 @@ if ($action === 'health') out(200, ['ok'=>true,'service'=>'The One Music Cache',
 
 if ($action === 'browse-login') {
     out(200,['ok'=>true,'token'=>token_new($sec,'music-read'),'expires_in'=>TOKEN_TTL]);
+}
+
+if ($action === 'hub-login') {
+    $provided=trim((string)(read_json()['secret'] ?? ''));
+    if ($provided === '' || !hash_equals(HUB_SYNC_SECRET_HASH, hash('sha256',$provided))) {
+        usleep(700000);
+        out(403,['ok'=>false,'error'=>'invalid hub credential']);
+    }
+    out(200,['ok'=>true,'token'=>token_new($sec),'expires_in'=>TOKEN_TTL]);
 }
 
 if ($action === 'login') {
