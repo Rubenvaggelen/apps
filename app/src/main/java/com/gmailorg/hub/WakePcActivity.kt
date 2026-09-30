@@ -342,6 +342,12 @@ class WakePcActivity : AppCompatActivity() {
                     device.djRights,
                     device.pendingDj
                 )
+                addAccessControl(
+                    "Nieuwe downloads beheren",
+                    MainDeviceRegistry.ACCESS_DOWNLOADS,
+                    device.downloadsRights,
+                    device.pendingDownloads
+                )
 
                 card.addView(android.widget.Button(this).apply {
                     text = if (device.blocked) "Deblokkeren" else "Blokkeren"
