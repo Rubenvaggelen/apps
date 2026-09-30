@@ -1205,6 +1205,11 @@ class MoviesActivity : AppCompatActivity() {
         openCurrentFolder: Boolean = false
     ) {
         val normalized = normalizeRemoteFolder(folder)
+        val canOrganizeNewDownloads =
+            MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_DOWNLOADS)
+        val isNewDownloadsFolder =
+            normalized.equals("Nieuwe downloads", ignoreCase = true) ||
+                normalized.startsWith("Nieuwe downloads/", ignoreCase = true)
         val directFiles = stick.files
             .filter { normalizeRemoteFolder(it.folder) == normalized }
             .sortedBy { it.name.lowercase() }
@@ -1378,6 +1383,28 @@ class MoviesActivity : AppCompatActivity() {
                 },
                 LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             )
+            if (isNewDownloadsFolder && canOrganizeNewDownloads) {
+                row.addView(
+                    TextView(this).apply {
+                        text = "→"
+                        textSize = 22f
+                        gravity = android.view.Gravity.CENTER
+                        setTextColor(Color.parseColor("#20B8FF"))
+                        contentDescription = "Verplaats ${file.name}"
+                        setPadding(dp(8), dp(8), dp(8), dp(8))
+                        setOnClickListener {
+                            showNewDownloadDestinationDialog(
+                                stick,
+                                file,
+                                dialog,
+                                normalized
+                            )
+                        }
+                    },
+                    LinearLayout.LayoutParams(dp(44), LinearLayout.LayoutParams.WRAP_CONTENT)
+                )
+            }
+
             row.addView(
                 TextView(this).apply {
                     text = if (favoriteUsbKeys.contains(usbFavoriteKey(file))) "★" else "☆"
@@ -1499,7 +1526,8 @@ class MoviesActivity : AppCompatActivity() {
     private fun showNewDownloadDestinationDialog(
         stick: RemoteUsbMusicClient.RemoteStick,
         file: RemoteUsbMusicClient.RemoteFile,
-        parentDialog: Dialog
+        parentDialog: Dialog,
+        sourceFolder: String
     ) {
         val density = resources.displayMetrics.density
         fun dp(value: Int): Int = (value * density).toInt()
@@ -1630,16 +1658,18 @@ class MoviesActivity : AppCompatActivity() {
                                                 ).show()
                                                 showRemoteFolderLevel(
                                                     ready,
-                                                    folder,
-                                                    openCurrentFolder = true
+                                                    sourceFolder
                                                 )
                                             } else {
                                                 Toast.makeText(
                                                     this@MoviesActivity,
-                                                    "Verplaatsing verwerkt. Shared Media vernieuwen…",
+                                                    "Verplaatsing verwerkt. Nieuwe downloads vernieuwen…",
                                                     Toast.LENGTH_SHORT
                                                 ).show()
-                                                loadRemoteUsbCatalog()
+                                                showFreshRemoteFolderLevel(
+                                                    stick,
+                                                    sourceFolder
+                                                )
                                             }
                                         }
                                     }
@@ -1829,7 +1859,12 @@ class MoviesActivity : AppCompatActivity() {
                     setBackgroundResource(R.drawable.bg_the_one_blue_button)
                     setPadding(0, 0, 0, 0)
                     setOnClickListener {
-                        showNewDownloadDestinationDialog(stick, file, dialog)
+                        showNewDownloadDestinationDialog(
+                            stick,
+                            file,
+                            dialog,
+                            normalized
+                        )
                     }
                 }
                 infoRow.addView(
