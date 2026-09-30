@@ -15,6 +15,7 @@ $secretFile = $root . '/secret.key';
 $rateFile = $root . '/rate.json';
 $favoritesFile = $root . '/favorites.json';
 $djQueueFile = $root . '/dj-queue.json';
+$moveQueueFile = $root . '/hub-move-queue.json';
 $deletedFile = $root . '/deleted-shared-media.json';
 $deviceRegistryFile = $home . '/the-one-remote-data/main-devices.json';
 $deviceOwnerFile = $home . '/the-one-remote-data/main-device-owner.json';
@@ -322,6 +323,162 @@ if ($action === 'hub-login') {
         out(403,['ok'=>false,'error'=>'invalid hub credential']);
     }
     out(200,['ok'=>true,'token'=>token_new($sec,'music-hub'),'expires_in'=>TOKEN_TTL]);
+}
+
+if ($action === 'new-downloads-move') {
+    $token=bearer();
+    if (!token_read_ok($token,$sec)) out(401,['ok'=>false,'error'=>'auth required']);
+
+    $b=read_json();
+    $requestDevice=safe_id((string)($b['request_device_id'] ?? ''));
+    if (!music_device_scope_allowed(
+        $requestDevice,
+        'downloads',
+        $deviceRegistryFile,
+        $deviceOwnerFile
+    )) {
+        out(403,['ok'=>false,'error'=>'Nieuwe downloads beheerrecht vereist']);
+    }
+
+    $source=safe_path((string)($b['source_path'] ?? ''));
+    $target=rtrim(safe_path((string)($b['target_folder'] ?? '')),'/');
+
+    if (!str_starts_with($source,'Nieuwe downloads/')) {
+        out(400,['ok'=>false,'error'=>'alleen Nieuwe downloads kan worden verplaatst']);
+    }
+    if ($target !== 'Ruben' && !str_starts_with($target,'Ruben/')) {
+        out(400,['ok'=>false,'error'=>'ongeldige doelmap']);
+    }
+
+    $metaFile=$meta.'/THEONE-HUB__hub-primary.json';
+    $doc=load_json($metaFile);
+    $sourceRow=null;
+    foreach ((array)($doc['files'] ?? []) as $row) {
+        if (is_array($row) && (string)($row['path'] ?? '')===$source) {
+            $sourceRow=$row;
+            break;
+        }
+    }
+    if (!is_array($sourceRow)) out(404,['ok'=>false,'error'=>'nummer niet gevonden']);
+
+    $queue=load_json($moveQueueFile);
+    $items=is_array($queue['items'] ?? null) ? $queue['items'] : [];
+    foreach ($items as $row) {
+        if (!is_array($row)) continue;
+        if (
+            (string)($row['status'] ?? '')==='pending' &&
+            (string)($row['source_path'] ?? '')===$source
+        ) {
+            out(200,[
+                'ok'=>true,
+                'queued'=>true,
+                'id'=>(string)($row['id'] ?? ''),
+                'already_pending'=>true
+            ]);
+        }
+    }
+
+    $id='move-'.bin2hex(random_bytes(8));
+    $items[]=[
+        'id'=>$id,
+        'status'=>'pending',
+        'source_path'=>$source,
+        'target_folder'=>$target,
+        'requested_by'=>$requestDevice,
+        'requested_at'=>gmdate('c')
+    ];
+    $queue['items']=$items;
+    $queue['updated_at']=gmdate('c');
+    if (!save_json($moveQueueFile,$queue)) {
+        out(507,['ok'=>false,'error'=>'verplaatswachtrij niet beschikbaar']);
+    }
+
+    out(200,['ok'=>true,'queued'=>true,'id'=>$id]);
+}
+
+if ($action === 'hub-move-list') {
+    if (token_scope(bearer(),$sec) !== 'music-hub') {
+        out(401,['ok'=>false,'error'=>'hub auth required']);
+    }
+    $queue=load_json($moveQueueFile);
+    $items=array_values(array_filter(
+        is_array($queue['items'] ?? null) ? $queue['items'] : [],
+        fn($row)=>is_array($row) && (string)($row['status'] ?? '')==='pending'
+    ));
+    out(200,['ok'=>true,'items'=>$items]);
+}
+
+if ($action === 'hub-move-complete') {
+    if (token_scope(bearer(),$sec) !== 'music-hub') {
+        out(401,['ok'=>false,'error'=>'hub auth required']);
+    }
+
+    $b=read_json();
+    $id=trim((string)($b['id'] ?? ''));
+    $newPath=safe_path((string)($b['new_path'] ?? ''));
+    if ($id==='') out(400,['ok'=>false,'error'=>'id required']);
+    if ($newPath !== 'Ruben' && !str_starts_with($newPath,'Ruben/')) {
+        out(400,['ok'=>false,'error'=>'ongeldig nieuw pad']);
+    }
+
+    $queue=load_json($moveQueueFile);
+    $items=is_array($queue['items'] ?? null) ? $queue['items'] : [];
+    $source='';
+    $found=false;
+    foreach ($items as &$row) {
+        if (!is_array($row) || (string)($row['id'] ?? '')!==$id) continue;
+        $source=safe_path((string)($row['source_path'] ?? ''));
+        $row['status']='done';
+        $row['new_path']=$newPath;
+        $row['completed_at']=gmdate('c');
+        $found=true;
+        break;
+    }
+    unset($row);
+    if (!$found) out(404,['ok'=>false,'error'=>'move request not found']);
+
+    $metaFile=$meta.'/THEONE-HUB__hub-primary.json';
+    $doc=load_json($metaFile);
+    $rows=is_array($doc['files'] ?? null) ? $doc['files'] : [];
+    $changed=false;
+    foreach ($rows as &$row) {
+        if (!is_array($row) || (string)($row['path'] ?? '')!==$source) continue;
+
+        $sha=strtolower(trim((string)($row['sha256'] ?? '')));
+        $oldCache=cache_file_for($files,'THEONE-HUB','hub-primary',$source);
+
+        $row['path']=$newPath;
+        $row['name']=basename($newPath);
+        $row['folder']=dirname($newPath)==='.'?'':dirname($newPath);
+        $row['cached']=ensure_cached_from_pool(
+            $files,
+            'THEONE-HUB',
+            'hub-primary',
+            $newPath,
+            $sha
+        );
+
+        if ($source!==$newPath && is_file($oldCache)) @unlink($oldCache);
+        $changed=true;
+        break;
+    }
+    unset($row);
+
+    if (!$changed) out(404,['ok'=>false,'error'=>'bronnummer ontbreekt uit catalogus']);
+
+    $doc['updated_at']=gmdate('c');
+    $doc['presence_updated_at']=gmdate('c');
+    if (!save_json($metaFile,$doc)) {
+        out(507,['ok'=>false,'error'=>'catalog storage unavailable']);
+    }
+
+    $queue['items']=$items;
+    $queue['updated_at']=gmdate('c');
+    if (!save_json($moveQueueFile,$queue)) {
+        out(507,['ok'=>false,'error'=>'verplaatswachtrij niet beschikbaar']);
+    }
+
+    out(200,['ok'=>true,'source_path'=>$source,'new_path'=>$newPath]);
 }
 
 if ($action === 'hub-repath') {
@@ -816,6 +973,31 @@ if ($action === 'catalog') {
             $sticks,
             fn($row)=>catalog_device_name($row) !== 'theone-hub'
         ));
+    }
+
+    $requestDevice=trim((string)($_GET['request_device_id'] ?? ''));
+    $downloadsVisible=false;
+    if ($requestDevice !== '') {
+        $requestDevice=safe_id($requestDevice);
+        $downloadsVisible=music_device_scope_allowed(
+            $requestDevice,
+            'downloads',
+            $deviceRegistryFile,
+            $deviceOwnerFile
+        );
+    }
+
+    if (!$downloadsVisible) {
+        foreach ($sticks as &$stickRow) {
+            if (!is_array($stickRow)) continue;
+            $rows=is_array($stickRow['files'] ?? null) ? $stickRow['files'] : [];
+            $stickRow['files']=array_values(array_filter(
+                $rows,
+                fn($row)=>!is_array($row) ||
+                    !str_starts_with((string)($row['path'] ?? ''),'Nieuwe downloads/')
+            ));
+        }
+        unset($stickRow);
     }
 
     out(200,['ok'=>true,'sticks'=>$sticks]);
