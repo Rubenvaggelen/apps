@@ -1474,7 +1474,13 @@ class MoviesActivity : AppCompatActivity() {
         fun dp(value: Int): Int = (value * density).toInt()
 
         val folders = stick.files
-            .map { normalizeRemoteFolder(it.folder) }
+            .flatMap { remoteFile ->
+                val full = normalizeRemoteFolder(remoteFile.folder)
+                val parts = full.split('/').filter { it.isNotBlank() }
+                (1..parts.size).map { depth ->
+                    parts.take(depth).joinToString("/")
+                }
+            }
             .filter {
                 it.isNotBlank() &&
                     !it.equals("Nieuwe downloads", ignoreCase = true) &&
