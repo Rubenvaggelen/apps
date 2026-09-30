@@ -1068,6 +1068,74 @@ if ($action === 'catalog') {
         return false;
     };
 
+    // Auto-promote fresh Surface/Ruben additions into THEONE-HUB.
+    // Alleen toevoegingen/wijzigingen worden overgenomen; ontbrekende bronbestanden
+    // verwijderen nooit stilletjes iets uit de centrale Hub-catalogus.
+    if (count($hubIndexes) > 0) {
+        $hubIndex=$hubIndexes[0];
+        $hubRows=is_array($sticks[$hubIndex]['files'] ?? null)
+            ? $sticks[$hubIndex]['files']
+            : [];
+
+        $known=[];
+        foreach ($hubRows as $row) {
+            if (!is_array($row)) continue;
+            $path=(string)($row['path'] ?? '');
+            if ($path!=='') $known[strtolower($path)]=true;
+        }
+
+        $promoted=0;
+        foreach (array_merge($surfaceIndexes,$rubenIndexes) as $sourceIndex) {
+            $source=$sticks[$sourceIndex] ?? null;
+            if (!is_array($source)) continue;
+
+            $online=(bool)($source['online'] ?? false);
+            $updatedAt=strtotime((string)($source['updated_at'] ?? '')) ?: 0;
+            if (!$online || $updatedAt < (time()-300)) continue;
+
+            foreach ((array)($source['files'] ?? []) as $row) {
+                if (!is_array($row)) continue;
+                $path=(string)($row['path'] ?? '');
+                if (!str_starts_with($path,'Ruben/')) continue;
+
+                $key=strtolower($path);
+                if (isset($known[$key])) continue;
+
+                $sha=strtolower(trim((string)($row['sha256'] ?? '')));
+                if (!preg_match('/^[a-f0-9]{64}$/',$sha)) continue;
+
+                $cached=ensure_cached_from_pool(
+                    $files,
+                    'THEONE-HUB',
+                    'hub-primary',
+                    $path,
+                    $sha
+                );
+                if (!$cached) continue;
+
+                $row['cached']=true;
+                $hubRows[]=$row;
+                $known[$key]=true;
+                $promoted++;
+            }
+        }
+
+        if ($promoted > 0) {
+            $sticks[$hubIndex]['files']=$hubRows;
+            $sticks[$hubIndex]['updated_at']=gmdate('c');
+            $sticks[$hubIndex]['presence_updated_at']=gmdate('c');
+
+            $hubMetaFile=$meta.'/THEONE-HUB__hub-primary.json';
+            $hubDoc=load_json($hubMetaFile);
+            if ($hubDoc!==[]) {
+                $hubDoc['files']=$hubRows;
+                $hubDoc['updated_at']=gmdate('c');
+                $hubDoc['presence_updated_at']=gmdate('c');
+                save_json($hubMetaFile,$hubDoc);
+            }
+        }
+    }
+
     $hubHealthy=$sourceHealthy($hubIndexes);
     $surfaceHealthy=$sourceHealthy($surfaceIndexes);
 
