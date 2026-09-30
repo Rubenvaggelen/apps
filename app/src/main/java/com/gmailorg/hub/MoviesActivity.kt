@@ -1163,8 +1163,10 @@ class MoviesActivity : AppCompatActivity() {
     }
 
     private fun showRemoteFolderDialog(stick: RemoteUsbMusicClient.RemoteStick) {
-        val firstSegments = stick.files
-            .map { normalizeRemoteFolder(it.folder) }
+        val firstSegments = (
+            stick.folders.map { normalizeRemoteFolder(it) } +
+                stick.files.map { normalizeRemoteFolder(it.folder) }
+        )
             .filter { it.isNotBlank() }
             .map { it.substringBefore('/') }
             .distinctBy { it.lowercase() }
@@ -1194,8 +1196,14 @@ class MoviesActivity : AppCompatActivity() {
         }
 
         val prefix = if (normalized.isBlank()) "" else "$normalized/"
-        val childFolders = stick.files
-            .map { normalizeRemoteFolder(it.folder) }
+        val knownFolders = (
+            stick.folders.map { normalizeRemoteFolder(it) } +
+                stick.files.map { normalizeRemoteFolder(it.folder) }
+        )
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase() }
+
+        val childFolders = knownFolders
             .filter { it.length > normalized.length && it.startsWith(prefix, ignoreCase = true) }
             .mapNotNull { path ->
                 val remainder = path.removePrefix(prefix)
@@ -1473,14 +1481,17 @@ class MoviesActivity : AppCompatActivity() {
         val density = resources.displayMetrics.density
         fun dp(value: Int): Int = (value * density).toInt()
 
-        val folders = stick.files
-            .flatMap { remoteFile ->
-                val full = normalizeRemoteFolder(remoteFile.folder)
-                val parts = full.split('/').filter { it.isNotBlank() }
-                (1..parts.size).map { depth ->
-                    parts.take(depth).joinToString("/")
+        val folders = (
+            stick.folders +
+                stick.files.flatMap { remoteFile ->
+                    val full = normalizeRemoteFolder(remoteFile.folder)
+                    val parts = full.split('/').filter { it.isNotBlank() }
+                    (1..parts.size).map { depth ->
+                        parts.take(depth).joinToString("/")
+                    }
                 }
-            }
+        )
+            .map { normalizeRemoteFolder(it) }
             .filter {
                 it.isNotBlank() &&
                     !it.equals("Nieuwe downloads", ignoreCase = true) &&
