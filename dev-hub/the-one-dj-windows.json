@@ -1,0 +1,11 @@
+{
+  "id": "the-one-dj-windows",
+  "name": "The One DJ Windows",
+  "projectPath": "windows/the-one-dj",
+  "buildArtifact": "The-One-DJ-Windows.zip",
+  "updateTagPrefix": "dj-windows-v",
+  "updateMode": "self-update-on-launch",
+  "platform": "Windows",
+  "independentFromAndroid": true,
+  "description": "The One DJ voor Windows. Download de ZIP, pak hem uit en start Start-The-One-DJ.cmd."
+}
