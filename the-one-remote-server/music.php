@@ -647,6 +647,7 @@ if ($action === 'hub-repath') {
 
     if ($changed===0) out(200,['ok'=>true,'changed'=>0]);
 
+    $doc['files']=array_values($rows);
     $doc['updated_at']=gmdate('c');
     $doc['presence_updated_at']=gmdate('c');
     if (!save_json($metaFile,$doc)) {
