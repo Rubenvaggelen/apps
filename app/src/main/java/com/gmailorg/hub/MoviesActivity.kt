@@ -1465,6 +1465,150 @@ class MoviesActivity : AppCompatActivity() {
         )
     }
 
+    private fun showNewDownloadDestinationDialog(
+        stick: RemoteUsbMusicClient.RemoteStick,
+        file: RemoteUsbMusicClient.RemoteFile,
+        parentDialog: Dialog
+    ) {
+        val density = resources.displayMetrics.density
+        fun dp(value: Int): Int = (value * density).toInt()
+
+        val folders = stick.files
+            .map { normalizeRemoteFolder(it.folder) }
+            .filter {
+                it.isNotBlank() &&
+                    !it.equals("Nieuwe downloads", ignoreCase = true) &&
+                    !it.startsWith("Nieuwe downloads/", ignoreCase = true) &&
+                    (it.equals("Ruben", ignoreCase = true) ||
+                        it.startsWith("Ruben/", ignoreCase = true))
+            }
+            .distinctBy { it.lowercase() }
+            .sortedWith(String.CASE_INSENSITIVE_ORDER)
+
+        if (folders.isEmpty()) {
+            Toast.makeText(
+                this,
+                "Geen doelmappen gevonden in Shared Media.",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        val dialog = Dialog(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(18), dp(20), dp(16))
+            setBackgroundResource(R.drawable.bg_the_one_panel)
+        }
+
+        panel.addView(TextView(this).apply {
+            text = "NUMMER VERPLAATSEN"
+            textSize = 11f
+            letterSpacing = 0.14f
+            setTextColor(Color.parseColor("#E8AA4E"))
+        })
+        panel.addView(TextView(this).apply {
+            text = cleanUsbTrackTitle(file.displayName)
+            textSize = 20f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(0, dp(4), 0, dp(4))
+        })
+        panel.addView(TextView(this).apply {
+            text = "Kies de map waar dit nummer naartoe moet."
+            textSize = 13f
+            setTextColor(Color.parseColor("#91A4BD"))
+            setPadding(0, 0, 0, dp(12))
+        })
+
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        folders.forEach { folder ->
+            val label = folder.removePrefix("Ruben/").ifBlank { "Ruben" }
+            list.addView(
+                TextView(this).apply {
+                    text = "📁  $label"
+                    textSize = 16f
+                    setTextColor(Color.WHITE)
+                    setBackgroundResource(R.drawable.bg_the_one_tile)
+                    setPadding(dp(16), dp(14), dp(16), dp(14))
+                    setOnClickListener {
+                        isEnabled = false
+                        remoteMusicIo.execute {
+                            val result = runCatching {
+                                RemoteUsbMusicClient.moveNewDownload(
+                                    this@MoviesActivity,
+                                    file,
+                                    folder
+                                )
+                            }
+                            runOnUiThread {
+                                result.onSuccess {
+                                    dialog.dismiss()
+                                    parentDialog.dismiss()
+                                    Toast.makeText(
+                                        this@MoviesActivity,
+                                        "Verplaatsen naar $label…",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    musicNowPlaying.postDelayed(
+                                        { loadRemoteUsbCatalog() },
+                                        11_000L
+                                    )
+                                }.onFailure {
+                                    isEnabled = true
+                                    Toast.makeText(
+                                        this@MoviesActivity,
+                                        it.message ?: "Verplaatsen mislukt",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            }
+                        }
+                    }
+                },
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(8) }
+            )
+        }
+
+        panel.addView(
+            ScrollView(this).apply {
+                isFillViewport = true
+                addView(list)
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+        panel.addView(TextView(this).apply {
+            text = "ANNULEREN"
+            textSize = 13f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(Color.parseColor("#E8AA4E"))
+            setBackgroundResource(R.drawable.bg_the_one_gold_outline)
+            setPadding(dp(16), dp(11), dp(16), dp(11))
+            setOnClickListener { dialog.dismiss() }
+        })
+
+        dialog.setContentView(panel)
+        dialog.setCanceledOnTouchOutside(true)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.show()
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.90f).toInt(),
+            (resources.displayMetrics.heightPixels * 0.84f).toInt()
+        )
+    }
+
     private fun showRemoteTrackDialog(
         stick: RemoteUsbMusicClient.RemoteStick,
         folder: String,
@@ -1483,6 +1627,8 @@ class MoviesActivity : AppCompatActivity() {
         val actionHeight = dp(38)
         val actionGap = dp(6)
         val canDeleteSharedMedia = MainDeviceRegistry.isLocallyOwner(this)
+        val canOrganizeNewDownloads =
+            MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_DOWNLOADS)
         val dialog = Dialog(this)
         val canDjImport =
             MainDeviceRegistry.isTheOneProfile(this) ||
@@ -1586,6 +1732,30 @@ class MoviesActivity : AppCompatActivity() {
                     1f
                 )
             )
+
+            val isNewDownload =
+                normalized.equals("Nieuwe downloads", ignoreCase = true)
+            if (isNewDownload && canOrganizeNewDownloads) {
+                val move = TextView(this).apply {
+                    text = "→"
+                    textSize = 22f
+                    gravity = android.view.Gravity.CENTER
+                    setTextColor(Color.parseColor("#20B8FF"))
+                    contentDescription = "Verplaats ${file.name}"
+                    setBackgroundResource(R.drawable.bg_the_one_blue_button)
+                    setPadding(0, 0, 0, 0)
+                    setOnClickListener {
+                        showNewDownloadDestinationDialog(stick, file, dialog)
+                    }
+                }
+                infoRow.addView(
+                    move,
+                    LinearLayout.LayoutParams(
+                        dp(42),
+                        dp(38)
+                    ).apply { marginStart = dp(6) }
+                )
+            }
 
             if (canDeleteSharedMedia) {
                 val info = TextView(this).apply {
