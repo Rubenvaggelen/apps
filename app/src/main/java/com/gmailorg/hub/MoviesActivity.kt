@@ -1555,16 +1555,60 @@ class MoviesActivity : AppCompatActivity() {
                             runOnUiThread {
                                 result.onSuccess {
                                     dialog.dismiss()
-                                    parentDialog.dismiss()
                                     Toast.makeText(
                                         this@MoviesActivity,
                                         "Verplaatsen naar $label…",
                                         Toast.LENGTH_SHORT
                                     ).show()
-                                    musicNowPlaying.postDelayed(
-                                        { loadRemoteUsbCatalog() },
-                                        11_000L
-                                    )
+
+                                    remoteMusicIo.execute {
+                                        var refreshedStick: RemoteUsbMusicClient.RemoteStick? = null
+                                        repeat(8) {
+                                            if (refreshedStick != null) return@repeat
+                                            try {
+                                                Thread.sleep(if (it == 0) 1200L else 1500L)
+                                                val refreshed = RemoteUsbMusicClient.catalog(
+                                                    this@MoviesActivity
+                                                )
+                                                val sameStick = refreshed.firstOrNull {
+                                                    it.deviceId.equals(stick.deviceId, true) &&
+                                                        it.stickId.equals(stick.stickId, true)
+                                                }
+                                                val sourceStillVisible =
+                                                    sameStick?.files?.any {
+                                                        it.path.equals(file.path, true)
+                                                    } == true
+                                                if (sameStick != null && !sourceStillVisible) {
+                                                    refreshedStick = sameStick
+                                                }
+                                            } catch (_: Exception) {
+                                            }
+                                        }
+
+                                        runOnUiThread {
+                                            parentDialog.dismiss()
+                                            val ready = refreshedStick
+                                            if (ready != null) {
+                                                Toast.makeText(
+                                                    this@MoviesActivity,
+                                                    "Nummer verplaatst naar $label",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                                showRemoteFolderLevel(
+                                                    ready,
+                                                    folder,
+                                                    openCurrentFolder = true
+                                                )
+                                            } else {
+                                                Toast.makeText(
+                                                    this@MoviesActivity,
+                                                    "Verplaatsing verwerkt. Shared Media vernieuwen…",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                                loadRemoteUsbCatalog()
+                                            }
+                                        }
+                                    }
                                 }.onFailure {
                                     isEnabled = true
                                     Toast.makeText(
