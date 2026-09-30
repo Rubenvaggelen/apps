@@ -1180,6 +1180,25 @@ class MoviesActivity : AppCompatActivity() {
         showRemoteFolderLevel(stick, startFolder)
     }
 
+    private fun showFreshRemoteFolderLevel(
+        stick: RemoteUsbMusicClient.RemoteStick,
+        folder: String
+    ) {
+        remoteMusicIo.execute {
+            val freshStick = runCatching {
+                val refreshed = RemoteUsbMusicClient.catalog(this@MoviesActivity)
+                refreshed.firstOrNull {
+                    it.deviceId.equals(stick.deviceId, ignoreCase = true) &&
+                        it.stickId.equals(stick.stickId, ignoreCase = true)
+                }
+            }.getOrNull()
+
+            runOnUiThread {
+                showRemoteFolderLevel(freshStick ?: stick, folder)
+            }
+        }
+    }
+
     private fun showRemoteFolderLevel(
         stick: RemoteUsbMusicClient.RemoteStick,
         folder: String,
@@ -1310,7 +1329,11 @@ class MoviesActivity : AppCompatActivity() {
             )
             card.setOnClickListener {
                 dialog.dismiss()
-                showRemoteFolderLevel(stick, child)
+                if (child.equals("Nieuwe downloads", ignoreCase = true)) {
+                    showFreshRemoteFolderLevel(stick, child)
+                } else {
+                    showRemoteFolderLevel(stick, child)
+                }
             }
             list.addView(
                 card,
