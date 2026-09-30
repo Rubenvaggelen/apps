@@ -259,7 +259,8 @@ function token_scope(string $token, string $secret): string {
     return (string)($v['scope'] ?? '');
 }
 function token_ok(string $token, string $secret): bool {
-    return token_scope($token,$secret) === 'music';
+    $scope=token_scope($token,$secret);
+    return $scope === 'music' || $scope === 'music-hub';
 }
 function token_read_ok(string $token, string $secret): bool {
     $scope=token_scope($token,$secret);
@@ -320,7 +321,70 @@ if ($action === 'hub-login') {
         usleep(700000);
         out(403,['ok'=>false,'error'=>'invalid hub credential']);
     }
-    out(200,['ok'=>true,'token'=>token_new($sec),'expires_in'=>TOKEN_TTL]);
+    out(200,['ok'=>true,'token'=>token_new($sec,'music-hub'),'expires_in'=>TOKEN_TTL]);
+}
+
+if ($action === 'hub-upsert') {
+    if (token_scope(bearer(),$sec) !== 'music-hub') {
+        out(401,['ok'=>false,'error'=>'hub auth required']);
+    }
+
+    $b=read_json();
+    $path=safe_path((string)($b['path'] ?? ''));
+    $sha=strtolower(trim((string)($b['sha256'] ?? '')));
+    if (!preg_match('/^[a-f0-9]{64}$/',$sha)) {
+        out(400,['ok'=>false,'error'=>'invalid hash']);
+    }
+
+    $device='THEONE-HUB';
+    $stick='hub-primary';
+    $metaFile=$meta.'/'.$device.'__'.$stick.'.json';
+    $doc=load_json($metaFile);
+    if ($doc===[]) out(404,['ok'=>false,'error'=>'hub catalog missing']);
+
+    $rows=is_array($doc['files'] ?? null) ? $doc['files'] : [];
+    $row=[
+        'path'=>$path,
+        'name'=>basename($path),
+        'folder'=>dirname($path)==='.'?'':dirname($path),
+        'title'=>mb_substr(trim((string)($b['title'] ?? '')),0,240),
+        'artist'=>mb_substr(trim((string)($b['artist'] ?? '')),0,240),
+        'album'=>mb_substr(trim((string)($b['album'] ?? '')),0,240),
+        'size'=>max(0,(int)($b['size'] ?? 0)),
+        'sha256'=>$sha,
+        'modified'=>trim((string)($b['modified'] ?? '')),
+        'cached'=>ensure_cached_from_pool($files,$device,$stick,$path,$sha)
+    ];
+
+    $found=false;
+    foreach ($rows as $i=>$existing) {
+        if (is_array($existing) && (string)($existing['path'] ?? '')===$path) {
+            $rows[$i]=$row;
+            $found=true;
+            break;
+        }
+    }
+    if (!$found) $rows[]=$row;
+
+    $doc['device_id']=$device;
+    $doc['device_name']='THEONE-HUB';
+    $doc['stick_id']=$stick;
+    $doc['stick_name']=(string)($doc['stick_name'] ?? 'Ruben music');
+    $doc['online']=true;
+    $doc['presence_updated_at']=gmdate('c');
+    $doc['updated_at']=gmdate('c');
+    $doc['files']=$rows;
+
+    if (!save_json($metaFile,$doc)) {
+        out(507,['ok'=>false,'error'=>'catalog storage unavailable']);
+    }
+
+    out(200,[
+        'ok'=>true,
+        'path'=>$path,
+        'cached'=>(bool)$row['cached'],
+        'files'=>count($rows)
+    ]);
 }
 
 if ($action === 'login') {
