@@ -32,6 +32,14 @@ class HomeActivity : AppCompatActivity() {
     private var blockedDialogShowing = false
     private var personRegistrationDialogShowing = false
     private var personRegistrationLookupRunning = false
+    private val accessRequestPoll = object : Runnable {
+        override fun run() {
+            if (!isFinishing && !isDestroyed && MainDeviceRegistry.isLocallyOwner(this@HomeActivity)) {
+                AccessRequestNotificationWorker.checkNow(this@HomeActivity)
+                findViewById<RecyclerView>(R.id.homeGrid).postDelayed(this, 30_000L)
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,6 +81,14 @@ class HomeActivity : AppCompatActivity() {
         SupremacyPlaybackService.resumeLastSessionIfNeeded(this)
         refreshTiles() // eventueel net toegevoegde app tonen
         ensurePersonRegistration()
+        val grid = findViewById<RecyclerView>(R.id.homeGrid)
+        grid.removeCallbacks(accessRequestPoll)
+        grid.post(accessRequestPoll)
+    }
+
+    override fun onPause() {
+        findViewById<RecyclerView>(R.id.homeGrid).removeCallbacks(accessRequestPoll)
+        super.onPause()
     }
 
     /** Neemt de oude verborgen Fitness-tegelinstelling mee naar de nieuwe Lifestyle-tegel. */
