@@ -7,5 +7,8 @@ data class NotifItem(
     val title: String,
     val text: String,
     val postTime: Long,
-    val hasReplyAction: Boolean
+    val hasReplyAction: Boolean,
+    val persistent: Boolean = false,
+    val actionType: String = "",
+    val actionValue: String = ""
 )
