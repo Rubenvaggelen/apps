@@ -156,6 +156,58 @@ function key_for(string $device, string $stick, string $path): string {
     return hash('sha256', $device . "\n" . $stick . "\n" . $path);
 }
 
+function shared_title_key(string $value): string {
+    $value=pathinfo(trim($value),PATHINFO_FILENAME);
+    $value=mb_strtolower($value,'UTF-8');
+    $value=preg_replace('/[^\p{L}\p{N}]+/u','',$value) ?? '';
+    return trim($value);
+}
+
+function shared_deleted_match(
+    array $deletedItems,
+    string $device,
+    string $stick,
+    string $path,
+    string $sha='',
+    string $title=''
+): bool {
+    if (isset($deletedItems[key_for($device,$stick,$path)])) return true;
+
+    if (
+        strtolower($device)!=='theone-hub' ||
+        strtolower($stick)!=='hub-primary' ||
+        !str_starts_with($path,'Nieuwe downloads/')
+    ) {
+        return false;
+    }
+
+    $titleKey=shared_title_key($title!=='' ? $title : basename($path));
+    foreach ($deletedItems as $row) {
+        if (!is_array($row)) continue;
+        if (strtolower((string)($row['device_id'] ?? ''))!=='theone-hub') continue;
+        if (strtolower((string)($row['stick_id'] ?? ''))!=='hub-primary') continue;
+        $deletedPath=(string)($row['path'] ?? '');
+        if (!str_starts_with($deletedPath,'Nieuwe downloads/')) continue;
+
+        $deletedSha=strtolower(trim((string)($row['sha256'] ?? '')));
+        if ($sha!=='' && $deletedSha!=='' && hash_equals($deletedSha,strtolower($sha))) {
+            return true;
+        }
+
+        $deletedTitleKey=(string)($row['title_key'] ?? '');
+        if ($deletedTitleKey==='' && isset($row['title'])) {
+            $deletedTitleKey=shared_title_key((string)$row['title']);
+        }
+        if ($deletedTitleKey==='' && $deletedPath!=='') {
+            $deletedTitleKey=shared_title_key(basename($deletedPath));
+        }
+        if ($titleKey!=='' && $deletedTitleKey!=='' && $titleKey===$deletedTitleKey) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function pool_file_for_sha(string $filesDir, string $sha): string {
     return $filesDir . '/sha-' . $sha . '.bin';
 }
@@ -1108,11 +1160,15 @@ if ($action === 'shared-delete') {
     $deletedItems=is_array($deletedDoc['items'] ?? null) ? $deletedDoc['items'] : [];
     $deleteKey=key_for($device,$stick,$path);
     $sha=strtolower(trim((string)($removed['sha256'] ?? '')));
+    $deletedTitle=(string)($removed['title'] ?? '');
+    if ($deletedTitle==='') $deletedTitle=basename($path);
     $deletedItems[$deleteKey]=[
         'device_id'=>$device,
         'stick_id'=>$stick,
         'path'=>$path,
         'sha256'=>$sha,
+        'title'=>$deletedTitle,
+        'title_key'=>shared_title_key($deletedTitle),
         'deleted_at'=>gmdate('c'),
         'deleted_by'=>$requestDevice
     ];
@@ -1761,7 +1817,7 @@ if ($action === 'upload-start') {
 
     $deletedDoc=load_json($deletedFile);
     $deletedItems=is_array($deletedDoc['items'] ?? null) ? $deletedDoc['items'] : [];
-    if (isset($deletedItems[key_for($device,$stick,$path)])) {
+    if (shared_deleted_match($deletedItems,$device,$stick,$path,$sha)) {
         out(200,['ok'=>true,'offset'=>0,'deleted'=>true]);
     }
 
@@ -1788,7 +1844,7 @@ if ($action === 'upload-chunk') {
 
     $deletedDoc=load_json($deletedFile);
     $deletedItems=is_array($deletedDoc['items'] ?? null) ? $deletedDoc['items'] : [];
-    if (isset($deletedItems[key_for($device,$stick,$path)])) {
+    if (shared_deleted_match($deletedItems,$device,$stick,$path,$sha)) {
         out(200,['ok'=>true,'offset'=>$offset+strlen($chunk),'deleted'=>true]);
     }
 
@@ -1840,7 +1896,7 @@ if ($action === 'upload-finish') {
 
     $deletedDoc=load_json($deletedFile);
     $deletedItems=is_array($deletedDoc['items'] ?? null) ? $deletedDoc['items'] : [];
-    if (isset($deletedItems[key_for($device,$stick,$path)])) {
+    if (shared_deleted_match($deletedItems,$device,$stick,$path,$sha)) {
         @unlink($files.'/'.key_for($device,$stick,$path).'.'.$sha.'.part');
         out(200,['ok'=>true,'deleted'=>true]);
     }
@@ -1895,7 +1951,7 @@ if ($action === 'upload') {
 
     $deletedDoc=load_json($deletedFile);
     $deletedItems=is_array($deletedDoc['items'] ?? null) ? $deletedDoc['items'] : [];
-    if (isset($deletedItems[key_for($device,$stick,$path)])) {
+    if (shared_deleted_match($deletedItems,$device,$stick,$path,$sha)) {
         $tmp=(string)($_FILES['file']['tmp_name'] ?? '');
         if ($tmp!=='' && is_uploaded_file($tmp)) @unlink($tmp);
         out(200,['ok'=>true,'deleted'=>true]);
@@ -1971,8 +2027,9 @@ if ($action === 'sync-batch') {
     foreach ((array)($b['files'] ?? []) as $item) {
         if (!is_array($item)) continue;
         $path=safe_path((string)($item['path'] ?? ''));
-        if (isset($deletedItems[key_for($device,$stick,$path)])) continue;
         $sha=strtolower(trim((string)($item['sha256'] ?? '')));
+        $title=trim((string)($item['title'] ?? ''));
+        if (shared_deleted_match($deletedItems,$device,$stick,$path,$sha,$title)) continue;
         if ($sha !== '' && !preg_match('/^[a-f0-9]{64}$/',$sha)) continue;
         $doc['files'][]=[
             'path'=>$path,
@@ -2013,8 +2070,9 @@ if ($action === 'sync') {
     foreach ((array)($b['files'] ?? []) as $item) {
         if (!is_array($item)) continue;
         $path=safe_path((string)($item['path'] ?? ''));
-        if (isset($deletedItems[key_for($device,$stick,$path)])) continue;
         $sha=strtolower(trim((string)($item['sha256'] ?? '')));
+        $title=trim((string)($item['title'] ?? ''));
+        if (shared_deleted_match($deletedItems,$device,$stick,$path,$sha,$title)) continue;
         if ($sha !== '' && !preg_match('/^[a-f0-9]{64}$/',$sha)) continue;
         $rows[]=[
             'path'=>$path,
