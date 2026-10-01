@@ -234,49 +234,29 @@ class MoviesActivity : AppCompatActivity() {
     }
 
     private fun applyMusicRightsVisibility() {
-        val playerAllowed =
-            MainDeviceRegistry.hasAccess(
-                this,
-                MainDeviceRegistry.ACCESS_MEDIA_PLAYER
-            )
-
-        musicPlayerCard.visibility =
-            if (playerAllowed) View.VISIBLE else View.GONE
-
         findViewById<View>(R.id.favoritesButton).visibility =
-            if (
-                playerAllowed &&
-                MainDeviceRegistry.hasAccess(
+            if (MainDeviceRegistry.hasAccess(
                     this,
                     MainDeviceRegistry.ACCESS_FAVORITES
                 )
             ) View.VISIBLE else View.GONE
 
         findViewById<View>(R.id.supremacyMixesButton).visibility =
-            if (
-                playerAllowed &&
-                MainDeviceRegistry.hasAccess(
+            if (MainDeviceRegistry.hasAccess(
                     this,
                     MainDeviceRegistry.ACCESS_MIXES
                 )
             ) View.VISIBLE else View.GONE
 
         findViewById<View>(R.id.remoteUsbMusicButton).visibility =
-            if (
-                playerAllowed &&
-                MainDeviceRegistry.hasAccess(
+            if (MainDeviceRegistry.hasAccess(
                     this,
                     MainDeviceRegistry.ACCESS_SHARED
                 )
             ) View.VISIBLE else View.GONE
 
-        if (!playerAllowed) {
-            musicResultContainer.visibility = View.GONE
-            musicResultContainer.removeAllViews()
-        }
-
         musicBroadcastButton.visibility =
-            if (playerAllowed && MainDeviceRegistry.isLocallyOwner(this)) {
+            if (MainDeviceRegistry.isLocallyOwner(this)) {
                 View.VISIBLE
             } else {
                 View.GONE
@@ -1386,11 +1366,7 @@ class MoviesActivity : AppCompatActivity() {
     private fun showRemoteFolderDialog(stick: RemoteUsbMusicClient.RemoteStick) {
         val firstSegments = (
             stick.folders.map { normalizeRemoteFolder(it) } +
-                stick.files.map {
-                    normalizeRemoteFolder(
-                        it.path.replace('\\', '/').substringBeforeLast('/', it.folder)
-                    )
-                }
+                stick.files.map { normalizeRemoteFolder(it.folder) }
         )
             .filter { it.isNotBlank() }
             .map { it.substringBefore('/') }
@@ -1427,8 +1403,7 @@ class MoviesActivity : AppCompatActivity() {
     private fun showRemoteFolderLevel(
         stick: RemoteUsbMusicClient.RemoteStick,
         folder: String,
-        openCurrentFolder: Boolean = false,
-        refreshIfEmpty: Boolean = true
+        openCurrentFolder: Boolean = false
     ) {
         val normalized = normalizeRemoteFolder(folder)
         val canOrganizeNewDownloads =
@@ -1443,46 +1418,8 @@ class MoviesActivity : AppCompatActivity() {
             normalized.equals("Nieuwe downloads", ignoreCase = true) ||
                 normalized.startsWith("Nieuwe downloads/", ignoreCase = true)
         val directFiles = stick.files
-            .filter {
-                val fileFolder = normalizeRemoteFolder(
-                    it.path.replace('\\', '/').substringBeforeLast('/', it.folder)
-                )
-                fileFolder.equals(normalized, ignoreCase = true)
-            }
+            .filter { normalizeRemoteFolder(it.folder) == normalized }
             .sortedBy { it.name.lowercase() }
-
-        if (refreshIfEmpty && normalized.isNotBlank() && directFiles.isEmpty()) {
-            remoteMusicIo.execute {
-                val freshStick = runCatching {
-                    RemoteUsbMusicClient.catalog(this@MoviesActivity)
-                        .firstOrNull {
-                            it.deviceId.equals(stick.deviceId, ignoreCase = true) &&
-                                it.stickId.equals(stick.stickId, ignoreCase = true)
-                        }
-                }.getOrNull()
-
-                if (freshStick != null) {
-                    val freshFiles = freshStick.files.filter {
-                        val fileFolder = normalizeRemoteFolder(
-                            it.path.replace('\\', '/')
-                                .substringBeforeLast('/', it.folder)
-                        )
-                        fileFolder.equals(normalized, ignoreCase = true)
-                    }
-                    if (freshFiles.isNotEmpty()) {
-                        runOnUiThread {
-                            showRemoteFolderLevel(
-                                freshStick,
-                                normalized,
-                                openCurrentFolder,
-                                refreshIfEmpty = false
-                            )
-                        }
-                        return@execute
-                    }
-                }
-            }
-        }
 
         if (openCurrentFolder && directFiles.isNotEmpty()) {
             showRemoteTrackDialog(stick, normalized, directFiles)
@@ -3411,37 +3348,20 @@ class MoviesActivity : AppCompatActivity() {
             }
         }
 
-        if (
-            MainDeviceRegistry.hasAccess(
-                this,
-                MainDeviceRegistry.ACCESS_MEDIA_PLAYER
-            )
-        ) {
-            MusicLookup.search(query) { outcome ->
-                musicResultContainer.removeAllViews()
-                addMusicLine("Muziek")
-                when (outcome) {
-                    is MusicLookup.LookupOutcome.Success -> showMusicResults(outcome.results)
-                    is MusicLookup.LookupOutcome.NotFound ->
-                        addMusicLine("Geen muziek gevonden voor “${outcome.query}”.", dim = true)
-                    is MusicLookup.LookupOutcome.Error ->
-                        addMusicLine(outcome.message, dim = true)
-                }
-            }
-        } else {
-            musicResultContainer.visibility = View.GONE
+        MusicLookup.search(query) { outcome ->
             musicResultContainer.removeAllViews()
+            addMusicLine("Muziek")
+            when (outcome) {
+                is MusicLookup.LookupOutcome.Success -> showMusicResults(outcome.results)
+                is MusicLookup.LookupOutcome.NotFound ->
+                    addMusicLine("Geen muziek gevonden voor “${outcome.query}”.", dim = true)
+                is MusicLookup.LookupOutcome.Error ->
+                    addMusicLine(outcome.message, dim = true)
+            }
         }
     }
 
     private fun searchMusic(query: String) {
-        if (
-            !MainDeviceRegistry.hasAccess(
-                this,
-                MainDeviceRegistry.ACCESS_MEDIA_PLAYER
-            )
-        ) return
-
         val trimmed = query.trim()
         if (trimmed.isBlank()) return
 
@@ -3500,13 +3420,6 @@ class MoviesActivity : AppCompatActivity() {
     }
 
     private fun playVideo(result: MusicLookup.MusicResult, queue: List<String>) {
-        if (
-            !MainDeviceRegistry.hasAccess(
-                this,
-                MainDeviceRegistry.ACCESS_MEDIA_PLAYER
-            )
-        ) return
-
         if (SupremacyPlaybackService.isActive(this)) {
             sendSupremacyAction(SupremacyPlaybackService.ACTION_STOP)
         }

@@ -324,21 +324,6 @@ class WakePcActivity : AppCompatActivity() {
                     card.addView(section)
                 }
 
-                card.addView(TextView(this).apply {
-                    text = "MEDIA PLAYER"
-                    textSize = 13f
-                    letterSpacing = 0.12f
-                    setTypeface(typeface, android.graphics.Typeface.BOLD)
-                    setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.amber))
-                    setPadding(0, 18, 0, 4)
-                })
-
-                addAccessControl(
-                    "Media Player gebruiken",
-                    MainDeviceRegistry.ACCESS_MEDIA_PLAYER,
-                    device.mediaPlayerRights,
-                    device.pendingMediaPlayer
-                )
                 addAccessControl(
                     "The One Mixes",
                     MainDeviceRegistry.ACCESS_MIXES,

@@ -296,11 +296,6 @@ class HomeActivity : AppCompatActivity() {
                     if (isTheOne && !owner) {
                         owner = MainDeviceRegistry.claimInitialOwner(this)
                     }
-                    if (!owner) {
-                        runCatching {
-                            MainDeviceRegistry.ensureMediaPlayerApprovalRequest(this)
-                        }
-                    }
 
                     runOnUiThread {
                         refreshTiles()
@@ -347,12 +342,6 @@ class HomeActivity : AppCompatActivity() {
                 MainDeviceRegistry.isTheOneProfile(this)
             ) {
                 MainDeviceRegistry.claimInitialOwner(this)
-            }
-
-            if (!MainDeviceRegistry.isLocallyOwner(this)) {
-                runCatching {
-                    MainDeviceRegistry.ensureMediaPlayerApprovalRequest(this)
-                }
             }
 
             runOnUiThread {

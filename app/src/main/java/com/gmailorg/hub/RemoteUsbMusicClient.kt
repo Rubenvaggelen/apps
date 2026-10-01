@@ -168,21 +168,12 @@ object RemoteUsbMusicClient {
                     val cached = f.optBoolean("cached", false)
                     val name = f.optString("name", path.substringAfterLast('/')).trim()
                     if (isMacMetadataFile(path, name)) continue
-                    val pathFolder = path
-                        .replace('\\', '/')
-                        .substringBeforeLast('/', "")
-                        .trim('/')
-                    val storedFolder = f.optString("folder").replace('\\', '/').trim('/')
-                    val effectiveFolder =
-                        if (pathFolder.isNotBlank()) pathFolder else storedFolder
-                    if (effectiveFolder.isNotBlank()) folders += effectiveFolder
-
                     files += RemoteFile(
                         deviceId = deviceId,
                         stickId = stickId,
                         path = path,
                         name = name,
-                        folder = effectiveFolder,
+                        folder = f.optString("folder").trim(),
                         title = f.optString("title").trim(),
                         artist = f.optString("artist").trim(),
                         album = f.optString("album").trim(),

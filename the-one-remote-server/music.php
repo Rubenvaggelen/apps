@@ -1420,8 +1420,6 @@ if ($action === 'catalog') {
                 if (!is_array($row)) continue;
                 $path=canonical_shared_path((string)($row['path'] ?? ''));
                 if (!str_starts_with($path,'Ruben/')) continue;
-                $ext=strtolower(pathinfo($path,PATHINFO_EXTENSION));
-                if (in_array($ext,['mp4','m4v','mov','webm'],true)) continue;
                 $row['path']=$path;
                 $row['name']=basename($path);
                 $row['folder']=dirname($path)==='.'?'':dirname($path);
@@ -1529,34 +1527,6 @@ if ($action === 'catalog') {
         }
         unset($stickRow);
     }
-
-    // Maak de maplijst altijd opnieuw compleet uit de echte bestandspaden.
-    // Zo kan een client nooit een lege map openen doordat folders metadata achterloopt.
-    foreach ($sticks as &$stickRow) {
-        if (!is_array($stickRow)) continue;
-        $folderMap=[];
-        foreach ((array)($stickRow['folders'] ?? []) as $folder) {
-            if (!is_string($folder) || trim($folder)==='') continue;
-            $folder=canonical_shared_path(trim($folder,'/'));
-            $folderMap[strtolower($folder)]=$folder;
-        }
-        foreach ((array)($stickRow['files'] ?? []) as $row) {
-            if (!is_array($row)) continue;
-            $path=canonical_shared_path((string)($row['path'] ?? ''));
-            if ($path==='' || !str_contains($path,'/')) continue;
-            $folder=dirname($path);
-            if ($folder==='.' || $folder==='') continue;
-            $parts=explode('/',$folder);
-            for ($i=1;$i<=count($parts);$i++) {
-                $candidate=implode('/',array_slice($parts,0,$i));
-                if ($candidate!=='') $folderMap[strtolower($candidate)]=$candidate;
-            }
-        }
-        $folders=array_values($folderMap);
-        natcasesort($folders);
-        $stickRow['folders']=array_values($folders);
-    }
-    unset($stickRow);
 
     out(200,['ok'=>true,'sticks'=>$sticks]);
 }
@@ -1796,18 +1766,11 @@ if ($action === 'upload-start') {
     }
 
     $part=$files.'/'.key_for($device,$stick,$path).'.'.$sha.'.part';
-    if (is_file($part)) {
-        clearstatcache(true,$part);
-        $current=filesize($part);
-        if ($current!==false && (int)$current>=0) {
-            out(200,['ok'=>true,'offset'=>(int)$current,'resumed'=>((int)$current)>0]);
-        }
-    }
     if (@file_put_contents($part, '', LOCK_EX) === false) {
         out(500,['ok'=>false,'error'=>'cannot start upload']);
     }
     @chmod($part,0600);
-    out(200,['ok'=>true,'offset'=>0,'resumed'=>false]);
+    out(200,['ok'=>true,'offset'=>0]);
 }
 
 if ($action === 'upload-chunk') {
@@ -1857,56 +1820,6 @@ if ($action === 'upload-chunk') {
                 'written'=>$written,
                 'length'=>$length
             ]);
-        }
-        $written+=$n;
-    }
-    @fflush($fh);
-    @fclose($fh);
-    clearstatcache(true,$part);
-
-    out(200,['ok'=>true,'offset'=>$offset+$written]);
-}
-
-if ($action === 'upload-chunk-bin') {
-    $device=safe_id((string)($_GET['device'] ?? ''));
-    $stick=safe_id((string)($_GET['stick'] ?? ''));
-    $path=safe_path((string)($_GET['path'] ?? ''));
-    $sha=strtolower(trim((string)($_GET['sha256'] ?? '')));
-    $offset=max(0,(int)($_GET['offset'] ?? 0));
-    if (!preg_match('/^[a-f0-9]{64}$/',$sha)) out(400,['ok'=>false,'error'=>'invalid hash']);
-
-    $chunk=file_get_contents('php://input');
-    if (!is_string($chunk) || $chunk==='') out(400,['ok'=>false,'error'=>'invalid chunk']);
-
-    $deletedDoc=load_json($deletedFile);
-    $deletedItems=is_array($deletedDoc['items'] ?? null) ? $deletedDoc['items'] : [];
-    if (isset($deletedItems[key_for($device,$stick,$path)])) {
-        out(200,['ok'=>true,'offset'=>$offset+strlen($chunk),'deleted'=>true]);
-    }
-
-    $part=$files.'/'.key_for($device,$stick,$path).'.'.$sha.'.part';
-    if (!is_file($part)) out(409,['ok'=>false,'error'=>'upload not started']);
-
-    clearstatcache(true,$part);
-    $current=filesize($part);
-    if ($current===false || (int)$current!==$offset) {
-        out(409,['ok'=>false,'error'=>'offset mismatch','expected'=>(int)($current===false?0:$current)]);
-    }
-
-    $fh=@fopen($part,'c+b');
-    if ($fh===false) out(500,['ok'=>false,'error'=>'chunk open failed']);
-    if (@fseek($fh,$offset,SEEK_SET)!==0) {
-        @fclose($fh);
-        out(500,['ok'=>false,'error'=>'chunk seek failed']);
-    }
-
-    $length=strlen($chunk);
-    $written=0;
-    while ($written<$length) {
-        $n=@fwrite($fh,substr($chunk,$written));
-        if ($n===false || $n===0) {
-            @fclose($fh);
-            out(500,['ok'=>false,'error'=>'chunk write failed']);
         }
         $written+=$n;
     }

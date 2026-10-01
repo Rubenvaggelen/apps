@@ -16,7 +16,6 @@ data class MainRegisteredDevice(
     val blocked: Boolean,
     val owner: Boolean,
     val musicRights: Boolean,
-    val mediaPlayerRights: Boolean,
     val mixesRights: Boolean,
     val sharedRights: Boolean,
     val favoritesRights: Boolean,
@@ -29,7 +28,6 @@ data class MainRegisteredDevice(
     val pendingDj: Boolean,
     val pendingDownloads: Boolean,
     val pendingFileDownloads: Boolean,
-    val pendingMediaPlayer: Boolean,
     val online: Boolean,
     val lastSeen: Long
 )
@@ -58,7 +56,6 @@ data class MainPendingAccessRequest(
 
 
 object MainDeviceRegistry {
-    const val ACCESS_MEDIA_PLAYER = "media_player"
     const val ACCESS_MIXES = "mixes"
     const val ACCESS_SHARED = "shared"
     const val ACCESS_FAVORITES = "favorites"
@@ -153,7 +150,6 @@ object MainDeviceRegistry {
             .putBoolean(KEY_BLOCKED, blocked)
             .putBoolean(KEY_OWNER, owner)
             .putBoolean(KEY_MUSIC_RIGHTS, musicRights)
-            .putBoolean("access_media_player", accessRights.optBoolean(ACCESS_MEDIA_PLAYER, owner))
             .putBoolean("access_mixes", accessRights.optBoolean(ACCESS_MIXES, owner || musicRights))
             .putBoolean("access_shared", accessRights.optBoolean(ACCESS_SHARED, owner || musicRights))
             .putBoolean("access_favorites", accessRights.optBoolean(ACCESS_FAVORITES, owner || musicRights))
@@ -241,9 +237,6 @@ object MainDeviceRegistry {
                         blocked = item.optBoolean("blocked", false),
                         owner = item.optBoolean("owner", false),
                         musicRights = item.optBoolean("music_rights", item.optBoolean("owner", false)),
-                        mediaPlayerRights = item.optJSONObject("access_rights")
-                            ?.optBoolean(ACCESS_MEDIA_PLAYER, item.optBoolean("owner", false))
-                            ?: item.optBoolean("owner", false),
                         mixesRights = item.optJSONObject("access_rights")
                             ?.optBoolean(ACCESS_MIXES, item.optBoolean("music_rights", false))
                             ?: item.optBoolean("music_rights", item.optBoolean("owner", false)),
@@ -268,7 +261,6 @@ object MainDeviceRegistry {
                         pendingDj = item.optJSONObject("access_requests")?.has(ACCESS_DJ) == true,
                         pendingDownloads = item.optJSONObject("access_requests")?.has(ACCESS_ORGANIZE) == true,
                         pendingFileDownloads = item.optJSONObject("access_requests")?.has(ACCESS_FILE_DOWNLOADS) == true,
-                        pendingMediaPlayer = item.optJSONObject("access_requests")?.has(ACCESS_MEDIA_PLAYER) == true,
                         online = item.optBoolean("online", false),
                         lastSeen = item.optLong("last_seen", 0L)
                     )
@@ -339,33 +331,6 @@ object MainDeviceRegistry {
             .putBoolean(KEY_OWNER, status.owner)
             .putBoolean("access_" + scope, status.allowed)
             .apply()
-        return status
-    }
-
-    fun ensureMediaPlayerApprovalRequest(context: Context): MainAccessStatus? {
-        if (isLocallyOwner(context)) return null
-        if (!hasPersonName(context)) return null
-
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (hasAccess(context, ACCESS_MEDIA_PLAYER)) {
-            prefs.edit().putBoolean("media_player_request_initialized", true).apply()
-            return null
-        }
-        if (prefs.getBoolean("media_player_request_initialized", false)) {
-            return runCatching {
-                refreshAccess(context, ACCESS_MEDIA_PLAYER)
-            }.getOrNull()
-        }
-
-        val status = runCatching {
-            requestAccess(context, ACCESS_MEDIA_PLAYER)
-        }.getOrNull() ?: return null
-
-        if (status.allowed || status.pending) {
-            prefs.edit()
-                .putBoolean("media_player_request_initialized", true)
-                .apply()
-        }
         return status
     }
 

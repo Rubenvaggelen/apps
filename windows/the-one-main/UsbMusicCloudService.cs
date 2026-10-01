@@ -80,7 +80,8 @@ public static class UsbMusicCloudService
         "usb-stick-identities.json");
     private static readonly HashSet<string> AudioExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".mp3", ".m4a", ".aac", ".ogg", ".oga", ".opus", ".flac", ".wav", ".wma"
+        ".mp3", ".m4a", ".aac", ".ogg", ".oga", ".opus", ".flac", ".wav", ".wma",
+        ".mp4", ".m4v", ".mov", ".webm"
     };
     private static readonly string HubInboxRoot =
         Path.Combine(@"C:\TheOne\SharedMedia\Music", "Nieuwe downloads");
