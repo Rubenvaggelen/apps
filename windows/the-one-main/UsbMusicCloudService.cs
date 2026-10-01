@@ -511,9 +511,11 @@ public static class UsbMusicCloudService
                     x => x,
                     StringComparer.OrdinalIgnoreCase);
 
+            // Bewaar ook bestaande Nieuwe downloads uit THEONE-HUB.
+            // Ruben en Surface publiceren dezelfde gedeelde inbox onafhankelijk;
+            // een sync vanaf één apparaat mag daarom nooit bestanden van het
+            // andere apparaat uit de centrale Hub-catalogus verwijderen.
             var manifest = hub.Files
-                .Where(x => !NormalizePath(x.Path)
-                    .StartsWith("Nieuwe downloads/", StringComparison.OrdinalIgnoreCase))
                 .Select(x => new LocalManifestFile
                 {
                     Path = NormalizePath(x.Path),
@@ -561,6 +563,8 @@ public static class UsbMusicCloudService
                     Album = tags.Album
                 };
 
+                manifest.RemoveAll(x =>
+                    NormalizePath(x.Path).Equals(relative, StringComparison.OrdinalIgnoreCase));
                 manifest.Add(item);
                 localManifest.Add((file, item));
             }
