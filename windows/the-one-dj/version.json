@@ -1,7 +1,7 @@
 {
-  "version": "2.2.2",
-  "build": 222,
-  "notes": "Restore previous DJ layout while keeping playlist clear fix and shared Windows/Android engine",
+  "version": "2.2.3",
+  "build": 223,
+  "notes": "Route Map laden and Nummers toevoegen to Shared Media; add Lokale media for USB/SD/local storage",
   "sha256": "",
   "files": [
     "index.html"
