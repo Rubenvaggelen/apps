@@ -131,6 +131,10 @@ public static class UsbMusicCloudService
                 await ReportWindowsHeartbeatAsync(cancellationToken);
                 await PullDjQueueAsync(cancellationToken);
 
+                // Handmatig geplaatste muziek in de Windows Muziek-map wordt eerst
+                // op titel gecontroleerd en daarna naar Nieuwe downloads gebracht.
+                await ImportWindowsMusicToHubInboxAsync(cancellationToken);
+
                 // Nieuwe downloads op Ruben/Surface direct publiceren naar THEONE-HUB,
                 // zodat ze zonder handmatige actie in Main > Shared Media verschijnen.
                 await SyncHubInboxAsync(cancellationToken);
@@ -486,6 +490,94 @@ public static class UsbMusicCloudService
 
             Log("DJ-import ontvangen: " + storedName);
         }
+    }
+
+    public static async Task<int> ImportWindowsMusicToHubInboxAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var musicRoot = Environment.GetFolderPath(Environment.SpecialFolder.MyMusic);
+        if (string.IsNullOrWhiteSpace(musicRoot) || !Directory.Exists(musicRoot))
+            return 0;
+
+        Directory.CreateDirectory(HubInboxRoot);
+
+        var catalog = await GetCatalogAsync(cancellationToken, includeInactive: true);
+        var hub = catalog.FirstOrDefault(x =>
+            x.DeviceId.Equals("THEONE-HUB", StringComparison.OrdinalIgnoreCase) &&
+            x.StickId.Equals("hub-primary", StringComparison.OrdinalIgnoreCase));
+
+        if (hub == null)
+            throw new InvalidOperationException("THEONE-HUB catalogus ontbreekt.");
+
+        var knownTitles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in hub.Files)
+        {
+            var title = string.IsNullOrWhiteSpace(row.Title)
+                ? Path.GetFileNameWithoutExtension(NormalizePath(row.Path))
+                : row.Title;
+            var key = NormalizeTitleKey(title);
+            if (!string.IsNullOrWhiteSpace(key)) knownTitles.Add(key);
+        }
+
+        foreach (var inboxFile in EnumerateAudioFiles(HubInboxRoot))
+        {
+            var tags = ReadMetadata(inboxFile.FullName);
+            var title = string.IsNullOrWhiteSpace(tags.Title)
+                ? Path.GetFileNameWithoutExtension(inboxFile.Name)
+                : tags.Title;
+            var key = NormalizeTitleKey(title);
+            if (!string.IsNullOrWhiteSpace(key)) knownTitles.Add(key);
+        }
+
+        var imported = 0;
+        foreach (var file in EnumerateAudioFiles(musicRoot)
+            .OrderBy(x => x.FullName, StringComparer.OrdinalIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var tags = ReadMetadata(file.FullName);
+            var title = string.IsNullOrWhiteSpace(tags.Title)
+                ? Path.GetFileNameWithoutExtension(file.Name)
+                : tags.Title;
+            var key = NormalizeTitleKey(title);
+            if (string.IsNullOrWhiteSpace(key) || knownTitles.Contains(key))
+                continue;
+
+            var destination = Path.Combine(HubInboxRoot, file.Name);
+            if (File.Exists(destination))
+            {
+                var suffix = await HashFileAsync(file.FullName, cancellationToken);
+                destination = Path.Combine(
+                    HubInboxRoot,
+                    Path.GetFileNameWithoutExtension(file.Name) +
+                    "-" + suffix[..8] +
+                    file.Extension);
+            }
+
+            File.Copy(file.FullName, destination, overwrite: false);
+            knownTitles.Add(key);
+            imported++;
+            Log("Muziek -> Nieuwe downloads: " + file.Name);
+        }
+
+        if (imported > 0)
+            Log($"Windows Muziek-map: {imported} nieuw(e) bestand(en) naar Nieuwe downloads.");
+
+        return imported;
+    }
+
+    private static string NormalizeTitleKey(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "";
+
+        var name = Path.GetFileNameWithoutExtension(value).Trim().ToLowerInvariant();
+        var builder = new StringBuilder(name.Length);
+        foreach (var ch in name)
+        {
+            if (char.IsLetterOrDigit(ch))
+                builder.Append(ch);
+        }
+        return builder.ToString();
     }
 
     public static async Task<int> SyncHubInboxAsync(CancellationToken cancellationToken = default)
