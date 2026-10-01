@@ -1,8 +1,8 @@
 {
-  "version": "2.1.9",
-  "build": 219,
-  "notes": "Click The One DJ logo to toggle fullscreen; ESC still exits fullscreen",
-  "sha256": "7DF013835738F99D0F9AD1ED57CC20E29C64C9E23509443DF39B1B653C6AE805",
+  "version": "2.2.0",
+  "build": 220,
+  "notes": "RX3-style controls: Quantize, loops, Beat Jump, 8 performance pads, Release FX, Vinyl/Jog, Slip and Beat FX",
+  "sha256": "",
   "files": [
     "index.html"
   ]
