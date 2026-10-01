@@ -1837,6 +1837,56 @@ if ($action === 'upload-chunk') {
     out(200,['ok'=>true,'offset'=>$offset+$written]);
 }
 
+if ($action === 'upload-chunk-bin') {
+    $device=safe_id((string)($_GET['device'] ?? ''));
+    $stick=safe_id((string)($_GET['stick'] ?? ''));
+    $path=safe_path((string)($_GET['path'] ?? ''));
+    $sha=strtolower(trim((string)($_GET['sha256'] ?? '')));
+    $offset=max(0,(int)($_GET['offset'] ?? 0));
+    if (!preg_match('/^[a-f0-9]{64}$/',$sha)) out(400,['ok'=>false,'error'=>'invalid hash']);
+
+    $chunk=file_get_contents('php://input');
+    if (!is_string($chunk) || $chunk==='') out(400,['ok'=>false,'error'=>'invalid chunk']);
+
+    $deletedDoc=load_json($deletedFile);
+    $deletedItems=is_array($deletedDoc['items'] ?? null) ? $deletedDoc['items'] : [];
+    if (isset($deletedItems[key_for($device,$stick,$path)])) {
+        out(200,['ok'=>true,'offset'=>$offset+strlen($chunk),'deleted'=>true]);
+    }
+
+    $part=$files.'/'.key_for($device,$stick,$path).'.'.$sha.'.part';
+    if (!is_file($part)) out(409,['ok'=>false,'error'=>'upload not started']);
+
+    clearstatcache(true,$part);
+    $current=filesize($part);
+    if ($current===false || (int)$current!==$offset) {
+        out(409,['ok'=>false,'error'=>'offset mismatch','expected'=>(int)($current===false?0:$current)]);
+    }
+
+    $fh=@fopen($part,'c+b');
+    if ($fh===false) out(500,['ok'=>false,'error'=>'chunk open failed']);
+    if (@fseek($fh,$offset,SEEK_SET)!==0) {
+        @fclose($fh);
+        out(500,['ok'=>false,'error'=>'chunk seek failed']);
+    }
+
+    $length=strlen($chunk);
+    $written=0;
+    while ($written<$length) {
+        $n=@fwrite($fh,substr($chunk,$written));
+        if ($n===false || $n===0) {
+            @fclose($fh);
+            out(500,['ok'=>false,'error'=>'chunk write failed']);
+        }
+        $written+=$n;
+    }
+    @fflush($fh);
+    @fclose($fh);
+    clearstatcache(true,$part);
+
+    out(200,['ok'=>true,'offset'=>$offset+$written]);
+}
+
 if ($action === 'upload-finish') {
     $b=read_json();
     $device=safe_id((string)($b['device_id'] ?? ''));
