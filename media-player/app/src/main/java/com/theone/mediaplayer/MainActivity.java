@@ -1010,6 +1010,15 @@ try {
         source.setOnClickListener(v -> startActivity(new Intent(this, SourceConfigActivity.class)));
         box.addView(source);
 
+        Button updates = button("Zoeken naar updates");
+        updates.setOnClickListener(v -> MediaPlayerUpdateChecker.checkForUpdateManual(this));
+        LinearLayout.LayoutParams updateLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        updateLp.topMargin = dp(12);
+        box.addView(updates, updateLp);
+
         TextView sourceInfo = text("Server voorgeladen: http://line.liondnscloud.ru:80", 14, MUTED, false);
         sourceInfo.setPadding(0, dp(8), 0, dp(18));
         box.addView(sourceInfo);
