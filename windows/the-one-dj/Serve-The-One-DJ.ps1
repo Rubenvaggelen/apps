@@ -27,6 +27,28 @@ function Mime([string]$p){
     default {'application/octet-stream'}
   }
 }
+function JsonResponse($ctx,$obj,[int]$status=200){
+  $json=$obj | ConvertTo-Json -Depth 8 -Compress
+  $bytes=[Text.Encoding]::UTF8.GetBytes($json)
+  $ctx.Response.StatusCode=$status
+  $ctx.Response.ContentType='application/json; charset=utf-8'
+  $ctx.Response.Headers['Cache-Control']='no-store'
+  $ctx.Response.ContentLength64=$bytes.Length
+  $ctx.Response.OutputStream.Write($bytes,0,$bytes.Length)
+  $ctx.Response.OutputStream.Close()
+}
+function IsAudio([string]$p){
+  return ([IO.Path]::GetExtension($p).ToLowerInvariant() -in @('.mp3','.wav','.flac','.m4a','.aac','.ogg','.oga','.opus','.aif','.aiff','.aifc','.caf','.wma','.alac','.mka','.ac3','.amr','.mp4','.m4v','.mov','.webm','.mkv'))
+}
+function SafeLocalPath([string]$p){
+  if([string]::IsNullOrWhiteSpace($p)){return $null}
+  try{
+    $full=[IO.Path]::GetFullPath($p)
+    $root=[IO.Path]::GetPathRoot($full)
+    if([string]::IsNullOrWhiteSpace($root) -or !(Test-Path -LiteralPath $root)){return $null}
+    return $full
+  }catch{return $null}
+}
 function ManifestPath(){ Join-Path $imports 'shared-media.json' }
 function ReadManifest(){
   $m=ManifestPath
@@ -57,6 +79,60 @@ while($listener.IsListening){
   try{
     $ctx=$listener.GetContext()
     $path=$ctx.Request.Url.AbsolutePath
+
+    if($ctx.Request.HttpMethod -eq 'GET' -and $path -eq '/local-media/drives'){
+      $drives=@(Get-PSDrive -PSProvider FileSystem | ForEach-Object {
+        [pscustomobject]@{name=$_.Name;path=$_.Root;description=$_.Description}
+      })
+      JsonResponse $ctx @{ok=$true;drives=$drives}
+      continue
+    }
+
+    if($ctx.Request.HttpMethod -eq 'GET' -and $path -eq '/local-media/list'){
+      $requested=[Uri]::UnescapeDataString([string]$ctx.Request.QueryString['path'])
+      $full=SafeLocalPath $requested
+      if(!$full -or !(Test-Path -LiteralPath $full -PathType Container)){
+        JsonResponse $ctx @{ok=$false;error='folder not found'} 404
+        continue
+      }
+      $dirs=@(Get-ChildItem -LiteralPath $full -Directory -Force -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object {
+        [pscustomobject]@{name=$_.Name;path=$_.FullName}
+      })
+      $filesOut=@(Get-ChildItem -LiteralPath $full -File -Force -ErrorAction SilentlyContinue | Where-Object {IsAudio $_.FullName} | Sort-Object Name | ForEach-Object {
+        [pscustomobject]@{name=$_.Name;path=$_.FullName;size=$_.Length}
+      })
+      JsonResponse $ctx @{ok=$true;path=$full;directories=$dirs;files=$filesOut}
+      continue
+    }
+
+    if($ctx.Request.HttpMethod -eq 'GET' -and $path -eq '/local-media/scan'){
+      $requested=[Uri]::UnescapeDataString([string]$ctx.Request.QueryString['path'])
+      $full=SafeLocalPath $requested
+      if(!$full -or !(Test-Path -LiteralPath $full -PathType Container)){
+        JsonResponse $ctx @{ok=$false;error='folder not found'} 404
+        continue
+      }
+      $rows=@(Get-ChildItem -LiteralPath $full -Recurse -File -Force -ErrorAction SilentlyContinue | Where-Object {IsAudio $_.FullName} | Sort-Object FullName | ForEach-Object {
+        [pscustomobject]@{name=$_.Name;path=$_.FullName;size=$_.Length}
+      })
+      JsonResponse $ctx @{ok=$true;path=$full;files=$rows}
+      continue
+    }
+
+    if($ctx.Request.HttpMethod -eq 'GET' -and $path -eq '/local-media/file'){
+      $requested=[Uri]::UnescapeDataString([string]$ctx.Request.QueryString['path'])
+      $full=SafeLocalPath $requested
+      if(!$full -or !(Test-Path -LiteralPath $full -PathType Leaf) -or !(IsAudio $full)){
+        $ctx.Response.StatusCode=404;$ctx.Response.Close();continue
+      }
+      $bytes=[IO.File]::ReadAllBytes($full)
+      $ctx.Response.ContentType=Mime $full
+      $ctx.Response.ContentLength64=$bytes.Length
+      $ctx.Response.Headers['Cache-Control']='no-store'
+      $ctx.Response.OutputStream.Write($bytes,0,$bytes.Length)
+      $ctx.Response.OutputStream.Close()
+      continue
+    }
 
     if($ctx.Request.HttpMethod -eq 'POST' -and $path -eq '/imports/clear'){
       $items=@(ReadManifest)
