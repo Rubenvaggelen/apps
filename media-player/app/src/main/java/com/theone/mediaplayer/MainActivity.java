@@ -130,7 +130,19 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        try {
+
+        // Update-check blijft ook actief terwijl een apparaat nog op toestemming wacht.
+        // Daardoor kan elke volgende versie opnieuw automatisch worden aangeboden.
+        MediaPlayerUpdateChecker.checkForUpdate(this);
+
+        MediaPlayerAuthorization.requireAccess(
+                this,
+                () -> continueAuthorizedStartup(savedInstanceState)
+        );
+    }
+
+    private void continueAuthorizedStartup(Bundle savedInstanceState) {
+try {
             prefs = getSharedPreferences("media_player", Context.MODE_PRIVATE);
             if (isTvBuild()) {
                 try {
@@ -152,12 +164,12 @@ public class MainActivity extends Activity {
                 showTvHome();
             } else {
                 showShell("Home");
-                MediaPlayerUpdateChecker.checkForUpdate(this);
-            }
+}
         } catch (Throwable startupError) {
             Log.e("TheOneMediaPlayer", "Startup failed", startupError);
             showSafeStartupScreen(startupError);
         }
+    
     }
 
     private void initGoogleCast() {
