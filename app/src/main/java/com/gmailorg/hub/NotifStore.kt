@@ -33,8 +33,16 @@ object NotifStore {
         items.removeAll { it.key == item.key }
         items.add(item)
         if (items.size > MAX_ITEMS) {
-            val overflow = items.sortedBy { it.postTime }.take(items.size - MAX_ITEMS)
-            items.removeAll(overflow)
+            var removeCount = items.size - MAX_ITEMS
+            val removable = items
+                .filter { !it.persistent }
+                .sortedBy { it.postTime }
+            removable.take(removeCount).forEach {
+                if (items.remove(it)) removeCount--
+            }
+            // Persistent items are unresolved actions and are never evicted.
+            // In the extremely unlikely case there are > MAX_ITEMS persistent
+            // requests, keep them all until they are handled.
         }
         persist()
         notifyListeners()
