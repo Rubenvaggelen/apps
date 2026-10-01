@@ -1,7 +1,7 @@
 {
-  "version": "2.2.0",
-  "build": 220,
-  "notes": "RX3-style controls: Quantize, loops, Beat Jump, 8 performance pads, Release FX, Vinyl/Jog, Slip and Beat FX",
+  "version": "2.2.1",
+  "build": 221,
+  "notes": "Playlist clear fix plus 3-band waveform, Phrase Display, Touch Preview, Playlist Banks and Recording",
   "sha256": "",
   "files": [
     "index.html"
