@@ -131,6 +131,10 @@ public static class UsbMusicCloudService
                 await ReportWindowsHeartbeatAsync(cancellationToken);
                 await PullDjQueueAsync(cancellationToken);
 
+                // Nieuwe downloads op Ruben/Surface direct publiceren naar THEONE-HUB,
+                // zodat ze zonder handmatige actie in Main > Shared Media verschijnen.
+                await SyncHubInboxAsync(cancellationToken);
+
                 var signature = BuildDriveSignature();
                 if (!string.Equals(signature, _lastDriveSignature, StringComparison.Ordinal))
                 {
