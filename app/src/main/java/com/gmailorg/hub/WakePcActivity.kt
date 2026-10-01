@@ -344,9 +344,15 @@ class WakePcActivity : AppCompatActivity() {
                 )
                 addAccessControl(
                     "Muziek organiseren",
-                    MainDeviceRegistry.ACCESS_DOWNLOADS,
+                    MainDeviceRegistry.ACCESS_ORGANIZE,
                     device.downloadsRights,
                     device.pendingDownloads
+                )
+                addAccessControl(
+                    "Bestanden downloaden",
+                    MainDeviceRegistry.ACCESS_FILE_DOWNLOADS,
+                    device.fileDownloadsRights,
+                    device.pendingFileDownloads
                 )
 
                 card.addView(android.widget.Button(this).apply {
