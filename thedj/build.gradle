@@ -1,4 +1,4 @@
-// Dev Hub standalone DJ APK
+// Dev Hub standalone DJ APK - synced with Windows build 221
 plugins {
     id 'com.android.application'
 }
