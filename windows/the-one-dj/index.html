@@ -180,12 +180,25 @@ body:not(.hp-on) .cue-hp{display:none}
 .pct{font-variant-numeric:tabular-nums;font-weight:600;font-size:16px;min-width:58px;text-align:right}
 
 .deck-foot{display:flex;flex-direction:column;gap:8px}
+.transport-tools,.loop-row,.beatjump-row,.pad-modes,.beatfx-row{display:grid;gap:5px}
+.transport-tools{grid-template-columns:repeat(3,1fr)}
+.loop-row{grid-template-columns:repeat(5,1fr)}
+.beatjump-row{grid-template-columns:repeat(6,1fr)}
+.pad-modes{grid-template-columns:repeat(4,1fr)}
+.beatfx-row{grid-template-columns:minmax(0,1fr) auto auto;align-items:center}
+.transport-tools .mini,.loop-row .mini,.beatjump-row .mini,.pad-modes .mini,.beatfx-row .mini{height:30px}
+.transport-tools .mini.on,.loop-row .mini.on,.pad-modes .mini.on,.beatfx-row .mini.on{
+  border-color:var(--c);color:var(--c-hi);background:var(--c-soft);box-shadow:0 0 10px var(--c-soft)
+}
 .pads{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 .pad{
   font-weight:700;height:38px;border-radius:12px;border:1px dashed var(--line);background:transparent;
   color:var(--muted);touch-action:manipulation;cursor:pointer
 }
 .pad.set{border-style:solid;border-color:var(--c);background:var(--c-soft);color:var(--ink);box-shadow:0 0 10px var(--c-soft)}
+.pad.release{border-color:#E5484D;color:#FF9EA2}
+.pad.loop{border-color:#7CD992;color:#BDF5C9}
+.pad.jump{border-color:#9F8CFF;color:#CFC5FF}
 
 .fx{display:flex;gap:18px;align-items:center;padding-top:8px;border-top:1px solid var(--line)}
 .fx-unit{display:flex;align-items:center;gap:8px}
@@ -826,7 +839,7 @@ function deckTemplate(id){
     <div class="title-wrap"><div class="title" data-r="title">Geen nummer geladen</div><div class="sub" data-r="sub">Sleep een audiobestand hierheen of kies er een</div></div>
     <button class="btn small cue-hp" data-r="hp" aria-pressed="false" aria-label="Voorbeluisteren op koptelefoon" title="Voorbeluisteren op koptelefoon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15v-3a8 8 0 0 1 16 0v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="3" y="14" width="5" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="16" y="14" width="5" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>
     <button class="btn small spin" data-r="spin" aria-pressed="false" title="Spin: pak de plaat vast om te scratchen">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1" opacity=".6"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M12 2a10 10 0 0 1 8.7 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>Spin</button>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1" opacity=".6"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M12 2a10 10 0 0 1 8.7 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>Jog</button>
     <label class="btn small">Kies<input type="file" accept="audio/*,video/*,.mp3,.wav,.aif,.aiff,.aifc,.caf,.flac,.ogg,.oga,.opus,.m4a,.aac,.alac,.mp4,.m4v,.mov,.webm,.mka,.mkv,.wma,.ac3,.amr,.3gp" data-r="file" hidden></label>
   </header>
   <div class="overview" data-r="ovwrap" tabindex="0" aria-label="Positie in nummer, tik om te springen"><canvas data-r="ov"></canvas><div class="busy" data-r="busy" hidden></div></div>
@@ -846,6 +859,26 @@ function deckTemplate(id){
     </button>
     <button class="btn sync" data-r="sync">Sync</button>
   </div>
+  <div class="transport-tools">
+    <button class="mini on" data-r="quantize">Quantize</button>
+    <button class="mini" data-r="vinyl">Vinyl</button>
+    <button class="mini" data-r="slip">Slip</button>
+  </div>
+  <div class="loop-row">
+    <button class="mini" data-r="loopIn">Loop In</button>
+    <button class="mini" data-r="loopOut">Loop Out</button>
+    <button class="mini" data-r="loopHalf">½</button>
+    <button class="mini" data-r="loopDouble">×2</button>
+    <button class="mini" data-r="loopToggle">Loop</button>
+  </div>
+  <div class="beatjump-row">
+    <button class="mini" data-jump="-8">−8</button>
+    <button class="mini" data-jump="-4">−4</button>
+    <button class="mini" data-jump="-1">−1</button>
+    <button class="mini" data-jump="1">+1</button>
+    <button class="mini" data-jump="4">+4</button>
+    <button class="mini" data-jump="8">+8</button>
+  </div>
   <div class="tempo">
     <button class="btn nudge" data-r="nudgeDown" aria-label="Even vertragen">−</button>
     <div data-r="pitch"></div>
@@ -853,7 +886,18 @@ function deckTemplate(id){
     <div class="tempo-side"><span class="pct" data-r="pct">0.00%</span><button class="mini" data-r="range" aria-label="Tempobereik">±8%</button></div>
   </div>
   <div class="deck-foot">
-  <div class="pads" data-r="pads">${[0,1,2,3].map(i=>`<button class="pad" data-i="${i}" aria-label="Hot cue ${i+1}">${i+1}</button>`).join("")}</div>
+  <div class="pad-modes">
+    <button class="mini on" data-padmode="hot">Hot Cue</button>
+    <button class="mini" data-padmode="loop">Beat Loop</button>
+    <button class="mini" data-padmode="jump">Beat Jump</button>
+    <button class="mini" data-padmode="release">Release FX</button>
+  </div>
+  <div class="pads" data-r="pads">${[0,1,2,3,4,5,6,7].map(i=>`<button class="pad" data-i="${i}" aria-label="Performance pad ${i+1}">${i+1}</button>`).join("")}</div>
+  <div class="beatfx-row">
+    <button class="mini" data-r="beatFxType">Beat FX: Echo</button>
+    <button class="mini" data-r="beatFxBeats">1/2</button>
+    <button class="mini" data-r="beatFxOn">FX</button>
+  </div>
   <div class="fx">
     <div class="fx-unit"><div data-r="echo"></div><div class="fx-meta"><span>Echo</span><button class="mini" data-r="echoBeats" aria-label="Echo-lengte in beats">1/2</button></div></div>
     <div class="fx-unit"><div data-r="reverb"></div><div class="fx-meta"><span>Reverb</span></div></div>
@@ -867,8 +911,11 @@ class Deck{
     this.el.innerHTML=deckTemplate(id);
     this.ui={};this.el.querySelectorAll("[data-r]").forEach(n=>this.ui[n.dataset.r]=n);
     this.buffer=null;this.src=null;this.playing=false;this.pos=0;this.startT=0;this.startPos=0;
-    this.rate=1;this.bend=1;this.cue=0;this.cueHeld=false;this.hot=[null,null,null,null];
+    this.rate=1;this.bend=1;this.cue=0;this.cueHeld=false;this.hot=Array(8).fill(null);
     this.bpm=0;this.beat0=0;this.peaks=null;this.syncLock=false;this.rangeIdx=0;this.echoIdx=1;
+    this.quantize=true;this.slipMode=false;this.loopIn=null;this.loopOut=null;this.loopActive=false;this.slipLoopAnchor=null;
+    this.padMode="hot";this.beatFxTypes=["Echo","Ping Pong","Spiral","Reverb","Trans","Filter","Flanger","Phaser","Pitch","Slip Roll","Roll","Vinyl Brake","Helix","Delay"];
+    this.beatFxTypeIdx=0;this.beatFxBeatIdx=1;this.beatFxActive=false;
     this.scrub=null;this.loadToken=0;this.level=0;this.n=null;
     this.spinMode=false;this.scr=null;this.detail=null;
     this.done=false;this.loading=false;this.libItem=null;
@@ -1045,15 +1092,112 @@ class Deck{
   cueDown(){
     if(!this.buffer) return;ensureCtx();
     if(this.playing){this.pause();this.seek(this.cue);return}
-    this.cue=this.getPos();this.play();this.cueHeld=true;
+    this.cue=this.quantizeTime(this.getPos());this.play();this.cueHeld=true;
   }
   cueUp(){if(this.cueHeld){this.cueHeld=false;this.pause();this.seek(this.cue)}}
   hotDown(i){
     if(!this.buffer) return;ensureCtx();
-    if(this.hot[i]==null){this.hot[i]=this.getPos();this.renderPads();return}
+    if(this.hot[i]==null){this.hot[i]=this.quantizeTime(this.getPos());this.renderPads();return}
     this.cueHeld=false;this.seek(this.hot[i]);if(!this.playing) this.play();
   }
   clearHot(i){this.hot[i]=null;this.renderPads();if(navigator.vibrate) navigator.vibrate(20)}
+
+  beatLength(){return this.bpm?60/this.bpm:0.5}
+  quantizeTime(t){
+    if(!this.quantize||!this.bpm) return clamp(t,0,this.dur);
+    const bl=this.beatLength();
+    return clamp(this.beat0+Math.round((t-this.beat0)/bl)*bl,0,this.dur);
+  }
+  jumpBeats(beats){if(!this.buffer)return;this.seek(this.getPos()+beats*this.beatLength())}
+  setLoopIn(){
+    if(!this.buffer)return;
+    this.loopIn=this.quantizeTime(this.getPos());
+    if(this.loopOut!=null&&this.loopOut<=this.loopIn)this.loopOut=null;
+    this.renderLoop();
+  }
+  setLoopOut(){
+    if(!this.buffer)return;
+    this.loopOut=this.quantizeTime(this.getPos());
+    if(this.loopIn==null)this.loopIn=Math.max(0,this.loopOut-4*this.beatLength());
+    if(this.loopOut<=this.loopIn)this.loopOut=Math.min(this.dur,this.loopIn+4*this.beatLength());
+    this.loopActive=true;this.beginSlipLoop();this.renderLoop();
+  }
+  beginSlipLoop(){
+    if(this.slipMode&&this.playing&&!this.slipLoopAnchor&&ctx)this.slipLoopAnchor={t:ctx.currentTime,pos:this.getPos()};
+  }
+  endSlipLoop(){
+    const a=this.slipLoopAnchor;this.slipLoopAnchor=null;
+    if(a&&ctx&&this.playing)this.seek(a.pos+(ctx.currentTime-a.t)*this.eff());
+  }
+  toggleLoop(){
+    if(this.loopIn==null||this.loopOut==null){
+      const start=this.quantizeTime(this.getPos());
+      this.loopIn=start;this.loopOut=Math.min(this.dur,start+4*this.beatLength());
+    }
+    this.loopActive=!this.loopActive;
+    if(this.loopActive)this.beginSlipLoop();else this.endSlipLoop();
+    this.renderLoop();
+  }
+  resizeLoop(mult){
+    if(this.loopIn==null||this.loopOut==null)return;
+    const len=Math.max(this.beatLength()/4,(this.loopOut-this.loopIn)*mult);
+    this.loopOut=Math.min(this.dur,this.loopIn+len);this.loopActive=true;this.beginSlipLoop();this.renderLoop();
+  }
+  setAutoLoop(beats){
+    const start=this.quantizeTime(this.getPos());
+    this.loopIn=start;this.loopOut=Math.min(this.dur,start+beats*this.beatLength());
+    this.loopActive=true;this.beginSlipLoop();this.renderLoop();
+  }
+  renderLoop(){
+    const on=this.loopActive&&this.loopIn!=null&&this.loopOut!=null;
+    this.ui.loopToggle.classList.toggle("on",on);
+    this.ui.loopIn.classList.toggle("on",this.loopIn!=null);
+    this.ui.loopOut.classList.toggle("on",this.loopOut!=null);
+  }
+  setPadMode(mode){
+    this.padMode=mode;
+    this.el.querySelectorAll("[data-padmode]").forEach(b=>b.classList.toggle("on",b.dataset.padmode===mode));
+    this.renderPads();
+  }
+  releaseFx(i){
+    if(!this.buffer)return;
+    const bl=this.beatLength();
+    const restoreFader=this.p.fader,restoreEcho=this.p.echo,restoreRate=this.rate;
+    if(i===0||i===1){
+      const ms=i===0?260:700,steps=10,start=this.rate;
+      let n=0;const timer=setInterval(()=>{n++;this.setRate(Math.max(.5,start*(1-n/steps)));if(n>=steps){clearInterval(timer);this.pause();this.setRate(restoreRate)}},ms/steps);
+    }else if(i===2||i===3){
+      this.seek(Math.max(0,this.getPos()-(i===2?2:8)*bl));
+    }else if(i===4){
+      this.setParam("echo",1);setTimeout(()=>this.setParam("echo",restoreEcho),900);
+    }else if(i===5){
+      this.setRate(Math.min(1.5,this.rate*1.08));setTimeout(()=>this.setRate(restoreRate),650);
+    }else if(i===6){
+      this.setParam("fader",0);setTimeout(()=>this.setParam("fader",restoreFader),450);
+    }else{
+      this.setParam("fader",Math.min(restoreFader,.25));setTimeout(()=>this.setParam("fader",restoreFader),500);
+    }
+  }
+  padPress(i){
+    if(this.padMode==="hot"){this.hotDown(i);return}
+    if(this.padMode==="loop"){const sizes=[.25,.5,1,2,4,8,16,32];this.setAutoLoop(sizes[i]);return}
+    if(this.padMode==="jump"){const jumps=[-8,-4,-2,-1,1,2,4,8];this.jumpBeats(jumps[i]);return}
+    if(this.padMode==="release"){this.releaseFx(i)}
+  }
+  cycleBeatFx(){
+    this.beatFxTypeIdx=(this.beatFxTypeIdx+1)%this.beatFxTypes.length;
+    this.ui.beatFxType.textContent="Beat FX: "+this.beatFxTypes[this.beatFxTypeIdx];
+  }
+  toggleBeatFx(){
+    this.beatFxActive=!this.beatFxActive;this.ui.beatFxOn.classList.toggle("on",this.beatFxActive);
+    const type=this.beatFxTypes[this.beatFxTypeIdx];
+    if(!this.beatFxActive){this.setParam("echo",0);this.setParam("reverb",0);return}
+    if(type==="Reverb")this.setParam("reverb",.75);
+    else if(type==="Filter")this.setParam("filter",.7);
+    else if(type==="Pitch")this.setRate(Math.min(1.5,this.rate*1.08));
+    else if(type==="Vinyl Brake")this.releaseFx(1);
+    else this.setParam("echo",.72);
+  }
 
   /* tempo sync */
   ensureRange(r){
@@ -1108,7 +1252,7 @@ class Deck{
       if(item){item.status=this.id;playlistWrite();}
       this.libItem=item;this.done=false;
       this.scr=null;this.buffer=buf;this.bpm=an.bpm;this.beat0=an.beat0;this.peaks=an.peaks;this.detail=an.detail;
-      this.pos=0;this.cue=0;this.hot=[null,null,null,null];this.syncLock=false;this.cancelTempoReturn();
+      this.pos=0;this.cue=0;this.hot=Array(8).fill(null);this.loopIn=null;this.loopOut=null;this.loopActive=false;this.slipLoopAnchor=null;this.syncLock=false;this.cancelTempoReturn();
       this.ui.sub.textContent=this.bpm?`Origineel ${this.bpm.toFixed(1)} bpm, ${fmtTime(buf.duration).slice(0,-2)}`:"Geen tempo gevonden";
       this.renderPads();this.drawBase();this.updateEcho();updateWake();
     }catch(e){
@@ -1149,6 +1293,19 @@ class Deck{
     u.cue.addEventListener("keydown",e=>{if((e.key===" "||e.key==="Enter")&&!e.repeat){e.preventDefault();this.cueDown()}});
     u.cue.addEventListener("keyup",e=>{if(e.key===" "||e.key==="Enter") this.cueUp()});
     u.sync.addEventListener("click",()=>{this.cancelTempoReturn();if(this.syncLock){this.syncLock=false}else this.doSync()});
+    u.quantize.addEventListener("click",()=>{this.quantize=!this.quantize;u.quantize.classList.toggle("on",this.quantize)});
+    u.vinyl.addEventListener("click",()=>{this.spinMode=!this.spinMode;u.vinyl.classList.toggle("on",this.spinMode);u.spin.classList.toggle("on",this.spinMode);u.ovwrap.classList.toggle("spin",this.spinMode)});
+    u.slip.addEventListener("click",()=>{this.slipMode=!this.slipMode;u.slip.classList.toggle("on",this.slipMode);if(!this.slipMode)this.endSlipLoop()});
+    u.loopIn.addEventListener("click",()=>this.setLoopIn());
+    u.loopOut.addEventListener("click",()=>this.setLoopOut());
+    u.loopHalf.addEventListener("click",()=>this.resizeLoop(.5));
+    u.loopDouble.addEventListener("click",()=>this.resizeLoop(2));
+    u.loopToggle.addEventListener("click",()=>this.toggleLoop());
+    this.el.querySelectorAll("[data-jump]").forEach(b=>b.addEventListener("click",()=>this.jumpBeats(+b.dataset.jump)));
+    this.el.querySelectorAll("[data-padmode]").forEach(b=>b.addEventListener("click",()=>this.setPadMode(b.dataset.padmode)));
+    u.beatFxType.addEventListener("click",()=>this.cycleBeatFx());
+    u.beatFxBeats.addEventListener("click",()=>{this.beatFxBeatIdx=(this.beatFxBeatIdx+1)%ECHO_BEATS.length;u.beatFxBeats.textContent=ECHO_BEATS[this.beatFxBeatIdx][1];this.echoIdx=this.beatFxBeatIdx;this.updateEcho()});
+    u.beatFxOn.addEventListener("click",()=>this.toggleBeatFx());
     u.dbl.addEventListener("click",()=>{if(!this.bpm) return;this.bpm*=2;this.beat0%=60/this.bpm;this.afterBpmFix()});
     u.half.addEventListener("click",()=>{if(!this.bpm) return;this.bpm/=2;this.afterBpmFix()});
 
@@ -1166,12 +1323,12 @@ class Deck{
     u.pads.querySelectorAll(".pad").forEach(pad=>{
       const i=+pad.dataset.i;let timer=null,wasSet=false;
       pad.addEventListener("pointerdown",e=>{
-        e.preventDefault();wasSet=this.hot[i]!=null;this.hotDown(i);
+        e.preventDefault();wasSet=this.padMode==="hot"&&this.hot[i]!=null;this.padPress(i);
         if(wasSet) timer=setTimeout(()=>{timer=null;this.clearHot(i)},650);
       });
       const cancel=()=>{if(timer){clearTimeout(timer);timer=null}};
       pad.addEventListener("pointerup",cancel);pad.addEventListener("pointercancel",cancel);pad.addEventListener("pointerleave",cancel);
-      pad.addEventListener("contextmenu",e=>{e.preventDefault();cancel();if(this.hot[i]!=null) this.clearHot(i)});
+      pad.addEventListener("contextmenu",e=>{e.preventDefault();cancel();if(this.padMode==="hot"&&this.hot[i]!=null) this.clearHot(i)});
     });
 
     this.echoKnob=new Knob(u.echo,{min:0,max:1,def:0,label:"Echo deck "+this.id,onChange:v=>this.setParam("echo",v)});
@@ -1230,7 +1387,21 @@ class Deck{
     this.updateEcho();
     if(this.other.syncLock) this.other.doSync();
   }
-  renderPads(){this.ui.pads.querySelectorAll(".pad").forEach((p,i)=>p.classList.toggle("set",this.hot[i]!=null))}
+  renderPads(){
+    const labels={
+      hot:["1","2","3","4","5","6","7","8"],
+      loop:["1/4","1/2","1","2","4","8","16","32"],
+      jump:["−8","−4","−2","−1","+1","+2","+4","+8"],
+      release:["Brake S","Brake L","Back S","Back L","Echo","Build","Mute","Duck"]
+    };
+    this.ui.pads.querySelectorAll(".pad").forEach((p,i)=>{
+      p.textContent=labels[this.padMode][i];
+      p.classList.toggle("set",this.padMode==="hot"&&this.hot[i]!=null);
+      p.classList.toggle("release",this.padMode==="release");
+      p.classList.toggle("loop",this.padMode==="loop");
+      p.classList.toggle("jump",this.padMode==="jump");
+    })
+  }
 
   drawBase(){
     const c=this.ui.ov,dpr=window.devicePixelRatio||1;
@@ -1297,6 +1468,9 @@ class Deck{
     g.fillRect(w/2-dpr,0,2*dpr,h);
   }
   tick(){
+    if(this.loopActive&&this.loopIn!=null&&this.loopOut!=null&&this.playing&&this.getPos()>=this.loopOut-0.01){
+      this.seek(this.loopIn);
+    }
     if(this.scr&&this.scr.free&&this.scr.finished) this.endScratch();
     if(ctx){
       const now=ctx.currentTime;
