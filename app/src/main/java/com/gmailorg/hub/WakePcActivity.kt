@@ -90,7 +90,7 @@ class WakePcActivity : AppCompatActivity() {
                 status.text = "Klaar"
                 if (intent.getBooleanExtra("open_access_management", false)) {
                     intent.removeExtra("open_access_management")
-                    promptDeviceManagerPin(manageDevicesButton)
+                    openDeviceManager(manageDevicesButton)
                 }
             }
         }.start()
@@ -117,43 +117,41 @@ class WakePcActivity : AppCompatActivity() {
         }
 
         manageDevicesButton.setOnClickListener {
-            promptDeviceManagerPin(manageDevicesButton)
+            openDeviceManager(manageDevicesButton)
         }
     }
 
-    private fun promptDeviceManagerPin(trigger: View) {
-        val input = EditText(this).apply {
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            hint = "Beheerpincode"
-            isSingleLine = true
-        }
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Apparaten beheren")
-            .setMessage("Voer de beheerpincode in.")
-            .setView(input)
-            .setNegativeButton("Annuleren", null)
-            .setPositiveButton("Openen", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val pin = input.text.toString().trim()
-                if (pin.isBlank()) { input.error = "Vul de beheerpincode in"; return@setOnClickListener }
-                trigger.isEnabled = false
-                Thread {
-                    val owner = runCatching { MainDeviceRegistry.ownerStatus(this, pin) }.getOrDefault(false)
-                    val devices = if (owner) runCatching { MainDeviceRegistry.listDevices(this, pin) }.getOrNull() else null
-                    runOnUiThread {
-                        trigger.isEnabled = true
-                        if (!owner) { input.text.clear(); input.error = "Geen beheerderstoegang"; return@runOnUiThread }
-                        if (devices == null) { Toast.makeText(this, "Apparaten konden niet worden geladen.", Toast.LENGTH_LONG).show(); return@runOnUiThread }
-                        activeDeviceAdminPin = pin
-                        dialog.dismiss()
-                        showManagedDevices(devices)
-                    }
-                }.start()
+    private fun openDeviceManager(trigger: View) {
+        trigger.isEnabled = false
+        Thread {
+            val owner = MainDeviceRegistry.isLocallyOwner(this)
+            val devices = if (owner) runCatching {
+                MainDeviceRegistry.listDevices(this, "")
+            }.getOrNull() else null
+
+            runOnUiThread {
+                trigger.isEnabled = true
+                if (!owner) {
+                    Toast.makeText(
+                        this,
+                        "Alleen het eigenaarstoestel mag apparaten beheren.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@runOnUiThread
+                }
+                if (devices == null) {
+                    Toast.makeText(
+                        this,
+                        "Apparaten konden niet worden geladen.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@runOnUiThread
+                }
+
+                activeDeviceAdminPin = ""
+                showManagedDevices(devices)
             }
-        }
-        dialog.show()
+        }.start()
     }
 
     private fun showManagedDevices(devices: List<MainRegisteredDevice>) {
