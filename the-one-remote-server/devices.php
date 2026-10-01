@@ -5,6 +5,7 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
 const MAIN_ADMIN_SHA256 = '616f55173c48091a11f9d643846e32f77f9f949896747c85cf953d931956c8fe';
+const DEVICES_HUB_SYNC_SECRET_HASH = '90c09d64bb3d96b2cf7b1be1e27ac49096a0087577e1d2ac22cc53adbd55dae6';
 const MAIN_OWNER_RECOVERY_SHA256 = '1ba50f63c061b1c2bf3fafdd2b4d655d75f595eb2c23d3e1da5fed386f5978dc';
 
 $home = dirname((string)($_SERVER['DOCUMENT_ROOT'] ?? __DIR__));
@@ -153,6 +154,50 @@ if ($action === 'health') {
 }
 
 $body = devices_body();
+
+if ($action === 'hub_device_list') {
+    $secret = trim((string)($body['secret'] ?? ''));
+    if (
+        $secret === '' ||
+        !hash_equals(DEVICES_HUB_SYNC_SECRET_HASH, hash('sha256', $secret))
+    ) {
+        usleep(250000);
+        respond_devices(403, ['ok' => false, 'error' => 'Hub auth required']);
+    }
+
+    $state = devices_load($devicesFile);
+    $ownerId = devices_owner_id($ownerFile);
+    $devices = [];
+    foreach ($state['devices'] as $d) {
+        if (!is_array($d)) continue;
+        $deviceId = trim((string)($d['device_id'] ?? ''));
+        $owner = $ownerId !== '' && $deviceId !== '' && hash_equals($ownerId, $deviceId);
+        $devices[] = [
+            'device_id' => $deviceId,
+            'name' => (string)($d['name'] ?? ''),
+            'person_name' => (string)($d['person_name'] ?? ''),
+            'device_role' => (string)($d['device_role'] ?? 'main'),
+            'version' => (string)($d['version'] ?? ''),
+            'last_seen' => (int)($d['last_seen'] ?? 0),
+            'blocked' => (bool)($d['blocked'] ?? false),
+            'owner' => $owner,
+            'music_rights' => $owner || (bool)($d['music_rights'] ?? false),
+            'access_rights' => $owner
+                ? [
+                    'media_player' => true,
+                    'mixes' => true,
+                    'shared' => true,
+                    'favorites' => true,
+                    'dj' => true,
+                    'downloads' => true,
+                    'download_files' => true
+                ]
+                : device_access_rights($d),
+            'access_requests' => device_access_requests($d)
+        ];
+    }
+    respond_devices(200, ['ok' => true, 'devices' => $devices]);
+}
 
 if ($action === 'registration_status') {
     respond_devices(200, [
