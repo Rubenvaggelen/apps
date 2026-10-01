@@ -78,63 +78,106 @@ object AccessRequestNotifications {
         requests: List<MainPendingAccessRequest>
     ) {
         if (!MainDeviceRegistry.isLocallyOwner(context)) return
-        if (
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) != PackageManager.PERMISSION_GRANTED
-        ) return
 
-        ensureChannel(context)
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val seen = prefs.getStringSet(KEY_SEEN, emptySet()).orEmpty().toMutableSet()
+        NotifStore.init(context.applicationContext)
+
         val activeKeys = requests.map { requestKey(it) }.toSet()
+        val activeNotifKeys = activeKeys.map { "theone-access|" + it }.toSet()
 
+        // The One Main Meldingen is authoritative: each pending request gets
+        // one persistent item that cannot be swiped or cleared.
         requests.forEach { request ->
-            val key = requestKey(request)
-            if (key in seen) return@forEach
-
             val person = request.personName.ifBlank {
                 request.deviceName.ifBlank { "Iemand" }
             }
             val scopeLabel = scopeLabel(request.scope)
+            val key = "theone-access|" + requestKey(request)
+            val time = runCatching {
+                java.time.Instant.parse(request.requestedAt).toEpochMilli()
+            }.getOrDefault(System.currentTimeMillis())
 
-            val intent = Intent(context, WakePcActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                putExtra("open_access_management", true)
-            }
-            val pendingIntent = PendingIntent.getActivity(
-                context,
-                key.hashCode(),
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
-            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_launcher)
-                .setContentTitle("Toegangsverzoek van $person")
-                .setContentText("$person vraagt toestemming voor $scopeLabel.")
-                .setStyle(
-                    NotificationCompat.BigTextStyle().bigText(
-                        "$person vraagt toestemming voor $scopeLabel. " +
-                            "Tik om de rechten te bekijken en toe te staan of te weigeren."
-                    )
+            NotifStore.addOrUpdate(
+                NotifItem(
+                    key = key,
+                    packageName = "the.one.access.requests",
+                    appLabel = "The One Rechten",
+                    title = "Toegangsverzoek van $person",
+                    text = "$person vraagt toestemming voor $scopeLabel.",
+                    postTime = time,
+                    hasReplyAction = false,
+                    persistent = true,
+                    actionType = "access_request",
+                    actionValue = request.deviceId
                 )
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setAutoCancel(true)
-                .setContentIntent(pendingIntent)
-                .build()
-
-            val manager =
-                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.notify(key.hashCode(), notification)
-            seen += key
+            )
         }
 
-        // Opgeloste aanvragen uit de dedupe-set verwijderen. Een nieuwe aanvraag
-        // voor hetzelfde recht krijgt een nieuw requested_at en meldt dus opnieuw.
-        seen.retainAll(activeKeys)
+        // Alleen behandelde aanvragen verdwijnen uit Main Meldingen.
+        NotifStore.removeWhere(includePersistent = true) { item ->
+            item.actionType == "access_request" && item.key !in activeNotifKeys
+        }
+
+        val manager =
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val seen = prefs.getStringSet(KEY_SEEN, emptySet()).orEmpty().toMutableSet()
+
+        // Verwijder systeemmeldingen zodra de aanvraag is behandeld.
+        val stale = seen.filter { it !in activeKeys }
+        stale.forEach { key -> manager.cancel(("access|" + key).hashCode()) }
+        seen.removeAll(stale.toSet())
+
+        if (
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            ensureChannel(context)
+
+            requests.forEach { request ->
+                val key = requestKey(request)
+                if (key in seen) return@forEach
+
+                val person = request.personName.ifBlank {
+                    request.deviceName.ifBlank { "Iemand" }
+                }
+                val scopeLabel = scopeLabel(request.scope)
+
+                val intent = Intent(context, WakePcActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    putExtra("open_access_management", true)
+                    putExtra("focus_device_id", request.deviceId)
+                }
+                val pendingIntent = PendingIntent.getActivity(
+                    context,
+                    key.hashCode(),
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                    .setSmallIcon(R.mipmap.ic_launcher)
+                    .setContentTitle("Toegangsverzoek van $person")
+                    .setContentText("$person vraagt toestemming voor $scopeLabel.")
+                    .setStyle(
+                        NotificationCompat.BigTextStyle().bigText(
+                            "$person vraagt toestemming voor $scopeLabel. " +
+                                "Deze melding blijft staan totdat je de aanvraag behandelt."
+                        )
+                    )
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setOngoing(true)
+                    .setAutoCancel(false)
+                    .setContentIntent(pendingIntent)
+                    .build()
+
+                manager.notify(("access|" + key).hashCode(), notification)
+                seen += key
+            }
+        }
+
         prefs.edit().putStringSet(KEY_SEEN, seen).apply()
     }
 
