@@ -7,6 +7,7 @@ on:
       - 'app/**'
       - 'carradio/**'
       - 'remoteapp/**'
+      - 'thedj/**'
       - 'build.gradle'
       - 'settings.gradle'
       - 'gradle.properties'
@@ -74,7 +75,7 @@ jobs:
             | head -1 \
             | tr -d ':' \
             | tr '[:upper:]' '[:lower:]')
-          for APK in "app/build/outputs/apk/debug/app-debug.apk" "carradio/build/outputs/apk/debug/carradio-debug.apk" "remoteapp/build/outputs/apk/debug/remoteapp-debug.apk"; do
+          for APK in "app/build/outputs/apk/debug/app-debug.apk" "carradio/build/outputs/apk/debug/carradio-debug.apk" "remoteapp/build/outputs/apk/debug/remoteapp-debug.apk" "thedj/build/outputs/apk/debug/thedj-debug.apk"; do
             APK_CERT=$($APKSIGNER verify --print-certs "$APK" \
               | sed -n 's/.*certificate SHA-256 digest: //p' \
               | head -1 \
@@ -114,6 +115,12 @@ jobs:
           name: the-one-remote-apk
           path: remoteapp/build/outputs/apk/debug/remoteapp-debug.apk
 
+      - name: Upload The One DJ APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: the-one-dj-apk
+          path: thedj/build/outputs/apk/debug/thedj-debug.apk
+
       - name: Create GitHub Release with APKs
         uses: softprops/action-gh-release@v2
         with:
@@ -123,5 +130,6 @@ jobs:
             app/build/outputs/apk/debug/app-debug.apk
             carradio/build/outputs/apk/debug/carradio-debug.apk
             remoteapp/build/outputs/apk/debug/remoteapp-debug.apk
+            thedj/build/outputs/apk/debug/thedj-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
