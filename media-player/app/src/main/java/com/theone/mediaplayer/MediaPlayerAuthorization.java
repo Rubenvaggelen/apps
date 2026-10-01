@@ -187,7 +187,7 @@ public final class MediaPlayerAuthorization {
                                 .put("name", deviceName())
                                 .put("person_name", personName(activity))
                                 .put("platform", "Media Player • Android " + Build.VERSION.RELEASE)
-                                .put("version", BuildConfig.VERSION_CODE)
+                                .put("version", currentVersionCode(activity))
                                 .put("device_role", "main"));
 
                 if (heartbeat.optBoolean("blocked", false)) {
@@ -293,6 +293,17 @@ public final class MediaPlayerAuthorization {
                 .edit()
                 .putBoolean(KEY_ALLOWED, allowed)
                 .apply();
+    }
+
+    private static long currentVersionCode(Context context) {
+        try {
+            android.content.pm.PackageInfo info =
+                    context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
+            if (Build.VERSION.SDK_INT >= 28) return info.getLongVersionCode();
+            return info.versionCode;
+        } catch (Throwable ignored) {
+            return 0L;
+        }
     }
 
     private static String deviceName() {
