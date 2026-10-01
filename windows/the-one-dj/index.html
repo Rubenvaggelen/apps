@@ -604,6 +604,7 @@ class Slider{
 /* ---------- audio core ---------- */
 let ctx=null,master=null,impulse=null;
 const state={xf:0,master:0.8};
+let recorder=null,recordChunks=[],recordStartedAt=0;
 function ensureCtx(){
   if(!ctx){
     const AC=window.AudioContext||window.webkitAudioContext;
@@ -628,6 +629,36 @@ function ensureCtx(){
   if(ctx.state==="suspended") ctx.resume();
   return ctx;
 }
+function preferredRecordingMime(){
+  const types=["audio/webm;codecs=opus","audio/ogg;codecs=opus","audio/webm"];
+  return types.find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported(t))||"";
+}
+function toggleRecording(){
+  const btn=document.getElementById("recordBtn");
+  ensureCtx();
+  if(recorder&&recorder.state==="recording"){
+    recorder.stop();return;
+  }
+  if(!window.MediaRecorder){alert("Opnemen wordt op dit apparaat niet ondersteund.");return}
+  recordChunks=[];
+  const mime=preferredRecordingMime();
+  recorder=new MediaRecorder(master.recDest.stream,mime?{mimeType:mime}:undefined);
+  recorder.ondataavailable=e=>{if(e.data&&e.data.size)recordChunks.push(e.data)};
+  recorder.onstop=()=>{
+    btn?.classList.remove("recording");btn?.setAttribute("aria-pressed","false");
+    if(!recordChunks.length)return;
+    const blob=new Blob(recordChunks,{type:recorder.mimeType||"audio/webm"});
+    const ext=(blob.type.includes("ogg")?"ogg":"webm");
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+    a.download="The-One-DJ-Mix-"+new Date().toISOString().replace(/[:.]/g,"-")+"."+ext;
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+  };
+  recorder.start(1000);recordStartedAt=Date.now();
+  btn?.classList.add("recording");btn?.setAttribute("aria-pressed","true");btn.textContent="■ Stop opname";
+}
+document.getElementById("recordBtn")?.addEventListener("click",toggleRecording);
+
 function makeImpulse(sec,decay){
   const len=Math.floor(ctx.sampleRate*sec),ir=ctx.createBuffer(2,len,ctx.sampleRate);
   for(let c=0;c<2;c++){const d=ir.getChannelData(c);for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,decay)}
@@ -2057,6 +2088,52 @@ async function playlistRead(){
   playlistRestoring=false;
   renderLib();autoFill();playlistWrite();
 }
+async function savePlaylistBank(n){
+  try{
+    const db=await sfxDB();
+    const rows=lib.map((t,index)=>({id:t.id,index,name:t.name,status:"queued",file:t.file,sharedName:t.sharedName||""}));
+    await new Promise((res,rej)=>{
+      const tx=db.transaction("playlist","readwrite");
+      tx.objectStore("playlist").put(rows,"bank"+n);
+      tx.oncomplete=res;tx.onerror=()=>rej(tx.error);
+    });
+    return true;
+  }catch(e){return false}
+}
+async function loadPlaylistBank(n){
+  try{
+    const db=await sfxDB();
+    const rows=await new Promise((res,rej)=>{
+      const tx=db.transaction("playlist");
+      const rq=tx.objectStore("playlist").get("bank"+n);
+      rq.onsuccess=()=>res(rq.result||[]);rq.onerror=()=>rej(rq.error);
+    });
+    if(!Array.isArray(rows)||!rows.length){alert("Playlist Bank "+n+" is leeg.");return}
+    lib.length=0;sharedLoaded.clear();
+    rows.sort((a,b)=>(a.index??0)-(b.index??0));
+    for(const r of rows){
+      if(!r||!r.file)continue;
+      const item={id:r.id||playlistId(),file:r.file,name:cleanImportedName(r.name||baseName(r.file)),status:"queued",sharedName:r.sharedName||""};
+      lib.push(item);if(item.sharedName)sharedLoaded.add(item.sharedName);
+    }
+    renderLib();playlistWrite();autoFill();
+  }catch(e){alert("Playlist Bank kon niet worden geladen.")}
+}
+let bankSaveMode=false;
+document.getElementById("bankSave")?.addEventListener("click",e=>{
+  bankSaveMode=!bankSaveMode;e.currentTarget.classList.toggle("on",bankSaveMode);
+  e.currentTarget.textContent=bankSaveMode?"Kies B1–B4":"Bank opslaan";
+});
+document.querySelectorAll("[data-bank]").forEach(btn=>btn.addEventListener("click",async()=>{
+  const n=+btn.dataset.bank;
+  if(bankSaveMode){
+    const ok=await savePlaylistBank(n);
+    bankSaveMode=false;document.getElementById("bankSave")?.classList.remove("on");
+    document.getElementById("bankSave").textContent="Bank opslaan";
+    if(ok) btn.animate?.([{transform:"scale(1)"},{transform:"scale(1.12)"},{transform:"scale(1)"}],{duration:300});
+  }else await loadPlaylistBank(n);
+}));
+
 async function clearStoredPlaylist(){
   try{
     const db=await sfxDB();
@@ -2163,6 +2240,29 @@ async function removeLibItem(t){
     try{await fetch("imports/remove?name="+encodeURIComponent(t.sharedName),{method:"POST",cache:"no-store"})}catch(e){}
   }
 }
+let previewSource=null,previewGain=null,previewToken=0;
+async function startTouchPreview(item){
+  if(!item?.file)return;
+  const token=++previewToken;ensureCtx();
+  stopTouchPreview();
+  try{
+    const buf=await decodeAnyAudio(item.file);
+    if(token!==previewToken)return;
+    const src=ctx.createBufferSource(),gain=ctx.createGain();
+    src.buffer=buf;gain.gain.value=.9;src.connect(gain);
+    gain.connect(hp.cueBus||ctx.destination);
+    const at=Math.min(Math.max(0,buf.duration*.32),Math.max(0,buf.duration-1));
+    src.start(0,at);previewSource=src;previewGain=gain;
+    src.onended=()=>{if(previewSource===src){previewSource=null;previewGain=null}};
+  }catch(e){}
+}
+function stopTouchPreview(){
+  previewToken++;
+  if(previewSource){try{previewSource.stop()}catch(e){}try{previewSource.disconnect()}catch(e){}}
+  if(previewGain){try{previewGain.disconnect()}catch(e){}}
+  previewSource=null;previewGain=null;
+}
+
 function renderLib(){
   libEmpty.hidden=lib.length>0;libList.innerHTML="";
   const next=autoLoad?nextQueued():null;
@@ -2173,6 +2273,10 @@ function renderLib(){
     tag.textContent={A:"Deck A",B:"Deck B",played:"Gespeeld",loading:"Laden…",error:"Niet af te spelen"}[t.status]||(t===next?"Volgende":"");
     if(t===next) li.dataset.status="next";
     const name=document.createElement("span");name.className="lib-name";name.textContent=t.name;
+    const preview=document.createElement("button");preview.className="btn small preview-btn";preview.textContent="◉";preview.title="Touch Preview";preview.setAttribute("aria-label","Voorbeluister "+t.name);
+    const previewOn=e=>{e.preventDefault();e.stopPropagation();preview.classList.add("on");startTouchPreview(t)};
+    const previewOff=e=>{e?.preventDefault?.();preview.classList.remove("on");stopTouchPreview()};
+    preview.addEventListener("pointerdown",previewOn);preview.addEventListener("pointerup",previewOff);preview.addEventListener("pointercancel",previewOff);preview.addEventListener("pointerleave",previewOff);
     const a=document.createElement("button");a.className="btn small to-a";a.textContent="A";a.setAttribute("aria-label","Laad "+t.name+" in deck A");
     const b=document.createElement("button");b.className="btn small to-b";b.textContent="B";b.setAttribute("aria-label","Laad "+t.name+" in deck B");
     const again=document.createElement("button");again.className="btn small lib-next";again.textContent="↩";again.title="Zet dit nummer opnieuw als eerstvolgende";again.setAttribute("aria-label","Zet "+t.name+" opnieuw als eerstvolgende");again.hidden=t.status!=="played";
@@ -2199,7 +2303,7 @@ function renderLib(){
       const [m]=lib.splice(from,1);lib.splice(to,0,m);
       renderLib();playlistWrite();
     });
-    li.append(drag,tag,name,a,b,again,x);libList.appendChild(li);
+    li.append(drag,tag,name,preview,a,b,again,x);libList.appendChild(li);
   });
 }
 document.getElementById("clearPlaylist")?.addEventListener("click",async()=>{
