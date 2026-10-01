@@ -1,10 +1,11 @@
 {
-  "version": "2.2.5",
-  "build": 225,
-  "notes": "Native Windows local media browser for USB/local drives with recursive scan",
+  "version": "2.2.6",
+  "build": 226,
+  "notes": "Native USB/local media browser tested on Ruben E drive; updater refreshes server/runtime files",
   "sha256": "",
   "files": [
     "index.html",
-    "Serve-The-One-DJ.ps1"
+    "Serve-The-One-DJ.ps1",
+    "Update-The-One-DJ.ps1"
   ]
 }
