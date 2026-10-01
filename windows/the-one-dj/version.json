@@ -1,9 +1,10 @@
 {
-  "version": "2.2.4",
-  "build": 224,
-  "notes": "Fix Local Media USB folder scanning; recursively read music from USB/local folders",
+  "version": "2.2.5",
+  "build": 225,
+  "notes": "Native Windows local media browser for USB/local drives with recursive scan",
   "sha256": "",
   "files": [
-    "index.html"
+    "index.html",
+    "Serve-The-One-DJ.ps1"
   ]
 }
