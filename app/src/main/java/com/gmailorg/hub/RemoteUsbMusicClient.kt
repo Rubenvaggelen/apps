@@ -531,6 +531,16 @@ object RemoteUsbMusicClient {
             "&path=" + enc(file.path)
     }
 
+    fun downloadUrl(context: Context, file: RemoteFile): String {
+        val token = token(context)
+        return ENDPOINT + "?action=download-stream" +
+            "&token=" + enc(token) +
+            "&request_device_id=" + enc(MainDeviceRegistry.deviceId(context)) +
+            "&device=" + enc(file.deviceId) +
+            "&stick=" + enc(file.stickId) +
+            "&path=" + enc(file.path)
+    }
+
     fun queueDjImport(context: Context, file: RemoteFile): Boolean {
         val token = token(context)
         val body = JSONObject()
