@@ -336,12 +336,7 @@ public final class MediaPlayerAuthorization {
     }
 
     private static Button button(Activity activity, String value) {
-        Button button = new Button(activity);
-        button.setText(value);
-        button.setTextColor(Color.WHITE);
-        button.setTextSize(15f);
-        button.setAllCaps(false);
-        button.setBackground(PremiumUi.accentButton(activity));
+        Button button = PremiumUi.primaryButton(activity, value);
         button.setMinimumHeight(dp(activity, 48));
         return button;
     }
