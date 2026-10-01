@@ -23,7 +23,7 @@ import java.net.URL;
 
 public final class MediaPlayerUpdateChecker {
     private static final String RELEASES_URL =
-            "https://api.github.com/repos/Rubenvaggelen/apps/releases?per_page=40";
+            "https://api.github.com/repos/Rubenvaggelen/apps/releases?per_page=100";
     private static final String TAG_PREFIX = "media-player-v";
     private static final String APK_MIME = "application/vnd.android.package-archive";
 
