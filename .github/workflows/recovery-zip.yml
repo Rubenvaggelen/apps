@@ -1,4 +1,4 @@
-# recovery snapshot: 2026-10-01 build 899
+# recovery snapshot: 2026-10-01 main ecf1e58ecf8bf635d4b15da3ed3294173664647a
 name: Create Recovery ZIP
 
 on:
