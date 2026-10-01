@@ -118,7 +118,9 @@ function device_access_rights(array $device): array {
     $legacy = (bool)($device['music_rights'] ?? false);
     $stored = is_array($device['access_rights'] ?? null) ? $device['access_rights'] : [];
     return [
-        'media_player' => (bool)($stored['media_player'] ?? false),
+        // Bestaande gebruikers met oude muziekrechten houden toegang tot de
+        // player na de overgang naar losse rechten.
+        'media_player' => (bool)($stored['media_player'] ?? $legacy),
         'mixes' => (bool)($stored['mixes'] ?? $legacy),
         'shared' => (bool)($stored['shared'] ?? $legacy),
         'favorites' => (bool)($stored['favorites'] ?? $legacy),
@@ -135,7 +137,7 @@ function device_access_rights(array $device): array {
 function device_access_requests(array $device): array {
     $stored = is_array($device['access_requests'] ?? null) ? $device['access_requests'] : [];
     $result = [];
-    foreach (['mixes', 'shared', 'favorites', 'dj', 'downloads', 'download_files'] as $scope) {
+    foreach (['media_player', 'mixes', 'shared', 'favorites', 'dj', 'downloads', 'download_files'] as $scope) {
         $row = is_array($stored[$scope] ?? null) ? $stored[$scope] : [];
         if (($row['status'] ?? '') === 'pending') {
             $result[$scope] = [
