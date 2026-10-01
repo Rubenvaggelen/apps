@@ -230,10 +230,54 @@ class MoviesActivity : AppCompatActivity() {
             }
         }
 
+        refreshMusicRightsVisibility()
+    }
+
+    private fun applyMusicRightsVisibility() {
+        findViewById<View>(R.id.favoritesButton).visibility =
+            if (MainDeviceRegistry.hasAccess(
+                    this,
+                    MainDeviceRegistry.ACCESS_FAVORITES
+                )
+            ) View.VISIBLE else View.GONE
+
+        findViewById<View>(R.id.supremacyMixesButton).visibility =
+            if (MainDeviceRegistry.hasAccess(
+                    this,
+                    MainDeviceRegistry.ACCESS_MIXES
+                )
+            ) View.VISIBLE else View.GONE
+
+        findViewById<View>(R.id.remoteUsbMusicButton).visibility =
+            if (MainDeviceRegistry.hasAccess(
+                    this,
+                    MainDeviceRegistry.ACCESS_SHARED
+                )
+            ) View.VISIBLE else View.GONE
+
+        musicBroadcastButton.visibility =
+            if (MainDeviceRegistry.isLocallyOwner(this)) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
+    }
+
+    private fun refreshMusicRightsVisibility() {
+        applyMusicRightsVisibility()
+        remoteMusicIo.execute {
+            runCatching { MainDeviceRegistry.heartbeat(this@MoviesActivity) }
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed) {
+                    applyMusicRightsVisibility()
+                }
+            }
+        }
     }
 
     override fun onResume() {
         super.onResume()
+        refreshMusicRightsVisibility()
         SupremacyPlaybackService.resumeLastSessionIfNeeded(this)
         musicNowPlaying.removeCallbacks(compactPlayerRefresh)
         musicNowPlaying.postDelayed(compactPlayerRefresh, 250)
@@ -1364,12 +1408,12 @@ class MoviesActivity : AppCompatActivity() {
         val normalized = normalizeRemoteFolder(folder)
         val canOrganizeNewDownloads =
             MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_ORGANIZE)
+        val canFavorite =
+            MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_FAVORITES)
+        val canFileDownload =
+            MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_FILE_DOWNLOADS)
         val canDjImport =
-            MainDeviceRegistry.isTheOneProfile(this) ||
-                MainDeviceRegistry.hasAccess(
-                    this,
-                    MainDeviceRegistry.ACCESS_DJ
-                )
+            MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_DJ)
         val isNewDownloadsFolder =
             normalized.equals("Nieuwe downloads", ignoreCase = true) ||
                 normalized.startsWith("Nieuwe downloads/", ignoreCase = true)
@@ -1621,52 +1665,56 @@ class MoviesActivity : AppCompatActivity() {
             val compactActionHeight = dp(36)
             val compactGap = dp(6)
 
-            val favorite = TextView(this).apply {
-                text = if (favoriteUsbKeys.contains(usbFavoriteKey(file))) "★" else "☆"
-                textSize = 22f
-                gravity = android.view.Gravity.CENTER
-                setTextColor(Color.parseColor("#D8A451"))
-                contentDescription = "Favoriet ${file.name}"
-                setBackgroundResource(R.drawable.bg_the_one_gold_outline)
-                setPadding(0, 0, 0, 0)
-                setOnClickListener {
-                    toggleUsbFavorite(stick, file, this)
-                }
-            }
-            actionRow.addView(
-                favorite,
-                LinearLayout.LayoutParams(compactActionWidth, compactActionHeight).apply {
-                    marginEnd = compactGap
-                }
-            )
-
-            val download = TextView(this).apply {
-                text = if (file.cached) "↓" else "…"
-                textSize = 21f
-                gravity = android.view.Gravity.CENTER
-                setTextColor(Color.parseColor("#D8A451"))
-                contentDescription = "Download ${file.name}"
-                setBackgroundResource(R.drawable.bg_the_one_gold_outline)
-                setPadding(0, 0, 0, 0)
-                alpha = if (file.cached) 1f else 0.35f
-                setOnClickListener {
-                    if (file.cached) {
-                        requestRemoteUsbDownload(file)
-                    } else {
-                        Toast.makeText(
-                            this@MoviesActivity,
-                            "Download beschikbaar zodra synchronisatie klaar is.",
-                            Toast.LENGTH_SHORT
-                        ).show()
+            if (canFavorite) {
+                val favorite = TextView(this).apply {
+                    text = if (favoriteUsbKeys.contains(usbFavoriteKey(file))) "★" else "☆"
+                    textSize = 22f
+                    gravity = android.view.Gravity.CENTER
+                    setTextColor(Color.parseColor("#D8A451"))
+                    contentDescription = "Favoriet ${file.name}"
+                    setBackgroundResource(R.drawable.bg_the_one_gold_outline)
+                    setPadding(0, 0, 0, 0)
+                    setOnClickListener {
+                        toggleUsbFavorite(stick, file, this)
                     }
                 }
+                actionRow.addView(
+                    favorite,
+                    LinearLayout.LayoutParams(compactActionWidth, compactActionHeight).apply {
+                        marginEnd = compactGap
+                    }
+                )
             }
-            actionRow.addView(
-                download,
-                LinearLayout.LayoutParams(compactActionWidth, compactActionHeight).apply {
-                    marginEnd = compactGap
+
+            if (canFileDownload) {
+                val download = TextView(this).apply {
+                    text = if (file.cached) "↓" else "…"
+                    textSize = 21f
+                    gravity = android.view.Gravity.CENTER
+                    setTextColor(Color.parseColor("#D8A451"))
+                    contentDescription = "Download ${file.name}"
+                    setBackgroundResource(R.drawable.bg_the_one_gold_outline)
+                    setPadding(0, 0, 0, 0)
+                    alpha = if (file.cached) 1f else 0.35f
+                    setOnClickListener {
+                        if (file.cached) {
+                            requestRemoteUsbDownload(file)
+                        } else {
+                            Toast.makeText(
+                                this@MoviesActivity,
+                                "Download beschikbaar zodra synchronisatie klaar is.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
                 }
-            )
+                actionRow.addView(
+                    download,
+                    LinearLayout.LayoutParams(compactActionWidth, compactActionHeight).apply {
+                        marginEnd = compactGap
+                    }
+                )
+            }
 
             if (canDjImport) {
                 val dj = TextView(this).apply {
@@ -2437,13 +2485,13 @@ class MoviesActivity : AppCompatActivity() {
         val canDeleteSharedMedia = MainDeviceRegistry.isLocallyOwner(this)
         val canOrganizeNewDownloads =
             MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_ORGANIZE)
+        val canFavorite =
+            MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_FAVORITES)
+        val canFileDownload =
+            MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_FILE_DOWNLOADS)
         val dialog = Dialog(this)
         val canDjImport =
-            MainDeviceRegistry.isTheOneProfile(this) ||
-            MainDeviceRegistry.hasAccess(
-                this,
-                MainDeviceRegistry.ACCESS_DJ
-            )
+            MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_DJ)
         val trackRows = mutableListOf<LinearLayout>()
         val trackNumbers = mutableListOf<TextView>()
         val trackTitles = mutableListOf<TextView>()
@@ -2695,58 +2743,62 @@ class MoviesActivity : AppCompatActivity() {
                 }
             )
 
-            val favorite = TextView(this).apply {
-                text = if (favoriteUsbKeys.contains(usbFavoriteKey(file))) "★" else "☆"
-                textSize = 23f
-                setTextColor(Color.parseColor("#D8A451"))
-                gravity = android.view.Gravity.CENTER
-                contentDescription = "Favoriet ${file.name}"
-                setBackgroundResource(R.drawable.bg_the_one_gold_outline)
-                setPadding(0, 0, 0, 0)
-                setOnClickListener {
-                    toggleUsbFavorite(stick, file, this)
-                }
-            }
-            actions.addView(
-                favorite,
-                LinearLayout.LayoutParams(
-                    actionWidth,
-                    actionHeight
-                ).apply {
-                    marginEnd = actionGap
-                }
-            )
-
-            val download = TextView(this).apply {
-                text = if (file.cached) "↓" else "…"
-                textSize = 21f
-                setTextColor(Color.parseColor("#D8A451"))
-                gravity = android.view.Gravity.CENTER
-                contentDescription = "Download ${file.name}"
-                setBackgroundResource(R.drawable.bg_the_one_gold_outline)
-                setPadding(0, 0, 0, 0)
-                alpha = if (file.cached) 1f else 0.35f
-                setOnClickListener {
-                    if (file.cached) {
-                        requestRemoteUsbDownload(file)
-                    } else {
-                        Toast.makeText(
-                            this@MoviesActivity,
-                            "Download beschikbaar zodra synchronisatie klaar is.",
-                            Toast.LENGTH_SHORT
-                        ).show()
+            if (canFavorite) {
+                val favorite = TextView(this).apply {
+                    text = if (favoriteUsbKeys.contains(usbFavoriteKey(file))) "★" else "☆"
+                    textSize = 23f
+                    setTextColor(Color.parseColor("#D8A451"))
+                    gravity = android.view.Gravity.CENTER
+                    contentDescription = "Favoriet ${file.name}"
+                    setBackgroundResource(R.drawable.bg_the_one_gold_outline)
+                    setPadding(0, 0, 0, 0)
+                    setOnClickListener {
+                        toggleUsbFavorite(stick, file, this)
                     }
                 }
+                actions.addView(
+                    favorite,
+                    LinearLayout.LayoutParams(
+                        actionWidth,
+                        actionHeight
+                    ).apply {
+                        marginEnd = actionGap
+                    }
+                )
             }
-            actions.addView(
-                download,
-                LinearLayout.LayoutParams(
-                    actionWidth,
-                    actionHeight
-                ).apply {
-                    if (canDjImport) marginEnd = actionGap
+
+            if (canFileDownload) {
+                val download = TextView(this).apply {
+                    text = if (file.cached) "↓" else "…"
+                    textSize = 21f
+                    setTextColor(Color.parseColor("#D8A451"))
+                    gravity = android.view.Gravity.CENTER
+                    contentDescription = "Download ${file.name}"
+                    setBackgroundResource(R.drawable.bg_the_one_gold_outline)
+                    setPadding(0, 0, 0, 0)
+                    alpha = if (file.cached) 1f else 0.35f
+                    setOnClickListener {
+                        if (file.cached) {
+                            requestRemoteUsbDownload(file)
+                        } else {
+                            Toast.makeText(
+                                this@MoviesActivity,
+                                "Download beschikbaar zodra synchronisatie klaar is.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
                 }
-            )
+                actions.addView(
+                    download,
+                    LinearLayout.LayoutParams(
+                        actionWidth,
+                        actionHeight
+                    ).apply {
+                        if (canDjImport) marginEnd = actionGap
+                    }
+                )
+            }
 
             if (canDjImport) {
                 val dj = TextView(this).apply {
