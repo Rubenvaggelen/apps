@@ -8,6 +8,7 @@ class TheOneApplication : Application() {
         super.onCreate()
         AccessRequestNotificationWorker.schedule(this)
         AccessRequestNotificationWorker.checkNow(this)
+        DailyMotivationWorker.schedule(this)
     }
 
     override fun onTrimMemory(level: Int) {
