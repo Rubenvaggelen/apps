@@ -1993,6 +1993,8 @@ class MoviesActivity : AppCompatActivity() {
         val dialog = Dialog(this)
         val selected = linkedSetOf<String>()
         val byPath = files.associateBy { it.path }
+        val canDeleteSelected = sourceFolder.startsWith("Nieuwe downloads", true) &&
+            MainDeviceRegistry.isLocallyOwner(this)
 
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -2031,10 +2033,26 @@ class MoviesActivity : AppCompatActivity() {
             isEnabled = false
         }
 
+        val deleteButton = TextView(this).apply {
+            text = "VERWIJDEREN (0)"
+            textSize = 13f
+            gravity = android.view.Gravity.CENTER
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            setBackgroundResource(R.drawable.bg_the_one_blue_button)
+            setPadding(dp(12), dp(11), dp(12), dp(11))
+            alpha = 0.45f
+            isEnabled = false
+            visibility = if (canDeleteSelected) View.VISIBLE else View.GONE
+        }
+
         fun refreshMoveButton() {
             moveButton.text = "VERPLAATS (${selected.size})"
             moveButton.isEnabled = selected.isNotEmpty()
             moveButton.alpha = if (selected.isNotEmpty()) 1f else 0.45f
+            deleteButton.text = "VERWIJDEREN (${selected.size})"
+            deleteButton.isEnabled = selected.isNotEmpty()
+            deleteButton.alpha = if (selected.isNotEmpty()) 1f else 0.45f
         }
 
         val list = LinearLayout(this).apply {
@@ -2089,6 +2107,89 @@ class MoviesActivity : AppCompatActivity() {
             }
         }
         panel.addView(moveButton)
+
+        deleteButton.setOnClickListener {
+            val chosen = selected.mapNotNull { byPath[it] }
+            if (chosen.isEmpty()) return@setOnClickListener
+
+            AlertDialog.Builder(this)
+                .setTitle("Meerdere nummers verwijderen")
+                .setMessage(
+                    "${chosen.size} geselecteerde nummers verwijderen uit Nieuwe downloads? " +
+                        "De bestanden worden uit Shared Media verwijderd."
+                )
+                .setNegativeButton("Annuleren", null)
+                .setPositiveButton("Verwijderen") { _, _ ->
+                    deleteButton.isEnabled = false
+                    moveButton.isEnabled = false
+                    remoteMusicIo.execute {
+                        var deleted = 0
+                        var failed = 0
+                        var freedBytes = 0L
+
+                        chosen.forEach { file ->
+                            runCatching {
+                                RemoteUsbMusicClient.deleteSharedTrack(
+                                    this@MoviesActivity,
+                                    file
+                                )
+                            }.onSuccess { freed ->
+                                deleted++
+                                freedBytes += freed
+                            }.onFailure {
+                                failed++
+                            }
+                        }
+
+                        val refreshedStick = runCatching {
+                            RemoteUsbMusicClient.catalog(this@MoviesActivity)
+                                .firstOrNull {
+                                    it.deviceId.equals(stick.deviceId, true) &&
+                                        it.stickId.equals(stick.stickId, true)
+                                }
+                        }.getOrNull()
+
+                        runOnUiThread {
+                            dialog.dismiss()
+                            parentDialog.dismiss()
+
+                            val freedText = if (freedBytes > 0L) {
+                                val mb = freedBytes.toDouble() / 1024.0 / 1024.0
+                                " • %.1f MB vrij".format(mb)
+                            } else {
+                                ""
+                            }
+
+                            Toast.makeText(
+                                this@MoviesActivity,
+                                if (failed == 0) {
+                                    "$deleted nummers verwijderd$freedText"
+                                } else {
+                                    "$deleted verwijderd • $failed mislukt$freedText"
+                                },
+                                Toast.LENGTH_SHORT
+                            ).show()
+
+                            if (refreshedStick != null) {
+                                showRemoteFolderLevel(
+                                    refreshedStick,
+                                    sourceFolder
+                                )
+                            } else {
+                                showFreshRemoteFolderLevel(stick, sourceFolder)
+                            }
+                        }
+                    }
+                }
+                .show()
+        }
+        panel.addView(
+            deleteButton,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(8) }
+        )
 
         panel.addView(TextView(this).apply {
             text = "ANNULEREN"
