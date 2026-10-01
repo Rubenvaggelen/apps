@@ -138,6 +138,14 @@ function safe_path(string $v): string {
 
     return $v;
 }
+function canonical_shared_path(string $v): string {
+    // Oude Mac/Windows imports hebben soms U+F022 of '?' in een mapnaam.
+    // Windows kan '?' niet fysiek gebruiken; beide aliases worden daarom één pad.
+    $v=str_replace(["\xEF\x80\xA2",'?'],' ',$v);
+    $v=preg_replace('/ {2,}/u',' ',$v) ?? $v;
+    return trim($v);
+}
+
 function key_for(string $device, string $stick, string $path): string {
     return hash('sha256', $device . "\n" . $stick . "\n" . $path);
 }
@@ -548,7 +556,7 @@ if ($action === 'hub-folders-sync') {
     $folders=[];
     foreach ($incoming as $value) {
         if (!is_string($value)) continue;
-        $folder=safe_path($value);
+        $folder=canonical_shared_path(safe_path($value));
         if (
             $folder !== 'Ruben' &&
             !str_starts_with($folder,'Ruben/') &&
@@ -785,6 +793,114 @@ if ($action === 'hub-move-complete') {
     }
 
     out(200,['ok'=>true,'source_path'=>$source,'new_path'=>$newPath]);
+}
+
+if ($action === 'hub-folder-merge') {
+    if (token_scope(bearer(),$sec) !== 'music-hub') {
+        out(401,['ok'=>false,'error'=>'hub auth required']);
+    }
+
+    $b=read_json();
+    $target=rtrim(canonical_shared_path(safe_path((string)($b['target_prefix'] ?? ''))),'/');
+    $sources=[];
+    foreach ((array)($b['source_prefixes'] ?? []) as $raw) {
+        if (!is_string($raw)) continue;
+        $src=rtrim(safe_path($raw),'/');
+        if ($src!=='' && $src!==$target) $sources[$src]=true;
+    }
+    $sources=array_keys($sources);
+    if ($target==='' || $sources===[]) {
+        out(400,['ok'=>false,'error'=>'source_prefixes and target_prefix required']);
+    }
+
+    $device='THEONE-HUB';
+    $stick='hub-primary';
+    $metaFile=$meta.'/'.$device.'__'.$stick.'.json';
+    $doc=load_json($metaFile);
+    if ($doc===[]) out(404,['ok'=>false,'error'=>'hub catalog missing']);
+
+    $rows=is_array($doc['files'] ?? null) ? $doc['files'] : [];
+    $merged=[];
+    $changed=0;
+    $deduped=0;
+
+    foreach ($rows as $row) {
+        if (!is_array($row)) continue;
+        $old=(string)($row['path'] ?? '');
+        $new=$old;
+
+        foreach ($sources as $src) {
+            if ($old===$src || str_starts_with($old,$src.'/')) {
+                $suffix=substr($old,strlen($src));
+                $new=$target.$suffix;
+                break;
+            }
+        }
+
+        if ($new!==$old) {
+            $sha=strtolower(trim((string)($row['sha256'] ?? '')));
+            $oldCache=cache_file_for($files,$device,$stick,$old);
+            $row['path']=$new;
+            $row['name']=basename($new);
+            $row['folder']=dirname($new)==='.'?'':dirname($new);
+            $row['cached']=ensure_cached_from_pool($files,$device,$stick,$new,$sha);
+            if (is_file($oldCache)) @unlink($oldCache);
+            $changed++;
+        }
+
+        $key=strtolower((string)($row['path'] ?? ''));
+        if ($key==='') continue;
+
+        if (!isset($merged[$key])) {
+            $merged[$key]=$row;
+            continue;
+        }
+
+        $existing=$merged[$key];
+        $existingCached=(bool)($existing['cached'] ?? false);
+        $rowCached=(bool)($row['cached'] ?? false);
+        if (!$existingCached && $rowCached) {
+            $merged[$key]=$row;
+        } elseif (
+            trim((string)($existing['sha256'] ?? ''))==='' &&
+            trim((string)($row['sha256'] ?? ''))!==''
+        ) {
+            $merged[$key]=$row;
+        }
+        $deduped++;
+    }
+
+    $folderRows=is_array($doc['folders'] ?? null) ? $doc['folders'] : [];
+    $folderMap=[];
+    foreach ($folderRows as $folder) {
+        if (!is_string($folder) || $folder==='') continue;
+        $new=canonical_shared_path($folder);
+        foreach ($sources as $src) {
+            if ($new===$src || str_starts_with($new,$src.'/')) {
+                $new=$target.substr($new,strlen($src));
+                break;
+            }
+        }
+        $folderMap[strtolower($new)]=$new;
+    }
+    $folderMap[strtolower($target)]=$target;
+
+    $doc['files']=array_values($merged);
+    $doc['folders']=array_values($folderMap);
+    $doc['updated_at']=gmdate('c');
+    $doc['presence_updated_at']=gmdate('c');
+
+    if (!save_json($metaFile,$doc)) {
+        out(507,['ok'=>false,'error'=>'catalog storage unavailable']);
+    }
+
+    out(200,[
+        'ok'=>true,
+        'changed'=>$changed,
+        'deduped'=>$deduped,
+        'target'=>$target,
+        'files'=>count($doc['files'])
+    ]);
 }
 
 if ($action === 'hub-repath') {
@@ -1275,8 +1391,11 @@ if ($action === 'catalog') {
 
             foreach ((array)($source['files'] ?? []) as $row) {
                 if (!is_array($row)) continue;
-                $path=(string)($row['path'] ?? '');
+                $path=canonical_shared_path((string)($row['path'] ?? ''));
                 if (!str_starts_with($path,'Ruben/')) continue;
+                $row['path']=$path;
+                $row['name']=basename($path);
+                $row['folder']=dirname($path)==='.'?'':dirname($path);
 
                 $key=strtolower($path);
                 if (isset($known[$key])) continue;
