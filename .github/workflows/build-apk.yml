@@ -8,6 +8,7 @@ on:
       - 'carradio/**'
       - 'remoteapp/**'
       - 'thedj/**'
+      - 'windows/the-one-dj/index.html'
       - 'build.gradle'
       - 'settings.gradle'
       - 'gradle.properties'
