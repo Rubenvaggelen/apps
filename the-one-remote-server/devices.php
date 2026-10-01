@@ -91,7 +91,9 @@ function devices_save_owner(string $file, string $deviceId, string $personName =
 }
 
 function devices_owner_authorized(array $body, string $ownerFile): bool {
-    if (!devices_admin($body)) return false;
+    // Apparaatbeheer wordt uitsluitend toegestaan vanaf het geregistreerde
+    // The One-eigenaarstoestel. Voor openen van Laptop > Apparaten beheren
+    // is geen extra pincode meer nodig.
     $deviceId = trim((string)($body['request_device_id'] ?? ''));
     $ownerId = devices_owner_id($ownerFile);
     return $deviceId !== '' && $ownerId !== '' && hash_equals($ownerId, $deviceId);
