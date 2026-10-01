@@ -116,6 +116,12 @@ function music_device_scope_allowed(
     $rights = is_array($device['access_rights'] ?? null)
         ? $device['access_rights']
         : [];
+
+    // Gevoelige acties worden nooit door legacy muziekrechten geërfd.
+    // Ze moeten expliciet door The One zijn toegekend.
+    if (in_array($scope, ['dj','downloads','download_files'], true)) {
+        return (bool)($rights[$scope] ?? false);
+    }
     return (bool)($rights[$scope] ?? $legacy);
 }
 
@@ -1034,6 +1040,27 @@ if ($action === 'login') {
 if ($action === 'stream') {
     $token=trim((string)($_GET['token'] ?? ''));
     if (!token_read_ok($token,$sec)) { http_response_code(401); exit; }
+    $device=safe_id((string)($_GET['device'] ?? ''));
+    $stick=safe_id((string)($_GET['stick'] ?? ''));
+    $path=safe_path((string)($_GET['path'] ?? ''));
+    stream_range($files.'/'.key_for($device,$stick,$path).'.bin',$path);
+}
+
+if ($action === 'download-stream') {
+    $token=trim((string)($_GET['token'] ?? ''));
+    if (!token_read_ok($token,$sec)) { http_response_code(401); exit; }
+
+    $requestDevice=safe_id((string)($_GET['request_device_id'] ?? ''));
+    if (!music_device_scope_allowed(
+        $requestDevice,
+        'download_files',
+        $deviceRegistryFile,
+        $deviceOwnerFile
+    )) {
+        http_response_code(403);
+        exit;
+    }
+
     $device=safe_id((string)($_GET['device'] ?? ''));
     $stick=safe_id((string)($_GET['stick'] ?? ''));
     $path=safe_path((string)($_GET['path'] ?? ''));
