@@ -475,7 +475,8 @@ body:not(.hp-on) .cue-hp{display:none}
       <button class="btn small" id="sharedMediaImport">Shared Media</button>
       <button class="btn small" id="sharedFolderBtn">Map laden</button>
       <button class="btn small" id="sharedTracksBtn">Nummers toevoegen</button>
-      <label class="btn small">Lokale media<input type="file" id="folderInput" webkitdirectory directory multiple hidden></label>
+      <button class="btn small" id="localMediaBtn">Lokale media</button>
+      <input type="file" id="folderInput" webkitdirectory directory multiple hidden>
       <input type="file" id="libInput" accept="audio/*,video/*,.mp3,.wav,.aif,.aiff,.aifc,.caf,.flac,.ogg,.oga,.opus,.m4a,.aac,.alac,.mp4,.m4v,.mov,.webm,.mka,.mkv,.wma,.ac3,.amr,.3gp" multiple hidden>
       <button class="btn small only-compact" id="libClose">Sluiten</button></div>
     </div>
@@ -2147,7 +2148,7 @@ async function clearStoredPlaylist(){
     });
   }catch(e){}
 }
-const AUDIO_EXT=/\.(mp3|wav|aif|aiff|aifc|caf|flac|ogg|oga|opus|m4a|aac|alac|mka|wma|ac3|amr)$/i;
+const AUDIO_EXT=/\.(mp3|wav|aif|aiff|aifc|caf|flac|ogg|oga|opus|m4a|aac|alac|mka|wma|ac3|amr|mp4|m4v|mov|webm|mkv)$/i;
 const playableFile=f=>{
   if(!f) return false;
   if(/^audio\//i.test(f.type||"")) return true;
@@ -2161,6 +2162,47 @@ function addToLib(files,sharedNames=[]){
   renderLib();playlistWrite();autoFill();
 }
 document.getElementById("libInput").addEventListener("change",e=>{addToLib([...e.target.files]);e.target.value=""});
+
+async function collectLocalDirectoryFiles(handle,prefix=""){
+  const out=[];
+  for await (const entry of handle.values()){
+    try{
+      if(entry.kind==="file"){
+        const f=await entry.getFile();
+        if(playableFile(f)){
+          try{Object.defineProperty(f,"webkitRelativePath",{value:prefix+f.name})}catch(e){}
+          out.push(f);
+        }
+      }else if(entry.kind==="directory"){
+        out.push(...await collectLocalDirectoryFiles(entry,prefix+entry.name+"/"));
+      }
+    }catch(e){}
+  }
+  return out;
+}
+async function openLocalMedia(){
+  if("showDirectoryPicker" in window && !IN_APP){
+    try{
+      const dir=await window.showDirectoryPicker({mode:"read"});
+      const files=(await collectLocalDirectoryFiles(dir)).sort((a,b)=>
+        (a.webkitRelativePath||a.name).localeCompare(
+          b.webkitRelativePath||b.name,undefined,{numeric:true,sensitivity:"base"}
+        )
+      );
+      if(!files.length){
+        alert("In deze map of USB-stick zijn geen ondersteunde muziekbestanden gevonden.");
+        return;
+      }
+      addToLib(files);
+      return;
+    }catch(e){
+      if(e?.name==="AbortError") return;
+    }
+  }
+  document.getElementById("folderInput")?.click();
+}
+document.getElementById("localMediaBtn")?.addEventListener("click",openLocalMedia);
+
 document.getElementById("folderInput")?.addEventListener("change",e=>{
   const input=e.currentTarget;
   const files=[...(input.files||[])]
@@ -2380,7 +2422,7 @@ document.getElementById("libBtn").addEventListener("click",()=>library.classList
 document.getElementById("libClose").addEventListener("click",()=>library.classList.remove("open"));
 libList.addEventListener("click",e=>{if(e.target.closest("button")) library.classList.remove("open")});
 
-const WINDOWS_BUILD=223;
+const WINDOWS_BUILD=224;
 const updateBtn=document.getElementById("updateBtn");
 updateBtn?.addEventListener("click",async()=>{
   const old=updateBtn.textContent;updateBtn.disabled=true;updateBtn.textContent="Controleren…";
