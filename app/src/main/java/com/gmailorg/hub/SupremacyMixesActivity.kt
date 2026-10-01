@@ -37,6 +37,10 @@ class SupremacyMixesActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_MIXES)) {
+            finish()
+            return
+        }
         focusTitle = intent.getStringExtra("focus_title").orEmpty().trim()
 
         val root = LinearLayout(this).apply {
@@ -89,6 +93,13 @@ class SupremacyMixesActivity : AppCompatActivity() {
         loadMixes()
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (!MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_MIXES)) {
+            finish()
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -106,17 +117,26 @@ class SupremacyMixesActivity : AppCompatActivity() {
             try { loadHearThis(items) } catch (_: Exception) {}
             val result = items.values.toList()
 
-            val favorites = try {
-                if (!RemoteUsbMusicClient.hasToken(this) &&
-                    !RemoteUsbMusicClient.loginForBrowsing(this)
+            val favorites =
+                if (MainDeviceRegistry.hasAccess(
+                        this,
+                        MainDeviceRegistry.ACCESS_FAVORITES
+                    )
                 ) {
-                    emptyList()
+                    try {
+                        if (!RemoteUsbMusicClient.hasToken(this) &&
+                            !RemoteUsbMusicClient.loginForBrowsing(this)
+                        ) {
+                            emptyList()
+                        } else {
+                            RemoteUsbMusicClient.favorites(this)
+                        }
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
                 } else {
-                    RemoteUsbMusicClient.favorites(this)
+                    emptyList()
                 }
-            } catch (_: Exception) {
-                emptyList()
-            }
             favoriteMixUrls.clear()
             favorites
                 .filter { it.kind.equals("mix", ignoreCase = true) && it.url.isNotBlank() }
@@ -255,33 +275,49 @@ class SupremacyMixesActivity : AppCompatActivity() {
             maxLines = 3
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
 
-        val favoriteButton = TextView(this).apply {
-            text = if (favoriteMixUrls.contains(mix.url)) "★" else "☆"
-            textSize = 23f
-            gravity = Gravity.CENTER
-            contentDescription = "Favoriet ${mix.title}"
-            setTextColor(ContextCompat.getColor(context, R.color.gold))
-            setPadding(10.dp, 8.dp, 10.dp, 8.dp)
-            setOnClickListener { toggleMixFavorite(mix, this) }
-        }
-        row.addView(
-            favoriteButton,
-            LinearLayout.LayoutParams(48.dp, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                marginEnd = 8.dp
+        val canFavorite =
+            MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_FAVORITES)
+        val canDownload =
+            MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_FILE_DOWNLOADS)
+
+        if (canFavorite) {
+            val favoriteButton = TextView(this).apply {
+                text = if (favoriteMixUrls.contains(mix.url)) "★" else "☆"
+                textSize = 23f
+                gravity = Gravity.CENTER
+                contentDescription = "Favoriet ${mix.title}"
+                setTextColor(ContextCompat.getColor(context, R.color.gold))
+                setPadding(10.dp, 8.dp, 10.dp, 8.dp)
+                setOnClickListener { toggleMixFavorite(mix, this) }
             }
-        )
-        row.addView(TextView(this).apply {
-            text = "↓"
-            textSize = 21f
-            gravity = Gravity.CENTER
-            contentDescription = "Download ${mix.title}"
-            setTextColor(ContextCompat.getColor(context, R.color.gold))
-            setBackgroundResource(R.drawable.bg_the_one_gold_outline)
-            setPadding(12.dp, 10.dp, 12.dp, 10.dp)
-            setOnClickListener { requestMixDownload(mix) }
-        }, LinearLayout.LayoutParams(52.dp, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-            marginEnd = 10.dp
-        })
+            row.addView(
+                favoriteButton,
+                LinearLayout.LayoutParams(
+                    48.dp,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    marginEnd = 8.dp
+                }
+            )
+        }
+
+        if (canDownload) {
+            row.addView(TextView(this).apply {
+                text = "↓"
+                textSize = 21f
+                gravity = Gravity.CENTER
+                contentDescription = "Download ${mix.title}"
+                setTextColor(ContextCompat.getColor(context, R.color.gold))
+                setBackgroundResource(R.drawable.bg_the_one_gold_outline)
+                setPadding(12.dp, 10.dp, 12.dp, 10.dp)
+                setOnClickListener { requestMixDownload(mix) }
+            }, LinearLayout.LayoutParams(
+                52.dp,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginEnd = 10.dp
+            })
+        }
         row.addView(TextView(this).apply {
             text = "▶ Afspelen"
             textSize = 14f
@@ -392,21 +428,15 @@ class SupremacyMixesActivity : AppCompatActivity() {
             val access = try {
                 MainDeviceRegistry.refreshAccess(
                     this,
-                    MainDeviceRegistry.ACCESS_MIXES
+                    MainDeviceRegistry.ACCESS_FILE_DOWNLOADS
                 )
             } catch (_: Exception) {
                 null
             }
             runOnUiThread {
-                if (access?.allowed != true) {
-                    showAccessRequestDialog(
-                        MainDeviceRegistry.ACCESS_MIXES,
-                        "The One Mixes",
-                        access?.pending == true
-                    )
-                    return@runOnUiThread
+                if (access?.allowed == true) {
+                    downloadMix(mix)
                 }
-                showMixDownloadPin(mix)
             }
         }
     }
