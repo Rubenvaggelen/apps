@@ -234,29 +234,49 @@ class MoviesActivity : AppCompatActivity() {
     }
 
     private fun applyMusicRightsVisibility() {
+        val playerAllowed =
+            MainDeviceRegistry.hasAccess(
+                this,
+                MainDeviceRegistry.ACCESS_MEDIA_PLAYER
+            )
+
+        musicPlayerCard.visibility =
+            if (playerAllowed) View.VISIBLE else View.GONE
+
         findViewById<View>(R.id.favoritesButton).visibility =
-            if (MainDeviceRegistry.hasAccess(
+            if (
+                playerAllowed &&
+                MainDeviceRegistry.hasAccess(
                     this,
                     MainDeviceRegistry.ACCESS_FAVORITES
                 )
             ) View.VISIBLE else View.GONE
 
         findViewById<View>(R.id.supremacyMixesButton).visibility =
-            if (MainDeviceRegistry.hasAccess(
+            if (
+                playerAllowed &&
+                MainDeviceRegistry.hasAccess(
                     this,
                     MainDeviceRegistry.ACCESS_MIXES
                 )
             ) View.VISIBLE else View.GONE
 
         findViewById<View>(R.id.remoteUsbMusicButton).visibility =
-            if (MainDeviceRegistry.hasAccess(
+            if (
+                playerAllowed &&
+                MainDeviceRegistry.hasAccess(
                     this,
                     MainDeviceRegistry.ACCESS_SHARED
                 )
             ) View.VISIBLE else View.GONE
 
+        if (!playerAllowed) {
+            musicResultContainer.visibility = View.GONE
+            musicResultContainer.removeAllViews()
+        }
+
         musicBroadcastButton.visibility =
-            if (MainDeviceRegistry.isLocallyOwner(this)) {
+            if (playerAllowed && MainDeviceRegistry.isLocallyOwner(this)) {
                 View.VISIBLE
             } else {
                 View.GONE
@@ -3348,20 +3368,37 @@ class MoviesActivity : AppCompatActivity() {
             }
         }
 
-        MusicLookup.search(query) { outcome ->
-            musicResultContainer.removeAllViews()
-            addMusicLine("Muziek")
-            when (outcome) {
-                is MusicLookup.LookupOutcome.Success -> showMusicResults(outcome.results)
-                is MusicLookup.LookupOutcome.NotFound ->
-                    addMusicLine("Geen muziek gevonden voor “${outcome.query}”.", dim = true)
-                is MusicLookup.LookupOutcome.Error ->
-                    addMusicLine(outcome.message, dim = true)
+        if (
+            MainDeviceRegistry.hasAccess(
+                this,
+                MainDeviceRegistry.ACCESS_MEDIA_PLAYER
+            )
+        ) {
+            MusicLookup.search(query) { outcome ->
+                musicResultContainer.removeAllViews()
+                addMusicLine("Muziek")
+                when (outcome) {
+                    is MusicLookup.LookupOutcome.Success -> showMusicResults(outcome.results)
+                    is MusicLookup.LookupOutcome.NotFound ->
+                        addMusicLine("Geen muziek gevonden voor “${outcome.query}”.", dim = true)
+                    is MusicLookup.LookupOutcome.Error ->
+                        addMusicLine(outcome.message, dim = true)
+                }
             }
+        } else {
+            musicResultContainer.visibility = View.GONE
+            musicResultContainer.removeAllViews()
         }
     }
 
     private fun searchMusic(query: String) {
+        if (
+            !MainDeviceRegistry.hasAccess(
+                this,
+                MainDeviceRegistry.ACCESS_MEDIA_PLAYER
+            )
+        ) return
+
         val trimmed = query.trim()
         if (trimmed.isBlank()) return
 
@@ -3420,6 +3457,13 @@ class MoviesActivity : AppCompatActivity() {
     }
 
     private fun playVideo(result: MusicLookup.MusicResult, queue: List<String>) {
+        if (
+            !MainDeviceRegistry.hasAccess(
+                this,
+                MainDeviceRegistry.ACCESS_MEDIA_PLAYER
+            )
+        ) return
+
         if (SupremacyPlaybackService.isActive(this)) {
             sendSupremacyAction(SupremacyPlaybackService.ACTION_STOP)
         }
