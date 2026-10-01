@@ -30,6 +30,16 @@ public final class MediaPlayerUpdateChecker {
     private MediaPlayerUpdateChecker() {}
 
     public static void checkForUpdate(Activity activity) {
+        checkForUpdate(activity, false);
+    }
+
+    public static void checkForUpdateManual(Activity activity) {
+        if (activity == null || activity.isFinishing()) return;
+        Toast.makeText(activity, "Zoeken naar updates…", Toast.LENGTH_SHORT).show();
+        checkForUpdate(activity, true);
+    }
+
+    private static void checkForUpdate(Activity activity, boolean manual) {
         if (activity == null || activity.isFinishing()) return;
 
         new Thread(() -> {
@@ -42,7 +52,16 @@ public final class MediaPlayerUpdateChecker {
                 connection.setReadTimeout(10000);
 
                 int code = connection.getResponseCode();
-                if (code < 200 || code >= 300) return;
+                if (code < 200 || code >= 300) {
+                    if (manual) {
+                        activity.runOnUiThread(() -> Toast.makeText(
+                                activity,
+                                "Updatecontrole mislukt. Probeer het later opnieuw.",
+                                Toast.LENGTH_LONG
+                        ).show());
+                    }
+                    return;
+                }
 
                 StringBuilder body = new StringBuilder();
                 try (BufferedReader reader = new BufferedReader(
@@ -96,15 +115,40 @@ public final class MediaPlayerUpdateChecker {
                     }
                 }
 
-                if (newest == null) return;
+                if (newest == null) {
+                    if (manual) {
+                        activity.runOnUiThread(() -> Toast.makeText(
+                                activity,
+                                "Geen Media Player-update gevonden.",
+                                Toast.LENGTH_LONG
+                        ).show());
+                    }
+                    return;
+                }
 
                 long currentVersion = getCurrentVersionCode(activity);
-                if (newest.versionCode <= currentVersion) return;
+                if (newest.versionCode <= currentVersion) {
+                    if (manual) {
+                        activity.runOnUiThread(() -> new AlertDialog.Builder(activity)
+                                .setTitle("Geen update beschikbaar")
+                                .setMessage("Je hebt al de nieuwste versie van The One Media Player.")
+                                .setPositiveButton("OK", null)
+                                .show());
+                    }
+                    return;
+                }
 
                 UpdateInfo finalNewest = newest;
                 activity.runOnUiThread(() -> showUpdateDialog(activity, finalNewest));
             } catch (Throwable ignored) {
                 // Update-check mag de Media Player nooit blokkeren.
+                if (manual) {
+                    activity.runOnUiThread(() -> Toast.makeText(
+                            activity,
+                            "Updatecontrole mislukt. Controleer je internetverbinding.",
+                            Toast.LENGTH_LONG
+                    ).show());
+                }
             } finally {
                 if (connection != null) connection.disconnect();
             }
