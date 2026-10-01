@@ -88,6 +88,10 @@ class WakePcActivity : AppCompatActivity() {
                 remoteButton.isEnabled = true
                 manageDevicesButton.isEnabled = true
                 status.text = "Klaar"
+                if (intent.getBooleanExtra("open_access_management", false)) {
+                    intent.removeExtra("open_access_management")
+                    promptDeviceManagerPin(manageDevicesButton)
+                }
             }
         }.start()
 
@@ -245,6 +249,7 @@ class WakePcActivity : AppCompatActivity() {
                                             else "$personLabel heeft geen toegang meer tot $label.",
                                             Toast.LENGTH_SHORT
                                         ).show()
+                                        AccessRequestNotificationWorker.checkNow(this@WakePcActivity)
                                         isEnabled = true
                                     }.onFailure {
                                         Toast.makeText(
@@ -294,6 +299,7 @@ class WakePcActivity : AppCompatActivity() {
                                                     "$label-aanvraag van $personLabel geweigerd.",
                                                     Toast.LENGTH_SHORT
                                                 ).show()
+                                                AccessRequestNotificationWorker.checkNow(this@WakePcActivity)
                                             }.onFailure {
                                                 Toast.makeText(
                                                     this@WakePcActivity,
