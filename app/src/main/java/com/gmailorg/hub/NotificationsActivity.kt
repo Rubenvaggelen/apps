@@ -31,7 +31,20 @@ class NotificationsActivity : AppCompatActivity() {
 
         val list = findViewById<RecyclerView>(R.id.notifList)
         list.layoutManager = LinearLayoutManager(this)
-        adapter = NotifAdapter(emptyList()) { item -> NotifStore.removeByKey(item.key) }
+        adapter = NotifAdapter(
+            emptyList(),
+            onDismiss = { item -> NotifStore.removeByKey(item.key) },
+            onOpen = { item ->
+                if (item.actionType == "access_request") {
+                    startActivity(
+                        Intent(this, WakePcActivity::class.java).apply {
+                            putExtra("open_access_management", true)
+                            putExtra("focus_device_id", item.actionValue)
+                        }
+                    )
+                }
+            }
+        )
         list.adapter = adapter
 
         // Swipe-om-te-wissen
@@ -42,6 +55,10 @@ class NotificationsActivity : AppCompatActivity() {
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
                 val position = viewHolder.adapterPosition
                 val item = currentFilteredItems().getOrNull(position) ?: return
+                if (item.persistent) {
+                    adapter.updateItems(currentFilteredItems())
+                    return
+                }
                 NotifStore.removeByKey(item.key)
             }
         })
@@ -66,6 +83,7 @@ class NotificationsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        AccessRequestNotificationWorker.checkNow(this)
         updatePermissionBanner()
         refreshList()
     }
