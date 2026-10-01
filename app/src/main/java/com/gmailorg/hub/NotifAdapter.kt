@@ -10,7 +10,8 @@ import java.util.*
 
 class NotifAdapter(
     private var items: List<NotifItem>,
-    private val onDismiss: (NotifItem) -> Unit
+    private val onDismiss: (NotifItem) -> Unit,
+    private val onOpen: (NotifItem) -> Unit = {}
 ) : RecyclerView.Adapter<NotifAdapter.ViewHolder>() {
 
     private val timeFormat = SimpleDateFormat("HH:mm", Locale("nl", "NL"))
@@ -46,6 +47,12 @@ class NotifAdapter(
         holder.timeLabel.text = timeFormat.format(Date(item.postTime))
         holder.titleLabel.text = item.title
         holder.textLabel.text = item.text
+
+        if (item.actionType.isNotBlank()) {
+            holder.replyRow.visibility = View.GONE
+            holder.itemView.setOnClickListener { onOpen(item) }
+            return
+        }
 
         if (item.hasReplyAction && NotificationReplySettings.isEnabled(holder.itemView.context)) {
             holder.replyRow.visibility = if (openReplyKey == item.key) View.VISIBLE else View.GONE
