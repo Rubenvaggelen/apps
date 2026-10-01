@@ -157,26 +157,7 @@ class WakePcActivity : AppCompatActivity() {
     }
 
     private fun showManagedDevices(devices: List<MainRegisteredDevice>) {
-        val list = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(18, 8, 18, 8)
-        }
-
-        list.addView(TextView(this).apply {
-            text = "MEDIA PLAYER"
-            textSize = 16f
-            letterSpacing = 0.12f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.amber))
-            setPadding(0, 4, 0, 4)
-        })
-        list.addView(TextView(this).apply {
-            text = "Iedere gebruiker moet eerst een naam opgeven en door The One worden goedgekeurd."
-            textSize = 12f
-            setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
-            setPadding(0, 0, 0, 12)
-        })
-
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(18, 8, 18, 8) }
         if (devices.isEmpty()) list.addView(TextView(this).apply { text = "Nog geen apparaten geregistreerd."; setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim)); textSize = 14f })
         devices.forEach { device ->
             val personLabel = device.personName.ifBlank { "Naam nog niet ingevuld" }
@@ -344,9 +325,9 @@ class WakePcActivity : AppCompatActivity() {
                 }
 
                 card.addView(TextView(this).apply {
-                    text = "MEDIARECHTEN"
-                    textSize = 12f
-                    letterSpacing = 0.10f
+                    text = "MEDIA PLAYER"
+                    textSize = 13f
+                    letterSpacing = 0.12f
                     setTypeface(typeface, android.graphics.Typeface.BOLD)
                     setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.amber))
                     setPadding(0, 18, 0, 4)
