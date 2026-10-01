@@ -1420,6 +1420,8 @@ if ($action === 'catalog') {
                 if (!is_array($row)) continue;
                 $path=canonical_shared_path((string)($row['path'] ?? ''));
                 if (!str_starts_with($path,'Ruben/')) continue;
+                $ext=strtolower(pathinfo($path,PATHINFO_EXTENSION));
+                if (in_array($ext,['mp4','m4v','mov','webm'],true)) continue;
                 $row['path']=$path;
                 $row['name']=basename($path);
                 $row['folder']=dirname($path)==='.'?'':dirname($path);
