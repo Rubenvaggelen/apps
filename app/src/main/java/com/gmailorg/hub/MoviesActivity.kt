@@ -1364,6 +1364,12 @@ class MoviesActivity : AppCompatActivity() {
         val normalized = normalizeRemoteFolder(folder)
         val canOrganizeNewDownloads =
             MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_DOWNLOADS)
+        val canDjImport =
+            MainDeviceRegistry.isTheOneProfile(this) ||
+                MainDeviceRegistry.hasAccess(
+                    this,
+                    MainDeviceRegistry.ACCESS_DJ
+                )
         val isNewDownloadsFolder =
             normalized.equals("Nieuwe downloads", ignoreCase = true) ||
                 normalized.startsWith("Nieuwe downloads/", ignoreCase = true)
@@ -1535,23 +1541,29 @@ class MoviesActivity : AppCompatActivity() {
         directFiles.forEachIndexed { index, file ->
             val current = isRemoteUsbTrackCurrent(stick, file)
             val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                setPadding(dp(16), dp(13), dp(14), dp(13))
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(14), dp(11), dp(14), dp(10))
                 setBackgroundResource(R.drawable.bg_the_one_tile)
                 isClickable = true
                 isFocusable = true
             }
-            row.addView(
+
+            val infoRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+            }
+
+            infoRow.addView(
                 TextView(this).apply {
                     text = if (current) "▶" else "♪"
                     textSize = 15.5f
                     gravity = android.view.Gravity.CENTER
                     setTextColor(Color.parseColor(if (current) "#E8AA4E" else "#20B8FF"))
                 },
-                LinearLayout.LayoutParams(dp(36), LinearLayout.LayoutParams.WRAP_CONTENT)
+                LinearLayout.LayoutParams(dp(34), LinearLayout.LayoutParams.WRAP_CONTENT)
             )
-            row.addView(
+
+            infoRow.addView(
                 TextView(this).apply {
                     text = (if (current) "NU • " else "") + cleanUsbTrackTitle(file.displayName)
                     textSize = 16f
@@ -1566,15 +1578,17 @@ class MoviesActivity : AppCompatActivity() {
                 },
                 LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             )
+
             if (isNewDownloadsFolder && canOrganizeNewDownloads) {
-                row.addView(
+                infoRow.addView(
                     TextView(this).apply {
                         text = "→"
                         textSize = 22f
                         gravity = android.view.Gravity.CENTER
                         setTextColor(Color.parseColor("#20B8FF"))
                         contentDescription = "Verplaats ${file.name}"
-                        setPadding(dp(8), dp(8), dp(8), dp(8))
+                        setBackgroundResource(R.drawable.bg_the_one_blue_button)
+                        setPadding(0, 0, 0, 0)
                         setOnClickListener {
                             showNewDownloadDestinationDialog(
                                 stick,
@@ -1584,37 +1598,151 @@ class MoviesActivity : AppCompatActivity() {
                             )
                         }
                     },
-                    LinearLayout.LayoutParams(dp(44), LinearLayout.LayoutParams.WRAP_CONTENT)
+                    LinearLayout.LayoutParams(dp(40), dp(36)).apply {
+                        marginStart = dp(6)
+                    }
                 )
             }
 
             row.addView(
-                TextView(this).apply {
-                    text = if (favoriteUsbKeys.contains(usbFavoriteKey(file))) "★" else "☆"
-                    textSize = 22f
-                    gravity = android.view.Gravity.CENTER
-                    setTextColor(Color.parseColor("#D8A451"))
-                    contentDescription = "Favoriet ${file.name}"
-                    setPadding(dp(10), dp(8), dp(10), dp(8))
-                    setOnClickListener {
-                        toggleUsbFavorite(stick, file, this)
-                    }
-                },
-                LinearLayout.LayoutParams(dp(46), LinearLayout.LayoutParams.WRAP_CONTENT)
+                infoRow,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
             )
-            row.addView(
-                TextView(this).apply {
-                    text = "▶"
-                    textSize = 17f
-                    gravity = android.view.Gravity.CENTER
-                    setTextColor(Color.parseColor("#20B8FF"))
-                    setPadding(dp(8), dp(8), dp(4), dp(8))
+
+            val actionRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL
+                setPadding(dp(34), dp(7), 0, 0)
+            }
+            val compactActionWidth = dp(42)
+            val compactActionHeight = dp(36)
+            val compactGap = dp(6)
+
+            val favorite = TextView(this).apply {
+                text = if (favoriteUsbKeys.contains(usbFavoriteKey(file))) "★" else "☆"
+                textSize = 22f
+                gravity = android.view.Gravity.CENTER
+                setTextColor(Color.parseColor("#D8A451"))
+                contentDescription = "Favoriet ${file.name}"
+                setBackgroundResource(R.drawable.bg_the_one_gold_outline)
+                setPadding(0, 0, 0, 0)
+                setOnClickListener {
+                    toggleUsbFavorite(stick, file, this)
+                }
+            }
+            actionRow.addView(
+                favorite,
+                LinearLayout.LayoutParams(compactActionWidth, compactActionHeight).apply {
+                    marginEnd = compactGap
                 }
             )
-            row.setOnClickListener {
-                dialog.dismiss()
-                playRemoteUsbFolder(stick, directFiles, index, normalized)
+
+            val download = TextView(this).apply {
+                text = if (file.cached) "↓" else "…"
+                textSize = 21f
+                gravity = android.view.Gravity.CENTER
+                setTextColor(Color.parseColor("#D8A451"))
+                contentDescription = "Download ${file.name}"
+                setBackgroundResource(R.drawable.bg_the_one_gold_outline)
+                setPadding(0, 0, 0, 0)
+                alpha = if (file.cached) 1f else 0.35f
+                setOnClickListener {
+                    if (file.cached) {
+                        requestRemoteUsbDownload(file)
+                    } else {
+                        Toast.makeText(
+                            this@MoviesActivity,
+                            "Download beschikbaar zodra synchronisatie klaar is.",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
             }
+            actionRow.addView(
+                download,
+                LinearLayout.LayoutParams(compactActionWidth, compactActionHeight).apply {
+                    marginEnd = compactGap
+                }
+            )
+
+            if (canDjImport) {
+                val dj = TextView(this).apply {
+                    text = "DJ"
+                    textSize = 13f
+                    gravity = android.view.Gravity.CENTER
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    setTextColor(Color.parseColor("#20B8FF"))
+                    contentDescription = "Stuur ${file.name} naar The One DJ"
+                    setBackgroundResource(R.drawable.bg_the_one_blue_button)
+                    setPadding(0, 0, 0, 0)
+                    alpha = if (file.cached) 1f else 0.35f
+                    setOnClickListener {
+                        if (file.cached) {
+                            requestRemoteUsbDjImport(file, this)
+                        } else {
+                            Toast.makeText(
+                                this@MoviesActivity,
+                                "DJ-import beschikbaar zodra synchronisatie klaar is.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                }
+                actionRow.addView(
+                    dj,
+                    LinearLayout.LayoutParams(compactActionWidth, compactActionHeight).apply {
+                        marginEnd = compactGap
+                    }
+                )
+            }
+
+            val play = TextView(this).apply {
+                text = if (file.cached) "▶" else "…"
+                textSize = 15f
+                gravity = android.view.Gravity.CENTER
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setTextColor(
+                    Color.parseColor(if (file.cached) "#20B8FF" else "#8F9BAD")
+                )
+                contentDescription = "Speel ${file.name}"
+                setBackgroundResource(R.drawable.bg_the_one_blue_button)
+                setPadding(0, 0, 0, 0)
+                setOnClickListener {
+                    if (file.cached) {
+                        dialog.dismiss()
+                        playRemoteUsbFolder(stick, directFiles, index, normalized)
+                    } else {
+                        Toast.makeText(
+                            this@MoviesActivity,
+                            "Dit nummer wordt nog gesynchroniseerd.",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
+            actionRow.addView(
+                play,
+                LinearLayout.LayoutParams(compactActionWidth, compactActionHeight)
+            )
+
+            row.addView(
+                actionRow,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+
+            row.setOnClickListener {
+                if (file.cached) {
+                    dialog.dismiss()
+                    playRemoteUsbFolder(stick, directFiles, index, normalized)
+                }
+            }
+
             list.addView(
                 row,
                 LinearLayout.LayoutParams(
