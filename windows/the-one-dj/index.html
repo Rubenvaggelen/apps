@@ -410,7 +410,6 @@ body:not(.hp-on) .cue-hp{display:none}
     <button class="btn small" id="autoMixBtn" aria-pressed="false">Auto</button>
     <button class="btn small auto-mix-on" id="autoSyncBtn" aria-pressed="true">Auto Sync • Aan</button>
     <button class="btn small only-compact" id="libBtn">Nummers</button>
-    <button class="btn small" id="recordBtn" aria-pressed="false">● Opnemen</button>
     <button class="btn small" id="updateBtn">Controleer op updates</button>
     <button class="btn small only-compact" id="fsBtn" hidden aria-label="Volledig scherm"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     <details class="keys">
@@ -474,7 +473,6 @@ body:not(.hp-on) .cue-hp{display:none}
       <h2>Nummers</h2>
       <div class="top-actions"><button class="mini auto-load on" id="autoLoad" aria-pressed="true">Automatisch naar vrije speler</button>
       <button class="btn small" id="sharedMediaImport">Shared Media</button>
-      <span class="bank-row"><button class="mini bank-save" id="bankSave">Bank opslaan</button><button class="mini" data-bank="1">B1</button><button class="mini" data-bank="2">B2</button><button class="mini" data-bank="3">B3</button><button class="mini" data-bank="4">B4</button></span>
       <label class="btn small">Map laden<input type="file" id="folderInput" webkitdirectory directory multiple hidden></label>
       <label class="btn small">Nummers toevoegen<input type="file" id="libInput" accept="audio/*,video/*,.mp3,.wav,.aif,.aiff,.aifc,.caf,.flac,.ogg,.oga,.opus,.m4a,.aac,.alac,.mp4,.m4v,.mov,.webm,.mka,.mkv,.wma,.ac3,.amr,.3gp" multiple hidden></label>
       <button class="btn small only-compact" id="libClose">Sluiten</button></div>
@@ -888,7 +886,6 @@ function deckTemplate(id){
     <label class="btn small">Kies<input type="file" accept="audio/*,video/*,.mp3,.wav,.aif,.aiff,.aifc,.caf,.flac,.ogg,.oga,.opus,.m4a,.aac,.alac,.mp4,.m4v,.mov,.webm,.mka,.mkv,.wma,.ac3,.amr,.3gp" data-r="file" hidden></label>
   </header>
   <div class="overview" data-r="ovwrap" tabindex="0" aria-label="Positie in nummer, tik om te springen"><canvas data-r="ov"></canvas><div class="busy" data-r="busy" hidden></div></div>
-  <div class="phrase-strip" data-r="phrases"><span>Intro</span><span>Build</span><span>Drop</span><span>Verse</span><span>Break</span><span>Outro</span></div>
   <div class="readout">
     <div class="time"><span class="el" data-r="elapsed">0:00.0</span><span class="rem" data-r="remain">-0:00.0</span></div>
     <div class="beats" data-r="beats" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
@@ -1553,7 +1550,7 @@ class Deck{
     if(u.pct.textContent!==pctTxt) u.pct.textContent=pctTxt;
     if(this.dur>0){
       const phraseIndex=Math.min(5,Math.floor((pos/this.dur)*6));
-      this.ui.phrases.querySelectorAll("span").forEach((s,i)=>s.classList.toggle("on",i===phraseIndex));
+      this.ui.phrases?.querySelectorAll("span").forEach((s,i)=>s.classList.toggle("on",i===phraseIndex));
     }
     const live=this.playing||(!!this.scr&&this.scr.wasPlaying);
     u.play.classList.toggle("on",live);
@@ -2281,10 +2278,6 @@ function renderLib(){
     tag.textContent={A:"Deck A",B:"Deck B",played:"Gespeeld",loading:"Laden…",error:"Niet af te spelen"}[t.status]||(t===next?"Volgende":"");
     if(t===next) li.dataset.status="next";
     const name=document.createElement("span");name.className="lib-name";name.textContent=t.name;
-    const preview=document.createElement("button");preview.className="btn small preview-btn";preview.textContent="◉";preview.title="Touch Preview";preview.setAttribute("aria-label","Voorbeluister "+t.name);
-    const previewOn=e=>{e.preventDefault();e.stopPropagation();preview.classList.add("on");startTouchPreview(t)};
-    const previewOff=e=>{e?.preventDefault?.();preview.classList.remove("on");stopTouchPreview()};
-    preview.addEventListener("pointerdown",previewOn);preview.addEventListener("pointerup",previewOff);preview.addEventListener("pointercancel",previewOff);preview.addEventListener("pointerleave",previewOff);
     const a=document.createElement("button");a.className="btn small to-a";a.textContent="A";a.setAttribute("aria-label","Laad "+t.name+" in deck A");
     const b=document.createElement("button");b.className="btn small to-b";b.textContent="B";b.setAttribute("aria-label","Laad "+t.name+" in deck B");
     const again=document.createElement("button");again.className="btn small lib-next";again.textContent="↩";again.title="Zet dit nummer opnieuw als eerstvolgende";again.setAttribute("aria-label","Zet "+t.name+" opnieuw als eerstvolgende");again.hidden=t.status!=="played";
@@ -2311,7 +2304,7 @@ function renderLib(){
       const [m]=lib.splice(from,1);lib.splice(to,0,m);
       renderLib();playlistWrite();
     });
-    li.append(drag,tag,name,preview,a,b,again,x);libList.appendChild(li);
+    li.append(drag,tag,name,a,b,again,x);libList.appendChild(li);
   });
 }
 document.getElementById("clearPlaylist")?.addEventListener("click",async()=>{
@@ -2377,7 +2370,7 @@ document.getElementById("libBtn").addEventListener("click",()=>library.classList
 document.getElementById("libClose").addEventListener("click",()=>library.classList.remove("open"));
 libList.addEventListener("click",e=>{if(e.target.closest("button")) library.classList.remove("open")});
 
-const WINDOWS_BUILD=221;
+const WINDOWS_BUILD=222;
 const updateBtn=document.getElementById("updateBtn");
 updateBtn?.addEventListener("click",async()=>{
   const old=updateBtn.textContent;updateBtn.disabled=true;updateBtn.textContent="Controleren…";
