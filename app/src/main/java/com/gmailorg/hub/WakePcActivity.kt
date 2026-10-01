@@ -325,13 +325,19 @@ class WakePcActivity : AppCompatActivity() {
                 }
 
                 addAccessControl(
+                    "Media Player",
+                    MainDeviceRegistry.ACCESS_MEDIA_PLAYER,
+                    device.mediaPlayerRights,
+                    device.pendingMediaPlayer
+                )
+                addAccessControl(
                     "The One Mixes",
                     MainDeviceRegistry.ACCESS_MIXES,
                     device.mixesRights,
                     device.pendingMixes
                 )
                 addAccessControl(
-                    "Shared Media",
+                    "The One Shared Media",
                     MainDeviceRegistry.ACCESS_SHARED,
                     device.sharedRights,
                     device.pendingShared
