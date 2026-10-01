@@ -40,14 +40,21 @@ object NotifStore {
         notifyListeners()
     }
 
-    fun removeByKey(key: String) {
-        items.removeAll { it.key == key }
-        persist()
-        notifyListeners()
+    fun removeByKey(key: String, force: Boolean = false) {
+        val changed = items.removeAll { it.key == key && (force || !it.persistent) }
+        if (changed) {
+            persist()
+            notifyListeners()
+        }
     }
 
-    fun removeWhere(predicate: (NotifItem) -> Boolean) {
-        val changed = items.removeAll(predicate)
+    fun removeWhere(
+        includePersistent: Boolean = false,
+        predicate: (NotifItem) -> Boolean
+    ) {
+        val changed = items.removeAll { item ->
+            (includePersistent || !item.persistent) && predicate(item)
+        }
         if (changed) {
             persist()
             notifyListeners()
@@ -55,9 +62,11 @@ object NotifStore {
     }
 
     fun clearAll() {
-        items.clear()
-        persist()
-        notifyListeners()
+        val changed = items.removeAll { !it.persistent }
+        if (changed) {
+            persist()
+            notifyListeners()
+        }
     }
 
     fun subscribe(listener: () -> Unit) {
@@ -83,6 +92,9 @@ object NotifStore {
             o.put("text", n.text)
             o.put("postTime", n.postTime)
             o.put("hasReplyAction", n.hasReplyAction)
+            o.put("persistent", n.persistent)
+            o.put("actionType", n.actionType)
+            o.put("actionValue", n.actionValue)
             arr.put(o)
         }
         prefs?.edit()?.putString(KEY_ITEMS, arr.toString())?.apply()
@@ -102,7 +114,10 @@ object NotifStore {
                         title = o.getString("title"),
                         text = o.getString("text"),
                         postTime = o.getLong("postTime"),
-                        hasReplyAction = o.optBoolean("hasReplyAction", false)
+                        hasReplyAction = o.optBoolean("hasReplyAction", false),
+                        persistent = o.optBoolean("persistent", false),
+                        actionType = o.optString("actionType", ""),
+                        actionValue = o.optString("actionValue", "")
                     )
                 )
             }
