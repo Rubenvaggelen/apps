@@ -43,3 +43,14 @@ android {
 dependencies {
     implementation 'androidx.webkit:webkit:1.11.0'
 }
+
+
+tasks.register("syncDjEngine", Copy) {
+    from rootProject.file("windows/the-one-dj/index.html")
+    into project.file("src/main/assets")
+    rename { "index.html" }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn("syncDjEngine")
+}
