@@ -150,6 +150,12 @@ body:not(.hp-on) .cue-hp{display:none}
 .time{display:flex;flex-direction:column;line-height:1.05;font-variant-numeric:tabular-nums}
 .time .el{font-size:21px;font-weight:700}
 .time .rem{font-size:15px;color:var(--muted)}
+.phrase-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;margin-top:4px}
+.phrase-strip span{font-size:9px;text-align:center;padding:3px 2px;border:1px solid var(--line);border-radius:5px;color:var(--muted);background:var(--well)}
+.phrase-strip span.on{border-color:var(--c);color:var(--ink);background:var(--c-soft);box-shadow:0 0 8px var(--c-soft)}
+.preview-btn.on,.recording{border-color:#E5484D!important;color:#FFB6BA!important;background:rgba(229,72,77,.12)!important}
+.bank-row{display:flex;gap:5px;flex-wrap:wrap}
+.bank-save.on{border-color:var(--c);color:var(--c-hi);background:var(--c-soft)}
 .beats{display:flex;gap:4px}
 .beats i{width:11px;height:11px;border-radius:3px;background:var(--well);border:1px solid var(--line)}
 .beats i.on{background:var(--c);border-color:var(--c)}
@@ -404,6 +410,7 @@ body:not(.hp-on) .cue-hp{display:none}
     <button class="btn small" id="autoMixBtn" aria-pressed="false">Auto</button>
     <button class="btn small auto-mix-on" id="autoSyncBtn" aria-pressed="true">Auto Sync • Aan</button>
     <button class="btn small only-compact" id="libBtn">Nummers</button>
+    <button class="btn small" id="recordBtn" aria-pressed="false">● Opnemen</button>
     <button class="btn small" id="updateBtn">Controleer op updates</button>
     <button class="btn small only-compact" id="fsBtn" hidden aria-label="Volledig scherm"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     <details class="keys">
@@ -467,6 +474,7 @@ body:not(.hp-on) .cue-hp{display:none}
       <h2>Nummers</h2>
       <div class="top-actions"><button class="mini auto-load on" id="autoLoad" aria-pressed="true">Automatisch naar vrije speler</button>
       <button class="btn small" id="sharedMediaImport">Shared Media</button>
+      <span class="bank-row"><button class="mini bank-save" id="bankSave">Bank opslaan</button><button class="mini" data-bank="1">B1</button><button class="mini" data-bank="2">B2</button><button class="mini" data-bank="3">B3</button><button class="mini" data-bank="4">B4</button></span>
       <label class="btn small">Map laden<input type="file" id="folderInput" webkitdirectory directory multiple hidden></label>
       <label class="btn small">Nummers toevoegen<input type="file" id="libInput" accept="audio/*,video/*,.mp3,.wav,.aif,.aiff,.aifc,.caf,.flac,.ogg,.oga,.opus,.m4a,.aac,.alac,.mp4,.m4v,.mov,.webm,.mka,.mkv,.wma,.ac3,.amr,.3gp" multiple hidden></label>
       <button class="btn small only-compact" id="libClose">Sluiten</button></div>
@@ -596,6 +604,7 @@ class Slider{
 /* ---------- audio core ---------- */
 let ctx=null,master=null,impulse=null;
 const state={xf:0,master:0.8};
+let recorder=null,recordChunks=[],recordStartedAt=0;
 function ensureCtx(){
   if(!ctx){
     const AC=window.AudioContext||window.webkitAudioContext;
@@ -605,7 +614,8 @@ function ensureCtx(){
     lim.threshold.value=-1;lim.knee.value=0;lim.ratio.value=20;lim.attack.value=0.002;lim.release.value=0.12;
     const an=ctx.createAnalyser();an.fftSize=1024;
     gain.connect(lim);lim.connect(an);
-    master={gain,an,buf:new Float32Array(an.fftSize),level:0};
+    const recDest=ctx.createMediaStreamDestination();lim.connect(recDest);
+    master={gain,lim,an,recDest,buf:new Float32Array(an.fftSize),level:0};
     impulse=makeImpulse(2.6,3);
     hp.cueBus=ctx.createGain();hp.cueGain=ctx.createGain();hp.masterTap=ctx.createGain();hp.vol=ctx.createGain();
     hp.cueBus.connect(hp.cueGain);hp.cueGain.connect(hp.vol);an.connect(hp.masterTap);hp.masterTap.connect(hp.vol);
@@ -619,6 +629,36 @@ function ensureCtx(){
   if(ctx.state==="suspended") ctx.resume();
   return ctx;
 }
+function preferredRecordingMime(){
+  const types=["audio/webm;codecs=opus","audio/ogg;codecs=opus","audio/webm"];
+  return types.find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported(t))||"";
+}
+function toggleRecording(){
+  const btn=document.getElementById("recordBtn");
+  ensureCtx();
+  if(recorder&&recorder.state==="recording"){
+    recorder.stop();return;
+  }
+  if(!window.MediaRecorder){alert("Opnemen wordt op dit apparaat niet ondersteund.");return}
+  recordChunks=[];
+  const mime=preferredRecordingMime();
+  recorder=new MediaRecorder(master.recDest.stream,mime?{mimeType:mime}:undefined);
+  recorder.ondataavailable=e=>{if(e.data&&e.data.size)recordChunks.push(e.data)};
+  recorder.onstop=()=>{
+    btn?.classList.remove("recording");btn?.setAttribute("aria-pressed","false");
+    if(!recordChunks.length)return;
+    const blob=new Blob(recordChunks,{type:recorder.mimeType||"audio/webm"});
+    const ext=(blob.type.includes("ogg")?"ogg":"webm");
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+    a.download="The-One-DJ-Mix-"+new Date().toISOString().replace(/[:.]/g,"-")+"."+ext;
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+  };
+  recorder.start(1000);recordStartedAt=Date.now();
+  btn?.classList.add("recording");btn?.setAttribute("aria-pressed","true");btn.textContent="■ Stop opname";
+}
+document.getElementById("recordBtn")?.addEventListener("click",toggleRecording);
+
 function makeImpulse(sec,decay){
   const len=Math.floor(ctx.sampleRate*sec),ir=ctx.createBuffer(2,len,ctx.sampleRate);
   for(let c=0;c<2;c++){const d=ir.getChannelData(c);for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,decay)}
@@ -638,40 +678,45 @@ function applyXfade(){
 }
 
 /* tempo + waveform analysis */
-async function analyzeBuffer(buffer){
+async function renderBand(buffer,type,freq,q=0.7){
   const sr=11025,dur=buffer.duration;
   const off=new OfflineAudioContext(1,Math.max(1,Math.ceil(dur*sr)),sr);
   const src=off.createBufferSource();src.buffer=buffer;
-  const lp=off.createBiquadFilter();lp.type="lowpass";lp.frequency.value=160;lp.Q.value=0.7;
-  src.connect(lp);lp.connect(off.destination);src.start();
-  const low=(await off.startRendering()).getChannelData(0);
+  const flt=off.createBiquadFilter();flt.type=type;flt.frequency.value=freq;flt.Q.value=q;
+  src.connect(flt);flt.connect(off.destination);src.start();
+  return (await off.startRendering()).getChannelData(0);
+}
+async function analyzeBuffer(buffer){
+  const sr=11025,dur=buffer.duration;
+  const [low,mid,high]=await Promise.all([
+    renderBand(buffer,"lowpass",180,.7),
+    renderBand(buffer,"bandpass",1400,.8),
+    renderBand(buffer,"highpass",4200,.7)
+  ]);
 
-  // overview peaks
-  const N=1200,full=new Float32Array(N),lowp=new Float32Array(N);
-  const chans=[];for(let c=0;c<buffer.numberOfChannels;c++) chans.push(buffer.getChannelData(c));
-  const L=chans[0].length;let mf=1e-9,ml=1e-9;
+  const N=1200,full=new Float32Array(N),lowp=new Float32Array(N),midp=new Float32Array(N),highp=new Float32Array(N);
+  const chans=[];for(let cc=0;cc<buffer.numberOfChannels;cc++) chans.push(buffer.getChannelData(cc));
+  const L=chans[0].length;let mf=1e-9,ml=1e-9,mm=1e-9,mh=1e-9;
   for(let i=0;i<N;i++){
     const a=Math.floor(i*L/N),b=Math.floor((i+1)*L/N);let m=0;
-    for(const d of chans) for(let j=a;j<b;j+=3){const v=Math.abs(d[j]);if(v>m) m=v}
-    full[i]=m;if(m>mf) mf=m;
-    const la=Math.floor(i*low.length/N),lb=Math.floor((i+1)*low.length/N);let lm=0;
-    for(let j=la;j<lb;j++){const v=Math.abs(low[j]);if(v>lm) lm=v}
-    lowp[i]=lm;if(lm>ml) ml=lm;
+    for(const d of chans) for(let j=a;j<b;j+=3){const v=Math.abs(d[j]);if(v>m)m=v}
+    full[i]=m;if(m>mf)mf=m;
+    const read=(arr)=>{const aa=Math.floor(i*arr.length/N),bb=Math.floor((i+1)*arr.length/N);let x=0;for(let j=aa;j<bb;j++){const v=Math.abs(arr[j]);if(v>x)x=v}return x};
+    lowp[i]=read(low);midp[i]=read(mid);highp[i]=read(high);
+    if(lowp[i]>ml)ml=lowp[i];if(midp[i]>mm)mm=midp[i];if(highp[i]>mh)mh=highp[i];
   }
-  for(let i=0;i<N;i++){full[i]/=mf;lowp[i]=Math.min(full[i],lowp[i]/ml*0.92)}
-  const peaks={full,low:lowp};
-  // detailed peaks for the zoomed spin view
-  const DR=150,ND=Math.max(1,Math.ceil(dur*DR)),dfull=new Float32Array(ND),dlow=new Float32Array(ND);
+  for(let i=0;i<N;i++){full[i]/=mf;lowp[i]/=ml;midp[i]/=mm;highp[i]/=mh}
+  const peaks={full,low:lowp,mid:midp,high:highp};
+
+  const DR=150,ND=Math.max(1,Math.ceil(dur*DR)),dfull=new Float32Array(ND),dlow=new Float32Array(ND),dmid=new Float32Array(ND),dhigh=new Float32Array(ND);
   const bsr=buffer.sampleRate;
+  const bandAt=(arr,i)=>{const a=Math.floor(i*arr.length/ND),b=Math.min(arr.length,Math.floor((i+1)*arr.length/ND));let m=0;for(let j=a;j<b;j++){const v=Math.abs(arr[j]);if(v>m)m=v}return m};
   for(let i=0;i<ND;i++){
     const a=Math.floor(i*bsr/DR),b=Math.min(L,Math.floor((i+1)*bsr/DR));let m=0;
-    for(const d of chans) for(let j=a;j<b;j+=2){const v=Math.abs(d[j]);if(v>m) m=v}
-    const la=Math.floor(i*sr/DR),lb=Math.min(low.length,Math.floor((i+1)*sr/DR));let lm=0;
-    for(let j=la;j<lb;j++){const v=Math.abs(low[j]);if(v>lm) lm=v}
-    dfull[i]=m/mf;dlow[i]=Math.min(dfull[i],lm/ml*0.92);
+    for(const d of chans) for(let j=a;j<b;j+=2){const v=Math.abs(d[j]);if(v>m)m=v}
+    dfull[i]=m/mf;dlow[i]=bandAt(low,i)/ml;dmid[i]=bandAt(mid,i)/mm;dhigh[i]=bandAt(high,i)/mh;
   }
-  const detail={full:dfull,low:dlow,rate:DR};
-
+  const detail={full:dfull,low:dlow,mid:dmid,high:dhigh,rate:DR};
   const t=detectTempo(low,sr);
   return {peaks,detail,bpm:t.bpm,beat0:t.beat0};
 }
@@ -843,6 +888,7 @@ function deckTemplate(id){
     <label class="btn small">Kies<input type="file" accept="audio/*,video/*,.mp3,.wav,.aif,.aiff,.aifc,.caf,.flac,.ogg,.oga,.opus,.m4a,.aac,.alac,.mp4,.m4v,.mov,.webm,.mka,.mkv,.wma,.ac3,.amr,.3gp" data-r="file" hidden></label>
   </header>
   <div class="overview" data-r="ovwrap" tabindex="0" aria-label="Positie in nummer, tik om te springen"><canvas data-r="ov"></canvas><div class="busy" data-r="busy" hidden></div></div>
+  <div class="phrase-strip" data-r="phrases"><span>Intro</span><span>Build</span><span>Drop</span><span>Verse</span><span>Break</span><span>Outro</span></div>
   <div class="readout">
     <div class="time"><span class="el" data-r="elapsed">0:00.0</span><span class="rem" data-r="remain">-0:00.0</span></div>
     <div class="beats" data-r="beats" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
@@ -1414,13 +1460,15 @@ class Deck{
     g.fillStyle=this.col.bg;g.fillRect(0,0,w,h);
     const mid=h/2;
     if(this.peaks){
-      const {full,low}=this.peaks,N=full.length;
+      const {full,low,mid:midp,high}=this.peaks,N=full.length;
       g.fillStyle=this.col.c;
       for(let x=0;x<w;x++){
         const i=Math.min(N-1,Math.floor(x/w*N));
-        const a=full[i]*h*0.46,l=low[i]*h*0.46;
-        g.globalAlpha=0.35;g.fillRect(x,mid-a,1,a*2);
-        g.globalAlpha=1;g.fillRect(x,mid-l,1,l*2);
+        const a=full[i]*h*.46,l=low[i]*h*.42,m=midp[i]*h*.30,hi=high[i]*h*.18;
+        g.globalAlpha=.18;g.fillRect(x,mid-a,1,a*2);
+        g.globalAlpha=.95;g.fillRect(x,mid-l,1,l);
+        g.globalAlpha=.65;g.fillRect(x,mid-m/2,1,m);
+        g.globalAlpha=.42;g.fillRect(x,mid,1,hi);
       }
       g.globalAlpha=1;
     }else{
@@ -1445,14 +1493,14 @@ class Deck{
     const g=c.getContext("2d"),w=c.width,h=c.height,dpr=window.devicePixelRatio||1,mid=h/2;
     g.globalAlpha=1;g.fillStyle=this.col.bg;g.fillRect(0,0,w,h);
     if(!this.buffer||!this.detail) return;
-    const pps=w/SPIN_SECS,{full,low,rate}=this.detail,N=full.length;
-    const pf=new Path2D(),pl=new Path2D();
+    const pps=w/SPIN_SECS,{full,low,mid:midp,high,rate}=this.detail,N=full.length;
+    const pf=new Path2D(),pl=new Path2D(),pm=new Path2D(),ph=new Path2D();
     for(let x=0;x<w;x++){
       const t=pos+(x-w/2)/pps;if(t<0||t>=this.dur) continue;
-      const i=Math.min(N-1,Math.floor(t*rate)),a=full[i]*h*0.46,l=low[i]*h*0.46;
-      pf.rect(x,mid-a,1,a*2);pl.rect(x,mid-l,1,l*2);
+      const i=Math.min(N-1,Math.floor(t*rate)),a=full[i]*h*.46,l=low[i]*h*.42,m=midp[i]*h*.30,hi=high[i]*h*.18;
+      pf.rect(x,mid-a,1,a*2);pl.rect(x,mid-l,1,l);pm.rect(x,mid-m/2,1,m);ph.rect(x,mid,1,hi);
     }
-    g.fillStyle=this.col.c;g.globalAlpha=0.35;g.fill(pf);g.globalAlpha=1;g.fill(pl);
+    g.fillStyle=this.col.c;g.globalAlpha=.18;g.fill(pf);g.globalAlpha=.95;g.fill(pl);g.globalAlpha=.65;g.fill(pm);g.globalAlpha=.42;g.fill(ph);g.globalAlpha=1;
     if(this.bpm){
       const bl=60/this.bpm,first=Math.ceil((pos-SPIN_SECS/2-this.beat0)/bl);
       g.fillStyle=this.col.ink;
@@ -1503,6 +1551,10 @@ class Deck{
     if(u.bpm.textContent!==bpmTxt) u.bpm.textContent=bpmTxt;
     const pct=((this.rate-1)*100);const pctTxt=(pct>0?"+":"")+pct.toFixed(2)+"%";
     if(u.pct.textContent!==pctTxt) u.pct.textContent=pctTxt;
+    if(this.dur>0){
+      const phraseIndex=Math.min(5,Math.floor((pos/this.dur)*6));
+      this.ui.phrases.querySelectorAll("span").forEach((s,i)=>s.classList.toggle("on",i===phraseIndex));
+    }
     const live=this.playing||(!!this.scr&&this.scr.wasPlaying);
     u.play.classList.toggle("on",live);
     u.cue.classList.toggle("on",!!this.buffer&&!live&&!this.scr);
@@ -2036,6 +2088,52 @@ async function playlistRead(){
   playlistRestoring=false;
   renderLib();autoFill();playlistWrite();
 }
+async function savePlaylistBank(n){
+  try{
+    const db=await sfxDB();
+    const rows=lib.map((t,index)=>({id:t.id,index,name:t.name,status:"queued",file:t.file,sharedName:t.sharedName||""}));
+    await new Promise((res,rej)=>{
+      const tx=db.transaction("playlist","readwrite");
+      tx.objectStore("playlist").put(rows,"bank"+n);
+      tx.oncomplete=res;tx.onerror=()=>rej(tx.error);
+    });
+    return true;
+  }catch(e){return false}
+}
+async function loadPlaylistBank(n){
+  try{
+    const db=await sfxDB();
+    const rows=await new Promise((res,rej)=>{
+      const tx=db.transaction("playlist");
+      const rq=tx.objectStore("playlist").get("bank"+n);
+      rq.onsuccess=()=>res(rq.result||[]);rq.onerror=()=>rej(rq.error);
+    });
+    if(!Array.isArray(rows)||!rows.length){alert("Playlist Bank "+n+" is leeg.");return}
+    lib.length=0;sharedLoaded.clear();
+    rows.sort((a,b)=>(a.index??0)-(b.index??0));
+    for(const r of rows){
+      if(!r||!r.file)continue;
+      const item={id:r.id||playlistId(),file:r.file,name:cleanImportedName(r.name||baseName(r.file)),status:"queued",sharedName:r.sharedName||""};
+      lib.push(item);if(item.sharedName)sharedLoaded.add(item.sharedName);
+    }
+    renderLib();playlistWrite();autoFill();
+  }catch(e){alert("Playlist Bank kon niet worden geladen.")}
+}
+let bankSaveMode=false;
+document.getElementById("bankSave")?.addEventListener("click",e=>{
+  bankSaveMode=!bankSaveMode;e.currentTarget.classList.toggle("on",bankSaveMode);
+  e.currentTarget.textContent=bankSaveMode?"Kies B1–B4":"Bank opslaan";
+});
+document.querySelectorAll("[data-bank]").forEach(btn=>btn.addEventListener("click",async()=>{
+  const n=+btn.dataset.bank;
+  if(bankSaveMode){
+    const ok=await savePlaylistBank(n);
+    bankSaveMode=false;document.getElementById("bankSave")?.classList.remove("on");
+    document.getElementById("bankSave").textContent="Bank opslaan";
+    if(ok) btn.animate?.([{transform:"scale(1)"},{transform:"scale(1.12)"},{transform:"scale(1)"}],{duration:300});
+  }else await loadPlaylistBank(n);
+}));
+
 async function clearStoredPlaylist(){
   try{
     const db=await sfxDB();
@@ -2142,6 +2240,29 @@ async function removeLibItem(t){
     try{await fetch("imports/remove?name="+encodeURIComponent(t.sharedName),{method:"POST",cache:"no-store"})}catch(e){}
   }
 }
+let previewSource=null,previewGain=null,previewToken=0;
+async function startTouchPreview(item){
+  if(!item?.file)return;
+  const token=++previewToken;ensureCtx();
+  stopTouchPreview();
+  try{
+    const buf=await decodeAnyAudio(item.file);
+    if(token!==previewToken)return;
+    const src=ctx.createBufferSource(),gain=ctx.createGain();
+    src.buffer=buf;gain.gain.value=.9;src.connect(gain);
+    gain.connect(hp.cueBus||ctx.destination);
+    const at=Math.min(Math.max(0,buf.duration*.32),Math.max(0,buf.duration-1));
+    src.start(0,at);previewSource=src;previewGain=gain;
+    src.onended=()=>{if(previewSource===src){previewSource=null;previewGain=null}};
+  }catch(e){}
+}
+function stopTouchPreview(){
+  previewToken++;
+  if(previewSource){try{previewSource.stop()}catch(e){}try{previewSource.disconnect()}catch(e){}}
+  if(previewGain){try{previewGain.disconnect()}catch(e){}}
+  previewSource=null;previewGain=null;
+}
+
 function renderLib(){
   libEmpty.hidden=lib.length>0;libList.innerHTML="";
   const next=autoLoad?nextQueued():null;
@@ -2152,6 +2273,10 @@ function renderLib(){
     tag.textContent={A:"Deck A",B:"Deck B",played:"Gespeeld",loading:"Laden…",error:"Niet af te spelen"}[t.status]||(t===next?"Volgende":"");
     if(t===next) li.dataset.status="next";
     const name=document.createElement("span");name.className="lib-name";name.textContent=t.name;
+    const preview=document.createElement("button");preview.className="btn small preview-btn";preview.textContent="◉";preview.title="Touch Preview";preview.setAttribute("aria-label","Voorbeluister "+t.name);
+    const previewOn=e=>{e.preventDefault();e.stopPropagation();preview.classList.add("on");startTouchPreview(t)};
+    const previewOff=e=>{e?.preventDefault?.();preview.classList.remove("on");stopTouchPreview()};
+    preview.addEventListener("pointerdown",previewOn);preview.addEventListener("pointerup",previewOff);preview.addEventListener("pointercancel",previewOff);preview.addEventListener("pointerleave",previewOff);
     const a=document.createElement("button");a.className="btn small to-a";a.textContent="A";a.setAttribute("aria-label","Laad "+t.name+" in deck A");
     const b=document.createElement("button");b.className="btn small to-b";b.textContent="B";b.setAttribute("aria-label","Laad "+t.name+" in deck B");
     const again=document.createElement("button");again.className="btn small lib-next";again.textContent="↩";again.title="Zet dit nummer opnieuw als eerstvolgende";again.setAttribute("aria-label","Zet "+t.name+" opnieuw als eerstvolgende");again.hidden=t.status!=="played";
@@ -2178,7 +2303,7 @@ function renderLib(){
       const [m]=lib.splice(from,1);lib.splice(to,0,m);
       renderLib();playlistWrite();
     });
-    li.append(drag,tag,name,a,b,again,x);libList.appendChild(li);
+    li.append(drag,tag,name,preview,a,b,again,x);libList.appendChild(li);
   });
 }
 document.getElementById("clearPlaylist")?.addEventListener("click",async()=>{
