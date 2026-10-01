@@ -1,7 +1,7 @@
 {
-  "version": "2.2.1",
-  "build": 221,
-  "notes": "Playlist clear fix plus 3-band waveform, Phrase Display, Touch Preview, Playlist Banks and Recording",
+  "version": "2.2.2",
+  "build": 222,
+  "notes": "Restore previous DJ layout while keeping playlist clear fix and shared Windows/Android engine",
   "sha256": "",
   "files": [
     "index.html"
