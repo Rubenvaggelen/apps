@@ -1,7 +1,7 @@
 {
-  "version": "2.2.3",
-  "build": 223,
-  "notes": "Route Map laden and Nummers toevoegen to Shared Media; add Lokale media for USB/SD/local storage",
+  "version": "2.2.4",
+  "build": 224,
+  "notes": "Fix Local Media USB folder scanning; recursively read music from USB/local folders",
   "sha256": "",
   "files": [
     "index.html"
