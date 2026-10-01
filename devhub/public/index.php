@@ -33,7 +33,7 @@ $csrf = $_SESSION['csrf'];
     <a class="download-link" id="mediaDownload" href="https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2316/The-One-Media-Player-v2316.apk">↓ The One Media Player APK</a>
     <a class="download-link" id="tvDownload" href="https://github.com/Rubenvaggelen/apps/releases/download/media-player-tv-latest/The-One-Media-Player-TV.apk">↓ Media Player Android TV APK</a>
     <a class="download-link" id="djDownload" aria-disabled="true">↓ The One DJ APK</a>
-    <a class="download-link" id="djWindowsDownload" href="https://github.com/Rubenvaggelen/apps/releases/download/dj-windows-v220/The-One-DJ-Windows.zip">↓ The One DJ Windows</a>
+    <a class="download-link" id="djWindowsDownload" href="https://github.com/Rubenvaggelen/apps/releases/download/dj-windows-v221/The-One-DJ-Windows.zip">↓ The One DJ Windows</a>
     <div class="download-note" id="releaseNote">The One/Car volgen de nieuwste release. Media Player v2316 en Android TV staan als aparte APK's klaar.</div>
   </div>
   <div class="sidebar-footer"><div class="git-state"><span class="dot" id="gitDot"></span><span id="branch">main</span></div><div id="repoStatus" style="margin-top:7px">Git status laden…</div></div>
