@@ -1386,7 +1386,11 @@ class MoviesActivity : AppCompatActivity() {
     private fun showRemoteFolderDialog(stick: RemoteUsbMusicClient.RemoteStick) {
         val firstSegments = (
             stick.folders.map { normalizeRemoteFolder(it) } +
-                stick.files.map { normalizeRemoteFolder(it.folder) }
+                stick.files.map {
+                    normalizeRemoteFolder(
+                        it.path.replace('\\', '/').substringBeforeLast('/', it.folder)
+                    )
+                }
         )
             .filter { it.isNotBlank() }
             .map { it.substringBefore('/') }
@@ -1438,7 +1442,12 @@ class MoviesActivity : AppCompatActivity() {
             normalized.equals("Nieuwe downloads", ignoreCase = true) ||
                 normalized.startsWith("Nieuwe downloads/", ignoreCase = true)
         val directFiles = stick.files
-            .filter { normalizeRemoteFolder(it.folder) == normalized }
+            .filter {
+                val fileFolder = normalizeRemoteFolder(
+                    it.path.replace('\\', '/').substringBeforeLast('/', it.folder)
+                )
+                fileFolder.equals(normalized, ignoreCase = true)
+            }
             .sortedBy { it.name.lowercase() }
 
         if (openCurrentFolder && directFiles.isNotEmpty()) {
