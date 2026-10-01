@@ -1766,11 +1766,18 @@ if ($action === 'upload-start') {
     }
 
     $part=$files.'/'.key_for($device,$stick,$path).'.'.$sha.'.part';
+    if (is_file($part)) {
+        clearstatcache(true,$part);
+        $current=filesize($part);
+        if ($current!==false && (int)$current>=0) {
+            out(200,['ok'=>true,'offset'=>(int)$current,'resumed'=>((int)$current)>0]);
+        }
+    }
     if (@file_put_contents($part, '', LOCK_EX) === false) {
         out(500,['ok'=>false,'error'=>'cannot start upload']);
     }
     @chmod($part,0600);
-    out(200,['ok'=>true,'offset'=>0]);
+    out(200,['ok'=>true,'offset'=>0,'resumed'=>false]);
 }
 
 if ($action === 'upload-chunk') {
