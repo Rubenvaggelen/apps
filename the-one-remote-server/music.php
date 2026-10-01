@@ -1530,6 +1530,34 @@ if ($action === 'catalog') {
         unset($stickRow);
     }
 
+    // Maak de maplijst altijd opnieuw compleet uit de echte bestandspaden.
+    // Zo kan een client nooit een lege map openen doordat folders metadata achterloopt.
+    foreach ($sticks as &$stickRow) {
+        if (!is_array($stickRow)) continue;
+        $folderMap=[];
+        foreach ((array)($stickRow['folders'] ?? []) as $folder) {
+            if (!is_string($folder) || trim($folder)==='') continue;
+            $folder=canonical_shared_path(trim($folder,'/'));
+            $folderMap[strtolower($folder)]=$folder;
+        }
+        foreach ((array)($stickRow['files'] ?? []) as $row) {
+            if (!is_array($row)) continue;
+            $path=canonical_shared_path((string)($row['path'] ?? ''));
+            if ($path==='' || !str_contains($path,'/')) continue;
+            $folder=dirname($path);
+            if ($folder==='.' || $folder==='') continue;
+            $parts=explode('/',$folder);
+            for ($i=1;$i<=count($parts);$i++) {
+                $candidate=implode('/',array_slice($parts,0,$i));
+                if ($candidate!=='') $folderMap[strtolower($candidate)]=$candidate;
+            }
+        }
+        $folders=array_values($folderMap);
+        natcasesort($folders);
+        $stickRow['folders']=array_values($folders);
+    }
+    unset($stickRow);
+
     out(200,['ok'=>true,'sticks'=>$sticks]);
 }
 
