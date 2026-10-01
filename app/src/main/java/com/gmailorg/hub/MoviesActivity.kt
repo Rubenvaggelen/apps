@@ -1363,7 +1363,7 @@ class MoviesActivity : AppCompatActivity() {
     ) {
         val normalized = normalizeRemoteFolder(folder)
         val canOrganizeNewDownloads =
-            MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_DOWNLOADS)
+            MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_ORGANIZE)
         val canDjImport =
             MainDeviceRegistry.isTheOneProfile(this) ||
                 MainDeviceRegistry.hasAccess(
@@ -2436,7 +2436,7 @@ class MoviesActivity : AppCompatActivity() {
         val actionGap = dp(6)
         val canDeleteSharedMedia = MainDeviceRegistry.isLocallyOwner(this)
         val canOrganizeNewDownloads =
-            MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_DOWNLOADS)
+            MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_ORGANIZE)
         val dialog = Dialog(this)
         val canDjImport =
             MainDeviceRegistry.isTheOneProfile(this) ||
@@ -3112,7 +3112,7 @@ class MoviesActivity : AppCompatActivity() {
             val access = try {
                 MainDeviceRegistry.refreshAccess(
                     this,
-                    MainDeviceRegistry.ACCESS_SHARED
+                    MainDeviceRegistry.ACCESS_FILE_DOWNLOADS
                 )
             } catch (_: Exception) {
                 null
@@ -3121,59 +3121,15 @@ class MoviesActivity : AppCompatActivity() {
             runOnUiThread {
                 if (!allowed) {
                     showSectionAccessRequestDialog(
-                        MainDeviceRegistry.ACCESS_SHARED,
-                        "Shared Media",
+                        MainDeviceRegistry.ACCESS_FILE_DOWNLOADS,
+                        "Bestanden downloaden",
                         access?.pending == true
                     )
                     return@runOnUiThread
                 }
-                showRemoteUsbDownloadPin(file)
+                enqueueRemoteUsbDownload(file)
             }
         }
-    }
-
-    private fun showRemoteUsbDownloadPin(file: RemoteUsbMusicClient.RemoteFile) {
-        val input = EditText(this).apply {
-            hint = "Pincode"
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            gravity = android.view.Gravity.CENTER
-        }
-
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("USB-download beveiligen")
-            .setMessage("Voer je pincode in om dit nummer te downloaden.")
-            .setView(input)
-            .setPositiveButton("Downloaden", null)
-            .setNegativeButton("Annuleren", null)
-            .create()
-
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val pin = input.text.toString().trim()
-                if (pin.isBlank()) return@setOnClickListener
-
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
-                remoteMusicIo.execute {
-                    val valid = try {
-                        RemoteUsbMusicClient.login(this, pin)
-                    } catch (_: Exception) {
-                        false
-                    }
-
-                    runOnUiThread {
-                        if (valid) {
-                            dialog.dismiss()
-                            enqueueRemoteUsbDownload(file)
-                        } else {
-                            input.text.clear()
-                            input.error = "Pincode niet juist"
-                            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
-                        }
-                    }
-                }
-            }
-        }
-        dialog.show()
     }
 
     private fun enqueueRemoteUsbDownload(file: RemoteUsbMusicClient.RemoteFile) {
@@ -3183,7 +3139,7 @@ class MoviesActivity : AppCompatActivity() {
                 .ifBlank { "TheOne-nummer.mp3" }
             val manager = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
             val request = DownloadManager.Request(
-                Uri.parse(RemoteUsbMusicClient.streamUrl(this, file))
+                Uri.parse(RemoteUsbMusicClient.downloadUrl(this, file))
             )
                 .setTitle(safeName)
                 .setDescription("The One • Shared Media")
