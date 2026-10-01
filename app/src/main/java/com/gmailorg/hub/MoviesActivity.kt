@@ -1427,7 +1427,8 @@ class MoviesActivity : AppCompatActivity() {
     private fun showRemoteFolderLevel(
         stick: RemoteUsbMusicClient.RemoteStick,
         folder: String,
-        openCurrentFolder: Boolean = false
+        openCurrentFolder: Boolean = false,
+        refreshIfEmpty: Boolean = true
     ) {
         val normalized = normalizeRemoteFolder(folder)
         val canOrganizeNewDownloads =
@@ -1449,6 +1450,39 @@ class MoviesActivity : AppCompatActivity() {
                 fileFolder.equals(normalized, ignoreCase = true)
             }
             .sortedBy { it.name.lowercase() }
+
+        if (refreshIfEmpty && normalized.isNotBlank() && directFiles.isEmpty()) {
+            remoteMusicIo.execute {
+                val freshStick = runCatching {
+                    RemoteUsbMusicClient.catalog(this@MoviesActivity)
+                        .firstOrNull {
+                            it.deviceId.equals(stick.deviceId, ignoreCase = true) &&
+                                it.stickId.equals(stick.stickId, ignoreCase = true)
+                        }
+                }.getOrNull()
+
+                if (freshStick != null) {
+                    val freshFiles = freshStick.files.filter {
+                        val fileFolder = normalizeRemoteFolder(
+                            it.path.replace('\\', '/')
+                                .substringBeforeLast('/', it.folder)
+                        )
+                        fileFolder.equals(normalized, ignoreCase = true)
+                    }
+                    if (freshFiles.isNotEmpty()) {
+                        runOnUiThread {
+                            showRemoteFolderLevel(
+                                freshStick,
+                                normalized,
+                                openCurrentFolder,
+                                refreshIfEmpty = false
+                            )
+                        }
+                        return@execute
+                    }
+                }
+            }
+        }
 
         if (openCurrentFolder && directFiles.isNotEmpty()) {
             showRemoteTrackDialog(stick, normalized, directFiles)
