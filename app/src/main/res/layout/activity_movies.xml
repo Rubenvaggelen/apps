@@ -106,6 +106,16 @@
         android:background="@drawable/bg_the_one_panel"
         android:padding="14dp">
 
+        <TextView
+            android:id="@+id/musicPlayerIdleLabel"
+            android:layout_width="match_parent"
+            android:layout_height="28dp"
+            android:gravity="center_vertical"
+            android:text="Player"
+            android:textColor="@color/gold"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -411,3 +421,4 @@
     </ScrollView>
 
 </LinearLayout>
+

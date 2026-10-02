@@ -33,7 +33,8 @@ class MoviesActivity : AppCompatActivity() {
     private lateinit var resultContainer: LinearLayout
     private lateinit var upcomingContainer: LinearLayout
     private lateinit var musicResultContainer: LinearLayout
-    private lateinit var musicPlayerCard: View
+    private lateinit var musicPlayerCard: LinearLayout
+    private lateinit var musicPlayerIdleLabel: TextView
     private lateinit var musicNowPlaying: TextView
     private lateinit var musicPlaybackState: TextView
     private lateinit var musicSeekBar: SeekBar
@@ -142,6 +143,7 @@ class MoviesActivity : AppCompatActivity() {
 
         musicResultContainer = findViewById(R.id.musicResultContainer)
         musicPlayerCard = findViewById(R.id.musicPlayerCard)
+        musicPlayerIdleLabel = findViewById(R.id.musicPlayerIdleLabel)
         musicNowPlaying = findViewById(R.id.musicNowPlaying)
         musicPlaybackState = findViewById(R.id.musicPlaybackState)
         musicSeekBar = findViewById(R.id.musicSeekBar)
@@ -159,8 +161,18 @@ class MoviesActivity : AppCompatActivity() {
             openCurrentMusicSource()
         }
         musicPlayerCard.setOnClickListener {
-            openCurrentMusicSource()
+            when {
+                SupremacyPlaybackService.isActive(this) && !SupremacyPlaybackService.isPlaying(this) ->
+                    sendSupremacyAction(SupremacyPlaybackService.ACTION_TOGGLE)
+                youtubeActive && !youtubePlaying -> {
+                    musicWebPlayer.evaluateJavascript("window.theOneToggle && window.theOneToggle();", null)
+                    youtubePlaying = true
+                    refreshCompactPlayer()
+                }
+                else -> openCurrentMusicSource()
+            }
         }
+        updatePlayerPresentation(false)
         findViewById<View>(R.id.musicPreviousButton).setOnClickListener {
             if (SupremacyPlaybackService.isActive(this)) {
                 sendSupremacyAction(SupremacyPlaybackService.ACTION_PREVIOUS)
@@ -193,6 +205,7 @@ class MoviesActivity : AppCompatActivity() {
             musicNowPlaying.paintFlags = musicNowPlaying.paintFlags and android.graphics.Paint.UNDERLINE_TEXT_FLAG.inv()
             musicNowPlaying.text = "Geen muziek actief"
             musicPlaybackState.text = "Gestopt"
+            updatePlayerPresentation(false)
             resetMusicSeekUi()
         }
         findViewById<View>(R.id.musicNextButton).setOnClickListener {
@@ -498,7 +511,24 @@ class MoviesActivity : AppCompatActivity() {
         }
     }
 
+    private fun updatePlayerPresentation(playing: Boolean) {
+        musicPlayerIdleLabel.visibility = if (playing) View.GONE else View.VISIBLE
+        for (index in 0 until musicPlayerCard.childCount) {
+            val child = musicPlayerCard.getChildAt(index)
+            // Keep the WebView attached and visible so YouTube can start while collapsed.
+            if (child === musicPlayerIdleLabel || child === musicWebPlayer) continue
+            child.visibility = if (playing) View.VISIBLE else View.GONE
+        }
+        if (playing && !MainDeviceRegistry.isLocallyOwner(this)) {
+            musicBroadcastButton.visibility = View.GONE
+        }
+        musicPlayerCard.contentDescription = if (playing) "Player: speelt muziek af" else "Player"
+    }
+
     private fun refreshCompactPlayer() {
+        updatePlayerPresentation(
+            SupremacyPlaybackService.isPlaying(this) || (youtubeActive && youtubePlaying)
+        )
         if (SupremacyPlaybackService.isActive(this)) {
             pendingMusicTitle = null
             pendingMusicStartedAt = 0L
