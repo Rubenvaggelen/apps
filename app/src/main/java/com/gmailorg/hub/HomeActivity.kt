@@ -127,7 +127,7 @@ class HomeActivity : AppCompatActivity() {
             HomeTile(id = "mail", type = TileType.MAIL, label = "Mail & Kalender"),
             HomeTile(id = "route", type = TileType.ROUTE, label = "Route"),
             HomeTile(id = "household", type = TileType.HOUSEHOLD, label = "Huishouden"),
-            HomeTile(id = "movies", type = TileType.MOVIES, label = "Films, Series & Muziek"),
+            HomeTile(id = "movies", type = TileType.MOVIES, label = "Muziek en films"),
             HomeTile(id = "parking", type = TileType.PARKING, label = "Parkeren"),
             HomeTile(id = "settings", type = TileType.SETTINGS, label = "Instellingen"),
             HomeTile(id = "ask", type = TileType.ASK, label = "Vraag het"),
