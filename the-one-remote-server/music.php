@@ -1567,7 +1567,8 @@ if ($action === 'dj-queue-ack') {
 
 if ($action === 'catalog') {
     $token=bearer();
-    if (!token_read_ok($token,$sec)) out(401,['ok'=>false,'error'=>'auth required']);
+    $hubReader=token_scope($token,$sec)==='music-hub';
+    if (!token_read_ok($token,$sec) && !$hubReader) out(401,['ok'=>false,'error'=>'auth required']);
 
     // Alle geautoriseerde The One Family-clients mogen bestaande/inactieve
     // Shared Media-catalogussen lezen. Zo blijven eerder gesynchroniseerde
@@ -1575,7 +1576,7 @@ if ($action === 'catalog') {
     // tijdelijk offline is.
     $includeInactive =
         ((string)($_GET['include_inactive'] ?? '')) === '1' &&
-        token_read_ok($token,$sec);
+        (token_read_ok($token,$sec) || $hubReader);
 
     $sticks=[];
     foreach (glob($meta.'/*.json') ?: [] as $f) {
@@ -1734,7 +1735,7 @@ if ($action === 'catalog') {
     }
 
     $requestDevice=trim((string)($_GET['request_device_id'] ?? ''));
-    $downloadsVisible=false;
+    $downloadsVisible=$hubReader;
     if ($requestDevice !== '') {
         $requestDevice=safe_id($requestDevice);
         $downloadsVisible=music_device_scope_allowed(
@@ -1765,6 +1766,22 @@ if ($action === 'catalog') {
         unset($stickRow);
     }
 
+    // For formats needing a companion, cached means ready to play.
+    // Preserve original_cached for the preparation worker; never persist this
+    // presentation state into the original source metadata.
+    $needsPlayback=['wma','aif','aiff','aifc','caf','alac','mka','ac3','amr','ape','wv','tta','dsf','dff'];
+    foreach ($sticks as &$stickRow) {
+        foreach ($stickRow['files'] as &$row) {
+            if (!is_array($row) || !($row['cached'] ?? false)) continue;
+            if (!in_array(strtolower(pathinfo((string)($row['path'] ?? ''),PATHINFO_EXTENSION)),$needsPlayback,true)) continue;
+            $sha=strtolower((string)($row['sha256'] ?? ''));
+            $row['original_cached']=true;
+            $row['playback_pending']=!preg_match('/^[a-f0-9]{64}$/',$sha) || !is_file($playback.'/'.$sha.'.mp3');
+            $row['cached']=!$row['playback_pending'];
+        }
+        unset($row);
+    }
+    unset($stickRow);
     out(200,['ok'=>true,'sticks'=>$sticks]);
 }
 

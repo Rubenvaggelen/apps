@@ -14,11 +14,11 @@ function Run-Pass {
   $login=Invoke-RestMethod ($base+'?action=hub-login') -Method Post -ContentType 'application/json' -Body (@{secret=$secret}|ConvertTo-Json -Compress) -TimeoutSec 30
   $headers=@{Authorization=('Bearer '+$login.token)}
   $read=Invoke-RestMethod ($base+'?action=browse-login') -TimeoutSec 30
-  $catalog=Invoke-RestMethod ($base+'?action=catalog') -Headers @{Authorization=('Bearer '+$read.token)} -TimeoutSec 60
+  $catalog=Invoke-RestMethod ($base+'?action=catalog') -Headers $headers -TimeoutSec 60
   $exts=@('.wma','.aif','.aiff','.aifc','.caf','.alac','.mka','.ac3','.amr','.ape','.wv','.tta','.dsf','.dff','.m4a','.aac','.flac','.wav','.ogg','.oga','.opus')
   $tracks=@();$seen=@{}
   foreach($stick in $catalog.sticks){foreach($file in $stick.files){
-    if(!$file.cached -or !($exts -contains [IO.Path]::GetExtension($file.path).ToLowerInvariant())){continue}
+    if((!$file.cached -and !$file.original_cached) -or !($exts -contains [IO.Path]::GetExtension($file.path).ToLowerInvariant())){continue}
     if($OnlyFolder -and $file.path -notlike ('*'+$OnlyFolder+'*')){continue}
     $sha=[string]$file.sha256;if($sha -notmatch '^[a-fA-F0-9]{64}$' -or $seen.ContainsKey($sha)){continue}
     $seen[$sha]=$true;$tracks+=@{File=$file;Device=$stick.device_id;Stick=$stick.stick_id;Sha=$sha.ToLowerInvariant()}
