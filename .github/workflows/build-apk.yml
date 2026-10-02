@@ -1,18 +1,6 @@
-name: Build APK
+name: Legacy Combined Android Build
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'app/**'
-      - 'carradio/**'
-      - 'remoteapp/**'
-      - 'thedj/**'
-      - 'windows/the-one-dj/index.html'
-      - 'build.gradle'
-      - 'settings.gradle'
-      - 'gradle.properties'
-      - 'gradle/**'
   workflow_dispatch: {}
 
 permissions:
