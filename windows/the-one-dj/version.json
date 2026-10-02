@@ -1,8 +1,8 @@
 {
-  "build": 230,
-  "version": "2.3.0",
-  "notes": "Main remote playlist clear; durable delivery across profiles",
-  "sha256": "D7088B04E35B4ED33D0968012048A6B8DF523AB06A3AAA39CA1335D33939BAEE",
+  "build": 231,
+  "version": "2.3.1",
+  "notes": "Main playlist clear; stable normalized DJ receipts and recovery across browser profiles",
+  "sha256": "FB9AE5A1E351F34DB38ECB58505D355D2F158AAA6415299B15F35AE9AA0BBB49",
   "files": [
     "index.html",
     "Serve-The-One-DJ.ps1",

@@ -1406,13 +1406,14 @@ if ($action === 'dj-queue-list') {
     $requestDevice=strtolower(safe_id((string)($_GET['request_device_id'] ?? '')));
     if ($requestDevice === '') out(400,['ok'=>false,'error'=>'request_device_id required']);
 
+    $includeDelivered=(string)($_GET['include_delivered'] ?? '')==='1';
     $controls=load_json($djControlFile);
     $discard=$controls['by_device'][$requestDevice]['discard_ids'] ?? [];
     $queue=load_json($djQueueFile);
     $items=array_values(array_filter(
         is_array($queue['items'] ?? null) ? $queue['items'] : [],
-        function($row) use ($requestDevice,$discard) {
-            if (!is_array($row) || (($row['status'] ?? '') !== 'pending')) return false;
+        function($row) use ($requestDevice,$discard,$includeDelivered) {
+            if (!is_array($row) || (!$includeDelivered && (($row['status'] ?? '') !== 'pending'))) return false;
 
             if (in_array((string)($row['id'] ?? ''),$discard,true)) return false;
 
@@ -1423,7 +1424,7 @@ if ($action === 'dj-queue-list') {
                     ? array_map('strtolower',$row['delivered_to'])
                     : [];
                 return in_array($requestDevice,$targets,true) &&
-                       !in_array($requestDevice,$delivered,true);
+                       ($includeDelivered || !in_array($requestDevice,$delivered,true));
             }
 
             // Legacy gericht item blijft compatibel.

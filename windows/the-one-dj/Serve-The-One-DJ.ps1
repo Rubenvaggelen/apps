@@ -107,8 +107,19 @@ function DjReceiptPath(){return Join-Path (Split-Path $root -Parent) 'dj-inbox-r
 function SaveDjReceipts($rows){
   $path=DjReceiptPath;$map=@{}
   if(!$rows.Count -and (Test-Path -LiteralPath $path)){return}
-  if(Test-Path -LiteralPath $path){$stored=Get-Content -LiteralPath $path -Raw|ConvertFrom-Json;foreach($row in $stored){if($row.id){$map[[string]$row.id]=$row}}}
-  foreach($row in $rows){if($row.id){$map[[string]$row.id]=$row}}
+  $stored=@()
+  if(Test-Path -LiteralPath $path){
+    if((Get-Item -LiteralPath $path).Length -gt 16777216){throw 'DJ receipt archive needs recovery'}
+    $stored=Get-Content -LiteralPath $path -Raw|ConvertFrom-Json
+  }
+  foreach($row in @($stored)+@($rows)){
+    if($row.id -isnot [string] -or !$row.source -or $row.source.kind -isnot [string]){continue}
+    $source=@{kind=[string]$row.source.kind}
+    foreach($key in @('device','stick','path','name')){if($row.source.$key -is [string]){$source[$key]=[string]$row.source.$key}}
+    $plain=@{id=[string]$row.id;name=[string]$row.name;source=$source}
+    if($row.queue_id -is [string]){$plain.queue_id=[string]$row.queue_id}
+    $map[[string]$row.id]=$plain
+  }
   $json=ConvertTo-Json -InputObject @($map.Values) -Depth 8 -Compress
   [IO.File]::WriteAllText($path+'.tmp',$json,[Text.UTF8Encoding]::new($false))
   Move-Item -LiteralPath ($path+'.tmp') -Destination $path -Force
@@ -130,7 +141,7 @@ function DjInbox(){
   }
   $items=New-Object Collections.Generic.List[object]
   try{
-    $queue=Invoke-RestMethod -Uri ($settings.endpoint+'?action=dj-queue-list&request_device_id='+[Uri]::EscapeDataString((DjDevice))) -Headers @{Authorization=('Bearer '+$token)} -TimeoutSec 15
+    $queue=Invoke-RestMethod -Uri ($settings.endpoint+'?action=dj-queue-list&include_delivered=1&request_device_id='+[Uri]::EscapeDataString((DjDevice))) -Headers @{Authorization=('Bearer '+$token)} -TimeoutSec 15
     foreach($item in $queue.items){
       if(!$item.id -or !$item.device_id -or !$item.stick_id -or !$item.path){continue}
       $name=[string]$item.name;if(!$name){$name=[IO.Path]::GetFileName([string]$item.path)}

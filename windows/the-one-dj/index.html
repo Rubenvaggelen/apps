@@ -2337,12 +2337,13 @@ async function mediaBytes(file){
   if(!r.ok){const e=new Error("Muziekbron niet bereikbaar");e.userMsg="Dit nummer is momenteel niet bereikbaar. Controleer Shared Media of de lokale schijf.";throw e}
   return await r.arrayBuffer();
 }
+function mediaReferenceKey(source){return JSON.stringify([source?.kind,source?.device,source?.stick,source?.path,source?.name])}
 function addMediaReferences(files){
-  const known=new Set(lib.filter(t=>t.file?.source).map(t=>JSON.stringify(t.file.source)));
+  const known=new Set(lib.filter(t=>t.file?.source).map(t=>mediaReferenceKey(t.file.source)));
   let added=0;
   for(const file of files){
     if(!validMediaName(file.name))continue;
-    const key=JSON.stringify(file.source);if(known.has(key))continue;
+    const key=mediaReferenceKey(file.source);if(known.has(key))continue;
     known.add(key);lib.push({id:playlistId(),file,name:cleanImportedName(baseName(file)),status:"queued",sharedName:""});added++;
   }
   renderLib();playlistWrite();
@@ -2370,7 +2371,7 @@ function renderSharedFolder(folder=""){
   localLoadFolderBtn.disabled=false;localLoadFolderBtn.textContent="Voeg deze map toe";
   renderLocalRows([
     ...[...children].sort((a,b)=>a.localeCompare(b)).map(name=>({icon:"📁",label:name,meta:"map",onclick:()=>renderSharedFolder(prefix+name)})),
-    ...tracks.sort((a,b)=>(a.name||"").localeCompare(b.name||"")).map(file=>({icon:"♫",label:file.title||file.name,meta:lib.some(t=>JSON.stringify(t.file?.source)===JSON.stringify(sharedReference(file).source))?"In DJ":"Toevoegen",onclick:()=>{addMediaReferences([sharedReference(file)]);renderSharedFolder(sharedFolder)}}))
+    ...tracks.sort((a,b)=>(a.name||"").localeCompare(b.name||"")).map(file=>({icon:"♫",label:file.title||file.name,meta:lib.some(t=>mediaReferenceKey(t.file?.source)===mediaReferenceKey(sharedReference(file).source))?"In DJ":"Toevoegen",onclick:()=>{addMediaReferences([sharedReference(file)]);renderSharedFolder(sharedFolder)}}))
   ]);
 }
 function renderSharedRoot(){
@@ -2568,7 +2569,7 @@ document.getElementById("libBtn").addEventListener("click",()=>library.classList
 document.getElementById("libClose").addEventListener("click",()=>library.classList.remove("open"));
 libList.addEventListener("click",e=>{if(e.target.closest("button")) library.classList.remove("open")});
 
-const WINDOWS_BUILD=230;
+const WINDOWS_BUILD=231;
 const updateBtn=document.getElementById("updateBtn");
 updateBtn?.addEventListener("click",async()=>{
   const old=updateBtn.textContent;updateBtn.disabled=true;updateBtn.textContent="Controleren…";
