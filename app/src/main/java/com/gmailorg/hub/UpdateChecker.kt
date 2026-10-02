@@ -41,9 +41,9 @@ object UpdateChecker {
                     if (release.optBoolean("draft", false)) continue
 
                     val tag = release.optString("tag_name", "").trim()
-                    if (!tag.matches(Regex("^v\\d+$"))) continue
+                    if (!tag.matches(Regex("^main-v\\d+$"))) continue
 
-                    val version = tag.substring(1).toIntOrNull() ?: continue
+                    val version = tag.removePrefix("main-v").toIntOrNull() ?: continue
                     if (version <= bestVersion) continue
 
                     var assetUrl = ""
