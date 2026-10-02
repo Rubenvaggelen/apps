@@ -1241,7 +1241,7 @@ if ($action === 'dj-queue-add') {
     $requestDevice=trim((string)($body['request_device_id'] ?? ''));
     $trustedDjWindows=in_array(
         strtolower($requestDevice),
-        ['windows-ruben','windows-tablet-042ge173'],
+        ['windows-ruben','windows-tablet-042ge173','windows-theone-hub'],
         true
     );
     if (
@@ -1264,7 +1264,7 @@ if ($action === 'dj-queue-add') {
 
     // DJ-imports worden naar alle DJ-consoles gebroadcast.
     // De afzender bepaalt dus nooit meer de bestemming.
-    $targetDevices=['windows-ruben','windows-tablet-042ge173'];
+    $targetDevices=['windows-ruben','windows-tablet-042ge173','windows-theone-hub'];
 
     $queue=load_json($djQueueFile);
     $items=is_array($queue['items'] ?? null) ? $queue['items'] : [];
@@ -1319,7 +1319,7 @@ if ($action === 'dj-queue-list') {
 
             // Nieuwe broadcast-items.
             if (is_array($row['target_devices'] ?? null)) {
-                $targets=array_map('strtolower',$row['target_devices']);
+                $targets=array_values(array_unique(array_merge(array_map('strtolower',$row['target_devices']),['windows-theone-hub'])));
                 $delivered=is_array($row['delivered_to'] ?? null)
                     ? array_map('strtolower',$row['delivered_to'])
                     : [];
@@ -1351,7 +1351,7 @@ if ($action === 'dj-queue-ack') {
         if (!is_array($row) || ($row['id'] ?? '') !== $id) continue;
 
         if (is_array($row['target_devices'] ?? null)) {
-            $targets=array_map('strtolower',$row['target_devices']);
+            $targets=array_values(array_unique(array_merge(array_map('strtolower',$row['target_devices']),['windows-theone-hub'])));
             if (!in_array($requestDevice,$targets,true)) {
                 out(403,['ok'=>false,'error'=>'wrong DJ target']);
             }
@@ -1362,6 +1362,7 @@ if ($action === 'dj-queue-ack') {
             if (!in_array($requestDevice,$delivered,true)) {
                 $delivered[]=$requestDevice;
             }
+            $row['target_devices']=$targets;
             $row['delivered_to']=$delivered;
             $row['last_delivered_at']=gmdate('c');
 
