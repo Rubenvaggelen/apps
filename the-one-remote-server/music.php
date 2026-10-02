@@ -1383,7 +1383,10 @@ if ($action === 'dj-queue-add') {
         $delivered=is_array($row['delivered_to'] ?? null) ? $row['delivered_to'] : [];
         $targets=is_array($row['target_devices'] ?? null) ? $row['target_devices'] : $targetDevices;
         $remaining=array_values(array_diff($targets,$delivered));
-        if ($remaining !== []) {
+        // Reuse only an event that no console has received yet.
+        // Once any console received it, another explicit send needs a new ID:
+        // offline targets must not suppress re-adding on Hub after local removal.
+        if ($remaining !== [] && $delivered === []) {
             out(200,[
                 'ok'=>true,
                 'queued'=>true,
