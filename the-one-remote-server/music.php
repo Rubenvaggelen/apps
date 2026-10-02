@@ -1143,7 +1143,7 @@ if ($action === 'shared-dedupe') {
         usort($group,function($a,$b) use ($preferred,$sha,$files,$device,$stick) {
             $score=function($row) use ($preferred,$sha,$files,$device,$stick) {
                 $path=(string)$row['path'];
-                return [($preferred[$sha] ?? '')===$path ? 0 : 1,is_file(cache_file_for($files,$device,$stick,$path)) ? 0 : 1,str_starts_with($path,'Nieuwe downloads/') ? 1 : 0,substr_count($path,'/'),mb_strtolower($path)];
+                return [is_file(cache_file_for($files,$device,$stick,$path)) ? 0 : 1,str_starts_with($path,'Nieuwe downloads/') ? 1 : 0,($preferred[$sha] ?? '')===$path ? 0 : 1,substr_count($path,'/'),mb_strtolower($path)];
             };
             return $score($a)<=>$score($b);
         });
@@ -1557,11 +1557,16 @@ if ($action === 'catalog') {
             ? $sticks[$hubIndex]['files']
             : [];
 
+        $deletedDoc=load_json($deletedFile);
+        $deletedItems=is_array($deletedDoc['items'] ?? null) ? $deletedDoc['items'] : [];
+        $knownSha=[];
         $known=[];
         foreach ($hubRows as $row) {
             if (!is_array($row)) continue;
             $path=(string)($row['path'] ?? '');
             if ($path!=='') $known[strtolower($path)]=true;
+            $sha=strtolower((string)($row['sha256'] ?? ''));
+            if (preg_match('/^[a-f0-9]{64}$/',$sha)) $knownSha[$sha]=true;
         }
 
         $promoted=0;
@@ -1586,6 +1591,8 @@ if ($action === 'catalog') {
 
                 $sha=strtolower(trim((string)($row['sha256'] ?? '')));
                 if (!preg_match('/^[a-f0-9]{64}$/',$sha)) continue;
+                if (isset($knownSha[$sha])) continue;
+                if (shared_deleted_match($deletedItems,'THEONE-HUB','hub-primary',$path,$sha,(string)($row['title'] ?? ''))) continue;
 
                 $cached=ensure_cached_from_pool(
                     $files,
@@ -1599,6 +1606,7 @@ if ($action === 'catalog') {
                 $row['cached']=true;
                 $hubRows[]=$row;
                 $known[$key]=true;
+                $knownSha[$sha]=true;
                 $promoted++;
             }
         }
