@@ -999,6 +999,7 @@ class Deck{
   eff(){return this.rate*this.bend}
   get dur(){return this.buffer?this.buffer.duration:0}
 
+[executed on device: Ruben (89001e2c-0797-4d3b-96e7-237cae9f9633)]
   build(){
     const n={};
     n.trim=ctx.createGain();
@@ -1998,7 +1999,8 @@ function updateAutoMixUI(){
   autoMixBtn?.setAttribute("aria-pressed",String(autoMix));
   autoMixBtn?.classList.toggle("auto-mix-on",autoMix);
   if(autoMixBtn) autoMixBtn.textContent=autoMix?"Auto • Aan":"Auto";
-}
+
+[executed on device: Ruben (89001e2c-0797-4d3b-96e7-237cae9f9633)]}
 autoMixBtn?.addEventListener("click",()=>{
   autoMix=!autoMix;
   autoMixArmed=true;
@@ -2184,7 +2186,7 @@ async function clearStoredPlaylist(){
       tx.objectStore("playlist").delete("current");
       tx.oncomplete=res;tx.onerror=()=>rej(tx.error);
     });
-  }catch(e){throw e}
+  }catch(e){}
 }
 const AUDIO_EXT=/\.(mp3|wav|aif|aiff|aifc|caf|flac|ogg|oga|opus|m4a|aac|alac|mka|wma|ac3|amr|mp4|m4v|mov|webm|mkv)$/i;
 const playableFile=f=>{
@@ -2337,13 +2339,12 @@ async function mediaBytes(file){
   if(!r.ok){const e=new Error("Muziekbron niet bereikbaar");e.userMsg="Dit nummer is momenteel niet bereikbaar. Controleer Shared Media of de lokale schijf.";throw e}
   return await r.arrayBuffer();
 }
-function mediaReferenceKey(source){return JSON.stringify([source?.kind,source?.device,source?.stick,source?.path,source?.name])}
 function addMediaReferences(files){
-  const known=new Set(lib.filter(t=>t.file?.source).map(t=>mediaReferenceKey(t.file.source)));
+  const known=new Set(lib.filter(t=>t.file?.source).map(t=>JSON.stringify(t.file.source)));
   let added=0;
   for(const file of files){
     if(!validMediaName(file.name))continue;
-    const key=mediaReferenceKey(file.source);if(known.has(key))continue;
+    const key=JSON.stringify(file.source);if(known.has(key))continue;
     known.add(key);lib.push({id:playlistId(),file,name:cleanImportedName(baseName(file)),status:"queued",sharedName:""});added++;
   }
   renderLib();playlistWrite();
@@ -2371,7 +2372,7 @@ function renderSharedFolder(folder=""){
   localLoadFolderBtn.disabled=false;localLoadFolderBtn.textContent="Voeg deze map toe";
   renderLocalRows([
     ...[...children].sort((a,b)=>a.localeCompare(b)).map(name=>({icon:"📁",label:name,meta:"map",onclick:()=>renderSharedFolder(prefix+name)})),
-    ...tracks.sort((a,b)=>(a.name||"").localeCompare(b.name||"")).map(file=>({icon:"♫",label:file.title||file.name,meta:lib.some(t=>mediaReferenceKey(t.file?.source)===mediaReferenceKey(sharedReference(file).source))?"In DJ":"Toevoegen",onclick:()=>{addMediaReferences([sharedReference(file)]);renderSharedFolder(sharedFolder)}}))
+    ...tracks.sort((a,b)=>(a.name||"").localeCompare(b.name||"")).map(file=>({icon:"♫",label:file.title||file.name,meta:lib.some(t=>JSON.stringify(t.file?.source)===JSON.stringify(sharedReference(file).source))?"In DJ":"Toevoegen",onclick:()=>{addMediaReferences([sharedReference(file)]);renderSharedFolder(sharedFolder)}}))
   ]);
 }
 function renderSharedRoot(){
@@ -2395,15 +2396,9 @@ const djInboxSeen=new Set();
 try{for(const id of JSON.parse(localStorage.getItem("theOneDjInboxSeen")||"[]"))djInboxSeen.add(id)}catch(e){}
 async function pollDjInbox(){
   if(djInboxBusy||playlistRestoring||playlistClearing)return;
-  djInboxBusy=true;let generation=playlistGeneration;
+  djInboxBusy=true;const generation=playlistGeneration;
   try{
     const data=await localJson("/shared-media/inbox");
-    const clearId=data.control?.clear_id;
-    if(clearId && localStorage.getItem("theOneDjLastClear")!==clearId){
-      await clearDjPlaylist();
-      localStorage.setItem("theOneDjLastClear",clearId);
-      generation=playlistGeneration;
-    }
     if(generation!==playlistGeneration||playlistClearing)return;
     const items=(data.items||[]).filter(x=>x.id&&!djInboxSeen.has(x.id)&&x.source&&validMediaName(x.name));
     if(!items.length)return;
@@ -2507,7 +2502,8 @@ function renderLib(){
     li.append(drag,tag,name,a,b,again,x);libList.appendChild(li);
   });
 }
-async function clearDjPlaylist(){
+document.getElementById("clearPlaylist")?.addEventListener("click",async()=>{
+  if(!confirm("Hele playlist wissen?")) return;
 
   playlistClearing=true;
   autoMixPendingStart=false;autoMixNextDeck=null;cancelFade();
@@ -2558,9 +2554,6 @@ async function clearDjPlaylist(){
   }finally{
     playlistClearing=false;
   }
-}
-document.getElementById("clearPlaylist")?.addEventListener("click",async()=>{
-  if(confirm("Hele playlist wissen?"))await clearDjPlaylist();
 });
 playlistRead();
 
@@ -2569,7 +2562,7 @@ document.getElementById("libBtn").addEventListener("click",()=>library.classList
 document.getElementById("libClose").addEventListener("click",()=>library.classList.remove("open"));
 libList.addEventListener("click",e=>{if(e.target.closest("button")) library.classList.remove("open")});
 
-const WINDOWS_BUILD=231;
+const WINDOWS_BUILD=229;
 const updateBtn=document.getElementById("updateBtn");
 updateBtn?.addEventListener("click",async()=>{
   const old=updateBtn.textContent;updateBtn.disabled=true;updateBtn.textContent="Controleren…";
@@ -2617,3 +2610,5 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",()=>decks
 </script>
 </body>
 </html>
+
+[executed on device: Ruben (89001e2c-0797-4d3b-96e7-237cae9f9633)]
