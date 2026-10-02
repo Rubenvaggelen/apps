@@ -46,7 +46,10 @@ function Run-Pass {
       if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant() -ne $sha){Remove-Item $source;throw 'source checksum mismatch'}
       if(!(Test-Path $output)){
         $partial=Join-Path $cache ($sha+'.encoding.mp3')
-        & $ffmpeg -nostdin -hide_banner -loglevel error -y -i $source -map 0:a:0 -vn -codec:a libmp3lame -q:a 2 -ar 44100 -ac 2 $partial 2>>$log
+        $previousErrorPreference=$ErrorActionPreference
+        $ErrorActionPreference='Continue'
+        try{ & $ffmpeg -nostdin -hide_banner -loglevel error -y -i $source -map 0:a:0 -vn -af 'asetpts=N/SR/TB' -codec:a libmp3lame -q:a 2 -ar 44100 -ac 2 $partial 2>>$log }
+        finally{$ErrorActionPreference=$previousErrorPreference}
         if($LASTEXITCODE -ne 0){Remove-Item $partial -ErrorAction SilentlyContinue;throw 'audio conversion failed'}
         $originalDuration=[double](& $ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $source)
         $playbackDuration=[double](& $ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $partial)
