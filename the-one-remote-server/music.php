@@ -1106,12 +1106,17 @@ if ($action === 'login') {
 
 // Playback companions keep the original cache, catalog and references intact.
 // Authenticated music writers can publish; read-only clients cannot.
-if ($action === 'playback-status' || $action === 'playback-upload') {
+if ($action === 'playback-status' || $action === 'playback-upload' || $action === 'playback-delete') {
     if (!token_ok(bearer(),$sec)) out(403,['ok'=>false,'error'=>'write auth required']);
     $sourceSha=strtolower(trim((string)($_GET['source_sha256'] ?? $_POST['source_sha256'] ?? '')));
     if (!preg_match('/^[a-f0-9]{64}$/',$sourceSha)) out(400,['ok'=>false,'error'=>'invalid source hash']);
     $dest=$playback.'/'.$sourceSha.'.mp3';
     if ($action === 'playback-status') out(200,['ok'=>true,'ready'=>is_file($dest)]);
+    if ($action === 'playback-delete') {
+        if ($_SERVER['REQUEST_METHOD']!=='POST') out(405,['ok'=>false,'error'=>'POST required']);
+        if (is_file($dest) && !unlink($dest)) out(500,['ok'=>false,'error'=>'playback removal failed']);
+        out(200,['ok'=>true,'ready'=>false]);
+    }
     $sha=strtolower(trim((string)($_POST['sha256'] ?? '')));
     $offset=(int)($_POST['offset'] ?? -1);
     $total=(int)($_POST['size'] ?? 0);
