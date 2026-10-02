@@ -11,6 +11,7 @@ $home = dirname((string)($_SERVER['DOCUMENT_ROOT'] ?? __DIR__));
 $root = $home . '/the-one-music-cache';
 $files = $root . '/files';
 $meta = $root . '/meta';
+$playback = $root . '/playback';
 $secretFile = $root . '/secret.key';
 $rateFile = $root . '/rate.json';
 $favoritesFile = $root . '/favorites.json';
@@ -23,7 +24,7 @@ $deletedFile = $root . '/deleted-shared-media.json';
 $deviceRegistryFile = $home . '/the-one-remote-data/main-devices.json';
 $deviceOwnerFile = $home . '/the-one-remote-data/main-device-owner.json';
 
-foreach ([$root, $files, $meta] as $dir) {
+foreach ([$root, $files, $meta, $playback] as $dir) {
     if (!is_dir($dir)) @mkdir($dir, 0700, true);
 }
 if (!is_file($secretFile)) {
@@ -1103,13 +1104,63 @@ if ($action === 'login') {
     out(200,['ok'=>true,'token'=>token_new($sec),'expires_in'=>TOKEN_TTL]);
 }
 
+// Playback companions keep the original cache, catalog and references intact.
+// Only the authenticated Hub can publish; clients read via the existing stream.
+if ($action === 'playback-status' || $action === 'playback-upload') {
+    if (token_scope(bearer(),$sec) !== 'music-hub') out(403,['ok'=>false,'error'=>'hub auth required']);
+    $sourceSha=strtolower(trim((string)($_GET['source_sha256'] ?? $_POST['source_sha256'] ?? '')));
+    if (!preg_match('/^[a-f0-9]{64}$/',$sourceSha)) out(400,['ok'=>false,'error'=>'invalid source hash']);
+    $dest=$playback.'/'.$sourceSha.'.mp3';
+    if ($action === 'playback-status') out(200,['ok'=>true,'ready'=>is_file($dest)]);
+    $sha=strtolower(trim((string)($_POST['sha256'] ?? '')));
+    $offset=(int)($_POST['offset'] ?? -1);
+    $total=(int)($_POST['size'] ?? 0);
+    if (!preg_match('/^[a-f0-9]{64}$/',$sha) || $offset<0 || $total<1 || $total>536870912) out(400,['ok'=>false,'error'=>'invalid playback upload']);
+    if (is_file($dest) && hash_file('sha256',$dest)===$sha) out(200,['ok'=>true,'ready'=>true,'offset'=>$total]);
+    $tmp=(string)($_FILES['file']['tmp_name'] ?? '');
+    if ($tmp==='' || !is_uploaded_file($tmp)) out(400,['ok'=>false,'error'=>'chunk required']);
+    $chunkSize=(int)filesize($tmp);
+    if ($chunkSize<1 || $chunkSize>4194304 || $offset+$chunkSize>$total) out(400,['ok'=>false,'error'=>'invalid chunk size']);
+    $part=$playback.'/'.$sourceSha.'.'.$sha.'.part';
+    if ($offset===0) {
+        $device=safe_id((string)($_POST['device_id'] ?? ''));
+        $stick=safe_id((string)($_POST['stick_id'] ?? ''));
+        $path=safe_path((string)($_POST['path'] ?? ''));
+        $original=cache_file_for($files,$device,$stick,$path);
+        if (!is_file($original) || hash_file('sha256',$original)!==$sourceSha) out(409,['ok'=>false,'error'=>'source changed or missing']);
+    }
+    $fh=fopen($part,'c+b');
+    if ($fh===false || !flock($fh,LOCK_EX)) out(500,['ok'=>false,'error'=>'playback storage unavailable']);
+    if ($offset===0) ftruncate($fh,0);
+    $current=(int)fstat($fh)['size'];
+    if ($current!==$offset) {flock($fh,LOCK_UN);fclose($fh);out(409,['ok'=>false,'error'=>'wrong chunk offset','offset'=>$current]);}
+    fseek($fh,$offset);$input=fopen($tmp,'rb');
+    if ($input===false) {fclose($fh);out(500,['ok'=>false,'error'=>'chunk unreadable']);}
+    $copied=stream_copy_to_stream($input,$fh);fclose($input);fflush($fh);flock($fh,LOCK_UN);fclose($fh);
+    if ($copied!==$chunkSize) out(500,['ok'=>false,'error'=>'short playback write']);
+    $next=$offset+$chunkSize;
+    if ($next===$total) {
+        if (hash_file('sha256',$part)!==$sha) {@unlink($part);out(400,['ok'=>false,'error'=>'playback hash mismatch']);}
+        $head=file_get_contents($part,false,null,0,3);
+        if (!is_string($head) || (substr($head,0,3)!=='ID3' && !(ord($head[0])===255 && (ord($head[1])&224)===224))) {@unlink($part);out(400,['ok'=>false,'error'=>'MP3 playback required']);}
+        if (!rename($part,$dest)) out(500,['ok'=>false,'error'=>'playback publish failed']);
+        chmod($dest,0600);
+    }
+    out(200,['ok'=>true,'ready'=>$next===$total,'offset'=>$next]);
+}
+
 if ($action === 'stream') {
     $token=trim((string)($_GET['token'] ?? ''));
     if (!token_read_ok($token,$sec)) { http_response_code(401); exit; }
     $device=safe_id((string)($_GET['device'] ?? ''));
     $stick=safe_id((string)($_GET['stick'] ?? ''));
     $path=safe_path((string)($_GET['path'] ?? ''));
-    stream_range($files.'/'.key_for($device,$stick,$path).'.bin',$path);
+    $original=cache_file_for($files,$device,$stick,$path);
+    if ((string)($_GET['raw'] ?? '')!=='1' && strtolower(pathinfo($path,PATHINFO_EXTENSION))!=='mp3' && is_file($original)) {
+        $sha=hash_file('sha256',$original);
+        if (is_string($sha) && is_file($playback.'/'.$sha.'.mp3')) stream_range($playback.'/'.$sha.'.mp3',$path.'.mp3');
+    }
+    stream_range($original,$path);
 }
 
 if ($action === 'download-stream') {
