@@ -1,17 +1,22 @@
-param([string]$OnlyFolder='',[switch]$Loop)
+param([string]$OnlyFolder='',[switch]$Loop,[string]$SettingsPath='',[string]$WorkerRoot='C:\TheOne\SharedMedia')
 $ErrorActionPreference='Stop'
 $mutex=New-Object Threading.Mutex($false,'Global\TheOneAudioPlayback')
 if(!$mutex.WaitOne(0)){exit 0}
 $base='https://rubenvanaggelen.com/the-one-remote-api/music.php'
-$cache='C:\TheOne\SharedMedia\PlaybackCache'
-$log='C:\TheOne\SharedMedia\Logs\audio-playback.log'
+$cache=Join-Path $WorkerRoot 'PlaybackCache'
+$log=Join-Path $WorkerRoot 'Logs\audio-playback.log'
 New-Item $cache,(Split-Path $log) -ItemType Directory -Force|Out-Null
 function Log($message){Add-Content $log ((Get-Date).ToString('u')+' '+$message);Write-Output $message}
 function Run-Pass {
   $ffmpeg=(Get-Command ffmpeg.exe -ErrorAction Stop).Source
   $ffprobe=(Get-Command ffprobe.exe -ErrorAction Stop).Source
+  if($SettingsPath){
+    $settings=Get-Content -LiteralPath $SettingsPath -Raw|ConvertFrom-Json
+    $login=Invoke-RestMethod ($base+'?action=login') -Method Post -ContentType 'application/json' -Body (@{pin=$settings.pin}|ConvertTo-Json -Compress) -TimeoutSec 30
+  }else{
   $secret=(Get-Content 'C:\TheOne\SharedMedia\.hub-sync-secret' -Raw).Trim()
   $login=Invoke-RestMethod ($base+'?action=hub-login') -Method Post -ContentType 'application/json' -Body (@{secret=$secret}|ConvertTo-Json -Compress) -TimeoutSec 30
+  }
   $headers=@{Authorization=('Bearer '+$login.token)}
   $read=Invoke-RestMethod ($base+'?action=browse-login') -TimeoutSec 30
   $catalog=Invoke-RestMethod ($base+'?action=catalog') -Headers $headers -TimeoutSec 60
@@ -44,6 +49,8 @@ function Run-Pass {
         }
       }
       if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant() -ne $sha){Remove-Item $source;throw 'source checksum mismatch'}
+      $sourceInfo=(& $ffprobe -v error -show_format -of json $source | Out-String)|ConvertFrom-Json
+      if($sourceInfo.format.tags.ASF_Protection_Type -eq 'DRM'){throw 'protected recording: use the licensed player or an unprotected original'}
       if(!(Test-Path $output)){
         $partial=Join-Path $cache ($sha+'.encoding.mp3')
         $previousErrorPreference=$ErrorActionPreference
@@ -53,9 +60,24 @@ function Run-Pass {
         if($LASTEXITCODE -ne 0){Remove-Item $partial -ErrorAction SilentlyContinue;throw 'audio conversion failed'}
         $originalDuration=[double](& $ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $source)
         $playbackDuration=[double](& $ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $partial)
-        if([Math]::Abs($originalDuration-$playbackDuration) -gt 1){Remove-Item $partial;throw 'audio duration mismatch'}
+        if([Math]::Abs($originalDuration-$playbackDuration) -gt 1){
+          # Old ASF/WMA headers may have wrong duration or reset timestamps.
+          # Compare the complete decoded sample timeline rather than that header.
+          $progress=Join-Path $cache ($sha+'.duration.txt')
+          $previousErrorPreference=$ErrorActionPreference;$ErrorActionPreference='Continue'
+          try{ & $ffmpeg -nostdin -hide_banner -loglevel error -y -i $source -map 0:a:0 -vn -af 'asetpts=N/SR/TB' -ar 44100 -ac 2 -progress $progress -f null NUL 2>>$log }
+          finally{$ErrorActionPreference=$previousErrorPreference}
+          if($LASTEXITCODE -ne 0){Remove-Item $partial;throw 'source audio decode failed'}
+          $lines=@(Select-String -LiteralPath $progress -Pattern '^out_time_us=(-?[0-9]+)$')
+          if(!$lines.Count){Remove-Item $partial;throw 'decoded duration missing'}
+          $decodedDuration=[double]$lines[-1].Matches[0].Groups[1].Value/1000000
+          Remove-Item $progress -ErrorAction SilentlyContinue
+          if($originalDuration -gt 10 -and $decodedDuration -lt ($originalDuration*0.1)){Remove-Item $partial;throw 'source cannot be decoded completely'}
+          if([Math]::Abs($decodedDuration-$playbackDuration) -gt 0.15){Remove-Item $partial;throw 'decoded audio duration mismatch'}
+        }
         Move-Item $partial $output -Force
       }
+      if((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant() -ne $sha){throw 'source changed during conversion'}
       $size=(Get-Item $output).Length;$playbackSha=(Get-FileHash $output -Algorithm SHA256).Hash.ToLowerInvariant()
       $stream=[IO.File]::OpenRead($output);$chunk=Join-Path $cache 'upload-chunk.bin';$offset=0L
       try{
