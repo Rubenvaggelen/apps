@@ -41,7 +41,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
-                android:text="Films, Series &amp; Muziek"
+                android:text="Muziek en films"
                 android:textColor="@color/text_main"
                 android:textSize="24sp"
                 android:letterSpacing="0.015"
