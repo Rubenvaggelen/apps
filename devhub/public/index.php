@@ -53,7 +53,29 @@ async function api(action,opts={}){const method=opts.method||'GET';let url='api.
 function humanSize(n){if(n==null)return'';if(n<1024)return n+' B';if(n<1048576)return(n/1024).toFixed(1)+' KB';return(n/1048576).toFixed(1)+' MB'}
 async function loadStatus(){try{const j=await api('status');$('#branch').textContent=j.data.branch||'main';$('#latestCommit').textContent=j.data.commit||'';const clean=!j.data.status;$('#repoStatus').textContent=clean?'Working tree clean':'Wijzigingen aanwezig';$('#gitDot').style.background=clean?'var(--ok)':'var(--warn)'}catch(e){$('#repoStatus').textContent='Status fout';$('#gitDot').style.background='var(--danger)'}}
 async function loadBuildStatus(){const pill=$('#buildPill');try{const r=await fetch('https://api.github.com/repos/Rubenvaggelen/apps/actions/workflows/build-apk.yml/runs?branch=main&per_page=1',{headers:{Accept:'application/vnd.github+json'},cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);const j=await r.json();const run=j.workflow_runs&&j.workflow_runs[0];if(!run){pill.textContent='Geen builds';pill.className='build-pill';return{busy:false,success:false}}const busy=run.status==='queued'||run.status==='in_progress';if(busy){pill.textContent='Build bezig • #'+run.run_number;pill.className='build-pill busy'}else if(run.conclusion==='success'){pill.textContent='Build geslaagd • v'+run.run_number;pill.className='build-pill success'}else{pill.textContent='Build '+(run.conclusion||'mislukt')+' • #'+run.run_number;pill.className='build-pill fail'}return{busy,success:run.conclusion==='success',number:run.run_number}}catch(e){pill.textContent='Buildstatus onbekend';pill.className='build-pill';return null}}
-async function loadLatestRelease(){const version=$('#releaseVersion'),app=$('#appDownload'),car=$('#carDownload'),dj=$('#djDownload'),note=$('#releaseNote');app.removeAttribute('href');car.removeAttribute('href');dj.removeAttribute('href');app.setAttribute('aria-disabled','true');car.setAttribute('aria-disabled','true');dj.setAttribute('aria-disabled','true');try{const r=await fetch('https://api.github.com/repos/Rubenvaggelen/apps/releases/latest',{headers:{Accept:'application/vnd.github+json'},cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);const rel=await r.json();const tag=rel.tag_name||'Laatste release';version.textContent=tag;const assets=Array.isArray(rel.assets)?rel.assets:[];const appAsset=assets.find(a=>a.name==='app-debug.apk');const carAsset=assets.find(a=>a.name==='carradio-debug.apk');const djAsset=assets.find(a=>a.name==='thedj-debug.apk');if(appAsset){app.href=appAsset.browser_download_url;app.removeAttribute('aria-disabled')}if(carAsset){car.href=carAsset.browser_download_url;car.removeAttribute('aria-disabled')}if(djAsset){dj.href=djAsset.browser_download_url;dj.removeAttribute('aria-disabled')}note.textContent=appAsset&&carAsset&&djAsset?'Klaar om direct te downloaden. Auto-sync actief.':'Niet alle APK-bestanden zijn beschikbaar in deze release.';if(lastReleaseTag&&lastReleaseTag!==tag)toast('Nieuwe APK-release '+tag+' is klaar.');lastReleaseTag=tag;return tag}catch(e){version.textContent='Release onbekend';note.textContent='Kon de nieuwste release niet laden. Gebruik Builds als alternatief.';return null}}
+async function loadLatestRelease(){
+ const version=$('#releaseVersion'),note=$('#releaseNote'),app=$('#appDownload'),car=$('#carDownload'),dj=$('#djDownload');
+ for(const el of [app,car,dj]){el.removeAttribute('href');el.setAttribute('aria-disabled','true')}
+ try{
+  const r=await fetch('https://api.github.com/repos/Rubenvaggelen/apps/releases?per_page=60',{headers:{Accept:'application/vnd.github+json'},cache:'no-store'});
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  const releases=await r.json();
+  const pick=(prefix,asset)=>{for(const rel of releases){const tag=String(rel.tag_name||'');if(!tag.startsWith(prefix))continue;const a=(rel.assets||[]).find(x=>x.name===asset);if(a)return{tag,url:a.browser_download_url}}return null};
+  const mainRel=pick('main-v','app-debug.apk');
+  const carRel=pick('car-v','carradio-debug.apk');
+  const djRel=pick('dj-v','thedj-debug.apk');
+  if(mainRel){app.href=mainRel.url;app.removeAttribute('aria-disabled')}
+  if(carRel){car.href=carRel.url;car.removeAttribute('aria-disabled')}
+  if(djRel){dj.href=djRel.url;dj.removeAttribute('aria-disabled')}
+  version.textContent='Main '+(mainRel?.tag||'—')+' • Car '+(carRel?.tag||'—')+' • DJ '+(djRel?.tag||'—');
+  note.textContent=mainRel&&carRel&&djRel?'Alle Family-apps hebben een eigen download- en updatekanaal.':'Een of meer losse Family-releases moeten nog worden gebouwd.';
+  return {main:mainRel,car:carRel,dj:djRel};
+ }catch(e){
+  version.textContent='Releases onbekend';
+  note.textContent='Kon de losse releasekanalen niet laden. Gebruik Builds als alternatief.';
+  return null;
+ }
+}
 function scheduleAutoRefresh(ms){clearTimeout(autoPollTimer);autoPollTimer=setTimeout(autoRefreshHub,ms)}
 async function autoRefreshHub(){if(document.hidden){scheduleAutoRefresh(180000);return}const build=await loadBuildStatus();await loadStatus();if(build&&build.success)await loadLatestRelease();scheduleAutoRefresh(build&&build.busy?15000:180000)}
 async function listFiles(){try{const j=await api('list',{params:{project:state.project,path:state.dir}});$('#crumb').textContent=state.project+' / '+(state.dir?state.dir+'/':'');$('#fileList').innerHTML='';j.data.items.sort((a,b)=>(a.type===b.type?a.name.localeCompare(b.name):a.type==='folder'?-1:1)).forEach(it=>{const row=document.createElement('div');row.className='file-row '+(it.type==='folder'?'folder':'');row.innerHTML=`<span>${it.type==='folder'?'📁':'📄'}</span><span class="file-name"></span><span class="file-size">${humanSize(it.size)}</span>`;row.querySelector('.file-name').textContent=it.name;row.onclick=()=>it.type==='folder'?openDir(it.name):openFile(it.name);$('#fileList').appendChild(row)})}catch(e){toast(e.message,true)}}
