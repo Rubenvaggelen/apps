@@ -1366,9 +1366,13 @@ if ($action === 'dj-queue-add') {
     if ($name === '') $name=basename($path);
     $title=trim((string)($body['title'] ?? $name));
 
-    // DJ-imports worden naar alle DJ-consoles gebroadcast.
-    // De afzender bepaalt dus nooit meer de bestemming.
-    $targetDevices=['windows-ruben','windows-tablet-042ge173','windows-theone-hub'];
+    // Each import goes to one selected console. Older Windows clients target
+    // their own console; older Main clients default to Hub without broadcasting.
+    $allowedTargets=['windows-ruben','windows-tablet-042ge173','windows-theone-hub'];
+    $target=strtolower(trim((string)($body['target_device_id'] ?? '')));
+    if ($target === '') $target=$trustedDjWindows ? strtolower($requestDevice) : 'windows-theone-hub';
+    if (!in_array($target,$allowedTargets,true)) out(400,['ok'=>false,'error'=>'invalid DJ target']);
+    $targetDevices=[$target];
 
     $queue=load_json($djQueueFile);
     $items=is_array($queue['items'] ?? null) ? $queue['items'] : [];
@@ -1381,7 +1385,8 @@ if ($action === 'dj-queue-add') {
         if ($cleared) continue;
         if (($row['status'] ?? '') !== 'pending' || ($row['dedupe'] ?? '') !== $dedupe) continue;
         $delivered=is_array($row['delivered_to'] ?? null) ? $row['delivered_to'] : [];
-        $targets=is_array($row['target_devices'] ?? null) ? $row['target_devices'] : $targetDevices;
+        $targets=is_array($row['target_devices'] ?? null) ? array_map('strtolower',$row['target_devices']) : [strtolower((string)($row['target_device_id'] ?? 'windows-ruben'))];
+        if ($targets !== $targetDevices) continue;
         $remaining=array_values(array_diff($targets,$delivered));
         // Reuse only an event that no console has received yet.
         // Once any console received it, another explicit send needs a new ID:
@@ -1433,9 +1438,9 @@ if ($action === 'dj-queue-list') {
 
             if (in_array((string)($row['id'] ?? ''),$discard,true)) return false;
 
-            // Nieuwe broadcast-items.
+            // Deliver only to the selected targets (also honors historic broadcasts).
             if (is_array($row['target_devices'] ?? null)) {
-                $targets=array_values(array_unique(array_merge(array_map('strtolower',$row['target_devices']),['windows-theone-hub'])));
+                $targets=array_values(array_unique(array_map('strtolower',$row['target_devices'])));
                 $delivered=is_array($row['delivered_to'] ?? null)
                     ? array_map('strtolower',$row['delivered_to'])
                     : [];
@@ -1467,7 +1472,7 @@ if ($action === 'dj-queue-ack') {
         if (!is_array($row) || ($row['id'] ?? '') !== $id) continue;
 
         if (is_array($row['target_devices'] ?? null)) {
-            $targets=array_values(array_unique(array_merge(array_map('strtolower',$row['target_devices']),['windows-theone-hub'])));
+            $targets=array_values(array_unique(array_map('strtolower',$row['target_devices'])));
             if (!in_array($requestDevice,$targets,true)) {
                 out(403,['ok'=>false,'error'=>'wrong DJ target']);
             }

@@ -561,10 +561,11 @@ object RemoteUsbMusicClient {
         } finally { connection.disconnect() }
     }
 
-    fun queueDjImport(context: Context, file: RemoteFile): Boolean {
+    fun queueDjImport(context: Context, file: RemoteFile, targetDeviceId: String): Boolean {
         val token = token(context)
         val body = JSONObject()
             .put("request_device_id", MainDeviceRegistry.deviceId(context))
+            .put("target_device_id", targetDeviceId)
             .put("device_id", file.deviceId)
             .put("stick_id", file.stickId)
             .put("path", file.path)

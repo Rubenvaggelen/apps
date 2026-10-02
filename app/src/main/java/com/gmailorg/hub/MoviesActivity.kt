@@ -1527,7 +1527,10 @@ class MoviesActivity : AppCompatActivity() {
             }
         )
 
-        if (canDjImport) panel.addView(djClearPlaylistButton())
+        if (canDjImport) {
+            panel.addView(djDestinationButton())
+            panel.addView(djClearPlaylistButton())
+        }
 
         if (canOrganizeNewDownloads && directFiles.isNotEmpty()) {
             panel.addView(
@@ -1755,10 +1758,18 @@ class MoviesActivity : AppCompatActivity() {
                     gravity = android.view.Gravity.CENTER
                     setTypeface(typeface, android.graphics.Typeface.BOLD)
                     setTextColor(Color.parseColor("#20B8FF"))
-                    contentDescription = "Stuur ${file.name} naar The One DJ"
+                    contentDescription = "Stuur ${file.name} naar DJ ${djTargetName(activeDjTarget())}. Houd ingedrukt om een andere DJ te kiezen."
                     setBackgroundResource(R.drawable.bg_the_one_blue_button)
                     setPadding(0, 0, 0, 0)
                     alpha = if (file.cached) 1f else 0.35f
+                    setOnLongClickListener {
+                        if (file.cached) {
+                            chooseDjDestination("Stuur dit nummer naar welke DJ?", remember = false) { target ->
+                                requestRemoteUsbDjImport(file, this, target)
+                            }
+                        }
+                        true
+                    }
                     setOnClickListener {
                         if (file.cached) {
                             requestRemoteUsbDjImport(file, this)
@@ -2940,10 +2951,18 @@ class MoviesActivity : AppCompatActivity() {
                     setTypeface(typeface, android.graphics.Typeface.BOLD)
                     setTextColor(Color.parseColor("#20B8FF"))
                     gravity = android.view.Gravity.CENTER
-                    contentDescription = "Stuur ${file.name} naar The One DJ"
+                    contentDescription = "Stuur ${file.name} naar DJ ${djTargetName(activeDjTarget())}. Houd ingedrukt om een andere DJ te kiezen."
                     setBackgroundResource(R.drawable.bg_the_one_blue_button)
                     setPadding(0, 0, 0, 0)
                     alpha = if (file.cached) 1f else 0.35f
+                    setOnLongClickListener {
+                        if (file.cached) {
+                            chooseDjDestination("Stuur dit nummer naar welke DJ?", remember = false) { target ->
+                                requestRemoteUsbDjImport(file, this, target)
+                            }
+                        }
+                        true
+                    }
                     setOnClickListener {
                         if (file.cached) {
                             requestRemoteUsbDjImport(file, this)
@@ -3089,6 +3108,8 @@ class MoviesActivity : AppCompatActivity() {
                 ).apply { bottomMargin = dp(10) }
             )
         }
+
+        if (canDjImport) panel.addView(djDestinationButton())
 
         panel.addView(
             ScrollView(this).apply {
@@ -3238,6 +3259,48 @@ class MoviesActivity : AppCompatActivity() {
         }
     }
 
+    private val djTargetIds = arrayOf("windows-theone-hub", "windows-ruben", "windows-tablet-042ge173")
+    private val djTargetNames = arrayOf("Theonehub", "Ruben", "Surface")
+
+    private fun activeDjTarget(): String {
+        val saved = getSharedPreferences("theOneDjDestination", MODE_PRIVATE)
+            .getString("target", djTargetIds[0])
+        return saved?.takeIf { it in djTargetIds } ?: djTargetIds[0]
+    }
+
+    private fun djTargetName(target: String): String =
+        djTargetNames[djTargetIds.indexOf(target).coerceAtLeast(0)]
+
+    private fun chooseDjDestination(title: String, remember: Boolean, selected: (String) -> Unit) {
+        var choice = djTargetIds.indexOf(activeDjTarget()).coerceAtLeast(0)
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setSingleChoiceItems(djTargetNames, choice) { _, which -> choice = which }
+            .setNegativeButton("Annuleren", null)
+            .setPositiveButton(if (remember) "Werk op deze DJ" else "Versturen") { _, _ ->
+                val target = djTargetIds[choice]
+                if (remember) {
+                    getSharedPreferences("theOneDjDestination", MODE_PRIVATE)
+                        .edit().putString("target", target).apply()
+                }
+                selected(target)
+            }.show()
+    }
+
+    private fun djDestinationButton(): TextView = TextView(this).apply {
+        fun label() = "WERK OP DJ • ${djTargetName(activeDjTarget())}  ▾\nHoud de DJ-knop ingedrukt voor een andere bestemming per nummer"
+        text = label()
+        textSize = 12f
+        gravity = android.view.Gravity.CENTER
+        setTextColor(Color.parseColor("#E8AA4E"))
+        setBackgroundResource(R.drawable.bg_the_one_gold_outline)
+        val padding = (12 * resources.displayMetrics.density).toInt()
+        setPadding(padding, padding, padding, padding)
+        setOnClickListener {
+            chooseDjDestination("Op welke DJ werk je?", remember = true) { text = label() }
+        }
+    }
+
     private fun djClearPlaylistButton(): TextView = TextView(this).apply {
         text = "DJ • WIS PLAYLIST"
         textSize = 13f
@@ -3278,8 +3341,10 @@ class MoviesActivity : AppCompatActivity() {
 
     private fun requestRemoteUsbDjImport(
         file: RemoteUsbMusicClient.RemoteFile,
-        button: TextView
+        button: TextView,
+        targetDeviceId: String = activeDjTarget()
     ) {
+        val targetName = djTargetName(targetDeviceId)
         button.isEnabled = false
         remoteMusicIo.execute {
             val access = try {
@@ -3298,7 +3363,7 @@ class MoviesActivity : AppCompatActivity() {
                     ) {
                         false
                     } else {
-                        RemoteUsbMusicClient.queueDjImport(this, file)
+                        RemoteUsbMusicClient.queueDjImport(this, file, targetDeviceId)
                     }
                 } catch (_: Exception) {
                     false
@@ -3318,7 +3383,7 @@ class MoviesActivity : AppCompatActivity() {
                 } else if (result) {
                     Toast.makeText(
                         this,
-                        "Naar The One DJ gestuurd: ${cleanUsbTrackTitle(file.displayName)}",
+                        "Naar DJ $targetName gestuurd: ${cleanUsbTrackTitle(file.displayName)}",
                         Toast.LENGTH_SHORT
                     ).show()
                 } else {
