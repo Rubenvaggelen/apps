@@ -1031,6 +1031,19 @@ if ($action === 'hub-upsert') {
     if ($doc===[]) out(404,['ok'=>false,'error'=>'hub catalog missing']);
 
     $rows=is_array($doc['files'] ?? null) ? $doc['files'] : [];
+    $deletedDoc=load_json($deletedFile);
+    $deletedItems=is_array($deletedDoc['items'] ?? null) ? $deletedDoc['items'] : [];
+    if (shared_deleted_match($deletedItems,$device,$stick,$path,$sha,(string)($b['title'] ?? ''))) {
+        out(200,['ok'=>true,'path'=>$path,'cached'=>true,'deleted'=>true,'files'=>count($rows)]);
+    }
+    if (str_starts_with($path,'Nieuwe downloads/')) {
+        foreach ($rows as $existing) {
+            if (!is_array($existing) || str_starts_with((string)($existing['path'] ?? ''),'Nieuwe downloads/')) continue;
+            if (strtolower((string)($existing['sha256'] ?? ''))!==$sha) continue;
+            if (!is_file(cache_file_for($files,$device,$stick,(string)$existing['path']))) continue;
+            out(200,['ok'=>true,'path'=>(string)$existing['path'],'cached'=>true,'duplicate'=>true,'files'=>count($rows)]);
+        }
+    }
     $row=[
         'path'=>$path,
         'name'=>basename($path),
