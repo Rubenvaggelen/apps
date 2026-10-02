@@ -481,7 +481,7 @@ body:not(.hp-on) .cue-hp{display:none}
   <section class="library" aria-label="Nummers">
     <div class="lib-head">
       <h2>Nummers</h2>
-      <div class="top-actions"><button class="mini auto-load on" id="autoLoad" aria-pressed="true">Automatisch naar vrije speler</button>
+      <div class="top-actions"><button class="mini auto-load" id="autoLoad" aria-pressed="false">Automatisch naar vrije speler</button>
       <button class="btn small" id="sharedMediaImport">Shared Media</button>
       <button class="btn small" id="sharedFolderBtn">Map laden</button>
       <button class="btn small" id="sharedTracksBtn">Nummers toevoegen</button>
@@ -506,6 +506,7 @@ body:not(.hp-on) .cue-hp{display:none}
     <div class="media-browser-path" id="localPath">Schijven</div>
     <ul class="media-browser-list" id="localList"></ul>
     <div class="media-browser-foot">
+      <span id="mediaNotice" role="status"></span>
       <button class="btn small" id="localLoadFolderBtn" disabled>Laad deze map</button>
     </div>
   </section>
@@ -878,7 +879,7 @@ function sniffName(dv,name){
 }
 async function decodeAnyAudio(file,ac){
   ac=ac||ctx;
-  const ab=await file.arrayBuffer();
+  const ab=await mediaBytes(file);
   try{return await new Promise((res,rej)=>ac.decodeAudioData(ab.slice(0),res,rej))}catch(e){}
   const dv=new DataView(ab),t0=tag4(dv,0),t8=tag4(dv,8);
   let r=null;
@@ -1122,7 +1123,7 @@ class Deck{
   _start(at){
     const s=ctx.createBufferSource();s.buffer=this.buffer;s.playbackRate.value=this.eff();
     s.connect(this.n.trim);
-    s.onended=()=>{if(this.src===s){this.src=null;this.playing=false;this.pos=this.dur;updateWake();this.markDone()}};
+    s.onended=()=>{if(this.src===s){this.src=null;this.playing=false;this.pos=this.dur;updateWake();if(autoMix&&!decks.some(d=>d.playing)){autoMixPendingStart=true;autoMixNextDeck=this===decks[0]?1:0}this.markDone()}};
     s.start(0,at);this.src=s;this.startT=ctx.currentTime;this.startPos=at;this.playing=true;
   }
   _stopSrc(){if(this.src){const s=this.src;this.src=null;try{s.stop()}catch(e){}s.disconnect()}}
@@ -1309,7 +1310,7 @@ class Deck{
   async load(file,item=null){
     if(!file) return;
     ensureCtx();
-    const token=++this.loadToken;this.loading=true;
+    const token=++this.loadToken;this.loading=true;this.loadingItem=item;
     this.ui.title.textContent=cleanImportedName(baseName(file));this.ui.sub.textContent="Bezig met laden";
     this.setBusy("Laden…");
     try{
@@ -1332,7 +1333,7 @@ class Deck{
       this.ui.title.textContent="Dit bestand kan niet worden geopend";
       this.ui.sub.textContent=e&&e.userMsg?e.userMsg:"Dit formaat wordt niet herkend. Zet het om naar MP3, FLAC of WAV.";
     }finally{
-      if(token===this.loadToken){this.setBusy(null);this.loading=false;renderLib();if(item&&item.status==="error") autoFill()}
+      if(token===this.loadToken){this.setBusy(null);this.loading=false;this.loadingItem=null;renderLib();if(item&&item.status==="error") autoFill()}
     }
   }
   setBusy(msg){const b=this.ui.busy;if(msg){b.textContent=msg;b.hidden=false}else b.hidden=true}
@@ -1944,6 +1945,7 @@ function startAutoFade(targetIndex=null){
   const ti=targetIndex==null?fadeTargetIdx():targetIndex,tgt=decks[ti],src=decks[1-ti];
   if(!tgt.buffer){tgt.flash(fadeBtn);return}
   ensureCtx();
+  const consumeSource=src.playing;
   if(!tgt.playing){
     tgt.cueHeld=false;
     tgt.play();
@@ -1951,7 +1953,7 @@ function startAutoFade(targetIndex=null){
   }else if(autoSync&&src.playing&&src.bpm&&tgt.bpm&&!tgt.syncLock){
     tgt.doSync();
   }
-  fade={from:state.xf,to:ti===1?1:-1,t0:ctx.currentTime,dur:fadeDuration(ti),src,tgt};
+  fade={from:state.xf,to:ti===1?1:-1,t0:ctx.currentTime,dur:fadeDuration(ti),src,tgt,consumeSource};
   updateFadeUI();
 }
 function cancelFade(){if(fade){fade=null;updateFadeUI()}}
@@ -1960,7 +1962,7 @@ function tickFade(){
   const p=clamp((ctx.currentTime-fade.t0)/fade.dur,0,1),e=p*p*(3-2*p);
   xfader.set(fade.from+(fade.to-fade.from)*e);
   fadeBtn.style.setProperty("--prog",p);
-  if(p>=1){const s=fade.src,t=fade.tgt;fade=null;if(s.playing) s.pause();updateFadeUI();if(t.playing) t.scheduleTempoReturn();if(s.buffer) s.markDone()}
+  if(p>=1){const s=fade.src,t=fade.tgt,consume=fade.consumeSource;fade=null;if(s.playing) s.pause();updateFadeUI();if(t.playing) t.scheduleTempoReturn();if(s.buffer&&consume) s.markDone();autoMixArmed=true;autoFill()}
 }
 function updateFadeUI(){
   const to=fade?(fade.to>0?"B":"A"):(fadeTargetIdx()===1?"B":"A");
@@ -1990,7 +1992,7 @@ autoSyncBtn?.addEventListener("click",()=>{
 updateAutoSyncUI();
 
 /* continuous Auto mix: fade at the end; Auto Sync only applies when enabled above. */
-let autoMix=false,autoMixArmed=true;
+let autoMix=false,autoMixArmed=true,autoMixPendingStart=false,autoMixNextDeck=null;
 const autoMixBtn=document.getElementById("autoMixBtn");
 function updateAutoMixUI(){
   autoMixBtn?.setAttribute("aria-pressed",String(autoMix));
@@ -2000,12 +2002,22 @@ function updateAutoMixUI(){
 autoMixBtn?.addEventListener("click",()=>{
   autoMix=!autoMix;
   autoMixArmed=true;
+  autoMixPendingStart=autoMix&&!decks.some(d=>d.playing);
+  autoMixNextDeck=autoMixPendingStart?(state.xf<=0?0:1):null;
   updateAutoMixUI();
   if(autoMix) autoFill();
 });
 function tickAutoMix(){
   if(!autoMix||fade||!ctx) return;
+  autoFill();
   const playing=decks.filter(d=>d.playing&&!d.scr);
+  if(!playing.length&&autoMixPendingStart){
+    const preferred=autoMixNextDeck==null?null:decks[autoMixNextDeck];
+    if(preferred?.loading)return;
+    const tgt=preferred&&preferred.buffer&&!preferred.done?preferred:decks.find(d=>d.buffer&&!d.loading&&!d.done&&!d.scr);
+    if(tgt){autoMixPendingStart=false;autoMixNextDeck=null;startAutoFade(decks.indexOf(tgt))}
+    return;
+  }
   if(playing.length!==1){autoMixArmed=true;return}
   const src=playing[0],ti=src===decks[0]?1:0,tgt=decks[ti];
   if(!tgt.buffer||tgt.loading||tgt.done||tgt.scr||tgt.playing){autoMixArmed=true;return}
@@ -2073,7 +2085,7 @@ document.addEventListener("keyup",e=>{
 });
 
 /* library */
-const lib=[];let autoLoad=true,playlistRestoring=true,dragId=null;
+const lib=[];let autoLoad=false,playlistRestoring=true,dragId=null;
 let playlistGeneration=0;
 let sharedAutoImportEnabled=true;
 const libList=document.getElementById("libList"),libEmpty=document.getElementById("libEmpty");
@@ -2091,7 +2103,8 @@ async function playlistWrite(){
       tx.objectStore("playlist").put(rows,"current");
       tx.oncomplete=res;tx.onerror=()=>rej(tx.error);
     });
-  }catch(e){}
+    return true;
+  }catch(e){return false}
 }
 async function playlistRead(){
   const generation=playlistGeneration;
@@ -2171,7 +2184,7 @@ async function clearStoredPlaylist(){
       tx.objectStore("playlist").delete("current");
       tx.oncomplete=res;tx.onerror=()=>rej(tx.error);
     });
-  }catch(e){}
+  }catch(e){throw e}
 }
 const AUDIO_EXT=/\.(mp3|wav|aif|aiff|aifc|caf|flac|ogg|oga|opus|m4a|aac|alac|mka|wma|ac3|amr|mp4|m4v|mov|webm|mkv)$/i;
 const playableFile=f=>{
@@ -2250,25 +2263,11 @@ async function openLocalFolder(path,push=true){
   for(const x of d.directories||[]) rows.push({
     icon:"📁",label:x.name,meta:"map",onclick:()=>openLocalFolder(x.path,true)
   });
-  for(const x of d.files||[]) rows.push({
+  for(const x of (d.files||[]).filter(x=>!x.name.startsWith("._"))) rows.push({
     icon:"♫",label:x.name,meta:Math.round((x.size||0)/1024/1024*10)/10+" MB",
     onclick:()=>loadLocalFiles([{name:x.name,path:x.path}])
   });
   renderLocalRows(rows);
-}
-async function loadLocalFiles(rows){
-  if(!rows?.length)return;
-  const files=[];
-  for(const x of rows){
-    try{
-      const r=await fetch("/local-media/file?path="+encodeURIComponent(x.path),{cache:"no-store"});
-      if(!r.ok)continue;
-      const blob=await r.blob();
-      files.push(new File([blob],x.name||x.path.split(/[\\/]/).pop(),{type:blob.type||"audio/mpeg"}));
-    }catch(e){}
-  }
-  if(!files.length){alert("Er konden geen muziekbestanden uit deze map worden geladen.");return}
-  addToLib(files);showLocalBrowser(false);
 }
 async function loadLocalFolder(){
   if(!localCurrentPath)return;
@@ -2284,6 +2283,7 @@ async function loadLocalFolder(){
   }
 }
 async function openLocalMedia(){
+  mediaMode="local";document.querySelector(".media-browser-title").textContent="Lokale media";
   if(IN_APP){
     document.getElementById("folderInput")?.click();
     return;
@@ -2293,9 +2293,16 @@ async function openLocalMedia(){
 document.getElementById("localMediaBtn")?.addEventListener("click",openLocalMedia);
 document.getElementById("localCloseBtn")?.addEventListener("click",()=>showLocalBrowser(false));
 document.getElementById("localBackBtn")?.addEventListener("click",()=>{
+  if(mediaMode==="shared"){if(sharedStick&&sharedFolder){renderSharedFolder(sharedFolder.split("/").slice(0,-1).join("/"))}else renderSharedRoot();return}
   if(localHistory.length)openLocalFolder(localHistory.pop(),false);else openLocalRoot();
 });
-localLoadFolderBtn?.addEventListener("click",loadLocalFolder);
+localLoadFolderBtn?.addEventListener("click",()=>{
+  if(mediaMode!=="shared"){loadLocalFolder().catch(()=>{localPath.textContent="Deze map kon niet worden gelezen."});return}
+  if(!sharedStick)return;
+  const prefix=sharedFolder?sharedFolder+"/":"";
+  const files=(sharedStick.files||[]).filter(f=>sharedFilePath(f).startsWith(prefix));
+  addMediaReferences(files.map(sharedReference));renderSharedFolder(sharedFolder);
+});
 
 document.getElementById("folderInput")?.addEventListener("change",e=>{
   const input=e.currentTarget;
@@ -2314,66 +2321,114 @@ document.getElementById("folderInput")?.addEventListener("change",e=>{
   input.value="";
 });
 
-let sharedMediaImportBusy=false;
-let playlistClearing=false;
-async function loadSharedMediaImports(showStatus=false){
-  if(sharedMediaImportBusy||playlistClearing) return;
-  if(!showStatus&&!sharedAutoImportEnabled) return;
-  sharedMediaImportBusy=true;
-  const btn=document.getElementById("sharedMediaImport");
-  const old=btn?.textContent;
-  if(showStatus&&btn){btn.disabled=true;btn.textContent="Laden…";}
-  let added=0;
-  try{
-    const mr=await fetch("imports/shared-media.json?t="+Date.now(),{cache:"no-store"});
-    if(!mr.ok) throw new Error("no manifest");
-    const names=await mr.json();
-    if(!Array.isArray(names)) throw new Error("bad manifest");
-    const files=[],sharedNames=[];
-    for(const name of names){
-      if(typeof name!=="string"||!name) continue;
-      const alreadyVisible=lib.some(t=>t.sharedName===name);
-      if(sharedLoaded.has(name)&&alreadyVisible) continue;
-      const r=await fetch("imports/"+encodeURIComponent(name)+"?t="+Date.now(),{cache:"no-store"});
-      if(!r.ok) continue;
-      const blob=await r.blob();
-      files.push(new File([blob],name,{type:blob.type||"audio/mpeg"}));
-      sharedNames.push(name);
-      sharedLoaded.add(name);
-      added++;
-    }
-    if(files.length) addToLib(files,sharedNames);
-    if(showStatus) alert(added?added+" nummer(s) uit Shared Media toegevoegd.":"Geen nieuwe Shared Media-nummers gevonden.");
-  }catch(e){
-    if(showStatus) alert("Nog geen Shared Media-nummers geïmporteerd.");
-  }finally{
-    sharedMediaImportBusy=false;
-    if(showStatus&&btn){btn.disabled=false;btn.textContent=old||"Shared Media";}
-  }
+/* Shared Media: catalog metadata and persistent source references only. */
+let mediaMode="local",sharedCatalog=[],sharedStick=null,sharedFolder="",playlistClearing=false;
+function validMediaName(name){return !String(name||"").startsWith("._")&&AUDIO_EXT.test(name||"")}
+function mediaUrl(file){
+  const src=file.source;
+  if(src.kind==="local")return "/local-media/file?path="+encodeURIComponent(src.path);
+  if(src.kind==="import")return "/imports/"+encodeURIComponent(src.name);
+  if(src.kind==="shared")return "/shared-media/file?"+new URLSearchParams({device:src.device,stick:src.stick,path:src.path});
+  throw new Error("Onbekende muziekbron");
 }
-document.getElementById("sharedMediaImport")?.addEventListener("click",()=>{
-  sharedAutoImportEnabled=true;
-  loadSharedMediaImports(true);
-});
-document.getElementById("sharedFolderBtn")?.addEventListener("click",()=>{
-  sharedAutoImportEnabled=true;
-  loadSharedMediaImports(true);
-});
-document.getElementById("sharedTracksBtn")?.addEventListener("click",()=>{
-  sharedAutoImportEnabled=true;
-  loadSharedMediaImports(true);
-});
-setTimeout(()=>loadSharedMediaImports(false),500);
-setInterval(()=>loadSharedMediaImports(false),2500);
-
+async function mediaBytes(file){
+  if(!file.source)return await file.arrayBuffer();
+  const r=await fetch(mediaUrl(file),{cache:"no-store"});
+  if(!r.ok){const e=new Error("Muziekbron niet bereikbaar");e.userMsg="Dit nummer is momenteel niet bereikbaar. Controleer Shared Media of de lokale schijf.";throw e}
+  return await r.arrayBuffer();
+}
+function addMediaReferences(files){
+  const known=new Set(lib.filter(t=>t.file?.source).map(t=>JSON.stringify(t.file.source)));
+  let added=0;
+  for(const file of files){
+    if(!validMediaName(file.name))continue;
+    const key=JSON.stringify(file.source);if(known.has(key))continue;
+    known.add(key);lib.push({id:playlistId(),file,name:cleanImportedName(baseName(file)),status:"queued",sharedName:""});added++;
+  }
+  renderLib();playlistWrite();
+  // Adding never fetches audio; deck selection or enabled auto-play loads one track.
+  document.getElementById("mediaNotice").textContent=added?added+" nummer(s) toegevoegd aan DJ":"Deze nummers staan al in DJ.";
+  if(autoMix)autoFill();
+  return added;
+}
+async function loadLocalFiles(rows){
+  addMediaReferences(rows.map(x=>({name:x.name||x.path.split(/[\\/]/).pop(),type:"audio/mpeg",source:{kind:"local",path:x.path}})));
+}
+function sharedReference(file){return {name:file.name||file.path.split(/[\\/]/).pop(),type:"audio/mpeg",source:{kind:"shared",device:sharedStick.device_id,stick:sharedStick.stick_id,path:file.path}}}
+function sharedFilePath(file){return String(file.path||"").replace(/\\/g,"/").replace(/^\/+/,"")}
+function renderSharedFolder(folder=""){
+  sharedFolder=folder;
+  const prefix=folder?folder+"/":"";
+  const children=new Set(),tracks=[];
+  for(const file of sharedStick.files||[]){
+    if(!validMediaName(file.name||file.path.split(/[\\/]/).pop()))continue;
+    const path=sharedFilePath(file);if(!path.startsWith(prefix))continue;
+    const rest=path.slice(prefix.length),slash=rest.indexOf("/");
+    if(slash>=0)children.add(rest.slice(0,slash));else tracks.push(file);
+  }
+  localPath.textContent=(sharedStick.stick_name||sharedStick.device_name||"Shared Media")+(folder?" / "+folder:"");
+  localLoadFolderBtn.disabled=false;localLoadFolderBtn.textContent="Voeg deze map toe";
+  renderLocalRows([
+    ...[...children].sort((a,b)=>a.localeCompare(b)).map(name=>({icon:"📁",label:name,meta:"map",onclick:()=>renderSharedFolder(prefix+name)})),
+    ...tracks.sort((a,b)=>(a.name||"").localeCompare(b.name||"")).map(file=>({icon:"♫",label:file.title||file.name,meta:lib.some(t=>JSON.stringify(t.file?.source)===JSON.stringify(sharedReference(file).source))?"In DJ":"Toevoegen",onclick:()=>{addMediaReferences([sharedReference(file)]);renderSharedFolder(sharedFolder)}}))
+  ]);
+}
+function renderSharedRoot(){
+  sharedStick=null;sharedFolder="";localPath.textContent="Shared Media";localLoadFolderBtn.disabled=true;
+  renderLocalRows(sharedCatalog.map(stick=>({icon:"📁",label:stick.stick_name||stick.device_name||"Muziek",meta:stick.device_name||"",onclick:()=>{sharedStick=stick;renderSharedFolder("")}})));
+  if(!sharedCatalog.length)localPath.textContent="Geen Shared Media beschikbaar. Probeer later opnieuw.";
+}
+async function openSharedMedia(){
+  mediaMode="shared";showLocalBrowser(true);
+  document.querySelector(".media-browser-title").textContent="Shared Media";
+  localPath.textContent="Shared Media ophalen…";localList.innerHTML="";localLoadFolderBtn.disabled=true;
+  try{const data=await localJson("/shared-media/catalog");sharedCatalog=data.sticks||[];renderSharedRoot()}
+  catch(e){localPath.textContent="Shared Media is niet bereikbaar. Controleer de verbinding."}
+}
+for(const id of ["sharedMediaImport","sharedFolderBtn","sharedTracksBtn"]){
+  document.getElementById(id)?.addEventListener("click",openSharedMedia);
+}
+/* Main's DJ button: consume references, plus compatibility with old Windows imports. */
+let djInboxBusy=false;
+const djInboxSeen=new Set();
+try{for(const id of JSON.parse(localStorage.getItem("theOneDjInboxSeen")||"[]"))djInboxSeen.add(id)}catch(e){}
+async function pollDjInbox(){
+  if(djInboxBusy||playlistRestoring||playlistClearing)return;
+  djInboxBusy=true;let generation=playlistGeneration;
+  try{
+    const data=await localJson("/shared-media/inbox");
+    const clearId=data.control?.clear_id;
+    if(clearId && localStorage.getItem("theOneDjLastClear")!==clearId){
+      await clearDjPlaylist();
+      localStorage.setItem("theOneDjLastClear",clearId);
+      generation=playlistGeneration;
+    }
+    if(generation!==playlistGeneration||playlistClearing)return;
+    const items=(data.items||[]).filter(x=>x.id&&!djInboxSeen.has(x.id)&&x.source&&validMediaName(x.name));
+    if(!items.length)return;
+    addMediaReferences(items.map(x=>({name:x.name,type:"audio/mpeg",source:x.source})));
+    if(!await playlistWrite())return;
+    if(generation!==playlistGeneration||playlistClearing)return;
+    for(const item of items){
+      if(item.queue_id){const ack=await fetch("/shared-media/inbox-ack?id="+encodeURIComponent(item.queue_id),{method:"POST"});if(!ack.ok)throw new Error("DJ ontvangstbevestiging mislukt")}
+      djInboxSeen.add(item.id);
+    }
+    localStorage.setItem("theOneDjInboxSeen",JSON.stringify([...djInboxSeen]));
+  }catch(e){/* Retry transient delivery failures; leave source and playlist untouched. */}
+  finally{djInboxBusy=false}
+}
+setTimeout(pollDjInbox,1000);
+setInterval(pollDjInbox,3000);
 autoBtn.addEventListener("click",()=>{
   autoLoad=!autoLoad;autoBtn.setAttribute("aria-pressed",autoLoad);autoBtn.classList.toggle("on",autoLoad);
   renderLib();autoFill();
 });
 function nextQueued(){return lib.find(t=>t.status==="queued")}
 function autoFill(){
-  if(!autoLoad) return;
+  if(!(autoLoad||autoMix)||playlistRestoring||playlistClearing) return;
+  if(autoMix&&!decks.some(d=>d.playing)&&decks.some(d=>d.loading||(d.buffer&&!d.done)))return;
   for(const d of decks){
+    if(fade&&d===fade.src)continue;
     if(d.loading||d.playing||d.scr) continue;
     if(d.buffer&&!d.done) continue;
     const t=nextQueued();if(!t) return;
@@ -2381,15 +2436,13 @@ function autoFill(){
   }
 }
 async function removeLibItem(t){
-  const d=decks.find(x=>x.libItem===t);
+  const d=decks.find(x=>x.libItem===t||x.loadingItem===t);
+  if(d&&d.loadingItem===t){d.loadToken++;d.loading=false;d.loadingItem=null;d.setBusy(null)}
   try{if(d&&d.playing) d.pause()}catch(e){}
   if(d&&d.libItem===t){d.libItem=null;d.buffer=null;d.done=false;d.pos=0;d.dur=0;d.ui.title.textContent="Geen nummer geladen";d.ui.sub.textContent=""}
   const i=lib.indexOf(t);if(i>=0) lib.splice(i,1);
   renderLib();playlistWrite();autoFill();
-  if(t.sharedName){
-    sharedLoaded.delete(t.sharedName);
-    try{await fetch("imports/remove?name="+encodeURIComponent(t.sharedName),{method:"POST",cache:"no-store"})}catch(e){}
-  }
+
 }
 let previewSource=null,previewGain=null,previewToken=0;
 async function startTouchPreview(item){
@@ -2416,7 +2469,7 @@ function stopTouchPreview(){
 
 function renderLib(){
   libEmpty.hidden=lib.length>0;libList.innerHTML="";
-  const next=autoLoad?nextQueued():null;
+  const next=(autoLoad||autoMix)?nextQueued():null;
   lib.forEach(t=>{
     const li=document.createElement("li");li.dataset.status=t.status;li.draggable=true;li.dataset.id=t.id;
     const drag=document.createElement("span");drag.className="lib-drag";drag.textContent="☰";drag.title="Sleep om te verplaatsen";
@@ -2453,10 +2506,10 @@ function renderLib(){
     li.append(drag,tag,name,a,b,again,x);libList.appendChild(li);
   });
 }
-document.getElementById("clearPlaylist")?.addEventListener("click",async()=>{
-  if(!confirm("Hele playlist wissen?")) return;
+async function clearDjPlaylist(){
 
   playlistClearing=true;
+  autoMixPendingStart=false;autoMixNextDeck=null;cancelFade();
   sharedAutoImportEnabled=false;
   playlistGeneration++;
   playlistRestoring=false;
@@ -2468,6 +2521,7 @@ document.getElementById("clearPlaylist")?.addEventListener("click",async()=>{
       try{if(d.playing) d.pause()}catch(e){}
       try{d._stopSrc()}catch(e){}
       d.loadToken++;
+      d.loadingItem=null;
       d.libItem=null;
       d.buffer=null;
       d.done=false;
@@ -2494,11 +2548,6 @@ document.getElementById("clearPlaylist")?.addEventListener("click",async()=>{
     renderLib();
     await clearStoredPlaylist();
 
-    // Verwijder ook de tijdelijke Shared Media DJ-imports op Windows.
-    try{
-      await fetch("imports/clear",{method:"POST",cache:"no-store"});
-    }catch(e){}
-
     // Eén laatste harde lokale reset. Auto-import blijft uit tot de
     // gebruiker zelf weer op Shared Media drukt.
     lib.length=0;
@@ -2508,6 +2557,9 @@ document.getElementById("clearPlaylist")?.addEventListener("click",async()=>{
   }finally{
     playlistClearing=false;
   }
+}
+document.getElementById("clearPlaylist")?.addEventListener("click",async()=>{
+  if(confirm("Hele playlist wissen?"))await clearDjPlaylist();
 });
 playlistRead();
 
@@ -2516,7 +2568,7 @@ document.getElementById("libBtn").addEventListener("click",()=>library.classList
 document.getElementById("libClose").addEventListener("click",()=>library.classList.remove("open"));
 libList.addEventListener("click",e=>{if(e.target.closest("button")) library.classList.remove("open")});
 
-const WINDOWS_BUILD=226;
+const WINDOWS_BUILD=230;
 const updateBtn=document.getElementById("updateBtn");
 updateBtn?.addEventListener("click",async()=>{
   const old=updateBtn.textContent;updateBtn.disabled=true;updateBtn.textContent="Controleren…";

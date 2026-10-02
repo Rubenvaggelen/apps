@@ -541,6 +541,26 @@ object RemoteUsbMusicClient {
             "&path=" + enc(file.path)
     }
 
+    fun clearDjPlaylist(context: Context, targetDeviceId: String): Boolean {
+        val body = JSONObject()
+            .put("request_device_id", MainDeviceRegistry.deviceId(context))
+            .put("target_device_id", targetDeviceId)
+        val connection = open(ENDPOINT + "?action=dj-playlist-clear", "POST")
+        connection.setRequestProperty("Authorization", "Bearer " + token(context))
+        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        connection.doOutput = true
+        try {
+            OutputStreamWriter(connection.outputStream, StandardCharsets.UTF_8).use { it.write(body.toString()) }
+            val code = connection.responseCode
+            if (code == 401) { clearToken(context); throw AuthRequired() }
+            val json = JSONObject(readBody(connection))
+            if (code !in 200..299 || !json.optBoolean("queued", false)) {
+                throw IllegalStateException(json.optString("error", "DJ-playlist wissen mislukt"))
+            }
+            return true
+        } finally { connection.disconnect() }
+    }
+
     fun queueDjImport(context: Context, file: RemoteFile): Boolean {
         val token = token(context)
         val body = JSONObject()
@@ -624,3 +644,4 @@ object RemoteUsbMusicClient {
         return BufferedReader(stream.reader(StandardCharsets.UTF_8)).use { it.readText() }
     }
 }
+

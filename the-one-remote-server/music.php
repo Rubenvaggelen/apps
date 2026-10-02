@@ -15,6 +15,7 @@ $secretFile = $root . '/secret.key';
 $rateFile = $root . '/rate.json';
 $favoritesFile = $root . '/favorites.json';
 $djQueueFile = $root . '/dj-queue.json';
+$djControlFile = $root . '/dj-playlist-control.json';
 $moveQueueFile = $root . '/hub-move-queue.json';
 $playerBroadcastFile = $root . '/player-broadcast.json';
 $playerSessionsFile = $root . '/player-sessions.json';
@@ -1119,6 +1120,70 @@ if ($action === 'download-stream') {
     stream_range($files.'/'.key_for($device,$stick,$path).'.bin',$path);
 }
 
+if ($action === 'shared-dedupe') {
+    require_auth($sec);
+    $body=read_json();
+    $owner=load_json($deviceOwnerFile);
+    $requestDevice=safe_id((string)($body['request_device_id'] ?? ''));
+    if ($requestDevice==='' || !hash_equals((string)($owner['device_id'] ?? ''),$requestDevice)) out(403,['ok'=>false,'error'=>'owner only']);
+    $device=safe_id((string)($body['device_id'] ?? 'THEONE-HUB'));
+    $stick=safe_id((string)($body['stick_id'] ?? 'hub-primary'));
+    $metaFile=$meta.'/'.$device.'__'.$stick.'.json';
+    $doc=load_json($metaFile);
+    $rows=is_array($doc['files'] ?? null) ? $doc['files'] : [];
+    $groups=[];
+    foreach ($rows as $row) {
+        $sha=strtolower((string)($row['sha256'] ?? ''));
+        if (preg_match('/^[a-f0-9]{64}$/',$sha)) $groups[$sha][]=$row;
+    }
+    $preferred=is_array($body['keep_by_sha'] ?? null) ? $body['keep_by_sha'] : [];
+    $remove=[];$replace=[];$report=[];
+    foreach ($groups as $sha=>$group) {
+        if (count($group)<2) continue;
+        usort($group,function($a,$b) use ($preferred,$sha,$files,$device,$stick) {
+            $score=function($row) use ($preferred,$sha,$files,$device,$stick) {
+                $path=(string)$row['path'];
+                return [($preferred[$sha] ?? '')===$path ? 0 : 1,is_file(cache_file_for($files,$device,$stick,$path)) ? 0 : 1,str_starts_with($path,'Nieuwe downloads/') ? 1 : 0,substr_count($path,'/'),mb_strtolower($path)];
+            };
+            return $score($a)<=>$score($b);
+        });
+        $keep=array_shift($group);
+        $removed=[];
+        foreach ($group as $row) {
+            if ((string)$row['path']===(string)$keep['path']) continue;
+            $remove[(string)$row['path']]=$row;
+            $replace[(string)$row['path']]=$keep;
+            $removed[]=(string)$row['path'];
+        }
+        $report[]=['sha256'=>$sha,'keep'=>(string)$keep['path'],'remove'=>$removed];
+    }
+    if (!($body['apply'] ?? false)) out(200,['ok'=>true,'duplicate_groups'=>count($report),'extra_copies'=>count($remove),'groups'=>$report]);
+    $backup=$root.'/maintenance-backups/'.gmdate('Ymd-His').'-'.bin2hex(random_bytes(4));
+    if (!@mkdir($backup,0770,true)) out(507,['ok'=>false,'error'=>'backup unavailable']);
+    foreach ([$metaFile,$deletedFile,$favoritesFile,$djQueueFile] as $file) if (is_file($file) && !@copy($file,$backup.'/'.basename($file))) out(507,['ok'=>false,'error'=>'backup failed']);
+    $deleted=load_json($deletedFile);
+    $markers=is_array($deleted['items'] ?? null) ? $deleted['items'] : [];
+    foreach ($remove as $path=>$row) $markers[key_for($device,$stick,$path)]=['device_id'=>$device,'stick_id'=>$stick,'path'=>$path,'sha256'=>(string)$row['sha256'],'deleted_at'=>gmdate('c'),'deleted_by'=>$requestDevice,'reason'=>'exact duplicate','replacement_path'=>(string)$replace[$path]['path']];
+    if (!save_json($deletedFile,['items'=>$markers,'updated_at'=>gmdate('c')])) out(507,['ok'=>false,'error'=>'delete markers failed']);
+    $doc['files']=array_values(array_filter($rows,fn($row)=>!isset($remove[(string)($row['path'] ?? '')])));
+    $doc['updated_at']=gmdate('c');
+    if (!save_json($metaFile,$doc)) out(507,['ok'=>false,'error'=>'catalog save failed']);
+    // Keep cached aliases readable for already loaded playlists; each SHA pool is shared.
+    $fav=load_json($favoritesFile);
+    foreach ($fav['by_device'] ?? [] as $bucketId=>$bucket) {
+        foreach ($bucket['items'] ?? [] as $index=>$item) {
+            if (($item['device_id'] ?? '')!==$device || ($item['stick_id'] ?? '')!==$stick || !isset($replace[(string)($item['path'] ?? '')])) continue;
+            $replacement=$replace[(string)$item['path']];
+            $item['path']=$replacement['path'];
+            $item['name']=$replacement['name'] ?? basename((string)$item['path']);
+            $bucket['items'][$index]=$item;
+        }
+        $fav['by_device'][$bucketId]=$bucket;
+    }
+    if ($fav!==[] && !save_json($favoritesFile,$fav)) out(507,['ok'=>false,'error'=>'favorites save failed']);
+    out(200,['ok'=>true,'removed'=>count($remove),'remaining'=>count($doc['files']),'groups'=>$report,'backup'=>basename($backup)]);
+}
+
 if ($action === 'shared-delete') {
     $token=bearer();
     if (!token_read_ok($token,$sec)) out(401,['ok'=>false,'error'=>'auth required']);
@@ -1233,6 +1298,32 @@ if ($action === 'shared-delete') {
     ]);
 }
 
+if ($action === 'dj-playlist-state') {
+    require_auth($sec);
+    $device=strtolower(safe_id((string)($_GET['request_device_id'] ?? '')));
+    if (!in_array($device,['windows-ruben','windows-tablet-042ge173','windows-theone-hub'],true)) out(403,['ok'=>false,'error'=>'invalid DJ']);
+    $controls=load_json($djControlFile);
+    out(200,['ok'=>true,'control'=>$controls['by_device'][$device] ?? null]);
+}
+
+if ($action === 'dj-playlist-clear') {
+    require_auth($sec);
+    $body=read_json();
+    $requestDevice=trim((string)($body['request_device_id'] ?? ''));
+    if ($requestDevice==='' || !music_device_scope_allowed($requestDevice,'dj',$deviceRegistryFile,$deviceOwnerFile)) out(403,['ok'=>false,'error'=>'DJ control not allowed']);
+    $target=strtolower(safe_id((string)($body['target_device_id'] ?? 'windows-theone-hub')));
+    $devices=['windows-ruben','windows-tablet-042ge173','windows-theone-hub'];
+    if ($target!=='all' && !in_array($target,$devices,true)) out(400,['ok'=>false,'error'=>'invalid DJ target']);
+    $targets=$target==='all' ? $devices : [$target];
+    $queue=load_json($djQueueFile);
+    $discard=array_values(array_map(fn($row)=>(string)$row['id'],array_filter($queue['items'] ?? [],fn($row)=>is_array($row)&&isset($row['id']))));
+    $controls=load_json($djControlFile);
+    $id=bin2hex(random_bytes(12));
+    foreach ($targets as $device) $controls['by_device'][$device]=['clear_id'=>$id,'discard_ids'=>$discard,'cleared_at'=>gmdate('c'),'requested_by'=>$requestDevice];
+    if (!save_json($djControlFile,$controls)) out(507,['ok'=>false,'error'=>'control storage failed']);
+    out(200,['ok'=>true,'queued'=>true,'clear_id'=>$id,'target_devices'=>$targets]);
+}
+
 if ($action === 'dj-queue-add') {
     $token=bearer();
     if (!token_read_ok($token,$sec)) out(401,['ok'=>false,'error'=>'auth required']);
@@ -1269,8 +1360,12 @@ if ($action === 'dj-queue-add') {
     $queue=load_json($djQueueFile);
     $items=is_array($queue['items'] ?? null) ? $queue['items'] : [];
     $dedupe=hash('sha256',$device."\n".$stick."\n".$path);
+    $controls=load_json($djControlFile);
     foreach ($items as $row) {
         if (!is_array($row)) continue;
+        $cleared=false;
+        foreach ($targetDevices as $targetDevice) if (in_array((string)($row['id'] ?? ''),$controls['by_device'][$targetDevice]['discard_ids'] ?? [],true)) $cleared=true;
+        if ($cleared) continue;
         if (($row['status'] ?? '') !== 'pending' || ($row['dedupe'] ?? '') !== $dedupe) continue;
         $delivered=is_array($row['delivered_to'] ?? null) ? $row['delivered_to'] : [];
         $targets=is_array($row['target_devices'] ?? null) ? $row['target_devices'] : $targetDevices;
@@ -1311,11 +1406,15 @@ if ($action === 'dj-queue-list') {
     $requestDevice=strtolower(safe_id((string)($_GET['request_device_id'] ?? '')));
     if ($requestDevice === '') out(400,['ok'=>false,'error'=>'request_device_id required']);
 
+    $controls=load_json($djControlFile);
+    $discard=$controls['by_device'][$requestDevice]['discard_ids'] ?? [];
     $queue=load_json($djQueueFile);
     $items=array_values(array_filter(
         is_array($queue['items'] ?? null) ? $queue['items'] : [],
-        function($row) use ($requestDevice) {
+        function($row) use ($requestDevice,$discard) {
             if (!is_array($row) || (($row['status'] ?? '') !== 'pending')) return false;
+
+            if (in_array((string)($row['id'] ?? ''),$discard,true)) return false;
 
             // Nieuwe broadcast-items.
             if (is_array($row['target_devices'] ?? null)) {
@@ -2103,3 +2202,4 @@ if ($action === 'sync') {
 }
 
 out(404,['ok'=>false,'error'=>'unknown action']);
+

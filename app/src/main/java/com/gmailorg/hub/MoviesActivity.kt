@@ -1497,6 +1497,8 @@ class MoviesActivity : AppCompatActivity() {
             }
         )
 
+        if (canDjImport) panel.addView(djClearPlaylistButton())
+
         if (canOrganizeNewDownloads && directFiles.isNotEmpty()) {
             panel.addView(
                 TextView(this).apply {
@@ -3070,6 +3072,8 @@ class MoviesActivity : AppCompatActivity() {
             )
         )
 
+        if (canDjImport) panel.addView(djClearPlaylistButton())
+
         val footer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER
@@ -3201,6 +3205,44 @@ class MoviesActivity : AppCompatActivity() {
                     Toast.makeText(this, "Favoriet opslaan mislukt", Toast.LENGTH_SHORT).show()
                 }
             }
+        }
+    }
+
+    private fun djClearPlaylistButton(): TextView = TextView(this).apply {
+        text = "DJ • WIS PLAYLIST"
+        textSize = 13f
+        gravity = android.view.Gravity.CENTER
+        setTextColor(Color.parseColor("#20B8FF"))
+        setBackgroundResource(R.drawable.bg_the_one_blue_button)
+        val padding = (12 * resources.displayMetrics.density).toInt()
+        setPadding(padding, padding, padding, padding)
+        contentDescription = "Wis de playlist op The One DJ"
+        setOnClickListener {
+            val names = arrayOf("Theonehub", "Ruben", "Surface", "Alle DJ-apparaten")
+            val targets = arrayOf("windows-theone-hub", "windows-ruben", "windows-tablet-042ge173", "all")
+            android.app.AlertDialog.Builder(this@MoviesActivity)
+                .setTitle("Welke DJ-playlist wissen?")
+                .setItems(names) { _, which ->
+                    android.app.AlertDialog.Builder(this@MoviesActivity)
+                        .setTitle("Playlist wissen op ${names[which]}?")
+                        .setMessage("Afspelen stopt en de DJ-playlist wordt leeggemaakt. De nummers blijven in Shared Media.")
+                        .setNegativeButton("Annuleren", null)
+                        .setPositiveButton("Wissen") { _, _ ->
+                            isEnabled = false
+                            remoteMusicIo.execute {
+                                val result = runCatching {
+                                    val access = MainDeviceRegistry.refreshAccess(this@MoviesActivity, MainDeviceRegistry.ACCESS_DJ)
+                                    if (!access.allowed) throw IllegalStateException("Geen toestemming voor DJ")
+                                    if (!RemoteUsbMusicClient.hasToken(this@MoviesActivity) && !RemoteUsbMusicClient.loginForBrowsing(this@MoviesActivity)) throw IllegalStateException("Shared Media niet bereikbaar")
+                                    RemoteUsbMusicClient.clearDjPlaylist(this@MoviesActivity, targets[which])
+                                }
+                                runOnUiThread {
+                                    isEnabled = true
+                                    Toast.makeText(this@MoviesActivity, if (result.getOrDefault(false)) "Wissen verstuurd naar ${names[which]}. DJ verwerkt dit zodra het geopend is." else "DJ-playlist wissen mislukt. Probeer opnieuw.", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }.show()
+                }.show()
         }
     }
 
@@ -3735,3 +3777,4 @@ class MoviesActivity : AppCompatActivity() {
         resultContainer.addView(view)
     }
 }
+

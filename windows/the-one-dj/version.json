@@ -1,11 +1,11 @@
 {
-  "version": "2.2.6",
-  "build": 226,
-  "notes": "Native USB/local media browser tested on Ruben E drive; updater refreshes server/runtime files",
-  "sha256": "",
+  "build": 230,
+  "version": "2.3.0",
+  "notes": "Main remote playlist clear; durable delivery across profiles",
+  "sha256": "D7088B04E35B4ED33D0968012048A6B8DF523AB06A3AAA39CA1335D33939BAEE",
   "files": [
     "index.html",
     "Serve-The-One-DJ.ps1",
-    "Update-The-One-DJ.ps1"
+    "Start-The-One-DJ.cmd"
   ]
 }
