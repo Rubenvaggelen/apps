@@ -1105,9 +1105,9 @@ if ($action === 'login') {
 }
 
 // Playback companions keep the original cache, catalog and references intact.
-// Only the authenticated Hub can publish; clients read via the existing stream.
+// Authenticated music writers can publish; read-only clients cannot.
 if ($action === 'playback-status' || $action === 'playback-upload') {
-    if (token_scope(bearer(),$sec) !== 'music-hub') out(403,['ok'=>false,'error'=>'hub auth required']);
+    if (!token_ok(bearer(),$sec)) out(403,['ok'=>false,'error'=>'write auth required']);
     $sourceSha=strtolower(trim((string)($_GET['source_sha256'] ?? $_POST['source_sha256'] ?? '')));
     if (!preg_match('/^[a-f0-9]{64}$/',$sourceSha)) out(400,['ok'=>false,'error'=>'invalid source hash']);
     $dest=$playback.'/'.$sourceSha.'.mp3';
