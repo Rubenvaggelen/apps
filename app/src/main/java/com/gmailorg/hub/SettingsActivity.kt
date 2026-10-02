@@ -345,7 +345,7 @@ class SettingsActivity : AppCompatActivity() {
         "mail" to "Mail & Kalender",
         "route" to "Route",
         "household" to "Huishouden",
-        "movies" to "Films, Series & Muziek",
+        "movies" to "Muziek en films",
         "parking" to "Parkeren",
         "settings" to "Instellingen",
         "ask" to "Vraag het",
