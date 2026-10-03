@@ -28,6 +28,16 @@ class WakePcActivity : AppCompatActivity() {
 
     private var activeDeviceAdminPin = ""
 
+    private data class WakeTarget(
+        val id: String,
+        val label: String,
+        val mac: String,
+        val lanIp: String,
+        val saltHex: String,
+        val passwordHashHex: String,
+        val externalPort: Int? = null
+    )
+
     companion object {
         private const val LAPTOP_NAME = "Ruben"
         private const val LAPTOP_WIFI_MAC = "04-EC-D8-E5-C7-3E"
@@ -43,6 +53,34 @@ class WakePcActivity : AppCompatActivity() {
         private const val PBKDF2_ITERATIONS = 120_000
         private const val MAX_FAILED_ATTEMPTS = 3
         private const val LOCKOUT_MS = 5 * 60 * 1000L
+
+        private val WAKE_TARGETS = listOf(
+            WakeTarget(
+                id = "surface",
+                label = "Surface",
+                mac = "BC-83-85-DB-DE-FC",
+                lanIp = "192.168.178.154",
+                saltHex = "06ebab52278f7e32f009df4fc5b4ede4",
+                passwordHashHex = "6e5224e1d390e42295716710d9479ff7608c4900e20b9667647bb449ee941bd3"
+            ),
+            WakeTarget(
+                id = "ruben",
+                label = "Ruben",
+                mac = LAPTOP_WIFI_MAC,
+                lanIp = LAPTOP_LAN_IP,
+                saltHex = "b020f7d1db4c107b6a3f50cbd1309bb0",
+                passwordHashHex = "d005b2a5de856f2c1df8898b23a97564010c6ebcd5f59c26e435218e97b79b3c",
+                externalPort = HOME_PUBLIC_PORT
+            ),
+            WakeTarget(
+                id = "hub",
+                label = "THEONE-HUB",
+                mac = "B4-A9-FC-64-25-CE",
+                lanIp = "192.168.178.183",
+                saltHex = "4fed35ad7dc4722cae539e2404726836",
+                passwordHashHex = "2107e3ebfd5d70d5ee41911047caf04bdcb06f63afcdbaebe48b24132cb91e9e"
+            )
+        )
     }
 
     private val securityPrefs by lazy {
@@ -105,7 +143,7 @@ class WakePcActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            askForPinAndWake(status, wakeButton)
+            chooseWakeDevice(status, wakeButton)
         }
 
         sleepButton.setOnClickListener {
@@ -403,17 +441,28 @@ class WakePcActivity : AppCompatActivity() {
         return prefix + listOf(onlineText, platform, seen).filter { it.isNotBlank() }.joinToString(" • ")
     }
 
-    private fun askForPinAndWake(status: TextView, wakeButton: View) {
+    private fun chooseWakeDevice(status: TextView, wakeButton: View) {
+        val labels = WAKE_TARGETS.map { it.label }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("Apparaat wakker maken")
+            .setItems(labels) { _, which ->
+                askForPasswordAndWake(status, wakeButton, WAKE_TARGETS[which])
+            }
+            .setNegativeButton("Annuleren", null)
+            .show()
+    }
+
+    private fun askForPasswordAndWake(status: TextView, wakeButton: View, target: WakeTarget) {
         val input = EditText(this).apply {
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            hint = "Pincode"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            hint = "Wachtwoord"
             isSingleLine = true
             setPadding(28, 12, 28, 12)
         }
 
         val dialog = AlertDialog.Builder(this)
-            .setTitle("Laptop wakker maken")
-            .setMessage("Voer je pincode in om Ruben uit slaapstand te halen.")
+            .setTitle(target.label + " wakker maken")
+            .setMessage("Voer het wachtwoord in om " + target.label + " uit slaapstand te halen.")
             .setView(input)
             .setNegativeButton("Annuleren", null)
             .setPositiveButton("Wakker maken", null)
@@ -429,7 +478,7 @@ class WakePcActivity : AppCompatActivity() {
                     return@setOnClickListener
                 }
 
-                if (!verifyPin(input.text.toString())) {
+                if (!verifyWakePassword(target, input.text.toString())) {
                     val attempts = securityPrefs.getInt("failed_attempts", 0) + 1
                     if (attempts >= MAX_FAILED_ATTEMPTS) {
                         securityPrefs.edit()
@@ -456,14 +505,14 @@ class WakePcActivity : AppCompatActivity() {
                 status.text = "Wake-signaal versturen…"
 
                 Thread {
-                    val result = runCatching { sendMagicPacket() }
+                    val result = runCatching { sendMagicPacket(target) }
                     runOnUiThread {
                         wakeButton.isEnabled = true
                         if (result.isSuccess) {
                             status.setTextColor(ContextCompat.getColor(this, R.color.amber))
                             status.text =
-                                "Wake-signaal naar $LAPTOP_NAME verstuurd. Geef de laptop ongeveer 10–30 seconden."
-                            Toast.makeText(this, "Laptop wordt wakker gemaakt", Toast.LENGTH_SHORT).show()
+                                "Wake-signaal naar ${target.label} verstuurd. Geef het apparaat ongeveer 10–30 seconden."
+                            Toast.makeText(this, target.label + " wordt wakker gemaakt", Toast.LENGTH_SHORT).show()
                         } else {
                             status.setTextColor(ContextCompat.getColor(this, R.color.text_dim))
                             status.text =
@@ -592,8 +641,8 @@ class WakePcActivity : AppCompatActivity() {
     }
 
     @Suppress("DEPRECATION")
-    private fun sendMagicPacket() {
-        val mac = parseMac(LAPTOP_WIFI_MAC)
+    private fun sendMagicPacket(target: WakeTarget) {
+        val mac = parseMac(target.mac)
         val payload = ByteArray(6 + 16 * mac.size)
 
         for (i in 0 until 6) payload[i] = 0xFF.toByte()
@@ -615,6 +664,7 @@ class WakePcActivity : AppCompatActivity() {
                     dynamicBroadcast(wifi)?.let { localTargets.add(it) }
                     localTargets.add(HOME_BROADCAST)
                     localTargets.add("255.255.255.255")
+                    localTargets.add(target.lanIp)
 
                     for (target in localTargets) {
                         runCatching {
@@ -629,17 +679,19 @@ class WakePcActivity : AppCompatActivity() {
                         }
                     }
 
-                    // Voor 5G / buitenhuis. De Ziggo-router moet extern UDP
-                    // HOME_PUBLIC_PORT doorsturen naar 192.168.178.193:9.
-                    runCatching {
-                        socket.send(
-                            DatagramPacket(
-                                payload,
-                                payload.size,
-                                InetAddress.getByName(HOME_PUBLIC_IPV4),
-                                HOME_PUBLIC_PORT
+                    // Alleen apparaten met een ingestelde externe WOL-port worden
+                    // ook buiten het thuisnetwerk gewekt.
+                    target.externalPort?.let { port ->
+                        runCatching {
+                            socket.send(
+                                DatagramPacket(
+                                    payload,
+                                    payload.size,
+                                    InetAddress.getByName(HOME_PUBLIC_IPV4),
+                                    port
+                                )
                             )
-                        )
+                        }
                     }
 
                     Thread.sleep(120)
@@ -664,6 +716,24 @@ class WakePcActivity : AppCompatActivity() {
             broadcast shr 16 and 0xff,
             broadcast shr 24 and 0xff
         ).joinToString(".")
+    }
+
+    private fun verifyWakePassword(target: WakeTarget, value: String): Boolean {
+        val salt = target.saltHex.hexToBytes()
+        val spec = PBEKeySpec(value.toCharArray(), salt, PBKDF2_ITERATIONS, 256)
+        val derived = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            .generateSecret(spec)
+            .encoded
+        spec.clearPassword()
+
+        val expected = target.passwordHashHex.hexToBytes()
+        if (derived.size != expected.size) return false
+
+        var diff = 0
+        for (i in derived.indices) {
+            diff = diff or (derived[i].toInt() xor expected[i].toInt())
+        }
+        return diff == 0
     }
 
     private fun verifyPin(value: String): Boolean {
