@@ -299,6 +299,22 @@ body:not(.hp-on) .cue-hp{display:none}
 .to-a{color:var(--a-hi);border-color:var(--a)}
 .to-b{color:var(--b-hi);border-color:var(--b)}
 .lib-list .btn{min-height:34px;min-width:44px}
+
+/* Compact desktop / HUB (1200x800): keep playlist controls inside the panel. */
+@media (max-width:1250px) and (min-height:521px){
+  .library{overflow:hidden;padding:10px 10px}
+  .lib-head{align-items:flex-start;flex-wrap:wrap}
+  .lib-head .top-actions{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+  .lib-list{overflow-y:auto;overflow-x:hidden;max-width:100%}
+  .lib-list li{
+    grid-template-columns:18px 62px minmax(0,1fr) 48px 48px 38px 32px;
+    gap:5px;
+    min-width:0
+  }
+  .lib-list .btn{min-width:0;width:100%;padding-left:5px;padding-right:5px}
+  .lib-tag{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lib-name{min-width:0}
+}
 .empty{color:var(--muted);margin:8px 0 2px}
 
 /* rotate prompt for phones held upright */
