@@ -115,6 +115,18 @@ internal static class KidsRepair
             }
         }
 
+        await PostJson("repair-folder-tombstones", new
+        {
+            device_id = "THEONE-HUB",
+            stick_id = "hub-primary",
+            folder_prefix = folderPrefix,
+            items = local.Select(item => new
+            {
+                path = (string)item["path"]!,
+                sha256 = (string)item["sha256"]!
+            }).ToList()
+        });
+
         await PublishManifest();
 
         var refreshed = await UsbMusicCloudService.GetCatalogAsync(includeInactive: true);
