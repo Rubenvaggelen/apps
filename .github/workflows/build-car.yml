@@ -35,7 +35,7 @@ jobs:
           chmod 600 ~/.android/debug.keystore
       - name: Set Car version code
         shell: bash
-        run: echo "VERSION_CODE=$((73 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+        run: echo "VERSION_CODE=$((921 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
       - name: Build Car only
         run: gradle :carradio:assembleDebug --no-daemon --no-build-cache -PappVersionCode=${VERSION_CODE}
       - name: Release Car only
