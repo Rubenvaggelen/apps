@@ -41,6 +41,28 @@ public partial class App : Application
             return;
         }
 
+        if (System.Array.Exists(
+            e.Args,
+            arg => string.Equals(
+                arg,
+                "--repair-kids",
+                System.StringComparison.OrdinalIgnoreCase)))
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            try
+            {
+                KidsRepair.RunAsync().GetAwaiter().GetResult();
+                Shutdown(0);
+            }
+            catch (Exception ex)
+            {
+                System.IO.Directory.CreateDirectory(@"C:\TheOne");
+                System.IO.File.WriteAllText(@"C:\TheOne\kids-repair-error.txt", ex.ToString());
+                Shutdown(2);
+            }
+            return;
+        }
+
         // De eerste keer mag The One vanuit Downloads/een ZIP gestart worden.
         // Daarna verhuist de app zichzelf naar een vaste gebruikersmap en maakt
         // hij Startmenu- en bureaubladkoppelingen. Updates blijven daarna in-place.
