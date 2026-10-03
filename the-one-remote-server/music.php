@@ -1967,6 +1967,61 @@ if ($action === 'favorites-set') {
 
 require_auth($sec);
 
+if ($action === 'repair-folder-tombstones') {
+    $b=read_json();
+    $device=safe_id((string)($b['device_id'] ?? ''));
+    $stick=safe_id((string)($b['stick_id'] ?? ''));
+    if (strtolower($device)!=='theone-hub' || strtolower($stick)!=='hub-primary') {
+        out(400,['ok'=>false,'error'=>'hub repair only']);
+    }
+
+    $folder=trim(canonical_shared_path(safe_path((string)($b['folder_prefix'] ?? ''))),'/');
+    if ($folder==='') out(400,['ok'=>false,'error'=>'folder required']);
+
+    $items=(array)($b['items'] ?? []);
+    if (count($items)>200) out(400,['ok'=>false,'error'=>'too many items']);
+
+    $deletedDoc=load_json($deletedFile);
+    $deletedItems=is_array($deletedDoc['items'] ?? null) ? $deletedDoc['items'] : [];
+    $restored=[];
+
+    foreach ($items as $item) {
+        if (!is_array($item)) continue;
+        $path=safe_path((string)($item['path'] ?? ''));
+        $sha=strtolower(trim((string)($item['sha256'] ?? '')));
+        if ($path==='' || !str_starts_with(strtolower($path),strtolower($folder).'/')) continue;
+        if ($sha!=='' && !preg_match('/^[a-f0-9]{64}$/',$sha)) continue;
+
+        $key=key_for($device,$stick,$path);
+        if (isset($deletedItems[$key])) {
+            unset($deletedItems[$key]);
+            $restored[]=$path;
+            continue;
+        }
+
+        foreach ($deletedItems as $oldKey=>$row) {
+            if (!is_array($row)) continue;
+            if (strtolower((string)($row['device_id'] ?? ''))!==strtolower($device)) continue;
+            if (strtolower((string)($row['stick_id'] ?? ''))!==strtolower($stick)) continue;
+            if (strcasecmp((string)($row['path'] ?? ''),$path)!==0) continue;
+            unset($deletedItems[$oldKey]);
+            $restored[]=$path;
+            break;
+        }
+    }
+
+    if ($restored!==[]) {
+        if (!save_json($deletedFile,[
+            'items'=>$deletedItems,
+            'updated_at'=>gmdate('c')
+        ])) {
+            out(507,['ok'=>false,'error'=>'delete marker storage unavailable']);
+        }
+    }
+
+    out(200,['ok'=>true,'restored'=>count($restored),'paths'=>$restored]);
+}
+
 if ($action === 'presence') {
     $b=read_json();
     $device=safe_id((string)($b['device_id'] ?? ''));
