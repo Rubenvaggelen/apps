@@ -1,5 +1,3 @@
-[Reading 391 lines from start (total: 391 lines, 0 remaining)]
-
 param([int]$Port=18765)
 $ErrorActionPreference='Stop'
 $root=Join-Path $env:LOCALAPPDATA 'Programs\The One Family\The One DJ\app'
@@ -391,5 +389,3 @@ while($listener.IsListening){
     $ctx.Response.OutputStream.Close()
   }catch{}
 }
-
-[executed on device: TABLET-042GE173 (08220a62-836f-4fd5-9b93-eb82731decc3)]

@@ -1,11 +1,13 @@
 {
-  "build": 231,
-  "version": "2.3.1",
-  "notes": "Main playlist clear; stable normalized DJ receipts and recovery across browser profiles",
-  "sha256": "FB9AE5A1E351F34DB38ECB58505D355D2F158AAA6415299B15F35AE9AA0BBB49",
+  "build": 232,
+  "version": "2.3.2",
+  "notes": "Unified DJ logo; permanent encoding repair; forced fresh Windows DJ launch; preserves long-track streaming, Range/206, Unicode and Shared Media mirror fixes",
+  "sha256": "",
   "files": [
+    "Update-The-One-DJ.ps1",
     "index.html",
     "Serve-The-One-DJ.ps1",
-    "Start-The-One-DJ.cmd"
+    "Start-The-One-DJ.cmd",
+    "dj-logo.jpg"
   ]
 }
