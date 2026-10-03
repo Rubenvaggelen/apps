@@ -9,7 +9,8 @@ $log = Join-Path $root 'update.log'
 function Log([string]$m) { Add-Content $log "$(Get-Date -Format s) $m" }
 
 function Read-RemoteFile([string]$name) {
-  $meta = Invoke-RestMethod "$api/$name?ref=main" -Headers $headers -TimeoutSec 30
+  $url = $api + '/' + [Uri]::EscapeDataString($name) + '?ref=main'
+  $meta = Invoke-RestMethod $url -Headers $headers -TimeoutSec 30
   return [Convert]::FromBase64String(($meta.content -replace '\s',''))
 }
 

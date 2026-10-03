@@ -1,7 +1,7 @@
 {
-  "build": 232,
-  "version": "2.3.2",
-  "notes": "Unified DJ logo; permanent encoding repair; forced fresh Windows DJ launch; preserves long-track streaming, Range/206, Unicode and Shared Media mirror fixes",
+  "build": 233,
+  "version": "2.3.3",
+  "notes": "Fix Windows DJ updater URL parsing; unified DJ logo; permanent encoding repair; forced fresh launch; preserves long-track Range/206 and Shared Media mirror fixes",
   "sha256": "",
   "files": [
     "Update-The-One-DJ.ps1",
