@@ -35,6 +35,7 @@ class WakePcActivity : AppCompatActivity() {
         val lanIp: String,
         val saltHex: String,
         val passwordHashHex: String,
+        val tailscaleHost: String? = null,
         val externalPort: Int? = null
     )
 
@@ -70,6 +71,7 @@ class WakePcActivity : AppCompatActivity() {
                 lanIp = LAPTOP_LAN_IP,
                 saltHex = "b020f7d1db4c107b6a3f50cbd1309bb0",
                 passwordHashHex = "edd7ab6fc19c2a375f701c06bd5d6092bb4c51ead2ea8308582c285b161ed230",
+                tailscaleHost = LAPTOP_TAILSCALE_HOST,
                 externalPort = HOME_PUBLIC_PORT
             ),
             WakeTarget(
@@ -93,9 +95,9 @@ class WakePcActivity : AppCompatActivity() {
         MenuButtonHelper.attach(this)
 
         // PIN-migratie: wis een oude lockout éénmalig wanneer de bedienings-PIN wijzigt.
-        if (securityPrefs.getInt("control_pin_version", 0) < 2) {
+        if (securityPrefs.getInt("control_pin_version", 0) < 3) {
             securityPrefs.edit()
-                .putInt("control_pin_version", 2)
+                .putInt("control_pin_version", 3)
                 .putInt("failed_attempts", 0)
                 .putLong("locked_until", 0L)
                 .apply()
@@ -156,7 +158,15 @@ class WakePcActivity : AppCompatActivity() {
         }
 
         sleepButton.setOnClickListener {
-            askForPinAndSleep(status, sleepButton)
+            val lockedUntil = securityPrefs.getLong("locked_until", 0L)
+            val now = System.currentTimeMillis()
+            if (lockedUntil > now) {
+                val seconds = ((lockedUntil - now + 999) / 1000).coerceAtLeast(1)
+                status.setTextColor(ContextCompat.getColor(this, R.color.text_dim))
+                status.text = "Te veel foutieve pogingen. Probeer over ongeveer $seconds seconden opnieuw."
+                return@setOnClickListener
+            }
+            chooseSleepDevice(status, sleepButton)
         }
 
         remoteButton.setOnClickListener {
@@ -535,7 +545,18 @@ class WakePcActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    private fun askForPinAndSleep(status: TextView, sleepButton: View) {
+    private fun chooseSleepDevice(status: TextView, sleepButton: View) {
+        val labels = WAKE_TARGETS.map { it.label }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("Apparaat in slaapstand")
+            .setItems(labels) { _, which ->
+                askForPinAndSleep(status, sleepButton, WAKE_TARGETS[which])
+            }
+            .setNegativeButton("Annuleren", null)
+            .show()
+    }
+
+    private fun askForPinAndSleep(status: TextView, sleepButton: View, target: WakeTarget) {
         val input = EditText(this).apply {
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
             hint = "Pincode"
@@ -544,8 +565,8 @@ class WakePcActivity : AppCompatActivity() {
         }
 
         val dialog = AlertDialog.Builder(this)
-            .setTitle("Laptop in slaapstand")
-            .setMessage("Voer je pincode in om Ruben in slaapstand te zetten.")
+            .setTitle(target.label + " in slaapstand")
+            .setMessage("Voer de bedieningspincode in om " + target.label + " in slaapstand te zetten.")
             .setView(input)
             .setNegativeButton("Annuleren", null)
             .setPositiveButton("Slaapstand", null)
@@ -586,19 +607,18 @@ class WakePcActivity : AppCompatActivity() {
                 dialog.dismiss()
                 sleepButton.isEnabled = false
                 status.setTextColor(ContextCompat.getColor(this, R.color.text_dim))
-                status.text = "Laptop in slaapstand zetten…"
+                status.text = target.label + " in slaapstand zetten…"
 
                 Thread {
-                    val result = runCatching { sendLaptopCommand("SLEEP", pin) }
+                    val result = runCatching { sendLaptopCommand(target, "SLEEP", pin) }
                     runOnUiThread {
                         sleepButton.isEnabled = true
                         if (result.isSuccess) {
                             status.setTextColor(ContextCompat.getColor(this, R.color.amber))
-                            status.text = "Slaapstand verstuurd. De laptop gaat nu slapen."
+                            status.text = "Slaapstand naar ${target.label} verstuurd."
                         } else {
                             status.setTextColor(ContextCompat.getColor(this, R.color.text_dim))
-                            status.text =
-                                "Geen verbinding met de laptop. Thuis: controleer wifi. Buitenshuis: zet Tailscale aan op je telefoon."
+                            status.text = "Geen verbinding met ${target.label}. Controleer of The One Window actief is."
                         }
                     }
                 }.start()
@@ -608,11 +628,12 @@ class WakePcActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    private fun sendLaptopCommand(command: String, pin: String) {
-        val targets = listOf(LAPTOP_LAN_IP, LAPTOP_TAILSCALE_HOST)
+    private fun sendLaptopCommand(target: WakeTarget, command: String, pin: String) {
+        val hosts = linkedSetOf(target.lanIp)
+        target.tailscaleHost?.takeIf { it.isNotBlank() }?.let { hosts.add(it) }
         var lastError: Throwable? = null
 
-        for (host in targets) {
+        for (host in hosts) {
             try {
                 Socket().use { socket ->
                     socket.connect(InetSocketAddress(host, LAPTOP_CONTROL_PORT), 2500)
@@ -626,14 +647,14 @@ class WakePcActivity : AppCompatActivity() {
                     val reply = reader.readLine().orEmpty()
                     if (reply.startsWith("OK ")) return
                     if (reply == "ERR AUTH") throw IllegalStateException("Pincode geweigerd")
-                    throw IllegalStateException("Onverwacht antwoord van laptop")
+                    throw IllegalStateException("Onverwacht antwoord van apparaat")
                 }
             } catch (e: Throwable) {
                 lastError = e
             }
         }
 
-        throw lastError ?: IllegalStateException("Laptop niet bereikbaar")
+        throw lastError ?: IllegalStateException("Apparaat niet bereikbaar")
     }
 
     private fun openRemoteControl() {

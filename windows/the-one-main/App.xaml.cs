@@ -9,6 +9,11 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // Luister altijd naar beveiligde The One slaapcommando's, ook in
+        // background-sync modus. Als een andere The One Window-instantie al
+        // luistert, neemt die de poort gewoon voor zijn rekening.
+        RemoteSleepService.Start();
+
         if (System.Array.Exists(
             e.Args,
             arg => string.Equals(

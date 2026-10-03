@@ -28,6 +28,17 @@ class WakePcActivity : AppCompatActivity() {
 
     private var activeDeviceAdminPin = ""
 
+    private data class WakeTarget(
+        val id: String,
+        val label: String,
+        val mac: String,
+        val lanIp: String,
+        val saltHex: String,
+        val passwordHashHex: String,
+        val tailscaleHost: String? = null,
+        val externalPort: Int? = null
+    )
+
     companion object {
         private const val LAPTOP_NAME = "Ruben"
         private const val LAPTOP_WIFI_MAC = "04-EC-D8-E5-C7-3E"
@@ -39,10 +50,39 @@ class WakePcActivity : AppCompatActivity() {
         private const val HOME_PUBLIC_IPV4 = "213.93.2.233"
         private const val HOME_PUBLIC_PORT = 40009
         private const val PIN_SALT_HEX = "031507ef415e3d21765f1fcc73740631"
-        private const val PIN_PBKDF2_HEX = "57eb95e2c96251b01c5447420126c61d9cccbec1efdc0c392141412bb9c0ad82"
+        private const val PIN_PBKDF2_HEX = "b0caff5d9cc87fbe048db6f429b51da1a69bb3abcbdd8955d1f3290cd096a42e"
         private const val PBKDF2_ITERATIONS = 120_000
         private const val MAX_FAILED_ATTEMPTS = 3
         private const val LOCKOUT_MS = 5 * 60 * 1000L
+
+        private val WAKE_TARGETS = listOf(
+            WakeTarget(
+                id = "surface",
+                label = "Surface",
+                mac = "BC-83-85-DB-DE-FC",
+                lanIp = "192.168.178.154",
+                saltHex = "06ebab52278f7e32f009df4fc5b4ede4",
+                passwordHashHex = "84bb1659722c537446ce0ded9fb367955de41b087f0fe109e3aad3543a7ed8b8"
+            ),
+            WakeTarget(
+                id = "ruben",
+                label = "Ruben",
+                mac = LAPTOP_WIFI_MAC,
+                lanIp = LAPTOP_LAN_IP,
+                saltHex = "b020f7d1db4c107b6a3f50cbd1309bb0",
+                passwordHashHex = "edd7ab6fc19c2a375f701c06bd5d6092bb4c51ead2ea8308582c285b161ed230",
+                tailscaleHost = LAPTOP_TAILSCALE_HOST,
+                externalPort = HOME_PUBLIC_PORT
+            ),
+            WakeTarget(
+                id = "hub",
+                label = "THEONE-HUB",
+                mac = "B4-A9-FC-64-25-CE",
+                lanIp = "192.168.178.183",
+                saltHex = "4fed35ad7dc4722cae539e2404726836",
+                passwordHashHex = "9f8574bb0accf2041e9657908460918616f7c85ae94ac6d8a82de6d541085f99"
+            )
+        )
     }
 
     private val securityPrefs by lazy {
@@ -53,6 +93,15 @@ class WakePcActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_wake_pc)
         MenuButtonHelper.attach(this)
+
+        // PIN-migratie: wis een oude lockout éénmalig wanneer de bedienings-PIN wijzigt.
+        if (securityPrefs.getInt("control_pin_version", 0) < 3) {
+            securityPrefs.edit()
+                .putInt("control_pin_version", 3)
+                .putInt("failed_attempts", 0)
+                .putLong("locked_until", 0L)
+                .apply()
+        }
 
         val status = findViewById<TextView>(R.id.wakePcStatus)
         val wakeButton = findViewById<View>(R.id.wakePcButton)
@@ -88,6 +137,10 @@ class WakePcActivity : AppCompatActivity() {
                 remoteButton.isEnabled = true
                 manageDevicesButton.isEnabled = true
                 status.text = "Klaar"
+                if (intent.getBooleanExtra("open_access_management", false)) {
+                    intent.removeExtra("open_access_management")
+                    openDeviceManager(manageDevicesButton)
+                }
             }
         }.start()
 
@@ -101,11 +154,19 @@ class WakePcActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            askForPinAndWake(status, wakeButton)
+            chooseWakeDevice(status, wakeButton)
         }
 
         sleepButton.setOnClickListener {
-            askForPinAndSleep(status, sleepButton)
+            val lockedUntil = securityPrefs.getLong("locked_until", 0L)
+            val now = System.currentTimeMillis()
+            if (lockedUntil > now) {
+                val seconds = ((lockedUntil - now + 999) / 1000).coerceAtLeast(1)
+                status.setTextColor(ContextCompat.getColor(this, R.color.text_dim))
+                status.text = "Te veel foutieve pogingen. Probeer over ongeveer $seconds seconden opnieuw."
+                return@setOnClickListener
+            }
+            chooseSleepDevice(status, sleepButton)
         }
 
         remoteButton.setOnClickListener {
@@ -113,43 +174,41 @@ class WakePcActivity : AppCompatActivity() {
         }
 
         manageDevicesButton.setOnClickListener {
-            promptDeviceManagerPin(manageDevicesButton)
+            openDeviceManager(manageDevicesButton)
         }
     }
 
-    private fun promptDeviceManagerPin(trigger: View) {
-        val input = EditText(this).apply {
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            hint = "Beheerpincode"
-            isSingleLine = true
-        }
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Apparaten beheren")
-            .setMessage("Voer de beheerpincode in.")
-            .setView(input)
-            .setNegativeButton("Annuleren", null)
-            .setPositiveButton("Openen", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val pin = input.text.toString().trim()
-                if (pin.isBlank()) { input.error = "Vul de beheerpincode in"; return@setOnClickListener }
-                trigger.isEnabled = false
-                Thread {
-                    val owner = runCatching { MainDeviceRegistry.ownerStatus(this, pin) }.getOrDefault(false)
-                    val devices = if (owner) runCatching { MainDeviceRegistry.listDevices(this, pin) }.getOrNull() else null
-                    runOnUiThread {
-                        trigger.isEnabled = true
-                        if (!owner) { input.text.clear(); input.error = "Geen beheerderstoegang"; return@runOnUiThread }
-                        if (devices == null) { Toast.makeText(this, "Apparaten konden niet worden geladen.", Toast.LENGTH_LONG).show(); return@runOnUiThread }
-                        activeDeviceAdminPin = pin
-                        dialog.dismiss()
-                        showManagedDevices(devices)
-                    }
-                }.start()
+    private fun openDeviceManager(trigger: View) {
+        trigger.isEnabled = false
+        Thread {
+            val owner = MainDeviceRegistry.isLocallyOwner(this)
+            val devices = if (owner) runCatching {
+                MainDeviceRegistry.listDevices(this, "")
+            }.getOrNull() else null
+
+            runOnUiThread {
+                trigger.isEnabled = true
+                if (!owner) {
+                    Toast.makeText(
+                        this,
+                        "Alleen het eigenaarstoestel mag apparaten beheren.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@runOnUiThread
+                }
+                if (devices == null) {
+                    Toast.makeText(
+                        this,
+                        "Apparaten konden niet worden geladen.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@runOnUiThread
+                }
+
+                activeDeviceAdminPin = ""
+                showManagedDevices(devices)
             }
-        }
-        dialog.show()
+        }.start()
     }
 
     private fun showManagedDevices(devices: List<MainRegisteredDevice>) {
@@ -172,8 +231,197 @@ class WakePcActivity : AppCompatActivity() {
             }
             card.addView(state)
             if (device.owner) {
-                card.addView(TextView(this).apply { text = "The One • beheerder • kan niet worden geblokkeerd"; textSize = 12f; setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.amber)) })
+                card.addView(TextView(this).apply {
+                    text = "The One • beheerder • alle mediarechten actief • kan niet worden geblokkeerd"
+                    textSize = 12f
+                    setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.amber))
+                })
             } else {
+                fun addAccessControl(
+                    label: String,
+                    scope: String,
+                    initialAllowed: Boolean,
+                    initialPending: Boolean
+                ) {
+                    var allowed = initialAllowed
+                    var pending = initialPending
+
+                    val section = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(0, 10, 0, 6)
+                    }
+                    val accessState = TextView(this).apply {
+                        textSize = 12f
+                        setPadding(0, 0, 0, 4)
+                    }
+
+                    fun refreshState() {
+                        accessState.text = when {
+                            allowed -> "$label: toegestaan"
+                            pending -> "$label: AANGEVRAAGD"
+                            else -> "$label: niet toegestaan"
+                        }
+                        accessState.setTextColor(
+                            ContextCompat.getColor(
+                                this@WakePcActivity,
+                                if (allowed || pending) R.color.amber else R.color.text_dim
+                            )
+                        )
+                    }
+                    refreshState()
+                    section.addView(accessState)
+
+                    val buttons = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                    }
+                    val grantButton = android.widget.Button(this).apply {
+                        fun refreshLabel() {
+                            text = if (allowed) "$label intrekken" else "$label toestaan"
+                        }
+                        refreshLabel()
+                        setOnClickListener {
+                            isEnabled = false
+                            val enable = !allowed
+                            Thread {
+                                val result = runCatching {
+                                    MainDeviceRegistry.setAccessRight(
+                                        this@WakePcActivity,
+                                        activeDeviceAdminPin,
+                                        device.id,
+                                        scope,
+                                        enable
+                                    )
+                                }
+                                runOnUiThread {
+                                    result.onSuccess {
+                                        allowed = enable
+                                        pending = false
+                                        refreshLabel()
+                                        refreshState()
+                                        Toast.makeText(
+                                            this@WakePcActivity,
+                                            if (enable) "$personLabel heeft nu toegang tot $label."
+                                            else "$personLabel heeft geen toegang meer tot $label.",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        AccessRequestNotificationWorker.checkNow(this@WakePcActivity)
+                                        isEnabled = true
+                                    }.onFailure {
+                                        Toast.makeText(
+                                            this@WakePcActivity,
+                                            "$label wijzigen mislukt: " + (it.message ?: "onbekende fout"),
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                        isEnabled = true
+                                    }
+                                }
+                            }.start()
+                        }
+                    }
+                    buttons.addView(
+                        grantButton,
+                        LinearLayout.LayoutParams(
+                            0,
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            1f
+                        )
+                    )
+
+                    if (initialPending && !initialAllowed) {
+                        buttons.addView(
+                            android.widget.Button(this).apply {
+                                text = "Weigeren"
+                                setOnClickListener {
+                                    isEnabled = false
+                                    Thread {
+                                        val result = runCatching {
+                                            MainDeviceRegistry.setAccessRight(
+                                                this@WakePcActivity,
+                                                activeDeviceAdminPin,
+                                                device.id,
+                                                scope,
+                                                false
+                                            )
+                                        }
+                                        runOnUiThread {
+                                            result.onSuccess {
+                                                pending = false
+                                                refreshState()
+                                                text = "Geweigerd"
+                                                isEnabled = false
+                                                Toast.makeText(
+                                                    this@WakePcActivity,
+                                                    "$label-aanvraag van $personLabel geweigerd.",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                                AccessRequestNotificationWorker.checkNow(this@WakePcActivity)
+                                            }.onFailure {
+                                                Toast.makeText(
+                                                    this@WakePcActivity,
+                                                    "Weigeren mislukt: " + (it.message ?: "onbekende fout"),
+                                                    Toast.LENGTH_LONG
+                                                ).show()
+                                                isEnabled = true
+                                            }
+                                        }
+                                    }.start()
+                                }
+                            },
+                            LinearLayout.LayoutParams(
+                                0,
+                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                                1f
+                            ).apply { marginStart = 8 }
+                        )
+                    }
+
+                    section.addView(buttons)
+                    card.addView(section)
+                }
+
+                addAccessControl(
+                    "Media Player",
+                    MainDeviceRegistry.ACCESS_MEDIA_PLAYER,
+                    device.mediaPlayerRights,
+                    device.pendingMediaPlayer
+                )
+                addAccessControl(
+                    "The One Mixes",
+                    MainDeviceRegistry.ACCESS_MIXES,
+                    device.mixesRights,
+                    device.pendingMixes
+                )
+                addAccessControl(
+                    "The One Shared Media",
+                    MainDeviceRegistry.ACCESS_SHARED,
+                    device.sharedRights,
+                    device.pendingShared
+                )
+                addAccessControl(
+                    "Favorites",
+                    MainDeviceRegistry.ACCESS_FAVORITES,
+                    device.favoritesRights,
+                    device.pendingFavorites
+                )
+                addAccessControl(
+                    "The One DJ import",
+                    MainDeviceRegistry.ACCESS_DJ,
+                    device.djRights,
+                    device.pendingDj
+                )
+                addAccessControl(
+                    "Muziek organiseren",
+                    MainDeviceRegistry.ACCESS_ORGANIZE,
+                    device.downloadsRights,
+                    device.pendingDownloads
+                )
+                addAccessControl(
+                    "Bestanden downloaden",
+                    MainDeviceRegistry.ACCESS_FILE_DOWNLOADS,
+                    device.fileDownloadsRights,
+                    device.pendingFileDownloads
+                )
+
                 card.addView(android.widget.Button(this).apply {
                     text = if (device.blocked) "Deblokkeren" else "Blokkeren"
                     setOnClickListener {
@@ -212,7 +460,18 @@ class WakePcActivity : AppCompatActivity() {
         return prefix + listOf(onlineText, platform, seen).filter { it.isNotBlank() }.joinToString(" • ")
     }
 
-    private fun askForPinAndWake(status: TextView, wakeButton: View) {
+    private fun chooseWakeDevice(status: TextView, wakeButton: View) {
+        val labels = WAKE_TARGETS.map { it.label }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("Apparaat wakker maken")
+            .setItems(labels) { _, which ->
+                askForPasswordAndWake(status, wakeButton, WAKE_TARGETS[which])
+            }
+            .setNegativeButton("Annuleren", null)
+            .show()
+    }
+
+    private fun askForPasswordAndWake(status: TextView, wakeButton: View, target: WakeTarget) {
         val input = EditText(this).apply {
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
             hint = "Pincode"
@@ -221,8 +480,8 @@ class WakePcActivity : AppCompatActivity() {
         }
 
         val dialog = AlertDialog.Builder(this)
-            .setTitle("Laptop wakker maken")
-            .setMessage("Voer je pincode in om Ruben uit slaapstand te halen.")
+            .setTitle(target.label + " wakker maken")
+            .setMessage("Voer de bedieningspincode in om " + target.label + " uit slaapstand te halen.")
             .setView(input)
             .setNegativeButton("Annuleren", null)
             .setPositiveButton("Wakker maken", null)
@@ -238,7 +497,7 @@ class WakePcActivity : AppCompatActivity() {
                     return@setOnClickListener
                 }
 
-                if (!verifyPin(input.text.toString())) {
+                if (!verifyWakePassword(target, input.text.toString())) {
                     val attempts = securityPrefs.getInt("failed_attempts", 0) + 1
                     if (attempts >= MAX_FAILED_ATTEMPTS) {
                         securityPrefs.edit()
@@ -265,14 +524,14 @@ class WakePcActivity : AppCompatActivity() {
                 status.text = "Wake-signaal versturen…"
 
                 Thread {
-                    val result = runCatching { sendMagicPacket() }
+                    val result = runCatching { sendMagicPacket(target) }
                     runOnUiThread {
                         wakeButton.isEnabled = true
                         if (result.isSuccess) {
                             status.setTextColor(ContextCompat.getColor(this, R.color.amber))
                             status.text =
-                                "Wake-signaal naar $LAPTOP_NAME verstuurd. Geef de laptop ongeveer 10–30 seconden."
-                            Toast.makeText(this, "Laptop wordt wakker gemaakt", Toast.LENGTH_SHORT).show()
+                                "Wake-signaal naar ${target.label} verstuurd. Geef het apparaat ongeveer 10–30 seconden."
+                            Toast.makeText(this, target.label + " wordt wakker gemaakt", Toast.LENGTH_SHORT).show()
                         } else {
                             status.setTextColor(ContextCompat.getColor(this, R.color.text_dim))
                             status.text =
@@ -286,7 +545,18 @@ class WakePcActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    private fun askForPinAndSleep(status: TextView, sleepButton: View) {
+    private fun chooseSleepDevice(status: TextView, sleepButton: View) {
+        val labels = WAKE_TARGETS.map { it.label }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("Apparaat in slaapstand")
+            .setItems(labels) { _, which ->
+                askForPinAndSleep(status, sleepButton, WAKE_TARGETS[which])
+            }
+            .setNegativeButton("Annuleren", null)
+            .show()
+    }
+
+    private fun askForPinAndSleep(status: TextView, sleepButton: View, target: WakeTarget) {
         val input = EditText(this).apply {
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
             hint = "Pincode"
@@ -295,8 +565,8 @@ class WakePcActivity : AppCompatActivity() {
         }
 
         val dialog = AlertDialog.Builder(this)
-            .setTitle("Laptop in slaapstand")
-            .setMessage("Voer je pincode in om Ruben in slaapstand te zetten.")
+            .setTitle(target.label + " in slaapstand")
+            .setMessage("Voer de bedieningspincode in om " + target.label + " in slaapstand te zetten.")
             .setView(input)
             .setNegativeButton("Annuleren", null)
             .setPositiveButton("Slaapstand", null)
@@ -337,19 +607,18 @@ class WakePcActivity : AppCompatActivity() {
                 dialog.dismiss()
                 sleepButton.isEnabled = false
                 status.setTextColor(ContextCompat.getColor(this, R.color.text_dim))
-                status.text = "Laptop in slaapstand zetten…"
+                status.text = target.label + " in slaapstand zetten…"
 
                 Thread {
-                    val result = runCatching { sendLaptopCommand("SLEEP", pin) }
+                    val result = runCatching { sendLaptopCommand(target, "SLEEP", pin) }
                     runOnUiThread {
                         sleepButton.isEnabled = true
                         if (result.isSuccess) {
                             status.setTextColor(ContextCompat.getColor(this, R.color.amber))
-                            status.text = "Slaapstand verstuurd. De laptop gaat nu slapen."
+                            status.text = "Slaapstand naar ${target.label} verstuurd."
                         } else {
                             status.setTextColor(ContextCompat.getColor(this, R.color.text_dim))
-                            status.text =
-                                "Geen verbinding met de laptop. Thuis: controleer wifi. Buitenshuis: zet Tailscale aan op je telefoon."
+                            status.text = "Geen verbinding met ${target.label}. Controleer of The One Window actief is."
                         }
                     }
                 }.start()
@@ -359,11 +628,12 @@ class WakePcActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    private fun sendLaptopCommand(command: String, pin: String) {
-        val targets = listOf(LAPTOP_LAN_IP, LAPTOP_TAILSCALE_HOST)
+    private fun sendLaptopCommand(target: WakeTarget, command: String, pin: String) {
+        val hosts = linkedSetOf(target.lanIp)
+        target.tailscaleHost?.takeIf { it.isNotBlank() }?.let { hosts.add(it) }
         var lastError: Throwable? = null
 
-        for (host in targets) {
+        for (host in hosts) {
             try {
                 Socket().use { socket ->
                     socket.connect(InetSocketAddress(host, LAPTOP_CONTROL_PORT), 2500)
@@ -377,14 +647,14 @@ class WakePcActivity : AppCompatActivity() {
                     val reply = reader.readLine().orEmpty()
                     if (reply.startsWith("OK ")) return
                     if (reply == "ERR AUTH") throw IllegalStateException("Pincode geweigerd")
-                    throw IllegalStateException("Onverwacht antwoord van laptop")
+                    throw IllegalStateException("Onverwacht antwoord van apparaat")
                 }
             } catch (e: Throwable) {
                 lastError = e
             }
         }
 
-        throw lastError ?: IllegalStateException("Laptop niet bereikbaar")
+        throw lastError ?: IllegalStateException("Apparaat niet bereikbaar")
     }
 
     private fun openRemoteControl() {
@@ -401,8 +671,8 @@ class WakePcActivity : AppCompatActivity() {
     }
 
     @Suppress("DEPRECATION")
-    private fun sendMagicPacket() {
-        val mac = parseMac(LAPTOP_WIFI_MAC)
+    private fun sendMagicPacket(target: WakeTarget) {
+        val mac = parseMac(target.mac)
         val payload = ByteArray(6 + 16 * mac.size)
 
         for (i in 0 until 6) payload[i] = 0xFF.toByte()
@@ -424,6 +694,7 @@ class WakePcActivity : AppCompatActivity() {
                     dynamicBroadcast(wifi)?.let { localTargets.add(it) }
                     localTargets.add(HOME_BROADCAST)
                     localTargets.add("255.255.255.255")
+                    localTargets.add(target.lanIp)
 
                     for (target in localTargets) {
                         runCatching {
@@ -438,17 +709,19 @@ class WakePcActivity : AppCompatActivity() {
                         }
                     }
 
-                    // Voor 5G / buitenhuis. De Ziggo-router moet extern UDP
-                    // HOME_PUBLIC_PORT doorsturen naar 192.168.178.193:9.
-                    runCatching {
-                        socket.send(
-                            DatagramPacket(
-                                payload,
-                                payload.size,
-                                InetAddress.getByName(HOME_PUBLIC_IPV4),
-                                HOME_PUBLIC_PORT
+                    // Alleen apparaten met een ingestelde externe WOL-port worden
+                    // ook buiten het thuisnetwerk gewekt.
+                    target.externalPort?.let { port ->
+                        runCatching {
+                            socket.send(
+                                DatagramPacket(
+                                    payload,
+                                    payload.size,
+                                    InetAddress.getByName(HOME_PUBLIC_IPV4),
+                                    port
+                                )
                             )
-                        )
+                        }
                     }
 
                     Thread.sleep(120)
@@ -473,6 +746,24 @@ class WakePcActivity : AppCompatActivity() {
             broadcast shr 16 and 0xff,
             broadcast shr 24 and 0xff
         ).joinToString(".")
+    }
+
+    private fun verifyWakePassword(target: WakeTarget, value: String): Boolean {
+        val salt = target.saltHex.hexToBytes()
+        val spec = PBEKeySpec(value.toCharArray(), salt, PBKDF2_ITERATIONS, 256)
+        val derived = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            .generateSecret(spec)
+            .encoded
+        spec.clearPassword()
+
+        val expected = target.passwordHashHex.hexToBytes()
+        if (derived.size != expected.size) return false
+
+        var diff = 0
+        for (i in derived.indices) {
+            diff = diff or (derived[i].toInt() xor expected[i].toInt())
+        }
+        return diff == 0
     }
 
     private fun verifyPin(value: String): Boolean {
