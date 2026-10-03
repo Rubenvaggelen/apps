@@ -34,6 +34,7 @@ class CarPlayerActivity : AppCompatActivity() {
     }
 
     private val handler = Handler(Looper.getMainLooper())
+    private lateinit var currentFolder: TextView
     private lateinit var currentTitle: TextView
     private lateinit var currentTime: TextView
     private lateinit var nextTitle: TextView
@@ -72,6 +73,7 @@ class CarPlayerActivity : AppCompatActivity() {
         UsbPlaybackService.resumeLastSessionIfNeeded(this)
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
 
+        currentFolder = findViewById(R.id.playerCurrentFolder)
         currentTitle = findViewById(R.id.playerCurrentTitle)
         currentTime = findViewById(R.id.playerCurrentTime)
         nextTitle = findViewById(R.id.playerNextTitle)
@@ -505,8 +507,14 @@ class CarPlayerActivity : AppCompatActivity() {
         val queue = UsbPlaybackService.queueSnapshot()
         val currentIndex = UsbPlaybackService.currentIndex()
 
+        val activeUri = queue.getOrNull(currentIndex)?.uri ?: state.uri.orEmpty()
+        val folderName = if (state.hasTrack) folderNameForTrack(activeUri) else ""
+        currentFolder.text = if (folderName.isBlank()) "" else "MAP • $folderName"
+        currentFolder.visibility = if (folderName.isBlank()) View.GONE else View.VISIBLE
         currentTitle.text = if (state.hasTrack) state.title else "Geen nummer geselecteerd"
-        bottomTitle.text = currentTitle.text
+        bottomTitle.text =
+            if (state.hasTrack && folderName.isNotBlank()) "$folderName • ${state.title}"
+            else currentTitle.text
         currentWaveform.titleSeed = state.title
         currentWaveform.progress =
             if (state.durationMs > 0) state.positionMs.toFloat() / state.durationMs.toFloat() else 0f
@@ -574,6 +582,36 @@ class CarPlayerActivity : AppCompatActivity() {
         }
     }
 
+    private fun folderNameForTrack(uriValue: String): String {
+        if (uriValue.isBlank()) return ""
+
+        return runCatching {
+            val uri = Uri.parse(uriValue)
+
+            val sharedPath = uri.getQueryParameter("path").orEmpty()
+            if (sharedPath.isNotBlank()) {
+                val normalized = sharedPath.replace('\\', '/').trim('/')
+                val parent = normalized.substringBeforeLast('/', "")
+                if (parent.isNotBlank()) return@runCatching parent.substringAfterLast('/')
+            }
+
+            if (uri.scheme.equals("content", ignoreCase = true)) {
+                val documentId = runCatching {
+                    android.provider.DocumentsContract.getDocumentId(uri)
+                }.getOrNull().orEmpty()
+                val decoded = Uri.decode(documentId)
+                    .replace('\\', '/')
+                    .replace(':', '/')
+                    .trim('/')
+                val parent = decoded.substringBeforeLast('/', "")
+                if (parent.isNotBlank()) return@runCatching parent.substringAfterLast('/')
+            }
+
+            val path = Uri.decode(uri.path.orEmpty()).replace('\\', '/').trim('/')
+            val parent = path.substringBeforeLast('/', "")
+            if (parent.isNotBlank()) parent.substringAfterLast('/') else ""
+        }.getOrDefault("")
+    }
     private fun refreshWhatsappBadge() {
         val unread = DashboardUnreadStore.count(this)
         whatsappButton.text = if (unread > 0) "WhatsApp  ● " + unread else "WhatsApp"
