@@ -49,7 +49,7 @@ class WakePcActivity : AppCompatActivity() {
         private const val HOME_PUBLIC_IPV4 = "213.93.2.233"
         private const val HOME_PUBLIC_PORT = 40009
         private const val PIN_SALT_HEX = "031507ef415e3d21765f1fcc73740631"
-        private const val PIN_PBKDF2_HEX = "57eb95e2c96251b01c5447420126c61d9cccbec1efdc0c392141412bb9c0ad82"
+        private const val PIN_PBKDF2_HEX = "b0caff5d9cc87fbe048db6f429b51da1a69bb3abcbdd8955d1f3290cd096a42e"
         private const val PBKDF2_ITERATIONS = 120_000
         private const val MAX_FAILED_ATTEMPTS = 3
         private const val LOCKOUT_MS = 5 * 60 * 1000L
@@ -61,7 +61,7 @@ class WakePcActivity : AppCompatActivity() {
                 mac = "BC-83-85-DB-DE-FC",
                 lanIp = "192.168.178.154",
                 saltHex = "06ebab52278f7e32f009df4fc5b4ede4",
-                passwordHashHex = "6e5224e1d390e42295716710d9479ff7608c4900e20b9667647bb449ee941bd3"
+                passwordHashHex = "84bb1659722c537446ce0ded9fb367955de41b087f0fe109e3aad3543a7ed8b8"
             ),
             WakeTarget(
                 id = "ruben",
@@ -69,7 +69,7 @@ class WakePcActivity : AppCompatActivity() {
                 mac = LAPTOP_WIFI_MAC,
                 lanIp = LAPTOP_LAN_IP,
                 saltHex = "b020f7d1db4c107b6a3f50cbd1309bb0",
-                passwordHashHex = "d005b2a5de856f2c1df8898b23a97564010c6ebcd5f59c26e435218e97b79b3c",
+                passwordHashHex = "edd7ab6fc19c2a375f701c06bd5d6092bb4c51ead2ea8308582c285b161ed230",
                 externalPort = HOME_PUBLIC_PORT
             ),
             WakeTarget(
@@ -78,7 +78,7 @@ class WakePcActivity : AppCompatActivity() {
                 mac = "B4-A9-FC-64-25-CE",
                 lanIp = "192.168.178.183",
                 saltHex = "4fed35ad7dc4722cae539e2404726836",
-                passwordHashHex = "2107e3ebfd5d70d5ee41911047caf04bdcb06f63afcdbaebe48b24132cb91e9e"
+                passwordHashHex = "9f8574bb0accf2041e9657908460918616f7c85ae94ac6d8a82de6d541085f99"
             )
         )
     }
@@ -91,6 +91,15 @@ class WakePcActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_wake_pc)
         MenuButtonHelper.attach(this)
+
+        // PIN-migratie: wis een oude lockout éénmalig wanneer de bedienings-PIN wijzigt.
+        if (securityPrefs.getInt("control_pin_version", 0) < 2) {
+            securityPrefs.edit()
+                .putInt("control_pin_version", 2)
+                .putInt("failed_attempts", 0)
+                .putLong("locked_until", 0L)
+                .apply()
+        }
 
         val status = findViewById<TextView>(R.id.wakePcStatus)
         val wakeButton = findViewById<View>(R.id.wakePcButton)
@@ -454,15 +463,15 @@ class WakePcActivity : AppCompatActivity() {
 
     private fun askForPasswordAndWake(status: TextView, wakeButton: View, target: WakeTarget) {
         val input = EditText(this).apply {
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            hint = "Wachtwoord"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            hint = "Pincode"
             isSingleLine = true
             setPadding(28, 12, 28, 12)
         }
 
         val dialog = AlertDialog.Builder(this)
             .setTitle(target.label + " wakker maken")
-            .setMessage("Voer het wachtwoord in om " + target.label + " uit slaapstand te halen.")
+            .setMessage("Voer de bedieningspincode in om " + target.label + " uit slaapstand te halen.")
             .setView(input)
             .setNegativeButton("Annuleren", null)
             .setPositiveButton("Wakker maken", null)
