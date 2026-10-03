@@ -70,7 +70,7 @@ class WakePcActivity : AppCompatActivity() {
                 mac = LAPTOP_WIFI_MAC,
                 lanIp = LAPTOP_LAN_IP,
                 saltHex = "b020f7d1db4c107b6a3f50cbd1309bb0",
-                passwordHashHex = "edd7ab6fc19c2a375f701c06bd5d6092bb4c51ead2ea8308582c285b161ed230",
+                passwordHashHex = "d005b2a5de856f2c1df8898b23a97564010c6ebcd5f59c26e435218e97b79b3c",
                 tailscaleHost = LAPTOP_TAILSCALE_HOST,
                 externalPort = HOME_PUBLIC_PORT
             ),
@@ -80,7 +80,7 @@ class WakePcActivity : AppCompatActivity() {
                 mac = "B4-A9-FC-64-25-CE",
                 lanIp = "192.168.178.183",
                 saltHex = "4fed35ad7dc4722cae539e2404726836",
-                passwordHashHex = "9f8574bb0accf2041e9657908460918616f7c85ae94ac6d8a82de6d541085f99"
+                passwordHashHex = "2107e3ebfd5d70d5ee41911047caf04bdcb06f63afcdbaebe48b24132cb91e9e"
             )
         )
     }
@@ -473,8 +473,8 @@ class WakePcActivity : AppCompatActivity() {
 
     private fun askForPasswordAndWake(status: TextView, wakeButton: View, target: WakeTarget) {
         val input = EditText(this).apply {
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            hint = "Pincode"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            hint = "Pincode of toegangscode"
             isSingleLine = true
             setPadding(28, 12, 28, 12)
         }
