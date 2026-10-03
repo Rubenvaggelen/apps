@@ -62,7 +62,8 @@ class WakePcActivity : AppCompatActivity() {
                 mac = "BC-83-85-DB-DE-FC",
                 lanIp = "192.168.178.154",
                 saltHex = "06ebab52278f7e32f009df4fc5b4ede4",
-                passwordHashHex = "84bb1659722c537446ce0ded9fb367955de41b087f0fe109e3aad3543a7ed8b8"
+                passwordHashHex = "84bb1659722c537446ce0ded9fb367955de41b087f0fe109e3aad3543a7ed8b8",
+                externalPort = HOME_PUBLIC_PORT
             ),
             WakeTarget(
                 id = "ruben",
@@ -80,7 +81,8 @@ class WakePcActivity : AppCompatActivity() {
                 mac = "B4-A9-FC-64-25-CE",
                 lanIp = "192.168.178.183",
                 saltHex = "4fed35ad7dc4722cae539e2404726836",
-                passwordHashHex = "2107e3ebfd5d70d5ee41911047caf04bdcb06f63afcdbaebe48b24132cb91e9e"
+                passwordHashHex = "2107e3ebfd5d70d5ee41911047caf04bdcb06f63afcdbaebe48b24132cb91e9e",
+                externalPort = HOME_PUBLIC_PORT
             )
         )
     }

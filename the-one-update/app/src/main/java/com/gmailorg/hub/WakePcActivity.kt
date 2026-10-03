@@ -62,7 +62,8 @@ class WakePcActivity : AppCompatActivity() {
                 mac = "BC-83-85-DB-DE-FC",
                 lanIp = "192.168.178.154",
                 saltHex = "06ebab52278f7e32f009df4fc5b4ede4",
-                passwordHashHex = "84bb1659722c537446ce0ded9fb367955de41b087f0fe109e3aad3543a7ed8b8"
+                passwordHashHex = "84bb1659722c537446ce0ded9fb367955de41b087f0fe109e3aad3543a7ed8b8",
+                externalPort = HOME_PUBLIC_PORT
             ),
             WakeTarget(
                 id = "ruben",
