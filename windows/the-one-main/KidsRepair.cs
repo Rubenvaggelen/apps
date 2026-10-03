@@ -29,6 +29,15 @@ internal static class KidsRepair
         if (string.IsNullOrWhiteSpace(token))
             throw new InvalidOperationException("Sync-token is leeg.");
 
+        var existingKids = hub.Files
+            .Where(x => IsKidsPath(x.Path))
+            .ToList();
+        var folderPrefix = existingKids
+            .Select(x => x.Path.Replace('\\', '/').Trim('/'))
+            .Select(x => x.Contains('/') ? x[..x.LastIndexOf('/')] : "")
+            .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
+            ?? "Ruben/kids map";
+
         var files = Directory.EnumerateFiles(Root, "*", SearchOption.TopDirectoryOnly)
             .Where(IsAudio)
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
@@ -42,7 +51,7 @@ internal static class KidsRepair
             var info = new FileInfo(file);
             local.Add(new Dictionary<string, object?>
             {
-                ["path"] = "Kids map/" + info.Name,
+                ["path"] = folderPrefix + "/" + info.Name,
                 ["title"] = "",
                 ["artist"] = "",
                 ["album"] = "",
@@ -56,7 +65,7 @@ internal static class KidsRepair
         foreach (var old in hub.Files)
         {
             var p = old.Path.Replace('\\', '/').Trim('/');
-            if (p.StartsWith("Kids map/", StringComparison.OrdinalIgnoreCase))
+            if (p.StartsWith(folderPrefix + "/", StringComparison.OrdinalIgnoreCase))
                 continue;
             manifest.Add(new Dictionary<string, object?>
             {
@@ -166,13 +175,21 @@ internal static class KidsRepair
             x.DeviceId.Equals("THEONE-HUB", StringComparison.OrdinalIgnoreCase) &&
             x.StickId.Equals("hub-primary", StringComparison.OrdinalIgnoreCase));
         var finalKids = finalHub.Files.Where(x =>
-            x.Path.Replace('\\', '/').StartsWith("Kids map/", StringComparison.OrdinalIgnoreCase)).ToList();
+            x.Path.Replace('\\', '/').Trim('/')
+                .StartsWith(folderPrefix + "/", StringComparison.OrdinalIgnoreCase)).ToList();
         var cached = finalKids.Count(x => x.Cached);
 
         var result = $"Kids repair: local={local.Count}, catalog={finalKids.Count}, cached={cached}, uploaded={uploaded}";
         Directory.CreateDirectory(@"C:\TheOne");
         await File.WriteAllTextAsync(@"C:\TheOne\kids-repair-result.txt", result);
         return result;
+    }
+
+    private static bool IsKidsPath(string path)
+    {
+        var normalized = (path ?? "").Replace('\\', '/').Trim('/');
+        return normalized.Contains("/kids map/", StringComparison.OrdinalIgnoreCase) ||
+            normalized.StartsWith("kids map/", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsAudio(string path)
