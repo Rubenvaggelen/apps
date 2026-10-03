@@ -15,6 +15,7 @@ import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.webkit.PermissionRequest;
+import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -30,6 +31,7 @@ public class MainActivity extends Activity {
     private static final int PICK_AUDIO = 4201;
     private WebView web;
     private ValueCallback<Uri[]> fileCallback;
+    private boolean immersive = true;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -50,6 +52,12 @@ public class MainActivity extends Activity {
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(true);
+
+        web.addJavascriptInterface(new Object() {
+            @JavascriptInterface public void toggleFullscreen() {
+                runOnUiThread(() -> toggleSystemBars());
+            }
+        }, "TheOneNative");
 
         web.setWebViewClient(new WebViewClient() {
             @Override public WebResourceResponse shouldInterceptRequest(
@@ -112,11 +120,12 @@ public class MainActivity extends Activity {
 
     @Override public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) hideSystemBars();
+        if (hasFocus && immersive) hideSystemBars();
     }
 
     @SuppressWarnings("deprecation")
     private void hideSystemBars() {
+        immersive = true;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             WindowInsetsController c=getWindow().getInsetsController();
             if (c!=null) {
@@ -133,6 +142,22 @@ public class MainActivity extends Activity {
                 View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
                 View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
         }
+    }
+
+    @SuppressWarnings("deprecation")
+    private void showSystemBars() {
+        immersive = false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsetsController c=getWindow().getInsetsController();
+            if (c!=null) c.show(WindowInsets.Type.statusBars()|WindowInsets.Type.navigationBars());
+        } else {
+            getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        }
+    }
+
+    private void toggleSystemBars() {
+        if (immersive) showSystemBars();
+        else hideSystemBars();
     }
 
     @SuppressWarnings("deprecation")

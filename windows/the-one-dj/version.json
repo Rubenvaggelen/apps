@@ -1,7 +1,7 @@
 {
-  "build": 234,
-  "version": "2.3.4",
-  "notes": "Valid unified DJ logo asset plus fixed updater URL parsing; clean encoding; forced fresh launch; long-track Range/206 and Shared Media mirror preserved",
+  "build": 235,
+  "version": "2.3.5",
+  "notes": "DJ-logo toggles real fullscreen/windowed mode on Windows and immersive/normal mode on Android; no ESC key required. Preserves Hub compact layout, clean encoding, long-track Range/206 and Shared Media mirror.",
   "sha256": "",
   "files": [
     "Update-The-One-DJ.ps1",

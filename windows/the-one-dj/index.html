@@ -384,6 +384,21 @@ body:not(.hp-on) .cue-hp{display:none}
   .hp-panel{top:8px;bottom:8px;overflow:auto;gap:8px}
   .lib-list{max-height:none}
 }
+/* HUB / compacte desktop (1200x800): playlist altijd binnen paneel houden */
+@media (max-width:1250px) and (min-height:521px){
+  .library{overflow:hidden;padding:10px 10px}
+  .lib-head{align-items:flex-start;flex-wrap:wrap}
+  .lib-head .top-actions{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+  .lib-list{overflow-y:auto;overflow-x:hidden;max-width:100%}
+  .lib-list li{
+    grid-template-columns:18px 62px minmax(0,1fr) 48px 48px 38px 32px;
+    gap:5px;
+    min-width:0
+  }
+  .lib-list .btn{min-width:0;width:100%;padding-left:5px;padding-right:5px}
+  .lib-tag{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lib-name{min-width:0}
+}
 @media (prefers-reduced-motion:reduce){.btn:active{transform:none}}
 </style>
 </head>
@@ -2626,7 +2641,7 @@ document.getElementById("libBtn").addEventListener("click",()=>library.classList
 document.getElementById("libClose").addEventListener("click",()=>library.classList.remove("open"));
 libList.addEventListener("click",e=>{if(e.target.closest("button")) library.classList.remove("open")});
 
-const WINDOWS_BUILD=234;
+const WINDOWS_BUILD=235;
 const updateBtn=document.getElementById("updateBtn");
 updateBtn?.addEventListener("click",async()=>{
   const old=updateBtn.textContent;updateBtn.disabled=true;updateBtn.textContent="Controleren\u2026";
@@ -2650,24 +2665,37 @@ async function goFullscreen(){
   try{if(!document.fullscreenElement) await document.documentElement.requestFullscreen({navigationUI:"hide"})}catch(e){}
   try{await screen.orientation?.lock?.("landscape")}catch(e){}
 }
-async function toggleFullscreen(){
+async function toggleDjScreenSize(){
+  // Android app: native immersive-mode toggle, so no ESC/back key is needed.
+  if(IN_APP&&window.TheOneNative&&typeof window.TheOneNative.toggleFullscreen==="function"){
+    try{window.TheOneNative.toggleFullscreen();return}catch(e){}
+  }
+  // Windows DJ is launched in Edge/Chrome browser-fullscreen. The local server
+  // toggles that real window mode (F11), which document.exitFullscreen cannot do.
+  if(!IN_APP&&/^(127\.0\.0\.1|localhost)$/.test(location.hostname)){
+    try{
+      const r=await fetch("/window/fullscreen-toggle",{method:"POST",cache:"no-store"});
+      if(r.ok)return;
+    }catch(e){}
+  }
+  // Browser fallback.
   try{
     if(document.fullscreenElement) await document.exitFullscreen();
     else await goFullscreen();
   }catch(e){}
 }
+djBrand?.addEventListener("click",toggleDjScreenSize);
+djBrand?.addEventListener("keydown",e=>{
+  if(e.key==="Enter"||e.key===" "){e.preventDefault();toggleDjScreenSize()}
+});
+djBrand?.setAttribute("aria-label","Scherm groter of kleiner");
 if(document.fullscreenEnabled&&!IN_APP){
   fsBtn.hidden=false;fsRotate.hidden=false;
-  fsBtn.addEventListener("click",toggleFullscreen);
+  fsBtn.addEventListener("click",toggleDjScreenSize);
   fsRotate.addEventListener("click",goFullscreen);
-  djBrand?.addEventListener("click",toggleFullscreen);
-  djBrand?.addEventListener("keydown",e=>{
-    if(e.key==="Enter"||e.key===" "){e.preventDefault();toggleFullscreen()}
-  });
   document.addEventListener("fullscreenchange",()=>{
     const active=!!document.fullscreenElement;
-    fsBtn.setAttribute("aria-label",active?"Volledig scherm verlaten":"Volledig scherm");
-    djBrand?.setAttribute("aria-label",active?"Volledig scherm verlaten":"Volledig scherm openen");
+    fsBtn.setAttribute("aria-label",active?"Scherm kleiner":"Volledig scherm");
   });
 }
 matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",()=>decks.forEach(d=>d.drawBase()));

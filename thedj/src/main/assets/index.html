@@ -2373,24 +2373,37 @@ async function goFullscreen(){
   try{if(!document.fullscreenElement) await document.documentElement.requestFullscreen({navigationUI:"hide"})}catch(e){}
   try{await screen.orientation?.lock?.("landscape")}catch(e){}
 }
-async function toggleFullscreen(){
+async function toggleDjScreenSize(){
+  // Android app: native immersive-mode toggle, so no ESC/back key is needed.
+  if(IN_APP&&window.TheOneNative&&typeof window.TheOneNative.toggleFullscreen==="function"){
+    try{window.TheOneNative.toggleFullscreen();return}catch(e){}
+  }
+  // Windows DJ is launched in Edge/Chrome browser-fullscreen. The local server
+  // toggles that real window mode (F11), which document.exitFullscreen cannot do.
+  if(!IN_APP&&/^(127\.0\.0\.1|localhost)$/.test(location.hostname)){
+    try{
+      const r=await fetch("/window/fullscreen-toggle",{method:"POST",cache:"no-store"});
+      if(r.ok)return;
+    }catch(e){}
+  }
+  // Browser fallback.
   try{
     if(document.fullscreenElement) await document.exitFullscreen();
     else await goFullscreen();
   }catch(e){}
 }
+djBrand?.addEventListener("click",toggleDjScreenSize);
+djBrand?.addEventListener("keydown",e=>{
+  if(e.key==="Enter"||e.key===" "){e.preventDefault();toggleDjScreenSize()}
+});
+djBrand?.setAttribute("aria-label","Scherm groter of kleiner");
 if(document.fullscreenEnabled&&!IN_APP){
   fsBtn.hidden=false;fsRotate.hidden=false;
-  fsBtn.addEventListener("click",toggleFullscreen);
+  fsBtn.addEventListener("click",toggleDjScreenSize);
   fsRotate.addEventListener("click",goFullscreen);
-  djBrand?.addEventListener("click",toggleFullscreen);
-  djBrand?.addEventListener("keydown",e=>{
-    if(e.key==="Enter"||e.key===" "){e.preventDefault();toggleFullscreen()}
-  });
   document.addEventListener("fullscreenchange",()=>{
     const active=!!document.fullscreenElement;
-    fsBtn.setAttribute("aria-label",active?"Volledig scherm verlaten":"Volledig scherm");
-    djBrand?.setAttribute("aria-label",active?"Volledig scherm verlaten":"Volledig scherm openen");
+    fsBtn.setAttribute("aria-label",active?"Scherm kleiner":"Volledig scherm");
   });
 }
 matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",()=>decks.forEach(d=>d.drawBase()));

@@ -7,6 +7,25 @@ $listener=[System.Net.HttpListener]::new()
 $listener.Prefixes.Add($prefix)
 try{$listener.Start()}catch{exit 0}
 
+if(-not ('TheOneDjWindow' -as [type])){
+  Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class TheOneDjWindow {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+}
+'@
+}
+function Toggle-DjForegroundFullscreen(){
+  $h=[TheOneDjWindow]::GetForegroundWindow()
+  if($h -eq [IntPtr]::Zero){return $false}
+  [void][TheOneDjWindow]::PostMessage($h,0x0100,[IntPtr]0x7A,[IntPtr]0)
+  Start-Sleep -Milliseconds 25
+  [void][TheOneDjWindow]::PostMessage($h,0x0101,[IntPtr]0x7A,[IntPtr]0)
+  return $true
+}
+
 function Mime([string]$p){
   switch([IO.Path]::GetExtension($p).ToLowerInvariant()){
     '.html' {'text/html; charset=utf-8'}
@@ -320,6 +339,12 @@ while($listener.IsListening){
         [pscustomobject]@{name=$_.Name;path=$_.FullName;size=$_.Length}
       })
       JsonResponse $ctx @{ok=$true;path=$full;directories=$dirs;files=$filesOut}
+      continue
+    }
+
+    if($ctx.Request.HttpMethod -eq 'POST' -and $path -eq '/window/fullscreen-toggle'){
+      $ok=Toggle-DjForegroundFullscreen
+      JsonResponse $ctx @{ok=[bool]$ok}
       continue
     }
 
