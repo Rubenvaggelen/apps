@@ -51,7 +51,7 @@ public partial class App : Application
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
             try
             {
-                KidsRepair.RunAsync().GetAwaiter().GetResult();
+                Task.Run(KidsRepair.RunAsync).GetAwaiter().GetResult();
                 Shutdown(0);
             }
             catch (Exception ex)
