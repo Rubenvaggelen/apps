@@ -1,2 +1,4 @@
 Standalone The One Car release channel initialized on 2026-10-02.
 Retry after SDK workflow fix.
+
+Trigger Car 78 folder display - 2026-10-03
