@@ -1,5 +1,3 @@
-[Reading 182 lines from start (total: 182 lines, 0 remaining)]
-
 using System.Collections;
 using System.Net.Http.Headers;
 using System.Reflection;
@@ -182,5 +180,3 @@ internal static class KidsRepair
             .Contains(ext, StringComparer.OrdinalIgnoreCase);
     }
 }
-
-[executed on device: Ruben (89001e2c-0797-4d3b-96e7-237cae9f9633)]
