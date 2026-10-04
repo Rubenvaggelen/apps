@@ -82,7 +82,7 @@ jobs:
           found = False
           for path in files:
               text = path.read_text()
-              match = re.search(r'TMDB_API_KEY\\s*=\\s*("(?:[^"\\\\]|\\\\.)*")', text)
+              match = re.search(r'TMDB_API_KEY\s*=\s*("(?:[^"\\]|\\.)*")', text)
               if match and json.loads(match.group(1)) == expected:
                   found = True
           if not found:
