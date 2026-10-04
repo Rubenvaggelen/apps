@@ -28,6 +28,7 @@ class HouseholdActivity : AppCompatActivity() {
     private lateinit var emptyState: TextView
     private lateinit var input: EditText
     private lateinit var supermarketSwitch: Switch
+    private var resumeAfterLocationSettings = false
 
     private val requestForegroundLocation = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -42,15 +43,17 @@ class HouseholdActivity : AppCompatActivity() {
 
     private val requestBackgroundLocation = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { _ ->
-        // Ook zonder achtergrondlocatie werkt het gewoon terwijl de app open/actief is —
-        // we gaan altijd door met het instellen van de meldingen.
-        armSupermarketAlerts()
+    ) { granted ->
+        if(granted)armSupermarketAlerts()
+        else Toast.makeText(this,"Kies Altijd toestaan voor supermarkt-meldingen op de achtergrond.",Toast.LENGTH_LONG).show()
     }
 
     private val requestNotificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { /* resultaat negeren, meldingen werken al voor Android 13+ als dit geweigerd wordt niet, dat is prima */ }
+    ) { granted ->
+        if(granted)ensureForegroundLocationThenArm()
+        else Toast.makeText(this,"Sta meldingen toe voor Main; anders kan je boodschappenlijst niet worden gemeld.",Toast.LENGTH_LONG).show()
+    }
 
     private val voiceRecognition = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -106,10 +109,8 @@ class HouseholdActivity : AppCompatActivity() {
 
         supermarketSwitch.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                }
-                ensureForegroundLocationThenArm()
+                SupermarketGeofenceManager.requestEnable(this)
+                ensureNotificationThenArm()
             } else {
                 SupermarketGeofenceManager.disable(this)
                 SupermarketRefreshWorker.cancel(this)
@@ -118,6 +119,30 @@ class HouseholdActivity : AppCompatActivity() {
         }
 
         refresh()
+        if(SupermarketGeofenceManager.isEnabled(this))ensureNotificationThenArm()
+    }
+
+    private fun ensureNotificationThenArm() {
+        if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.TIRAMISU &&
+           ContextCompat.checkSelfPermission(this,Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED){
+            requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS);return
+        }
+        if(!androidx.core.app.NotificationManagerCompat.from(this).areNotificationsEnabled()){
+            androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Meldingen toestaan")
+                .setMessage("Android blokkeert meldingen van Main. Zet ze aan om je boodschappenlijst bij de supermarkt te ontvangen.")
+                .setPositiveButton("Instellingen"){_,_->startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,packageName))}
+                .setNegativeButton("Later",null).show()
+            return
+        }
+        ensureForegroundLocationThenArm()
+    }
+    override fun onResume() {
+        super.onResume()
+        if(resumeAfterLocationSettings){
+            resumeAfterLocationSettings=false
+            if(SupermarketGeofenceManager.hasBackgroundLocationPermission(this))ensureNotificationThenArm()
+            else Toast.makeText(this,"Supermarktmeldingen wachten op locatietoegang: Altijd toestaan.",Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun ensureForegroundLocationThenArm() {
@@ -137,7 +162,15 @@ class HouseholdActivity : AppCompatActivity() {
                 this, Manifest.permission.ACCESS_BACKGROUND_LOCATION
             ) == PackageManager.PERMISSION_GRANTED
             if (!granted) {
-                requestBackgroundLocation.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.R){
+                    androidx.appcompat.app.AlertDialog.Builder(this)
+                        .setTitle("Locatie op de achtergrond")
+                        .setMessage("Om je bij een supermarkt te herinneren terwijl Main gesloten is: open Machtigingen → Locatie en kies Altijd toestaan. Laat Nauwkeurige locatie aan.")
+                        .setPositiveButton("Instellingen"){_,_->
+                            resumeAfterLocationSettings=true
+                            startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.parse("package:"+packageName)))
+                        }.setNegativeButton("Later",null).show()
+                }else requestBackgroundLocation.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
                 return
             }
         }
@@ -148,7 +181,7 @@ class HouseholdActivity : AppCompatActivity() {
         Toast.makeText(this, "Supermarkten in de buurt zoeken...", Toast.LENGTH_SHORT).show()
         SupermarketGeofenceManager.enableForCurrentLocation(this) { success, message ->
             Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-            if (!success) supermarketSwitch.isChecked = false
+            // Keep the requested setting during temporary network/location errors; the worker retries.
             if (CarRadioConnectionService.isRadioConnected()) CarRadioConnectionService.sendHouseholdSnapshot(this)
         }
         SupermarketRefreshWorker.schedule(this)
