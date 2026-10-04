@@ -519,6 +519,7 @@ body:not(.hp-on) .cue-hp{display:none}
       <button class="btn small" id="localBackBtn">&larr; Terug</button>
       <div class="media-browser-title">Lokale media</div>
       <button class="btn small" id="sharedLoadFolderBtn" hidden>Hele map toevoegen</button>
+      <button class="btn small" id="sharedLoadSelectedBtn" hidden>Geselecteerde mappen toevoegen</button>
       <button class="btn small" id="localCloseBtn">Sluiten</button>
     </div>
     <div class="media-browser-path" id="localPath">Schijven</div>
@@ -2532,6 +2533,13 @@ function renderLocalRows(rows){
     const btn=document.createElement("button");btn.className="btn small";btn.textContent=row.label;
     btn.onclick=row.onclick;
     const meta=document.createElement("span");meta.className="lib-tag";meta.textContent=row.meta||"";
+    if(row.select){
+      const check=document.createElement("input");check.type="checkbox";check.checked=row.selected;
+      check.setAttribute("aria-label","Selecteer map "+row.label);
+      check.style.cssText="width:26px;height:26px;accent-color:var(--a)";
+      check.onchange=()=>row.select(check.checked);
+      meta.replaceChildren(check);
+    }
     li.append(icon,btn,meta);localList.appendChild(li);
   }
 }
@@ -2577,6 +2585,7 @@ async function loadLocalFolder(){
   }
 }
 async function openLocalMedia(){
+  document.getElementById("sharedLoadSelectedBtn").hidden=true;
   document.getElementById("sharedLoadFolderBtn").hidden=true;
   mediaMode="local";document.querySelector(".media-browser-title").textContent="Lokale media";
   if(IN_APP){
@@ -2675,7 +2684,23 @@ async function loadLocalFiles(rows){
 }
 function sharedReference(file){return {name:file.name||file.path.split(/[\\/]/).pop(),type:"audio/mpeg",size:Number(file.size)||0,source:{kind:"shared",device:sharedStick.device_id,stick:sharedStick.stick_id,path:file.path}}}
 function sharedFilePath(file){return String(file.path||"").replace(/\\/g,"/").replace(/^\/+/,"")}
+let sharedSelectionStick="",sharedSelectedFolders=new Set();
+function updateSharedSelection(){
+  const btn=document.getElementById("sharedLoadSelectedBtn");
+  btn.hidden=mediaMode!=="shared"||sharedSelectedFolders.size===0;
+  btn.textContent="Voeg "+sharedSelectedFolders.size+" geselecteerde map(pen) toe";
+}
+document.getElementById("sharedLoadSelectedBtn").addEventListener("click",()=>{
+  if(!sharedStick)return;
+  const files=[...sharedSelectedFolders].flatMap(folder=>sharedFolderFiles(sharedStick,folder));
+  const added=addMediaReferences(files.map(sharedReference));
+  sharedSelectedFolders.clear();updateSharedSelection();renderSharedFolder(sharedFolder);
+  document.getElementById("mediaNotice").textContent=added+" nummers uit geselecteerde mappen toegevoegd, inclusief submappen.";
+});
 function renderSharedFolder(folder=""){
+  const stickKey=JSON.stringify([sharedStick.device_id,sharedStick.stick_id]);
+  if(sharedSelectionStick!==stickKey){sharedSelectionStick=stickKey;sharedSelectedFolders.clear()}
+  updateSharedSelection();
   sharedFolder=folder;
   const prefix=folder?folder+"/":"";
   const children=new Set(),tracks=[];
@@ -2690,7 +2715,7 @@ function renderSharedFolder(folder=""){
   localLoadFolderBtn.disabled=count===0;localLoadFolderBtn.textContent="Hele map toevoegen ("+count+")";
   const mapButton=document.getElementById("sharedLoadFolderBtn");mapButton.hidden=false;mapButton.disabled=count===0;mapButton.textContent="Hele map toevoegen ("+count+")";
   renderLocalRows([
-    ...[...children].sort((a,b)=>a.localeCompare(b)).map(name=>({icon:"\uD83D\uDCC1",label:name,meta:"map",onclick:()=>renderSharedFolder(prefix+name)})),
+    ...[...children].sort((a,b)=>a.localeCompare(b)).map(name=>({icon:"\uD83D\uDCC1",label:name,meta:"map",selected:sharedSelectedFolders.has(prefix+name),select:checked=>{if(checked)sharedSelectedFolders.add(prefix+name);else sharedSelectedFolders.delete(prefix+name);updateSharedSelection()},onclick:()=>renderSharedFolder(prefix+name)})),
     ...tracks.sort((a,b)=>(a.name||"").localeCompare(b.name||"")).map(file=>({icon:"\u266B",label:file.title||file.name,meta:lib.some(t=>mediaReferenceKey(t.file?.source)===mediaReferenceKey(sharedReference(file).source))?"In DJ":"Toevoegen",onclick:()=>{addMediaReferences([sharedReference(file)]);renderSharedFolder(sharedFolder)}}))
   ]);
 }
