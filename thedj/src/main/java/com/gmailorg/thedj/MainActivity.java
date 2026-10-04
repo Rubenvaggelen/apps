@@ -39,6 +39,7 @@ public class MainActivity extends Activity {
         setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
+        final SharedMediaClient sharedMedia = new SharedMediaClient(this);
         final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
             .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
             .build();
@@ -69,7 +70,8 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override public WebResourceResponse shouldInterceptRequest(
                 WebView view, WebResourceRequest request) {
-                return loader.shouldInterceptRequest(request.getUrl());
+                WebResourceResponse shared = sharedMedia.intercept(request);
+                return shared != null ? shared : loader.shouldInterceptRequest(request.getUrl());
             }
             @Override public boolean shouldOverrideUrlLoading(
                 WebView view, WebResourceRequest request) {
