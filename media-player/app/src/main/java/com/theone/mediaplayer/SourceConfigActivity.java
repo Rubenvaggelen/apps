@@ -2,8 +2,10 @@ package com.theone.mediaplayer;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
@@ -15,12 +17,20 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+
 public class SourceConfigActivity extends Activity {
     private static final int BLUE = Color.rgb(32, 184, 255);
     private static final int BG = Color.rgb(5, 7, 11);
     private static final int PANEL = Color.rgb(17, 23, 34);
     private static final int MUTED = Color.rgb(154, 166, 178);
     private static final String DEFAULT_SERVER = "http://line.liondnscloud.ru:80";
+    private static final int REQUEST_IMPORT_SOURCE = 7001;
 
     private SharedPreferences prefs;
     private LinearLayout fields;
@@ -141,7 +151,19 @@ public class SourceConfigActivity extends Activity {
             fields.addView(spacer());
             fields.addView(epg);
             fields.addView(spacer());
-            fields.addView(info("M3U ondersteunt een eigen playlist-URL. EPG/XMLTV kan later voor de tv-gids worden gebruikt."));
+            fields.addView(info("M3U ondersteunt een eigen playlist-URL. EPG/XMLTV kan later voor de tv-gids worden gebruikt. Voor privé bronnen kun je ook een bronbestand importeren, zodat inloggegevens niet in openbare broncode hoeven te staan."));
+
+            Button importSource = button("Privé bronbestand importeren");
+            importSource.setOnClickListener(v -> {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("*/*");
+                intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/json", "text/plain"});
+                startActivityForResult(intent, REQUEST_IMPORT_SOURCE);
+            });
+            fields.addView(importSource);
+            fields.addView(spacer());
+
             Button save = button("Opslaan");
             save.setOnClickListener(v -> {
                 String url = m3u.getText().toString().trim();
@@ -159,11 +181,85 @@ public class SourceConfigActivity extends Activity {
             fields.addView(save);
         }
 
+        TextView catalogTitle = text("Film- & seriecatalogus", 20, BLUE, true);
+        LinearLayout.LayoutParams catalogTitleLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        catalogTitleLp.topMargin = dp(20);
+        fields.addView(catalogTitle, catalogTitleLp);
+
+        EditText tmdb = input(
+                "TMDB API Read Access Token",
+                prefs.getString("tmdb_token", ""),
+                true
+        );
+        fields.addView(tmdb);
+        fields.addView(spacer());
+        fields.addView(info(
+                "De catalogus gebruikt TMDB voor films, series, posters, seizoenen en afleveringen. "
+                        + "De token wordt alleen lokaal in deze app opgeslagen en niet in GitHub gezet. "
+                        + "This product uses the TMDB API but is not endorsed or certified by TMDB."
+        ));
+
+        Button saveTmdb = button("TMDB-token opslaan");
+        saveTmdb.setOnClickListener(v -> {
+            prefs.edit().putString("tmdb_token", tmdb.getText().toString().trim()).apply();
+            Toast.makeText(this, "TMDB-token opgeslagen", Toast.LENGTH_SHORT).show();
+        });
+        fields.addView(saveTmdb);
+
         Button close = button("← Terug naar Media Player");
         LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         closeLp.topMargin = dp(18);
         fields.addView(close, closeLp);
         close.setOnClickListener(v -> finish());
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_IMPORT_SOURCE || resultCode != RESULT_OK || data == null || data.getData() == null) {
+            return;
+        }
+
+        Uri uri = data.getData();
+        try {
+            String raw = readAll(uri).trim();
+            String url = raw;
+            String epg = "";
+
+            if (raw.startsWith("{")) {
+                JSONObject json = new JSONObject(raw);
+                url = json.optString("m3u_url", json.optString("url", "")).trim();
+                epg = json.optString("epg_url", "").trim();
+            }
+
+            if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                Toast.makeText(this, "Dit bronbestand bevat geen geldige M3U-URL", Toast.LENGTH_LONG).show();
+                return;
+            }
+
+            prefs.edit()
+                    .putString("source_type", "M3U")
+                    .putString("m3u_url", url)
+                    .putString("epg_url", epg)
+                    .apply();
+
+            selectedType = "M3U";
+            Toast.makeText(this, "Privé M3U-bron geïmporteerd", Toast.LENGTH_LONG).show();
+            renderFields();
+        } catch (Exception e) {
+            Toast.makeText(this, "Bronbestand kon niet worden gelezen", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private String readAll(Uri uri) throws Exception {
+        InputStream input = getContentResolver().openInputStream(uri);
+        if (input == null) throw new IllegalStateException("Geen invoer");
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
+            StringBuilder out = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) out.append(line).append('\n');
+            return out.toString();
+        }
     }
 
     private String displayType(String type) {
