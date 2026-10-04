@@ -1,7 +1,7 @@
 {
-  "build": 236,
-  "version": "2.3.6",
-  "notes": "Voice Sync (Key Lock) on both decks preserves vocal pitch during Sync and tempo changes; per-deck setting is saved. Playback uses native pitch correction through existing mixer and effects; scratch remains vinyl-style.",
+  "build": 237,
+  "version": "2.3.7",
+  "notes": "Auto DJ: estimated phrase-grid transitions, energy-based intro/outro selection, level matching, bass swap, background audio-clock fades, pitch-preserving sync and immediate manual takeover. Uncertain tempo uses a smooth unsynced fallback.",
   "sha256": "",
   "files": [
     "Update-The-One-DJ.ps1",
