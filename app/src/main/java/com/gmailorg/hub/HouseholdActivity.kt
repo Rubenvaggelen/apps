@@ -31,9 +31,9 @@ class HouseholdActivity : AppCompatActivity() {
     private var resumeAfterLocationSettings = false
 
     private val requestForegroundLocation = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        if (grants[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
             requestBackgroundLocationIfNeeded()
         } else {
             supermarketSwitch.isChecked = false
@@ -152,7 +152,7 @@ class HouseholdActivity : AppCompatActivity() {
         if (granted) {
             requestBackgroundLocationIfNeeded()
         } else {
-            requestForegroundLocation.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            requestForegroundLocation.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION))
         }
     }
 
