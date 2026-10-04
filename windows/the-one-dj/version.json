@@ -1,7 +1,7 @@
 {
-  "build": 237,
-  "version": "2.3.7",
-  "notes": "Auto DJ: estimated phrase-grid transitions, energy-based intro/outro selection, level matching, bass swap, background audio-clock fades, pitch-preserving sync and immediate manual takeover. Uncertain tempo uses a smooth unsynced fallback.",
+  "build": 238,
+  "version": "2.3.8",
+  "notes": "Auto DJ stays enabled until explicitly switched off. Continuous playback recovery after track end; Android scrolling and per-folder selection; Pull up retained, Dancehall and Boom hidden.",
   "sha256": "",
   "files": [
     "Update-The-One-DJ.ps1",
