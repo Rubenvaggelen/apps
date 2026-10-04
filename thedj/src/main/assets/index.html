@@ -904,6 +904,7 @@ function deckTemplate(id){
       <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4.5h4v15H6zm8 0h4v15h-4z"/></svg>
     </button>
     <button class="btn sync" data-r="sync">Sync</button>
+    <button class="btn" data-r="voiceSync" aria-pressed="true">Voice Sync • Aan</button>
   </div>
   <div class="transport-tools">
     <button class="mini on" data-r="quantize">Quantize</button>
@@ -951,12 +952,38 @@ function deckTemplate(id){
   </div>`;
 }
 
+
+/* Native time stretching keeps vocals in key; the mixer/effects remain Web Audio. */
+async function voiceSyncWav(buffer){
+  const channels=Math.min(2,buffer.numberOfChannels),frames=buffer.length;
+  const size=frames*channels*2,header=new ArrayBuffer(44),v=new DataView(header);
+  const word=(at,s)=>{for(let i=0;i<s.length;i++)v.setUint8(at+i,s.charCodeAt(i))};
+  word(0,"RIFF");v.setUint32(4,36+size,true);word(8,"WAVE");word(12,"fmt ");
+  v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,channels,true);
+  v.setUint32(24,buffer.sampleRate,true);v.setUint32(28,buffer.sampleRate*channels*2,true);
+  v.setUint16(32,channels*2,true);v.setUint16(34,16,true);word(36,"data");v.setUint32(40,size,true);
+  const data=Array.from({length:channels},(_,c)=>buffer.getChannelData(c)),parts=[header];
+  for(let start=0;start<frames;start+=65536){
+    const count=Math.min(65536,frames-start),chunk=new ArrayBuffer(count*channels*2),out=new DataView(chunk);
+    for(let i=0;i<count;i++)for(let c=0;c<channels;c++){
+      const sample=Math.max(-1,Math.min(1,data[c][start+i]));
+      out.setInt16((i*channels+c)*2,Math.round(sample*(sample<0?32768:32767)),true);
+    }
+    parts.push(chunk);
+    // Long mixes must not block the controls while the native source is prepared.
+    if(start%524288===0)await new Promise(resolve=>setTimeout(resolve,0));
+  }
+  return new Blob(parts,{type:"audio/wav"});
+}
+
 class Deck{
   constructor(id,idx){
     this.id=id;this.idx=idx;this.el=document.getElementById("deck"+id);
     this.el.innerHTML=deckTemplate(id);
     this.ui={};this.el.querySelectorAll("[data-r]").forEach(n=>this.ui[n.dataset.r]=n);
     this.buffer=null;this.src=null;this.playing=false;this.pos=0;this.startT=0;this.startPos=0;
+    this.voiceSync=localStorage.getItem("theOneDjVoiceSync"+id)!=="off";
+    this.voice=null;this.voiceUrl=null;this.voiceActive=false;this.voiceSupported=null;this.voiceAttempt=0;
     this.rate=1;this.bend=1;this.cue=0;this.cueHeld=false;this.hot=Array(8).fill(null);
     this.bpm=0;this.beat0=0;this.peaks=null;this.syncLock=false;this.rangeIdx=0;this.echoIdx=1;
     this.quantize=true;this.slipMode=false;this.loopIn=null;this.loopOut=null;this.loopActive=false;this.slipLoopAnchor=null;
@@ -998,6 +1025,7 @@ class Deck{
     n.scr.onaudioprocess=e=>this.scratchProcess(e);
     n.scr.connect(n.trim);
     this.n=n;
+    this.setupVoice();
     for(const k in this.p) this.apply(k);
     this.updateEcho();
   }
@@ -1088,19 +1116,72 @@ class Deck{
     if(s.wasPlaying) this.play();else updateWake();
   }
 
+
+  setupVoice(){
+    this.voice=new Audio();this.voice.preload="auto";
+    this.voiceSupported=["preservesPitch","webkitPreservesPitch","mozPreservesPitch"].some(k=>k in this.voice);
+    this.voiceNode=ctx.createMediaElementSource(this.voice);this.voiceNode.connect(this.n.trim);
+    this.voice.onended=()=>{
+      if(!this.voiceActive)return;
+      this.voiceActive=false;this.playing=false;this.pos=this.dur;updateWake();this.markDone();
+    };
+    this.voice.onerror=()=>{if(this.voiceActive)this.voiceFailed()};
+    this.renderVoice();
+  }
+  releaseVoice(){
+    this.voiceActive=false;
+    if(this.voice){this.voice.pause();this.voice.removeAttribute("src");this.voice.load()}
+    if(this.voiceUrl)URL.revokeObjectURL(this.voiceUrl);
+    this.voiceUrl=null;
+  }
+  voiceFailed(){
+    this.pos=this.getPos();this.voice.pause();this.voiceActive=false;this.playing=false;
+    this.ui.sub.textContent="Voice Sync kon niet starten. Probeer opnieuw of zet Voice Sync uit.";
+    updateWake();
+  }
+  renderVoice(){
+    const u=this.ui.voiceSync;if(!u)return;
+    const supported=this.voiceSupported!==false;
+    u.textContent=supported?(this.voiceSync?"Voice Sync • Aan":"Voice Sync • Uit"):"Voice Sync niet ondersteund";
+    u.classList.toggle("on",supported&&this.voiceSync);
+    u.setAttribute("aria-pressed",String(supported&&this.voiceSync));u.disabled=!supported;
+    u.title="Behoud de oorspronkelijke toonhoogte bij tempo en Sync";
+  }
+  toggleVoice(){
+    if(this.voiceSupported===false)return;
+    const at=this.getPos(),resume=this.playing;
+    this._stopSrc();this.playing=false;this.pos=at;this.voiceSync=!this.voiceSync;
+    localStorage.setItem("theOneDjVoiceSync"+this.id,this.voiceSync?"on":"off");
+    this.renderVoice();if(resume)this.play();
+  }
+  updateSourceRate(){
+    if(this.voiceActive)this.voice.playbackRate=this.eff();
+    else if(this.src)this.src.playbackRate.setValueAtTime(this.eff(),ctx.currentTime);
+  }
+
   /* transport */
   getPos(){
     if(this.scr) return this.scr.pos;
     if(!this.playing||!ctx) return this.pos;
+    if(this.voiceActive)return Math.min(this.voice.currentTime,this.dur);
     return Math.min(this.startPos+(ctx.currentTime-this.startT)*this.eff(),this.dur);
   }
   _start(at){
+    if(this.voiceSync&&this.voiceSupported&&this.voiceUrl){
+      this.voiceActive=true;this.playing=true;this.startT=ctx.currentTime;this.startPos=at;
+      for(const key of ["preservesPitch","webkitPreservesPitch","mozPreservesPitch"])
+        if(key in this.voice)this.voice[key]=true;
+      this.voice.currentTime=at;this.voice.playbackRate=this.eff();
+      const attempt=++this.voiceAttempt;
+      this.voice.play().catch(()=>{if(this.voiceActive&&attempt===this.voiceAttempt)this.voiceFailed()});
+      return;
+    }
     const s=ctx.createBufferSource();s.buffer=this.buffer;s.playbackRate.value=this.eff();
     s.connect(this.n.trim);
     s.onended=()=>{if(this.src===s){this.src=null;this.playing=false;this.pos=this.dur;updateWake();this.markDone()}};
     s.start(0,at);this.src=s;this.startT=ctx.currentTime;this.startPos=at;this.playing=true;
   }
-  _stopSrc(){if(this.src){const s=this.src;this.src=null;try{s.stop()}catch(e){}s.disconnect()}}
+  _stopSrc(){this.voiceAttempt++;if(this.voiceActive){this.voice.pause();this.voiceActive=false}if(this.src){const s=this.src;this.src=null;try{s.stop()}catch(e){}s.disconnect()}}
   scheduleTempoReturn(delay=TEMPO_RETURN_DELAY){
     if(!ctx||!this.buffer) return;
     this.syncLock=false;this.glide=null;
@@ -1122,13 +1203,13 @@ class Deck{
     r=clamp(r,0.5,1.5);
     if(this.playing){this.startPos=this.getPos();this.startT=ctx.currentTime}
     this.rate=r;
-    if(this.src) this.src.playbackRate.setValueAtTime(this.eff(),ctx.currentTime);
+    this.updateSourceRate();
     this.updateEcho();
   }
   setBend(b){
     if(this.playing){this.startPos=this.getPos();this.startT=ctx.currentTime}
     this.bend=b;
-    if(this.src) this.src.playbackRate.setValueAtTime(this.eff(),ctx.currentTime);
+    this.updateSourceRate();
   }
   pressPlay(){
     if(!this.buffer) return;
@@ -1292,8 +1373,14 @@ class Deck{
       if(token!==this.loadToken) return;
       this.setBusy("Tempo analyseren…");await nextFrame();
       const an=await analyzeBuffer(buf);
+      let voiceBlob=null;
+      if(this.voiceSupported){
+        this.setBusy("Voice Sync voorbereiden…");
+        voiceBlob=await voiceSyncWav(buf);
+      }
       if(token!==this.loadToken) return;
-      this._stopSrc();this.playing=false;this.cueHeld=false;
+      this._stopSrc();this.releaseVoice();this.playing=false;this.cueHeld=false;
+      if(voiceBlob){this.voiceUrl=URL.createObjectURL(voiceBlob);this.voice.src=this.voiceUrl;this.voice.load()}
       if(this.libItem&&this.libItem!==item&&this.libItem.status===this.id) this.libItem.status="played";
       if(item){item.status=this.id;playlistWrite();}
       this.libItem=item;this.done=false;
@@ -1315,6 +1402,8 @@ class Deck{
   /* UI */
   bindUI(){
     const u=this.ui;
+    u.voiceSync.addEventListener("click",()=>{ensureCtx();this.toggleVoice()});
+    this.renderVoice();
     u.file.addEventListener("change",()=>{this.load(u.file.files[0]);u.file.value=""});
     // drag & drop
     this.el.addEventListener("dragover",e=>{e.preventDefault();this.el.classList.add("drag")});
