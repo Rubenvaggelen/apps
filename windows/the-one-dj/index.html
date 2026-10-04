@@ -1538,7 +1538,7 @@ class Deck{
       if(String(file?.name||"").toLowerCase().endsWith(".mp3")){
         try{await this._loadStream(file,item,token);return}catch(streamErr){}
       }
-      if(item){item.status="error";item.errorReason=e?.userMsg||"Dit bestand kon niet worden geladen.";playlistWrite();}
+      if(item){item.status="error";item.errorReason=e?.userMsg||"Dit bestand kon niet worden geladen.";item.sourceStatus=e?.sourceStatus||0;playlistWrite();}
       this.ui.title.textContent="Dit bestand kan niet worden geopend";
       this.ui.sub.textContent=e&&e.userMsg?e.userMsg:"Dit formaat wordt niet herkend. Zet het om naar MP3, FLAC of WAV.";
     }finally{
@@ -2697,7 +2697,13 @@ function mediaUrl(file){
 async function mediaBytes(file){
   if(!file.source)return await file.arrayBuffer();
   const r=await fetch(mediaUrl(file),{cache:"no-store"});
-  if(!r.ok){const e=new Error("Muziekbron niet bereikbaar");e.userMsg="Dit nummer is momenteel niet bereikbaar. Controleer Shared Media of de lokale schijf.";throw e}
+  if(!r.ok){
+    const e=new Error("Muziekbron niet bereikbaar");e.sourceStatus=r.status;
+    e.userMsg=r.status===404?"Het originele nummer is niet beschikbaar op de muziekbron en staat niet in de serveropslag. Dit is geen formaatfout. Herstel de bron en probeer opnieuw met A of B."
+      :r.status===401||r.status===403?"DJ heeft geen toegang tot dit nummer. Controleer de toestemming in Main."
+      :"De muziekbron reageert niet (HTTP "+r.status+"). Herstel de verbinding en probeer opnieuw met A of B.";
+    throw e;
+  }
   return await r.arrayBuffer();
 }
 async function mediaByteSize(file){
@@ -2873,6 +2879,7 @@ function renderLib(){
     const tag=document.createElement("span");tag.className="lib-tag";
     tag.textContent={A:"Deck A",B:"Deck B",played:"Gespeeld",loading:"Laden\u2026",error:"Niet af te spelen"}[t.status]||(t===next?"Volgende":"");
     if(t.status==="error"){
+      if(t.sourceStatus)tag.textContent=t.sourceStatus===404?"Bron ontbreekt":"Bron niet bereikbaar";
       tag.title=t.errorReason||"Dit bestand kon niet worden geladen.";
       tag.style.cursor="pointer";
       tag.addEventListener("click",()=>alert(t.errorReason||"Dit bestand kon niet worden geladen. Probeer het opnieuw met A of B."));
