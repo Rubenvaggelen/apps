@@ -68,6 +68,23 @@ jobs:
             exit 1
           fi
           echo "TMDB key validated without displaying credentials."
+      - name: Restore the working Media Player source
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error --max-time 120 "https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2316/The-One-Media-Player-v2316.apk" -o /tmp/theone-media-source.apk
+          echo "2de34daf9ef65ed045a8c49bd337bd9283841a12d2c3047784f40c76e48c6cb8  /tmp/theone-media-source.apk" | sha256sum --check --status
+          python3 - <<'PY'
+          import zipfile,json,pathlib
+          with zipfile.ZipFile("/tmp/theone-media-source.apk") as apk:
+              config=json.loads(apk.read("assets/private_xtream.json"))
+          if not all(isinstance(config.get(key),str) and config[key].strip() for key in ("server","username","password")):
+              raise SystemExit("Working Media Player configuration unavailable; release blocked.")
+          target=pathlib.Path("app/src/main/assets/theone_media_source.json")
+          target.parent.mkdir(parents=True,exist_ok=True)
+          target.write_text(json.dumps(config))
+          print("Working Media Player source restored; credentials not displayed.")
+          PY
       - name: Build Main only
         env:
           ORG_GRADLE_PROJECT_YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
