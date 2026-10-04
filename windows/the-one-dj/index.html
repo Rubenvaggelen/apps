@@ -2517,7 +2517,7 @@ let localCurrentPath="",localHistory=[];
 function showLocalBrowser(show){localBrowser.hidden=!show}
 async function localJson(url){
   const r=await fetch(url,{cache:"no-store"});
-  if(!r.ok) throw new Error("local media unavailable");
+  if(!r.ok){let message="Shared Media is niet bereikbaar.";try{message=(await r.json()).error||message}catch(e){}throw new Error(message)}
   return await r.json();
 }
 function renderLocalRows(rows){
@@ -2686,7 +2686,7 @@ async function openSharedMedia(){
   document.querySelector(".media-browser-title").textContent="Shared Media";
   localPath.textContent="Shared Media ophalen\u2026";localList.innerHTML="";localLoadFolderBtn.disabled=true;
   try{const data=await localJson("/shared-media/catalog");sharedCatalog=data.sticks||[];renderSharedRoot()}
-  catch(e){localPath.textContent="Shared Media is niet bereikbaar. Controleer de verbinding."}
+  catch(e){localPath.textContent=e.message||"Shared Media is niet bereikbaar. Controleer de verbinding."}
 }
 for(const id of ["sharedMediaImport","sharedFolderBtn","sharedTracksBtn"]){
   document.getElementById(id)?.addEventListener("click",openSharedMedia);
