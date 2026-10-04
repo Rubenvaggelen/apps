@@ -380,7 +380,7 @@ class UsbPlaybackService : Service() {
         }
     }
     private fun manualTakeover() {
-        autoDjEnabled = false
+        // Keep Auto DJ enabled until its own toggle is explicitly switched off.
         cancelCrossfadeInternal()
     }
     private fun cancelCrossfadeInternal() {
