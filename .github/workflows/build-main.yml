@@ -46,20 +46,49 @@ jobs:
             echo "::error::YOUTUBE_API_KEY secret is missing; Main release blocked."
             exit 1
           fi
+      - name: Restore and verify existing TMDB key
+        shell: bash
+        env:
+          TMDB_SECRET: ${{ secrets.TMDB_API_KEY }}
+        run: |
+          set -euo pipefail
+          tmdb_key="$TMDB_SECRET"
+          if [ -z "$tmdb_key" ]; then
+            tmdb_key="$(sed -n 's/^TMDB_API_KEY[[:space:]]*=[[:space:]]*//p' gradle.properties | head -n 1 | tr -d '\r')"
+          fi
+          if [ -z "$tmdb_key" ]; then
+            echo "::error::No TMDB key available in secret or existing project configuration."
+            exit 1
+          fi
+          echo "::add-mask::$tmdb_key"
+          echo "ORG_GRADLE_PROJECT_TMDB_API_KEY=$tmdb_key" >> "$GITHUB_ENV"
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' --connect-timeout 15 --max-time 30 "https://api.themoviedb.org/3/configuration?api_key=$tmdb_key")"
+          if [ "$status" != "200" ]; then
+            echo "::error::Existing TMDB key validation failed (HTTP $status)."
+            exit 1
+          fi
+          echo "TMDB key validated without displaying credentials."
       - name: Build Main only
         env:
           ORG_GRADLE_PROJECT_YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-          ORG_GRADLE_PROJECT_TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: gradle :app:assembleDebug --no-daemon --no-build-cache -PappVersionCode=${VERSION_CODE}
-      - name: Verify TMDB key is configured
+      - name: Verify TMDB key is included in Main
         shell: bash
-        env:
-          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: |
-          if [ -z "$TMDB_API_KEY" ]; then
-            echo "::error::TMDB_API_KEY secret is missing; Main release blocked."
-            exit 1
-          fi
+          python3 - <<'PY'
+          import os, pathlib, re, json
+          files = list(pathlib.Path("app/build/generated").rglob("BuildConfig.java"))
+          expected = os.environ["ORG_GRADLE_PROJECT_TMDB_API_KEY"]
+          found = False
+          for path in files:
+              text = path.read_text()
+              match = re.search(r'TMDB_API_KEY\\s*=\\s*("(?:[^"\\\\]|\\\\.)*")', text)
+              if match and json.loads(match.group(1)) == expected:
+                  found = True
+          if not found:
+              raise SystemExit("TMDB key missing from generated Main configuration; release blocked.")
+          print("Existing TMDB key included in Main; value not displayed.")
+          PY
       - name: Release Main only
         uses: softprops/action-gh-release@v2
         with:
