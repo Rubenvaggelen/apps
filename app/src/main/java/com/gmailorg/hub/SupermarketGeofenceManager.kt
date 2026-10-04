@@ -55,6 +55,8 @@ object SupermarketGeofenceManager {
     fun hasLocationPermission(context: Context): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
+    fun requestEnable(context: Context) { setEnabled(context,true); SupermarketRefreshWorker.schedule(context) }
+
     private fun setEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_ENABLED, enabled).apply()
     }
@@ -186,7 +188,13 @@ object SupermarketGeofenceManager {
             client.addGeofences(geofencingRequest,geofencePendingIntent(context))
                 .addOnSuccessListener {
                     if(!isEnabled(context)){client.removeGeofences(geofencePendingIntent(context));onResult(false,"Supermarktmeldingen zijn uitgezet.")}
-                    else onResult(true,"Meldingen actief voor "+supermarkets.size+" supermarkt(en).")
+                    else {
+                        val ids=geofences.map { it.requestId }.toSet()
+                        val old=prefs(context).getStringSet("registered_ids",emptySet()).orEmpty()-ids
+                        prefs(context).edit().putStringSet("registered_ids",ids).apply()
+                        if(old.isNotEmpty())client.removeGeofences(old.toList())
+                        onResult(true,"Meldingen actief voor "+supermarkets.size+" supermarkt(en).")
+                    }
                 }
                 .addOnFailureListener { e ->
                     Log.e(TAG,"Geofences registreren mislukt",e)
