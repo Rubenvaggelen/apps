@@ -62,6 +62,7 @@ class UsbPlaybackService : Service() {
 
         private const val EXTRA_INDEX = "index"
         private const val EXTRA_POSITION = "position"
+        private const val EXTRA_AUTOSTART = "autostart"
 
         private const val PREFS = "the_one_usb_playback_state"
         private const val KEY_HAS_SESSION = "has_session"
@@ -115,6 +116,17 @@ class UsbPlaybackService : Service() {
             start(context, Intent(context, UsbPlaybackService::class.java).apply {
                 action = ACTION_PLAY_INDEX
                 putExtra(EXTRA_INDEX, safeIndex)
+            })
+        }
+
+        fun playFromPosition(context: Context, queue: List<QueueItem>, index: Int, positionMs: Int, playing: Boolean) {
+            if (queue.isEmpty()) return
+            pendingQueue = queue.toList()
+            start(context, Intent(context, UsbPlaybackService::class.java).apply {
+                action = ACTION_PLAY_INDEX
+                putExtra(EXTRA_INDEX, index.coerceIn(0, queue.lastIndex))
+                putExtra(EXTRA_POSITION, positionMs.coerceAtLeast(0))
+                putExtra(EXTRA_AUTOSTART, playing)
             })
         }
 
@@ -357,7 +369,7 @@ class UsbPlaybackService : Service() {
             ACTION_PLAY_INDEX -> {
                 val replacement = pendingQueue
                 if (replacement.isNotEmpty()) queue = replacement
-                if (queue.isNotEmpty()) playIndex(intent.getIntExtra(EXTRA_INDEX, 0), 0, true, false)
+                if (queue.isNotEmpty()) playIndex(intent.getIntExtra(EXTRA_INDEX, 0), intent.getIntExtra(EXTRA_POSITION, 0), intent.getBooleanExtra(EXTRA_AUTOSTART, true), false)
             }
             ACTION_TOGGLE -> toggleInternal()
             ACTION_NEXT -> playRelative(+1)
