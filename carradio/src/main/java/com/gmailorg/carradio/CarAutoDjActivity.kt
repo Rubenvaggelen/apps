@@ -101,7 +101,14 @@ class CarAutoDjActivity : AppCompatActivity() {
                 initialized = true
                 val rows = JSONArray()
                 tracks.forEachIndexed { i, track ->
-                    rows.put(JSONObject().put("name", track.title + ".mp3").put("type", "audio/mpeg")
+                    val uri = Uri.parse(track.uri)
+                    val sourceName = uri.getQueryParameter("path") ?: uri.lastPathSegment.orEmpty()
+                    val extensions = setOf("mp3", "wma", "wav", "flac", "m4a", "aac", "ogg", "opus", "aif", "aiff", "alac", "mka", "ac3", "amr", "mp4", "webm")
+                    val titleExt = track.title.substringAfterLast('.', "").lowercase()
+                    val sourceExt = sourceName.substringAfterLast('.', "").lowercase()
+                    val extension = if (sourceExt in extensions) sourceExt else "audio"
+                    val name = if (titleExt in extensions) track.title else track.title + "." + extension
+                    rows.put(JSONObject().put("name", name).put("type", "audio/mpeg")
                         .put("source", JSONObject().put("kind", "car").put("index", i)))
                 }
                 val script = """
@@ -166,6 +173,7 @@ class CarAutoDjActivity : AppCompatActivity() {
                 val connection = URL(raw).openConnection() as HttpURLConnection
                 connection.connectTimeout = 15000
                 connection.readTimeout = 30000
+                connection.requestMethod = if (request.method == "HEAD") "HEAD" else "GET"
                 request.requestHeaders.entries.firstOrNull { it.key.equals("Range", true) }?.let {
                     connection.setRequestProperty("Range", it.value)
                 }
