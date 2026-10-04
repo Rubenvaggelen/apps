@@ -29,6 +29,7 @@ class CarAutoDjActivity : AppCompatActivity() {
     private var handedOff = false
     private var returned = false
     private var initialized = false
+    private var immersive = true
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -51,7 +52,8 @@ class CarAutoDjActivity : AppCompatActivity() {
         web.addJavascriptInterface(object {
             @JavascriptInterface fun toggleFullscreen() {
                 runOnUiThread {
-                    WindowCompat.getInsetsController(window, web).hide(WindowInsetsCompat.Type.systemBars())
+                    immersive = !immersive
+                    applyFullscreen()
                 }
             }
             @JavascriptInterface fun handoff(): Int {
@@ -161,6 +163,14 @@ class CarAutoDjActivity : AppCompatActivity() {
             WindowCompat.getInsetsController(window, web).hide(WindowInsetsCompat.Type.systemBars())
             web.postDelayed({ if (!isFinishing) WindowCompat.getInsetsController(window, web).hide(WindowInsetsCompat.Type.systemBars()) }, 350)
         }
+    }
+
+    private fun applyFullscreen() {
+        WindowCompat.setDecorFitsSystemWindows(window, !immersive)
+        val controller = WindowCompat.getInsetsController(window, web)
+        controller.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (immersive) controller.hide(WindowInsetsCompat.Type.systemBars())
+        else controller.show(WindowInsetsCompat.Type.systemBars())
     }
 
     private fun emptyResponse(code: Int) = WebResourceResponse("text/plain", "UTF-8", code,
