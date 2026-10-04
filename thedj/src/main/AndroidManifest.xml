@@ -5,6 +5,7 @@
         android:allowBackup="true"
         android:hardwareAccelerated="true"
         android:label="The One DJ"
+        android:icon="@drawable/the_one_dj_logo"
         android:theme="@style/Theme.TheOneDJ">
         <activity
             android:name=".MainActivity"
