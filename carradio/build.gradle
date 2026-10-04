@@ -46,6 +46,7 @@ android {
 }
 
 dependencies {
+    implementation 'androidx.webkit:webkit:1.11.0'
     implementation 'androidx.core:core-ktx:1.13.1'
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'androidx.browser:browser:1.8.0'
@@ -55,3 +56,11 @@ dependencies {
     implementation 'androidx.media:media:1.7.0'
     implementation 'com.google.android.gms:play-services-location:21.4.0'
 }
+
+// Embed the tested DJ engine in Car; each APK still builds independently.
+tasks.register("syncCarAutoDj", Copy) {
+    from rootProject.file("windows/the-one-dj")
+    include "index.html", "dj-logo.jpg", "dj-logo.svg"
+    into project.file("src/main/assets/car-dj")
+}
+tasks.named("preBuild").configure { dependsOn("syncCarAutoDj") }
