@@ -46,6 +46,11 @@ jobs:
             echo "::error::YOUTUBE_API_KEY secret is missing; Main release blocked."
             exit 1
           fi
+      - name: Build Main only
+        env:
+          ORG_GRADLE_PROJECT_YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          ORG_GRADLE_PROJECT_TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: gradle :app:assembleDebug --no-daemon --no-build-cache -PappVersionCode=${VERSION_CODE}
       - name: Verify TMDB key is configured
         shell: bash
         env:
@@ -55,11 +60,6 @@ jobs:
             echo "::error::TMDB_API_KEY secret is missing; Main release blocked."
             exit 1
           fi
-      - name: Build Main only
-        env:
-          ORG_GRADLE_PROJECT_YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-          ORG_GRADLE_PROJECT_TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-        run: gradle :app:assembleDebug --no-daemon --no-build-cache -PappVersionCode=${VERSION_CODE}
       - name: Release Main only
         uses: softprops/action-gh-release@v2
         with:
