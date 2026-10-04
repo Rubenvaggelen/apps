@@ -136,6 +136,7 @@ class HomeActivity : AppCompatActivity() {
             HomeTile(id = "radio", type = TileType.RADIO, label = "Radio"),
             HomeTile(id = "currency", type = TileType.CURRENCY, label = "Koers (EUR / SRD / USD)"),
             HomeTile(id = "lifestyle", type = TileType.LIFESTYLE, label = "Lifestyle"),
+            HomeTile(id = "com.gmailorg.thedj", type = TileType.APP, label = "The One DJ", packageName = "com.gmailorg.thedj"),
             HomeTile(id = "remote_pc", type = TileType.REMOTE_PC, label = "Laptop"),
             HomeTile(id = "whatsapp", type = TileType.APP, label = "WhatsApp", packageName = "com.whatsapp"),
             HomeTile(id = "googlehome", type = TileType.APP, label = "Google Home", packageName = "com.google.android.apps.chromecast.app")
@@ -143,7 +144,8 @@ class HomeActivity : AppCompatActivity() {
             // Vaste snelkoppelingen naar apps (WhatsApp, Google Home) alleen
             // tonen als die app ook daadwerkelijk geïnstalleerd staat —
             // anders zie je een leeg "+"-icoontje voor een niet-bestaande app.
-            (tile.packageName == null || isPackageInstalled(tile.packageName)) &&
+            (tile.id == "com.gmailorg.thedj" || tile.packageName == null || isPackageInstalled(tile.packageName)) &&
+                (tile.id != "com.gmailorg.thedj" || MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_DJ)) &&
                 (tile.id != "remote_pc" || MainDeviceRegistry.isLocallyOwner(this)) &&
                 !HiddenTilesStore.isHidden(tile.id)
         }
@@ -153,6 +155,7 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private fun handleTileClick(tile: HomeTile) {
+        if (tile.id == "com.gmailorg.thedj") { openDj(); return }
         when (tile.type) {
             TileType.NOTIFICATIONS -> startActivity(Intent(this, NotificationsActivity::class.java))
             TileType.MAIL -> openMailInCustomTab()
@@ -396,6 +399,23 @@ class HomeActivity : AppCompatActivity() {
         intent.launchUrl(this, Uri.parse("$mailUrl#route-standalone"))
     }
 
+    private fun openDj() {
+        if (!MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_DJ)) {
+            Toast.makeText(this, "DJ is alleen beschikbaar met toestemming van de beheerder.", Toast.LENGTH_LONG).show()
+            refreshTiles()
+            return
+        }
+        val launch = packageManager.getLaunchIntentForPackage("com.gmailorg.thedj")
+        if (launch != null) startActivity(launch)
+        else AlertDialog.Builder(this)
+            .setTitle("The One DJ installeren")
+            .setMessage("Installeer de aparte DJ-app met Auto DJ en Voice Sync. Daarna opent deze tegel DJ.")
+            .setNegativeButton("Annuleren", null)
+            .setPositiveButton("Download") { _, _ ->
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Rubenvaggelen/apps/releases?q=dj-v")))
+            }.show()
+    }
+
     private fun launchExternalApp(packageName: String?) {
         if (packageName == null) return
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
@@ -437,7 +457,7 @@ class HomeAdapter(
         holder.label.text = tile.label
         val context = holder.itemView.context
 
-        val iconDrawable = when (tile.type) {
+        val iconDrawable = if (tile.id == "com.gmailorg.thedj") ContextCompat.getDrawable(context, R.drawable.the_one_dj_logo) else when (tile.type) {
             TileType.NOTIFICATIONS -> ContextCompat.getDrawable(context, R.drawable.ic_home_notifications_fancy)
             TileType.MAIL -> ContextCompat.getDrawable(context, R.drawable.ic_home_mail_fancy)
             TileType.ROUTE -> ContextCompat.getDrawable(context, R.drawable.ic_home_route_fancy)
