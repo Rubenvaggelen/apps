@@ -6,6 +6,10 @@ import android.content.Intent
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if(intent.action == Intent.ACTION_MY_PACKAGE_REPLACED){
+            SupermarketGeofenceManager.reArmAfterBootIfEnabled(context.applicationContext)
+            return
+        }
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
             val appContext = context.applicationContext
             SupermarketGeofenceManager.reArmAfterBootIfEnabled(appContext)
