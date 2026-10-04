@@ -5,6 +5,7 @@ on:
     branches: [ main ]
     paths:
       - 'app/**'
+      - '.github/workflows/build-main.yml'
       - 'build.gradle'
       - 'settings.gradle'
       - 'gradle.properties'
@@ -36,7 +37,19 @@ jobs:
       - name: Set Main version code
         shell: bash
         run: echo "VERSION_CODE=$((923 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+      - name: Verify YouTube key is configured
+        shell: bash
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: |
+          if [ -z "$YOUTUBE_API_KEY" ]; then
+            echo "::error::YOUTUBE_API_KEY secret is missing; Main release blocked."
+            exit 1
+          fi
       - name: Build Main only
+        env:
+          ORG_GRADLE_PROJECT_YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          ORG_GRADLE_PROJECT_TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: gradle :app:assembleDebug --no-daemon --no-build-cache -PappVersionCode=${VERSION_CODE}
       - name: Release Main only
         uses: softprops/action-gh-release@v2
