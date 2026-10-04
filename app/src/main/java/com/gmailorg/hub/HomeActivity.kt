@@ -149,7 +149,9 @@ class HomeActivity : AppCompatActivity() {
                 (tile.id != "remote_pc" || MainDeviceRegistry.isLocallyOwner(this)) &&
                 !HiddenTilesStore.isHidden(tile.id)
         }
-        val userApps = ShortcutStore.getAll().filter { !HiddenTilesStore.isHidden(it.id) }
+        val userApps = ShortcutStore.getAll().filter {
+            !HiddenTilesStore.isHidden(it.id) && it.packageName != "com.gmailorg.thedj"
+        }
         val addButton = HomeTile(id = "add", type = TileType.ADD_BUTTON, label = "App toevoegen")
         adapter.updateTiles(fixed + userApps + addButton)
     }
@@ -187,7 +189,7 @@ class HomeActivity : AppCompatActivity() {
             .setTitle("Tegel verbergen?")
             .setMessage("\"${tile.label}\" wordt van het startscherm verwijderd. Je kunt 'm later terugzetten via Instellingen.")
             .setPositiveButton("Verbergen") { _, _ ->
-                if (tile.type == TileType.APP && tile.packageName != null &&
+                if (tile.type == TileType.APP && tile.packageName != null && tile.packageName != "com.gmailorg.thedj" &&
                     ShortcutStore.getAll().any { it.packageName == tile.packageName }
                 ) {
                     // Zelf toegevoegde app-snelkoppeling: gewoon volledig verwijderen,
