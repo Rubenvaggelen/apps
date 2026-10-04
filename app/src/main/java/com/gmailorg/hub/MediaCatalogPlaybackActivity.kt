@@ -7,6 +7,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.common.PlaybackException
 import androidx.media3.ui.PlayerView
 
 class MediaCatalogPlaybackActivity: AppCompatActivity() {
@@ -25,11 +29,27 @@ class MediaCatalogPlaybackActivity: AppCompatActivity() {
                 if(url==null){Toast.makeText(this,"Geen Mediaplayer-toestemming of verbinding. Vraag toegang via Main.",Toast.LENGTH_LONG).show();finish();return@runOnUiThread}
                 val surface=PlayerView(this)
                 setContentView(surface);view=surface
-                player=ExoPlayer.Builder(this).build().also { p ->
+                val http=DefaultHttpDataSource.Factory()
+                    .setUserAgent("TheOne/1.0")
+                    .setAllowCrossProtocolRedirects(true)
+                    .setConnectTimeoutMs(20000)
+                    .setReadTimeoutMs(30000)
+                player=ExoPlayer.Builder(this)
+                    .setMediaSourceFactory(DefaultMediaSourceFactory(http))
+                    .build().also { p ->
                     surface.player=p
                     p.addListener(object: Player.Listener {
                         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                            Toast.makeText(this@MediaCatalogPlaybackActivity,"Deze film of aflevering kan momenteel niet worden afgespeeld.",Toast.LENGTH_LONG).show()
+                            // Show useful diagnostics without printing the credential-bearing stream URI.
+                            val causes=generateSequence<Throwable>(error) { it.cause }.take(12).toList()
+                            val status=causes.filterIsInstance<HttpDataSource.InvalidResponseCodeException>().firstOrNull()?.responseCode
+                            val message=when {
+                                status!=null -> "De streamserver weigert deze film of aflevering (HTTP "+status+")."
+                                error.errorCode==PlaybackException.ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED -> "De streamverbinding wordt geblokkeerd. Werk Main bij."
+                                error.errorCode==PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED -> "Het videoformaat wordt niet ondersteund op dit apparaat."
+                                else -> "Afspelen mislukt (code "+error.errorCode+"). Probeer opnieuw."
+                            }
+                            Toast.makeText(this@MediaCatalogPlaybackActivity,message,Toast.LENGTH_LONG).show()
                         }
                     })
                     p.setMediaItem(MediaItem.fromUri(url));p.prepare();p.playWhenReady=true
