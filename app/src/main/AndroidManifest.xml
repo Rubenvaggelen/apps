@@ -20,6 +20,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <queries>
+        <package android:name="com.gmailorg.thedj" />
         <package android:name="nl.amsterdam.app" />
         <package android:name="com.android.vending" />
         <package android:name="com.waze" />
