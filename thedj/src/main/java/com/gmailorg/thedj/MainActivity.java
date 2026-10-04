@@ -30,6 +30,7 @@ public class MainActivity extends Activity {
         "https://appassets.androidplatform.net/assets/index.html?app=android";
     private static final int PICK_AUDIO = 4201;
     private WebView web;
+    private NativeAudioDecoder audioDecoder;
     private ValueCallback<Uri[]> fileCallback;
     private boolean immersive = true;
 
@@ -40,6 +41,7 @@ public class MainActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         final SharedMediaClient sharedMedia = new SharedMediaClient(this);
+        audioDecoder=new NativeAudioDecoder(this);
         final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
             .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
             .build();
@@ -55,6 +57,7 @@ public class MainActivity extends Activity {
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(true);
 
+        web.addJavascriptInterface(audioDecoder,"TheOneAudioDecoder");
         web.addJavascriptInterface(new Object() {
             @JavascriptInterface public void openUpdates() {
                 runOnUiThread(() -> {
@@ -70,6 +73,8 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override public WebResourceResponse shouldInterceptRequest(
                 WebView view, WebResourceRequest request) {
+                WebResourceResponse decoded=audioDecoder.intercept(request);
+                if(decoded!=null)return decoded;
                 WebResourceResponse shared = sharedMedia.intercept(request);
                 return shared != null ? shared : loader.shouldInterceptRequest(request.getUrl());
             }
@@ -186,6 +191,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         if (web!=null) { web.loadUrl("about:blank"); web.destroy(); }
+        if(audioDecoder!=null)audioDecoder.close();
         super.onDestroy();
     }
 }
