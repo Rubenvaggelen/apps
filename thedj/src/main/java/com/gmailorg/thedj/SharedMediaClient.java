@@ -90,7 +90,7 @@ final class SharedMediaClient {
         JSONObject heartbeat=post("devices.php","heartbeat",new JSONObject()
             .put("device_id",deviceId).put("name","The One DJ • "+Build.MODEL)
             .put("person_name",name).put("platform","Android "+Build.VERSION.RELEASE)
-            .put("version",BuildConfig.VERSION_CODE+""));
+            .put("version",activity.getPackageManager().getPackageInfo(activity.getPackageName(),0).versionName));
         if(heartbeat.optBoolean("blocked"))throw new IOException("Dit DJ-apparaat is geblokkeerd in Main.");
         JSONObject status=post("devices.php","access_status",new JSONObject().put("device_id",deviceId).put("scope","dj"));
         if(!status.optBoolean("allowed")){
