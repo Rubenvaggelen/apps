@@ -1,6 +1,7 @@
 package com.gmailorg.hub
 
 import android.os.Bundle
+import android.os.Build
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -15,6 +16,7 @@ import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.common.PlaybackException
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.AspectRatioFrameLayout
 
 class MediaCatalogPlaybackActivity: AppCompatActivity() {
     private var player: ExoPlayer?=null
@@ -32,7 +34,9 @@ class MediaCatalogPlaybackActivity: AppCompatActivity() {
             runOnUiThread {
                 if(isFinishing||isDestroyed)return@runOnUiThread
                 if(url==null){Toast.makeText(this,"Geen Mediaplayer-toestemming of verbinding. Vraag toegang via Main.",Toast.LENGTH_LONG).show();finish();return@runOnUiThread}
-                val surface=PlayerView(this)
+                val surface=PlayerView(this).apply {
+                    resizeMode=AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                }
                 setContentView(surface);view=surface
                 enterFullscreen()
                 val http=DefaultHttpDataSource.Factory()
@@ -66,6 +70,11 @@ class MediaCatalogPlaybackActivity: AppCompatActivity() {
     }
     private fun enterFullscreen() {
         WindowCompat.setDecorFitsSystemWindows(window,false)
+        if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.P) {
+            window.attributes=window.attributes.apply {
+                layoutInDisplayCutoutMode=WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
         WindowCompat.getInsetsController(window,window.decorView).apply {
             systemBarsBehavior=WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             hide(WindowInsetsCompat.Type.systemBars())
