@@ -3574,17 +3574,7 @@ class MoviesActivity : AppCompatActivity() {
         addMusicLine("Muziek", dim = false)
         addMusicLine("Zoeken naar “$query”…", dim = true)
 
-        MovieLookup.search(query) { outcome ->
-            resultContainer.removeAllViews()
-            addResultLine("Films & series", bold = true)
-            when (outcome) {
-                is MovieLookup.LookupOutcome.Success -> showMovieResult(outcome.result)
-                is MovieLookup.LookupOutcome.NotFound ->
-                    addResultLine("Geen film of serie gevonden voor “${outcome.query}”.", dim = true)
-                is MovieLookup.LookupOutcome.Error ->
-                    addResultLine(outcome.message, dim = true)
-            }
-        }
+        searchMediaPlayer(query)
 
         MusicLookup.search(query) { outcome ->
             musicResultContainer.removeAllViews()
@@ -3831,16 +3821,64 @@ class MoviesActivity : AppCompatActivity() {
         resultContainer.visibility = View.VISIBLE
         addResultLine("Zoeken naar “$query”…", dim = true)
 
-        MovieLookup.search(query) { outcome ->
-            resultContainer.removeAllViews()
-            when (outcome) {
-                is MovieLookup.LookupOutcome.Success -> showMovieResult(outcome.result)
-                is MovieLookup.LookupOutcome.NotFound ->
-                    addResultLine("Geen film of serie gevonden voor “${outcome.query}”.", dim = true)
-                is MovieLookup.LookupOutcome.Error ->
-                    addResultLine(outcome.message, dim = true)
+        searchMediaPlayer(query)
+    }
+
+
+    private var mediaSearchGeneration=0
+    private fun searchMediaPlayer(query: String) {
+        val generation=++mediaSearchGeneration
+        addResultLine("Zoeken in The One Mediaplayer…",dim=true)
+        remoteMusicIo.execute {
+            val result=runCatching {MediaPlayerCatalog.search(this,query)}
+            runOnUiThread {
+                if(isFinishing||isDestroyed||generation!=mediaSearchGeneration)return@runOnUiThread
+                resultContainer.removeAllViews()
+                addResultLine("The One Mediaplayer • Films & series",bold=true)
+                val error=result.exceptionOrNull()
+                if(error is MediaPlayerCatalog.AccessRequired){
+                    addResultLine("Toegang vereist jouw toestemming.",dim=true)
+                    showSectionAccessRequestDialog(MainDeviceRegistry.ACCESS_MEDIA_PLAYER,"Mediaplayer",error.pending)
+                    return@runOnUiThread
+                }
+                if(error!=null){addResultLine("Mediaplayer is tijdelijk niet bereikbaar. Probeer opnieuw.",dim=true);return@runOnUiThread}
+                val entries=result.getOrDefault(emptyList())
+                if(entries.isEmpty()){addResultLine("Geen film of serie gevonden voor “"+query+"” in Mediaplayer.",dim=true);return@runOnUiThread}
+                for(entry in entries){
+                    val row=TextView(this).apply {
+                        text=(if(entry.series)"Serie • " else "Film • ")+entry.title+"  ▶"
+                        setTextColor(ContextCompat.getColor(context,R.color.text_main));textSize=16f;setPadding(12,18,12,18)
+                        isClickable=true;isFocusable=true
+                        background=ContextCompat.getDrawable(context,android.R.drawable.list_selector_background)
+                        setOnClickListener { openMediaPlayerEntry(entry) }
+                    }
+                    resultContainer.addView(row)
+                }
             }
         }
+    }
+    private fun openMediaPlayerEntry(entry: MediaPlayerCatalog.Entry) {
+        if(!entry.series){startMediaPlayer(entry,false);return}
+        Toast.makeText(this,"Afleveringen laden…",Toast.LENGTH_SHORT).show()
+        remoteMusicIo.execute {
+            val result=runCatching {MediaPlayerCatalog.episodes(this,entry)}
+            runOnUiThread {
+                if(isFinishing||isDestroyed)return@runOnUiThread
+                val error=result.exceptionOrNull()
+                if(error is MediaPlayerCatalog.AccessRequired){showSectionAccessRequestDialog(MainDeviceRegistry.ACCESS_MEDIA_PLAYER,"Mediaplayer",error.pending);return@runOnUiThread}
+                val episodes=result.getOrDefault(emptyList())
+                if(episodes.isEmpty()){Toast.makeText(this,"Geen afleveringen beschikbaar of bron niet bereikbaar.",Toast.LENGTH_LONG).show();return@runOnUiThread}
+                AlertDialog.Builder(this).setTitle(entry.title).setItems(episodes.map {it.title}.toTypedArray()){_,index->
+                    startMediaPlayer(episodes[index],true)
+                }.setNegativeButton("Terug",null).show()
+            }
+        }
+    }
+    private fun startMediaPlayer(entry: MediaPlayerCatalog.Entry,episode: Boolean) {
+        if(youtubeActive)musicWebPlayer.evaluateJavascript("window.theOneStop && window.theOneStop();",null)
+        if(SupremacyPlaybackService.isActive(this))sendSupremacyAction(SupremacyPlaybackService.ACTION_PAUSE)
+        startActivity(Intent(this,MediaCatalogPlaybackActivity::class.java).putExtra("id",entry.id)
+            .putExtra("title",entry.title).putExtra("extension",entry.extension).putExtra("episode",episode))
     }
 
     private fun showMovieResult(result: MovieLookup.MovieResult) {
