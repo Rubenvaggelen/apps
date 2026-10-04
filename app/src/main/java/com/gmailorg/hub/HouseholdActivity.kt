@@ -134,6 +134,18 @@ class HouseholdActivity : AppCompatActivity() {
                 .setNegativeButton("Later",null).show()
             return
         }
+        if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.O){
+            val channelId="supermarket_reminders_v"+NotificationSoundStore.getVersion(this)
+            val manager=getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+            if(manager.getNotificationChannel(channelId)?.importance==android.app.NotificationManager.IMPORTANCE_NONE){
+                androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Supermarktmeldingen geblokkeerd")
+                    .setMessage("Zet het meldingskanaal Supermarkt-herinneringen aan om je boodschappenlijst bij aankomst te ontvangen.")
+                    .setPositiveButton("Instellingen"){_,_->startActivity(Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                        .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,packageName).putExtra(android.provider.Settings.EXTRA_CHANNEL_ID,channelId))}
+                    .setNegativeButton("Later",null).show()
+                return
+            }
+        }
         ensureForegroundLocationThenArm()
     }
     override fun onResume() {
