@@ -5,7 +5,6 @@ import android.content.Intent
 import android.graphics.Color
 import android.media.AudioManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -13,8 +12,6 @@ import android.provider.OpenableColumns
 import android.view.DragEvent
 import android.view.KeyEvent
 import android.view.View
-import android.view.WindowInsets
-import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.SeekBar
@@ -24,6 +21,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.documentfile.provider.DocumentFile
 
 class CarPlayerActivity : AppCompatActivity() {
@@ -56,6 +56,8 @@ class CarPlayerActivity : AppCompatActivity() {
     private lateinit var whatsappButton: TextView
     private lateinit var audioManager: AudioManager
     private var playlistSignature = ""
+    private var playerFullscreen = true
+    private val applyFullscreen = Runnable { enterImmersive() }
 
     private val refreshTick = object : Runnable {
         override fun run() {
@@ -67,6 +69,7 @@ class CarPlayerActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        playerFullscreen = savedInstanceState?.getBoolean("playerFullscreen", true) ?: true
         setContentView(R.layout.activity_car_player)
         enterImmersive()
 
@@ -106,6 +109,11 @@ class CarPlayerActivity : AppCompatActivity() {
     }
 
     private fun configureNavigation() {
+        findViewById<View>(R.id.playerMasterLogo).setOnClickListener {
+            playerFullscreen = !playerFullscreen
+            enterImmersive()
+        }
+
         findViewById<TextView>(R.id.playerMenuButton).setOnClickListener {
             startActivity(
                 Intent(this, MainActivity::class.java).apply {
@@ -833,11 +841,38 @@ class CarPlayerActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         enterImmersive()
+        scheduleFullscreen()
         refreshPlayer()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            enterImmersive()
+            scheduleFullscreen()
+        } else {
+            handler.removeCallbacks(applyFullscreen)
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("playerFullscreen", playerFullscreen)
+        super.onSaveInstanceState(outState)
+    }
+
+    override fun onPause() {
+        handler.removeCallbacks(applyFullscreen)
+        super.onPause()
+    }
+
+    private fun scheduleFullscreen() {
+        handler.removeCallbacks(applyFullscreen)
+        handler.postDelayed(applyFullscreen, 350L)
     }
 
     override fun onDestroy() {
         handler.removeCallbacks(refreshTick)
+        handler.removeCallbacks(applyFullscreen)
         super.onDestroy()
     }
 
@@ -850,22 +885,20 @@ class CarPlayerActivity : AppCompatActivity() {
     }
 
     private fun enterImmersive() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.insetsController?.let { controller ->
-                controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
-                controller.systemBarsBehavior =
-                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
+        // Fit the window below system bars in normal mode; hide them in fullscreen.
+        WindowCompat.setDecorFitsSystemWindows(window, !playerFullscreen)
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (playerFullscreen) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+            controller.hide(WindowInsetsCompat.Type.systemBars())
         } else {
-            @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility =
-                View.SYSTEM_UI_FLAG_FULLSCREEN or
-                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
-                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+            controller.show(WindowInsetsCompat.Type.systemBars())
         }
+        findViewById<View>(R.id.playerMasterLogo).contentDescription =
+            if (playerFullscreen) "Player verkleinen" else "Player volledig scherm"
     }
 
     private val Int.dp: Int
