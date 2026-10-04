@@ -61,7 +61,9 @@
             android:name=".SupremacyMixesActivity"
             android:exported="false"
             android:theme="@style/Theme.GmailOrgHub" />
-        <activity android:name=".MediaCatalogPlaybackActivity" android:exported="false" />
+        <activity android:name=".MediaCatalogPlaybackActivity" android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize" />
         <activity
             android:name=".MoviesActivity"
             android:exported="false"
