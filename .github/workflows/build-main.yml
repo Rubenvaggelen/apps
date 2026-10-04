@@ -46,6 +46,15 @@ jobs:
             echo "::error::YOUTUBE_API_KEY secret is missing; Main release blocked."
             exit 1
           fi
+      - name: Verify TMDB key is configured
+        shell: bash
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: |
+          if [ -z "$TMDB_API_KEY" ]; then
+            echo "::error::TMDB_API_KEY secret is missing; Main release blocked."
+            exit 1
+          fi
       - name: Build Main only
         env:
           ORG_GRADLE_PROJECT_YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
