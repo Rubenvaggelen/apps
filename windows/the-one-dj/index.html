@@ -266,10 +266,13 @@ body:not(.hp-on) .cue-hp{display:none}
 .media-browser-head{display:flex;align-items:center;gap:8px;padding:12px;border-bottom:1px solid var(--line)}
 .media-browser-title{font-weight:800;flex:1}
 .media-browser-path{font-size:12px;color:var(--muted);padding:0 12px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.media-browser-list{list-style:none;margin:0;padding:0 12px 12px;overflow:auto;min-height:260px}
+.media-browser-list{list-style:none;margin:0;padding:0 12px 12px;overflow:auto;min-height:0;flex:1 1 auto;overscroll-behavior:contain}
 .media-browser-list li{display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:8px;padding:8px 4px;border-top:1px solid var(--line)}
 .media-browser-list button{width:100%;text-align:left}
-.media-browser-foot{display:flex;gap:8px;justify-content:flex-end;padding:10px 12px;border-top:1px solid var(--line)}
+.media-browser-foot{display:flex;flex-wrap:wrap;flex-shrink:0;gap:8px;justify-content:flex-end;padding:10px 12px;border-top:1px solid var(--line)}
+.media-browser-head{flex-shrink:0;flex-wrap:wrap}
+.media-browser-path{flex-shrink:0}
+#sharedLoadFolderBtn{background:var(--a);color:var(--a-ink);font-weight:700}
 .library{margin-top:10px;background:linear-gradient(180deg,var(--panel),var(--panel-2));border:1px solid var(--line);border-radius:18px;padding:12px 14px}
 .lib-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .library h2{font-size:17px;margin:0;font-weight:700}
@@ -515,6 +518,7 @@ body:not(.hp-on) .cue-hp{display:none}
     <div class="media-browser-head">
       <button class="btn small" id="localBackBtn">&larr; Terug</button>
       <div class="media-browser-title">Lokale media</div>
+      <button class="btn small" id="sharedLoadFolderBtn" hidden>Hele map toevoegen</button>
       <button class="btn small" id="localCloseBtn">Sluiten</button>
     </div>
     <div class="media-browser-path" id="localPath">Schijven</div>
@@ -2573,6 +2577,7 @@ async function loadLocalFolder(){
   }
 }
 async function openLocalMedia(){
+  document.getElementById("sharedLoadFolderBtn").hidden=true;
   mediaMode="local";document.querySelector(".media-browser-title").textContent="Lokale media";
   if(IN_APP){
     document.getElementById("folderInput")?.click();
@@ -2586,13 +2591,24 @@ document.getElementById("localBackBtn")?.addEventListener("click",()=>{
   if(mediaMode==="shared"){if(sharedStick&&sharedFolder){renderSharedFolder(sharedFolder.split("/").slice(0,-1).join("/"))}else renderSharedRoot();return}
   if(localHistory.length)openLocalFolder(localHistory.pop(),false);else openLocalRoot();
 });
-localLoadFolderBtn?.addEventListener("click",()=>{
-  if(mediaMode!=="shared"){loadLocalFolder().catch(()=>{localPath.textContent="Deze map kon niet worden gelezen."});return}
+function sharedFolderFiles(stick,folder){
+  const prefix=folder?folder.replace(/\\/g,"/").replace(/\/+$/,"")+"/":"";
+  return (stick?.files||[]).filter(f=>sharedFilePath(f).startsWith(prefix)&&validMediaName(f.name||String(f.path||"").split(/[\\/]/).pop()))
+    .sort((a,b)=>sharedFilePath(a).localeCompare(sharedFilePath(b),undefined,{numeric:true,sensitivity:"base"}));
+}
+function addSharedFolder(){
   if(!sharedStick)return;
-  const prefix=sharedFolder?sharedFolder+"/":"";
-  const files=(sharedStick.files||[]).filter(f=>sharedFilePath(f).startsWith(prefix));
-  addMediaReferences(files.map(sharedReference));renderSharedFolder(sharedFolder);
+  const files=sharedFolderFiles(sharedStick,sharedFolder);
+  if(!files.length){document.getElementById("mediaNotice").textContent="Deze map bevat geen ondersteunde muziek.";return}
+  const added=addMediaReferences(files.map(sharedReference));
+  renderSharedFolder(sharedFolder);
+  document.getElementById("mediaNotice").textContent=added?added+" nummers uit de hele map toegevoegd, inclusief submappen.":"Alle nummers uit deze map staan al in DJ.";
+}
+localLoadFolderBtn?.addEventListener("click",()=>{
+  if(mediaMode==="shared"){addSharedFolder();return}
+  loadLocalFolder().catch(()=>{localPath.textContent="Deze map kon niet worden gelezen."});
 });
+document.getElementById("sharedLoadFolderBtn")?.addEventListener("click",addSharedFolder);
 
 document.getElementById("folderInput")?.addEventListener("change",e=>{
   const input=e.currentTarget;
@@ -2670,18 +2686,23 @@ function renderSharedFolder(folder=""){
     if(slash>=0)children.add(rest.slice(0,slash));else tracks.push(file);
   }
   localPath.textContent=(sharedStick.stick_name||sharedStick.device_name||"Shared Media")+(folder?" / "+folder:"");
-  localLoadFolderBtn.disabled=false;localLoadFolderBtn.textContent="Voeg deze map toe";
+  const count=sharedFolderFiles(sharedStick,folder).length;
+  localLoadFolderBtn.disabled=count===0;localLoadFolderBtn.textContent="Hele map toevoegen ("+count+")";
+  const mapButton=document.getElementById("sharedLoadFolderBtn");mapButton.hidden=false;mapButton.disabled=count===0;mapButton.textContent="Hele map toevoegen ("+count+")";
   renderLocalRows([
     ...[...children].sort((a,b)=>a.localeCompare(b)).map(name=>({icon:"\uD83D\uDCC1",label:name,meta:"map",onclick:()=>renderSharedFolder(prefix+name)})),
     ...tracks.sort((a,b)=>(a.name||"").localeCompare(b.name||"")).map(file=>({icon:"\u266B",label:file.title||file.name,meta:lib.some(t=>mediaReferenceKey(t.file?.source)===mediaReferenceKey(sharedReference(file).source))?"In DJ":"Toevoegen",onclick:()=>{addMediaReferences([sharedReference(file)]);renderSharedFolder(sharedFolder)}}))
   ]);
 }
 function renderSharedRoot(){
+  document.getElementById("sharedLoadFolderBtn").hidden=true;
   sharedStick=null;sharedFolder="";localPath.textContent="Shared Media";localLoadFolderBtn.disabled=true;
   renderLocalRows(sharedCatalog.map(stick=>({icon:"\uD83D\uDCC1",label:stick.stick_name||stick.device_name||"Muziek",meta:stick.device_name||"",onclick:()=>{sharedStick=stick;renderSharedFolder("")}})));
   if(!sharedCatalog.length)localPath.textContent="Geen Shared Media beschikbaar. Probeer later opnieuw.";
 }
 async function openSharedMedia(){
+  document.getElementById("sharedLoadFolderBtn").hidden=true;
+  document.getElementById("mediaNotice").textContent="Open een map en kies Hele map toevoegen.";
   mediaMode="shared";showLocalBrowser(true);
   document.querySelector(".media-browser-title").textContent="Shared Media";
   localPath.textContent="Shared Media ophalen\u2026";localList.innerHTML="";localLoadFolderBtn.disabled=true;
