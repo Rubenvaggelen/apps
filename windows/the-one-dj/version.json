@@ -1,7 +1,7 @@
 {
-  "build": 235,
-  "version": "2.3.5",
-  "notes": "DJ-logo toggles real fullscreen/windowed mode on Windows and immersive/normal mode on Android; no ESC key required. Preserves Hub compact layout, clean encoding, long-track Range/206 and Shared Media mirror.",
+  "build": 236,
+  "version": "2.3.6",
+  "notes": "Voice Sync (Key Lock) on both decks preserves vocal pitch during Sync and tempo changes; per-deck setting is saved. Playback uses native pitch correction through existing mixer and effects; scratch remains vinyl-style.",
   "sha256": "",
   "files": [
     "Update-The-One-DJ.ps1",
