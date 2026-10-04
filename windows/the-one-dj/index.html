@@ -1065,6 +1065,28 @@ async function voiceSyncWav(buffer){
   return new Blob(parts,{type:"audio/wav"});
 }
 
+let androidAudioPreparation=Promise.resolve();
+async function prepareDeckAudio(file,voiceSupported,isCurrent,onPhase){
+  const prepare=async()=>{
+    if(!isCurrent())return null;
+    const buf=await decodeAnyAudio(file);
+    if(!isCurrent())return null;
+    onPhase("Tempo analyseren…");await nextFrame();
+    const an=await analyzeBuffer(buf);
+    let voiceBlob=null;
+    if(voiceSupported){
+      onPhase("Voice Sync voorbereiden…");
+      voiceBlob=await voiceSyncWav(buf);
+    }
+    return {buf,an,voiceBlob};
+  };
+  if(!window.TheOneAudioDecoder)return prepare();
+  // On Android, do not run both decks' three OfflineAudioContexts and WAV
+  // preparation concurrently. Playback continues while the next deck is queued.
+  const result=androidAudioPreparation.then(prepare,prepare);
+  androidAudioPreparation=result.then(()=>{},()=>{});
+  return result;
+}
 class Deck{
   constructor(id,idx){
     this.id=id;this.idx=idx;this.el=document.getElementById("deck"+id);
@@ -1513,20 +1535,15 @@ class Deck{
         return;
       }
       this._clearStream();
-      const buf=await decodeAnyAudio(file);
-      if(token!==this.loadToken) return;
-      this.setBusy("Tempo analyseren\u2026");await nextFrame();
-      const an=await analyzeBuffer(buf);
-      let voiceBlob=null;
-      if(this.voiceSupported){
-        this.setBusy("Voice Sync voorbereiden…");
-        voiceBlob=await voiceSyncWav(buf);
-      }
+      const prepared=await prepareDeckAudio(file,this.voiceSupported,
+        ()=>token===this.loadToken,phase=>this.setBusy(phase));
+      if(!prepared||token!==this.loadToken)return;
+      const {buf,an,voiceBlob}=prepared;
       if(token!==this.loadToken) return;
       this._stopSrc();this.releaseVoice();this.playing=false;this.cueHeld=false;
       if(voiceBlob){this.voiceUrl=URL.createObjectURL(voiceBlob);this.voice.src=this.voiceUrl;this.voice.load()}
       if(this.libItem&&this.libItem!==item&&this.libItem.status===this.id) this.libItem.status="played";
-      if(item){item.status=this.id;playlistWrite();}
+      if(item){item.status=this.id;delete item.errorReason;delete item.sourceStatus;playlistWrite();}
       this.libItem=item;this.done=false;
       this.scr=null;this.buffer=buf;this.bpm=an.bpm;this.beat0=an.beat0;this.peaks=an.peaks;this.detail=an.detail;
       this.mixAnalysis=an.mix;
@@ -2463,7 +2480,8 @@ async function playlistRead(){
       rows.sort((a,b)=>(a.index??0)-(b.index??0));
       for(const r of rows){
         if(!r||!r.file) continue;
-        const status=["played","error"].includes(r.status)?r.status:"queued";
+        // A failed attempt is temporary: restored playlists must retry these tracks.
+        const status=r.status==="played"?"played":"queued";
         const item={id:r.id||playlistId(),file:r.file,name:cleanImportedName(r.name||baseName(r.file)),status,sharedName:r.sharedName||""};
         lib.push(item);
         if(item.sharedName) sharedLoaded.add(item.sharedName);
@@ -2529,7 +2547,7 @@ async function clearStoredPlaylist(){
     });
   }catch(e){throw e}
 }
-const AUDIO_EXT=/\.(mp3|wav|aif|aiff|aifc|caf|flac|ogg|oga|opus|m4a|aac|alac|mka|wma|ac3|amr|mp4|m4v|mov|webm|mkv)$/i;
+const AUDIO_EXT=/\.(mp3|mp2|wav|aif|aiff|aifc|caf|flac|ogg|oga|opus|m4a|aac|alac|mka|wma|ac3|eac3|amr|ape|wv|mp4|m4v|mov|webm|mkv|3gp)$/i;
 const playableFile=f=>{
   if(!f) return false;
   if(/^(audio|video)\//i.test(f.type||"")) return true;
