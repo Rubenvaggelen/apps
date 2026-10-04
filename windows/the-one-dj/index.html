@@ -911,6 +911,33 @@ function sniffName(dv,name){
   const ext=(name.split(".").pop()||"").toUpperCase();
   return ext?ext+"-bestanden":"dit formaat";
 }
+async function decodeWithAndroid(file,ab,ac){
+  const native=window.TheOneAudioDecoder;
+  if(!native||typeof native.begin!=="function")return null;
+  const id=native.begin();
+  if(!id){const e=new Error("decoder busy");e.userMsg="De audiodecoder is bezig. Probeer dit nummer opnieuw.";throw e;}
+  try{
+    const bytes=new Uint8Array(ab);
+    for(let offset=0;offset<bytes.length;offset+=196608){
+      const part=bytes.subarray(offset,Math.min(bytes.length,offset+196608));
+      let binary="";
+      for(let i=0;i<part.length;i+=8192)binary+=String.fromCharCode(...part.subarray(i,i+8192));
+      if(!native.append(id,btoa(binary))){
+        const e=new Error("upload failed");e.userMsg="Het audiobestand kon niet worden voorbereid; controleer beschikbare ruimte en probeer opnieuw.";throw e;
+      }
+      await new Promise(resolve=>setTimeout(resolve,0));
+    }
+    if(!native.finish(id))throw new Error("decoder could not start");
+    const result=await fetch("/native-audio/"+encodeURIComponent(id),{cache:"no-store"});
+    if(!result.ok){
+      const e=new Error("native decode failed");
+      e.userMsg="Dit bestand bevat geen leesbare audio, is beschadigd of beveiligd. Probeer het opnieuw of controleer het originele bestand.";
+      throw e;
+    }
+    const wav=await result.arrayBuffer();
+    return await new Promise((resolve,reject)=>ac.decodeAudioData(wav,resolve,reject));
+  }finally{native.discard(id);}
+}
 async function decodeAnyAudio(file,ac){
   ac=ac||ctx;
   const ab=await mediaBytes(file);
@@ -927,6 +954,8 @@ async function decodeAnyAudio(file,ac){
     r.ch.forEach((d,i)=>buf.copyToChannel(d,i));
     return buf;
   }
+  const android=await decodeWithAndroid(file,ab,ac);
+  if(android)return android;
   const what=r&&r.unsupported?r.unsupported:sniffName(dv,file.name);
   const err=new Error("unsupported");
   err.userMsg=what+" kan hier niet worden afgespeeld. Zet het om naar MP3, FLAC of WAV.";
@@ -1509,7 +1538,7 @@ class Deck{
       if(String(file?.name||"").toLowerCase().endsWith(".mp3")){
         try{await this._loadStream(file,item,token);return}catch(streamErr){}
       }
-      if(item){item.status="error";playlistWrite();}
+      if(item){item.status="error";item.errorReason=e?.userMsg||"Dit bestand kon niet worden geladen.";playlistWrite();}
       this.ui.title.textContent="Dit bestand kan niet worden geopend";
       this.ui.sub.textContent=e&&e.userMsg?e.userMsg:"Dit formaat wordt niet herkend. Zet het om naar MP3, FLAC of WAV.";
     }finally{
@@ -2503,7 +2532,7 @@ async function clearStoredPlaylist(){
 const AUDIO_EXT=/\.(mp3|wav|aif|aiff|aifc|caf|flac|ogg|oga|opus|m4a|aac|alac|mka|wma|ac3|amr|mp4|m4v|mov|webm|mkv)$/i;
 const playableFile=f=>{
   if(!f) return false;
-  if(/^audio\//i.test(f.type||"")) return true;
+  if(/^(audio|video)\//i.test(f.type||"")) return true;
   return AUDIO_EXT.test(f.name||"");
 };
 function addToLib(files,sharedNames=[]){
@@ -2843,6 +2872,11 @@ function renderLib(){
     const drag=document.createElement("span");drag.className="lib-drag";drag.textContent="\u2630";drag.title="Sleep om te verplaatsen";
     const tag=document.createElement("span");tag.className="lib-tag";
     tag.textContent={A:"Deck A",B:"Deck B",played:"Gespeeld",loading:"Laden\u2026",error:"Niet af te spelen"}[t.status]||(t===next?"Volgende":"");
+    if(t.status==="error"){
+      tag.title=t.errorReason||"Dit bestand kon niet worden geladen.";
+      tag.style.cursor="pointer";
+      tag.addEventListener("click",()=>alert(t.errorReason||"Dit bestand kon niet worden geladen. Probeer het opnieuw met A of B."));
+    }
     if(t===next) li.dataset.status="next";
     const name=document.createElement("span");name.className="lib-name";name.textContent=t.name;
     const a=document.createElement("button");a.className="btn small to-a";a.textContent="A";a.setAttribute("aria-label","Laad "+t.name+" in deck A");
