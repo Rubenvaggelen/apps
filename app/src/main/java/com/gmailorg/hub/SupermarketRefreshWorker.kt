@@ -11,6 +11,7 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -52,15 +53,16 @@ class SupermarketRefreshWorker(context: Context, params: WorkerParameters) : Cor
         val hasPermission = ContextCompat.checkSelfPermission(
             applicationContext, Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
-        if (!hasPermission) return Result.success()
+        if (!hasPermission || !SupermarketGeofenceManager.hasBackgroundLocationPermission(applicationContext)) return Result.success()
 
         return withContext(Dispatchers.IO) {
-            val success = suspendCancellableCoroutine<Boolean> { cont ->
+            val success = withTimeoutOrNull(90000L) { suspendCancellableCoroutine<Boolean> { cont ->
                 SupermarketGeofenceManager.enableForCurrentLocation(applicationContext) { ok, _ ->
                     if (cont.isActive) cont.resume(ok)
                 }
             }
-            if (success) Result.success() else Result.retry()
+            }
+            if (success == true) Result.success() else Result.retry()
         }
     }
 }
