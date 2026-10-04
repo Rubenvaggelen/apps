@@ -1,6 +1,9 @@
 package com.gmailorg.hub
 
 import android.os.Bundle
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -18,6 +21,8 @@ class MediaCatalogPlaybackActivity: AppCompatActivity() {
     private var view: PlayerView?=null
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
+        supportActionBar?.hide()
+        enterFullscreen()
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val entry=MediaPlayerCatalog.Entry(intent.getIntExtra("id",0),intent.getStringExtra("title").orEmpty(),
             intent.getBooleanExtra("episode",false),intent.getStringExtra("extension")?:"mp4")
@@ -29,6 +34,7 @@ class MediaCatalogPlaybackActivity: AppCompatActivity() {
                 if(url==null){Toast.makeText(this,"Geen Mediaplayer-toestemming of verbinding. Vraag toegang via Main.",Toast.LENGTH_LONG).show();finish();return@runOnUiThread}
                 val surface=PlayerView(this)
                 setContentView(surface);view=surface
+                enterFullscreen()
                 val http=DefaultHttpDataSource.Factory()
                     .setUserAgent("TheOne/1.0")
                     .setAllowCrossProtocolRedirects(true)
@@ -57,6 +63,17 @@ class MediaCatalogPlaybackActivity: AppCompatActivity() {
                 state?.let {player?.seekTo(it.getLong("position",0))}
             }
         }.start()
+    }
+    private fun enterFullscreen() {
+        WindowCompat.setDecorFitsSystemWindows(window,false)
+        WindowCompat.getInsetsController(window,window.decorView).apply {
+            systemBarsBehavior=WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if(hasFocus)enterFullscreen()
     }
     override fun onSaveInstanceState(state: Bundle) {
         state.putLong("position",player?.currentPosition?:0);super.onSaveInstanceState(state)
