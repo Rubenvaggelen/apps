@@ -78,6 +78,7 @@ class UsbPlaybackService : Service() {
         @Volatile private var instance: UsbPlaybackService? = null
         @Volatile private var lastState = PlaybackState()
         @Volatile private var autoPlayEnabled = true
+        @Volatile private var autoDjEnabled = false
         @Volatile private var muted = false
 
         const val DUCK_REASON_RECORDING = "whatsapp_recording"
@@ -307,6 +308,15 @@ class UsbPlaybackService : Service() {
             autoPlayEnabled = enabled
         }
 
+        fun isAutoDjEnabled(context: Context): Boolean = autoDjEnabled
+        fun setAutoDjEnabled(context: Context, enabled: Boolean) {
+            autoDjEnabled = enabled
+            if (enabled) {
+                autoPlayEnabled = true
+                instance?.player?.play()
+                instance?.prepareDeckBInternal()
+            } else instance?.cancelCrossfadeInternal()
+        }
         fun isMuted(context: Context): Boolean = muted
 
         fun toggleMute(context: Context): Boolean {
@@ -328,6 +338,9 @@ class UsbPlaybackService : Service() {
         }
     }
 
+    private var fadeGeneration = 0
+    private var automaticFade = false
+    private var autoStartedB = false
     private var player: ExoPlayer? = null
     private var deckB: ExoPlayer? = null
     private var deckBIndex = -1
@@ -351,14 +364,46 @@ class UsbPlaybackService : Service() {
         }
     }
 
+    private val autoDjTick = object : Runnable {
+        override fun run() {
+            if (autoDjEnabled && !fadeRunning && !fadePending) {
+                val a = player
+                val b = deckB
+                if (a != null && b != null && a.isPlaying && b.playbackState == Player.STATE_READY && !deckBMuted && !muted) {
+                    val duration = a.duration
+                    val remaining = duration - a.currentPosition
+                    if (b.isPlaying || (duration > 0 && duration != C.TIME_UNSET && remaining in 1L..8500L)) startCrossfadeInternal(true)
+                }
+            }
+            stateHandler.postDelayed(this, 100L)
+        }
+    }
+    private fun manualTakeover() {
+        autoDjEnabled = false
+        cancelCrossfadeInternal()
+    }
+    private fun cancelCrossfadeInternal() {
+        fadeGeneration++
+        if (automaticFade && autoStartedB) {
+            try { deckB?.pause(); deckB?.seekTo(0L) } catch (_: Exception) {}
+        }
+        fadeRunning = false
+        fadePending = false
+        fadeProgress = 0f
+        automaticFade = false
+        autoStartedB = false
+        applyDuckingVolume()
+    }
     override fun onCreate() {
         super.onCreate()
         instance = this
         autoPlayEnabled = true
+        autoDjEnabled = false
         muted = false
         createChannel()
         configureMediaSession()
         stateHandler.post(saveTick)
+        stateHandler.post(autoDjTick)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -541,6 +586,7 @@ class UsbPlaybackService : Service() {
     }
 
     private fun toggleInternal() {
+        manualTakeover()
         val exo = player
         if (exo == null) {
             if (queue.isNotEmpty()) {
@@ -562,6 +608,7 @@ class UsbPlaybackService : Service() {
     }
 
     private fun playRelative(delta: Int) {
+        manualTakeover()
         val exo = player
         if (exo == null) {
             if (queue.isNotEmpty()) {
@@ -587,6 +634,7 @@ class UsbPlaybackService : Service() {
     }
 
     private fun seekInternal(positionMs: Int) {
+        manualTakeover()
         val exo = player ?: return
         val duration = exo.duration
         val safePosition = if (duration > 0 && duration != C.TIME_UNSET) {
@@ -617,6 +665,7 @@ class UsbPlaybackService : Service() {
     }
 
     private fun releasePlayer() {
+        fadeGeneration++
         val oldA = player
         val oldB = deckB
         player = null
@@ -640,6 +689,8 @@ class UsbPlaybackService : Service() {
     }
 
     private fun releaseDeckB() {
+        if (fadeRunning) cancelCrossfadeInternal()
+        fadeGeneration++
         val old = deckB
         deckB = null
         deckBIndex = -1
@@ -784,6 +835,7 @@ class UsbPlaybackService : Service() {
     }
 
     private fun pauseDeckAInternal() {
+        manualTakeover()
         try { player?.pause() } catch (_: Exception) {}
         updateStateCache()
         persistSession()
@@ -791,16 +843,19 @@ class UsbPlaybackService : Service() {
     }
 
     private fun toggleDeckBInternal() {
+        manualTakeover()
         if (deckB == null) prepareDeckBInternal()
         val exo = deckB ?: return
         if (exo.isPlaying) exo.pause() else exo.play()
     }
 
     private fun pauseDeckBInternal() {
+        manualTakeover()
         try { deckB?.pause() } catch (_: Exception) {}
     }
 
     private fun seekDeckBInternal(positionMs: Int) {
+        manualTakeover()
         val exo = deckB ?: return
         val duration = exo.duration
         val safePosition = if (duration > 0 && duration != C.TIME_UNSET) {
@@ -899,6 +954,7 @@ class UsbPlaybackService : Service() {
     }
 
     private fun fadeToNextInternal() {
+        manualTakeover()
         if (fadeRunning || fadePending || queue.isEmpty()) return
         if (deckB == null) prepareDeckBInternal()
 
@@ -917,71 +973,39 @@ class UsbPlaybackService : Service() {
         }
     }
 
-    private fun startCrossfadeInternal() {
+    private fun startCrossfadeInternal(automatic: Boolean = false) {
         if (fadeRunning) return
-
-        val a = player ?: run {
-            fadePending = false
-            return
-        }
-        val b = deckB ?: run {
-            fadePending = false
-            return
-        }
-
+        val a = player ?: run { fadePending = false; return }
+        val b = deckB ?: run { fadePending = false; return }
+        if (b.playbackState != Player.STATE_READY) return
         fadePending = false
         fadeRunning = true
         fadeProgress = 0f
-
-        val base = targetVolume()
-        val handler = Handler(Looper.getMainLooper())
-        val introHoldMs = 900L
-        val fadeDurationMs = 8000L
-        val stepDelayMs = 80L
-        val steps = (fadeDurationMs / stepDelayMs).toInt().coerceAtLeast(1)
-
+        automaticFade = automatic
+        autoStartedB = automatic && !b.isPlaying
+        val generation = ++fadeGeneration
+        val remaining = if (a.duration > 0 && a.duration != C.TIME_UNSET) a.duration - a.currentPosition else 8000L
+        val durationMs = if (automatic) remaining.coerceIn(400L, 8000L) else 8000L
+        val startedAt = android.os.SystemClock.elapsedRealtime()
         try {
-            a.volume = if (muted) 0f else base
-
-            if (!b.isPlaying) {
-                // Een klaargezet Deck B begint bij Fade altijd vanaf het begin.
-                b.seekTo(0L)
-                b.volume = 0f
-                b.play()
-            } else {
-                // Als B handmatig al speelt, laat hem op zijn huidige positie staan.
-                b.volume = if (deckBMuted) 0f else 0f
-            }
-        } catch (_: Exception) {
-            fadeRunning = false
-            fadeProgress = 0f
-            return
-        }
-
-        fun step(n: Int) {
-            if (player !== a || deckB !== b) {
-                fadeRunning = false
-                return
-            }
-
-            val fraction = (n.toFloat() / steps.toFloat()).coerceIn(0f, 1f)
-            fadeProgress = fraction
-            try {
-                // Linear crossfade: totale gain blijft stabiel en beide decks
-                // zijn gedurende de overgang duidelijk tegelijk hoorbaar.
-                a.volume = if (muted) 0f else base * (1f - fraction)
-                b.volume = if (deckBMuted) 0f else base * fraction
-            } catch (_: Exception) {}
-
-            if (n >= steps) {
-                // Pas NA de volledige hoorbare fade wordt B de nieuwe A.
+            if (!b.isPlaying) { b.seekTo(0L); b.volume = 0f; b.play() }
+        } catch (_: Exception) { cancelCrossfadeInternal(); return }
+        fun step() {
+            if (generation != fadeGeneration || !fadeRunning || player !== a || deckB !== b) return
+            if (b.playbackState != Player.STATE_READY) { cancelCrossfadeInternal(); return }
+            val p = ((android.os.SystemClock.elapsedRealtime() - startedAt).toFloat() / durationMs).coerceIn(0f, 1f)
+            fadeProgress = p
+            val base = targetVolume()
+            val angle = p * kotlin.math.PI / 2
+            a.volume = if (muted) 0f else base * kotlin.math.cos(angle).toFloat()
+            b.volume = if (deckBMuted) 0f else base * kotlin.math.sin(angle).toFloat()
+            if (p >= 1f) {
+                automaticFade = false
+                autoStartedB = false
                 promoteDeckBImmediate(true)
-            } else {
-                handler.postDelayed({ step(n + 1) }, stepDelayMs)
-            }
+            } else stateHandler.postDelayed({ step() }, 40L)
         }
-
-        handler.postDelayed({ step(0) }, introHoldMs)
+        step()
     }
 
     private fun snapshotInternal(): PlaybackState {
@@ -1213,6 +1237,9 @@ class UsbPlaybackService : Service() {
     override fun onDestroy() {
         if (queue.isNotEmpty()) persistSession()
         stateHandler.removeCallbacks(saveTick)
+        stateHandler.removeCallbacks(autoDjTick)
+        autoDjEnabled = false
+        fadeGeneration++
         releasePlayer()
         if (::mediaSession.isInitialized) {
             mediaSession.isActive = false
@@ -1222,3 +1249,4 @@ class UsbPlaybackService : Service() {
         super.onDestroy()
     }
 }
+
