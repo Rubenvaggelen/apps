@@ -1,0 +1,15 @@
+The One DJ Android — audio decoding components
+
+FFmpegKit audio 6.0.1 (maxrave-dev 16 KB fork)
+Artifact: io.github.maxrave-dev:ffmpeg-kit-audio:6.0.1
+FFmpegKit and the non-GPL audio distribution are licensed under LGPL version 3.
+Project, corresponding source and build scripts:
+https://github.com/maxrave-dev/ffmpeg-kit-16KB
+License: https://www.gnu.org/licenses/lgpl-3.0.html
+FFmpeg source: https://ffmpeg.org/download.html
+The audio distribution also includes third-party audio libraries; their licenses and build configuration are documented in the project's source repository.
+
+The One DJ application source and integration:
+https://github.com/Rubenvaggelen/apps/tree/main/thedj
+
+Audio fallback converts a private temporary copy on the device. Original media files are not modified. No source account credentials are passed to FFmpeg.
