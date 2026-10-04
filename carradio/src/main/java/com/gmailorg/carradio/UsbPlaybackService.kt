@@ -320,6 +320,7 @@ class UsbPlaybackService : Service() {
         fun isMuted(context: Context): Boolean = muted
 
         fun toggleMute(context: Context): Boolean {
+            instance?.manualTakeover()
             muted = !muted
             instance?.applyDuckingVolume()
             return muted
@@ -412,6 +413,7 @@ class UsbPlaybackService : Service() {
 
         when (intent?.action) {
             ACTION_PLAY_INDEX -> {
+                manualTakeover()
                 val replacement = pendingQueue
                 if (replacement.isNotEmpty()) queue = replacement
                 if (queue.isNotEmpty()) playIndex(intent.getIntExtra(EXTRA_INDEX, 0), intent.getIntExtra(EXTRA_POSITION, 0), intent.getBooleanExtra(EXTRA_AUTOSTART, true), false)
@@ -867,6 +869,7 @@ class UsbPlaybackService : Service() {
     }
 
     private fun toggleDeckBMuteInternal(): Boolean {
+        manualTakeover()
         deckBMuted = !deckBMuted
         applyDuckingVolume()
         return deckBMuted
