@@ -124,6 +124,7 @@ class CarAutoDjActivity : AppCompatActivity() {
                     const boot=setInterval(async()=>{
                       if(playlistRestoring)return;clearInterval(boot);
                       autoLoad=false;autoMix=false;lib.splice(0,lib.length);
+                      for(const deck of decks){deck.loadToken++;deck._stopSrc();deck._clearStream();deck.releaseVoice();deck.buffer=null;deck.libItem=null;deck.playing=false;deck.done=false;deck.pos=0}
                       carRows.forEach((file,i)=>lib.push({id:playlistId(),file,name:cleanImportedName(baseName(file)),status:i<carIndex?"played":"queued",sharedName:""}));
                       renderLib();
                       const item=lib[carIndex];
