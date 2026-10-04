@@ -430,7 +430,8 @@ body:not(.hp-on) .cue-hp{display:none}
     </div>
     <div class="top-actions">
     <button class="btn small hp-btn" id="hpBtn" aria-haspopup="dialog" aria-label="Koptelefoon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15v-3a8 8 0 0 1 16 0v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="3" y="14" width="5" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="16" y="14" width="5" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg><span class="hp-label">Koptelefoon</span></button>
-    <button class="btn small" id="autoMixBtn" aria-pressed="false">Auto</button>
+    <button class="btn small" id="autoMixBtn" aria-pressed="false" title="Automatisch mixen; bedien een deck om over te nemen">Auto DJ</button>
+    <span id="autoDjStatus" role="status" aria-live="polite"></span>
     <button class="btn small auto-mix-on" id="autoSyncBtn" aria-pressed="true">Auto Sync &bull; Aan</button>
     <button class="btn small only-compact" id="libBtn">Nummers</button>
     <button class="btn small" id="updateBtn">Controleer op updates</button>
@@ -528,7 +529,7 @@ body:not(.hp-on) .cue-hp{display:none}
 <script>
 "use strict";
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
-const nextFrame=()=>new Promise(r=>requestAnimationFrame(()=>setTimeout(r,0)));
+const nextFrame=()=>new Promise(r=>setTimeout(r,16));
 const baseName=f=>f.name.replace(/\.[^.]+$/,"");
 const cleanImportedName=name=>String(name||"").replace(/^[0-9a-f]{12}-/i,"");
 function fmtTime(t){
@@ -758,7 +759,7 @@ async function analyzeBuffer(buffer){
   }
   const detail={full:dfull,low:dlow,mid:dmid,high:dhigh,rate:DR};
   const t=detectTempo(low,sr);
-  return {peaks,detail,bpm:t.bpm,beat0:t.beat0};
+  return {peaks,detail,bpm:t.bpm,beat0:t.beat0,mix:analyzeMixPoints(buffer,peaks,t)};
 }
 function detectTempo(low,sr){
   const hop=64,fps=sr/hop,F=Math.floor(low.length/hop);
@@ -787,7 +788,7 @@ function detectTempo(low,sr){
     for(let t=ph;t<F-1;t+=P){const i=Math.round(t);s+=on[i]+0.5*(on[i-1]||0)+0.5*(on[i+1]||0)}
     if(s>bs){bs=s;bp=ph}
   }
-  return {bpm:fine,beat0:bp*hop/sr};
+  return {bpm:fine,beat0:bp*hop/sr,confidence:clamp(ac(P)/Math.max(1e-9,ac(0)),0,1)};
 }
 
 /* ---------- decoding: browser first, then own decoders for formats browsers skip ---------- */
@@ -1030,7 +1031,7 @@ class Deck{
     this.beatFxTypeIdx=0;this.beatFxBeatIdx=1;this.beatFxActive=false;
     this.scrub=null;this.loadToken=0;this.level=0;this.n=null;
     this.spinMode=false;this.scr=null;this.detail=null;
-    this.done=false;this.loading=false;this.libItem=null;
+    this.done=false;this.loading=false;this.libItem=null;this.mixAnalysis=null;
     this.returnAt=null;this.glide=null;this.partnerStopAt=null;this.cueOn=false;
     this.p={trim:0,hi:0,mid:0,low:0,filter:0,fader:0.9,echo:0,reverb:0};
     this.bindUI();
@@ -1041,6 +1042,7 @@ class Deck{
   build(){
     const n={};
     n.trim=ctx.createGain();
+    n.autoLevel=ctx.createGain();n.autoLow=ctx.createBiquadFilter();n.autoLow.type="lowshelf";n.autoLow.frequency.value=220;
     n.low=ctx.createBiquadFilter();n.low.type="lowshelf";n.low.frequency.value=220;
     n.mid=ctx.createBiquadFilter();n.mid.type="peaking";n.mid.frequency.value=1000;n.mid.Q.value=0.8;
     n.hi=ctx.createBiquadFilter();n.hi.type="highshelf";n.hi.frequency.value=3500;
@@ -1053,7 +1055,7 @@ class Deck{
     n.revSend=ctx.createGain();n.revSend.gain.value=0;n.revRet=ctx.createGain();n.revRet.gain.value=1;
     n.fader=ctx.createGain();n.xf=ctx.createGain();
     n.an=ctx.createAnalyser();n.an.fftSize=512;n.buf=new Float32Array(n.an.fftSize);
-    n.trim.connect(n.low);n.low.connect(n.mid);n.mid.connect(n.hi);n.hi.connect(n.lpf);n.lpf.connect(n.hpf);n.hpf.connect(n.fxIn);
+    n.trim.connect(n.autoLevel);n.autoLevel.connect(n.autoLow);n.autoLow.connect(n.low);n.low.connect(n.mid);n.mid.connect(n.hi);n.hi.connect(n.lpf);n.lpf.connect(n.hpf);n.hpf.connect(n.fxIn);
     n.fxIn.connect(n.fader);
     n.cueSend=ctx.createGain();n.cueSend.gain.value=this.cueOn?1:0;n.fxIn.connect(n.cueSend);n.cueSend.connect(hp.cueBus);
     n.fxIn.connect(n.echoSend);n.echoSend.connect(n.delay);n.delay.connect(n.fb);n.fb.connect(n.delay);n.delay.connect(n.echoRet);n.echoRet.connect(n.fader);
@@ -1255,7 +1257,7 @@ class Deck{
     this.streamEl=el;this.streamNode=node;this.streamMode=true;this.streamDur=Number.isFinite(el.duration)?el.duration:0;
     if(this.libItem&&this.libItem!==item&&this.libItem.status===this.id)this.libItem.status="played";
     if(item){item.status=this.id;playlistWrite()}
-    this.libItem=item;this.done=false;this.buffer=null;this.bpm=0;this.beat0=0;this.peaks=null;this.detail=null;
+    this.mixAnalysis=null;this.libItem=item;this.done=false;this.buffer=null;this.bpm=0;this.beat0=0;this.peaks=null;this.detail=null;
     this.pos=0;this.cue=0;this.hot=Array(8).fill(null);this.loopIn=null;this.loopOut=null;this.loopActive=false;this.slipLoopAnchor=null;this.syncLock=false;
     this.ui.sub.textContent="Streaming \u2022 "+fmtTime(this.dur).slice(0,-2);
     this.renderPads();this.drawBase();this.updateEcho();updateWake();
@@ -1471,6 +1473,7 @@ class Deck{
       if(item){item.status=this.id;playlistWrite();}
       this.libItem=item;this.done=false;
       this.scr=null;this.buffer=buf;this.bpm=an.bpm;this.beat0=an.beat0;this.peaks=an.peaks;this.detail=an.detail;
+      this.mixAnalysis=an.mix;
       this.pos=0;this.cue=0;this.hot=Array(8).fill(null);this.loopIn=null;this.loopOut=null;this.loopActive=false;this.slipLoopAnchor=null;this.syncLock=false;this.cancelTempoReturn();
       this.ui.sub.textContent=this.bpm?`Origineel ${this.bpm.toFixed(1)} bpm, ${fmtTime(buf.duration).slice(0,-2)}`:"Geen tempo gevonden";
       this.renderPads();this.drawBase();this.updateEcho();updateWake();
@@ -2082,6 +2085,88 @@ sfxBtns.forEach((b,i)=>{
 new Knob(document.getElementById("sfxVol"),{min:0,max:1,def:0.8,value:0.8,bipolar:false,label:"Volume feestgeluiden",
   onChange:v=>{sfxLevel=v;if(sfxOut) smooth(sfxOut.gain,v*v)}});
 
+
+/* Energy-based intro/outro selection. It is a vocal-density heuristic, not vocal separation. */
+function analyzeMixPoints(buffer,peaks,tempo){
+  const dur=buffer.duration,beat=tempo.bpm?60/tempo.bpm:.5;
+  let sum=0,count=0;for(let c=0;c<buffer.numberOfChannels;c++){
+    const a=buffer.getChannelData(c);for(let i=0;i<a.length;i+=128){sum+=a[i]*a[i];count++}
+  }
+  const rms=Math.sqrt(sum/Math.max(1,count)),level=clamp(.12/Math.max(.035,rms),.65,1.6);
+  const phrase=16*beat;let origin=tempo.beat0||0;
+  const energy=t=>{
+    const k=clamp(Math.floor(t/dur*peaks.full.length),0,peaks.full.length-1);
+    return {full:peaks.full[k],mid:peaks.mid[k],low:peaks.low[k]};
+  };
+  // Infer a bar downbeat from repeated low-band accents; phrase origin remains an estimate.
+  if(tempo.bpm){
+    const accents=[0,0,0,0];
+    for(let i=0;i<Math.min(128,Math.floor(dur/beat));i++)accents[i%4]+=energy(origin+i*beat).low;
+    origin+=accents.indexOf(Math.max(...accents))*beat;
+  }
+  const score=(t,length)=>{
+    let v=0;for(let i=0;i<16;i++){const e=energy(t+length*i/16);v+=e.full<.08?3:e.mid/(e.low+.2)}
+    return v/16;
+  };
+  let intro=Math.max(0,origin),best=Infinity;
+  for(let t=origin;t<=Math.min(48,dur*.2);t+=phrase){
+    if(t<0)continue;const v=score(t,Math.min(phrase,dur-t))+.008*t;
+    if(v<best){best=v;intro=t}
+  }
+  let outro=null;best=Infinity;
+  for(let t=origin+Math.ceil((Math.max(dur*.6,dur-80)-origin)/phrase)*phrase;t+phrase<=dur-1;t+=phrase){
+    const v=score(t,phrase)+.008*Math.abs(dur-phrase-2-t);
+    if(v<best){best=v;outro=t}
+  }
+  return {intro,outro,level,confidence:tempo.confidence||0,phraseOrigin:origin};
+}
+function planAutoTransition(src,tgt,beats){
+  const reliable=src.bpm&&tgt.bpm&&(src.mixAnalysis?.confidence||0)>=.15&&(tgt.mixAnalysis?.confidence||0)>=.15;
+  let rate=reliable?src.bpm*src.rate/tgt.bpm:1;
+  while(rate>1.41)rate/=2;while(rate<.707)rate*=2;
+  const synced=!!reliable&&rate>=.82&&rate<=1.18;
+  if(!synced)rate=1;
+  const targetIntro=synced?(tgt.mixAnalysis?.intro||tgt.beat0||0):0;
+  let duration=synced?Math.max(16,beats)*60/(src.bpm*src.eff()):8;
+  duration=Math.min(duration,Math.max(1,(tgt.dur-targetIntro)/rate/2));
+  const now=src.getPos(),speed=Math.max(.01,src.eff()),latest=src.dur-duration*speed-.5;
+  let start=src.mixAnalysis?.outro;
+  if(!synced||start==null||start<now||start>latest)start=latest;
+  if(synced){
+    const phrase=16*60/src.bpm,origin=src.mixAnalysis?.phraseOrigin||src.beat0||0;
+    start=origin+Math.floor((start-origin)/phrase)*phrase;
+  }
+  start=Math.max(now,start);
+  duration=Math.max(.2,Math.min(duration,(src.dur-start)/speed-.1));
+  return {start,duration,rate,synced,targetIntro};
+}
+function autoDjStatus(text){const el=document.getElementById("autoDjStatus");if(el&&el.textContent!==text)el.textContent=text}
+function restoreAutoTone(){
+  if(!ctx)return;
+  for(const d of decks)if(d.n){for(const param of [d.n.autoLow.gain,d.n.autoLevel.gain]){
+    param.cancelScheduledValues(ctx.currentTime);param.setTargetAtTime(param===d.n.autoLevel.gain?1:0,ctx.currentTime,.08);
+  }}
+}
+function scheduleAutoCurve(plan){
+  const from=(plan.from+1)/2,to=(plan.to+1)/2,N=129;
+  for(let deck=0;deck<2;deck++){
+    const values=new Float32Array(N);
+    for(let i=0;i<N;i++){const p=i/(N-1),e=p*p*(3-2*p),x=from+(to-from)*e;values[i]=deck===0?Math.cos(x*Math.PI/2):Math.sin(x*Math.PI/2)}
+    const gain=decks[deck].n.xf.gain;gain.cancelScheduledValues(ctx.currentTime);
+    gain.setValueAtTime(values[0],ctx.currentTime);gain.setValueCurveAtTime(values,plan.t0,plan.dur);
+  }
+  const a=plan.src.n.autoLow.gain,b=plan.tgt.n.autoLow.gain;
+  a.cancelScheduledValues(ctx.currentTime);b.cancelScheduledValues(ctx.currentTime);
+  a.setValueAtTime(0,ctx.currentTime);a.setValueAtTime(0,plan.t0);a.linearRampToValueAtTime(-30,plan.t0+plan.dur*.5);
+  b.setValueAtTime(-30,ctx.currentTime);b.setValueAtTime(-30,plan.t0+plan.dur*.5);b.linearRampToValueAtTime(0,plan.t0+plan.dur);
+}
+function takeOverAutoDj(){
+  if(!autoMix)return;
+  autoMix=false;autoMixPendingStart=false;autoMixNextDeck=null;cancelFade();restoreAutoTone();
+  for(const d of decks){d.syncLock=false;d.cancelTempoReturn()}
+  updateAutoMixUI();autoDjStatus("Handmatig • jij hebt de controle");
+}
+
 /* auto fade */
 const FADE_BEATS=[4,8,16,32];let fadeIdx=2,fade=null;
 const fadeBtn=document.getElementById("fadeBtn"),fadeLen=document.getElementById("fadeLen");
@@ -2092,12 +2177,35 @@ function fadeDuration(ti){
   const bpm=ref?ref.bpm*ref.rate:120;
   return FADE_BEATS[fadeIdx]*60/bpm;
 }
-function startAutoFade(targetIndex=null){
+function startAutoFade(targetIndex=null,plan=null){
   if(fade){if(targetIndex==null) cancelFade();return}
   const ti=targetIndex==null?fadeTargetIdx():targetIndex,tgt=decks[ti],src=decks[1-ti];
-  if(!tgt.buffer){tgt.flash(fadeBtn);return}
+  if(!tgt.buffer&&!tgt.streamEl){tgt.flash(fadeBtn);return}
   ensureCtx();
   const consumeSource=src.playing;
+  if(plan){
+    const lead=Math.max(0,(plan.start-src.getPos())/src.eff());
+    src.cancelTempoReturn();tgt.cancelTempoReturn();src.syncLock=false;tgt.syncLock=false;
+    tgt.setRate(plan.rate);tgt.pitch.set(plan.rate-1,false);
+    tgt.seek(Math.max(0,plan.targetIntro-lead*tgt.eff()));
+    for(const d of [src,tgt]){
+      if(d.voiceSupported&&!d.voiceSync)d.toggleVoice();
+      d.n.autoLevel.gain.setTargetAtTime(d.mixAnalysis?.level||1,ctx.currentTime,.1);
+    }
+    state.xf=src.idx===0?-1:1;xfader.set(state.xf,false);applyXfade();
+    // Start the silent deck before the audible transition; align its beat phase.
+    if(plan.synced){
+      const beat=60/tgt.bpm,sourcePhase=((src.getPos()-src.beat0)/(60/src.bpm)%1+1)%1;
+      const desired=tgt.getPos(),targetPhase=((desired-tgt.beat0)/beat%1+1)%1;
+      let delta=sourcePhase-targetPhase;if(delta>.5)delta-=1;if(delta<-.5)delta+=1;
+      tgt.seek(Math.max(0,desired+delta*beat));
+    }
+    if(!tgt.playing){tgt.cueHeld=false;tgt.play()}
+    fade={from:state.xf,to:ti===1?1:-1,t0:ctx.currentTime+lead,dur:plan.duration,src,tgt,consumeSource,smart:true};
+    scheduleAutoCurve(fade);updateFadeUI();
+    autoDjStatus(plan.synced?"Auto DJ • beatmix "+Math.round(plan.duration*src.bpm*src.eff()/60)+" beats":"Auto DJ • vloeiende overgang (tempo onzeker)");
+    return;
+  }
   if(!tgt.playing){
     tgt.cueHeld=false;
     tgt.play();
@@ -2108,13 +2216,32 @@ function startAutoFade(targetIndex=null){
   fade={from:state.xf,to:ti===1?1:-1,t0:ctx.currentTime,dur:fadeDuration(ti),src,tgt,consumeSource};
   updateFadeUI();
 }
-function cancelFade(){if(fade){fade=null;updateFadeUI()}}
+function cancelFade(){
+  if(fade){
+    const f=fade;
+    if(f.smart&&ctx){
+      const p=clamp((ctx.currentTime-f.t0)/f.dur,0,1),e=p*p*(3-2*p);
+      state.xf=f.from+(f.to-f.from)*e;xfader.set(state.xf,false);
+      for(const d of decks)d.n.xf.gain.cancelScheduledValues(ctx.currentTime);
+      fade=null;applyXfade();restoreAutoTone();
+    }else fade=null;
+    updateFadeUI();
+  }
+}
 function tickFade(){
   if(!fade||!ctx) return;
   const p=clamp((ctx.currentTime-fade.t0)/fade.dur,0,1),e=p*p*(3-2*p);
-  xfader.set(fade.from+(fade.to-fade.from)*e);
+  if(fade.smart){state.xf=fade.from+(fade.to-fade.from)*e;xfader.set(state.xf,false)}
+  else xfader.set(fade.from+(fade.to-fade.from)*e);
   fadeBtn.style.setProperty("--prog",p);
-  if(p>=1){const s=fade.src,t=fade.tgt,consume=fade.consumeSource;fade=null;if(s.playing) s.pause();updateFadeUI();if(t.playing) t.scheduleTempoReturn();if(s.buffer&&consume) s.markDone();autoMixArmed=true;autoFill()}
+  if(p>=1){
+    const s=fade.src,t=fade.tgt,consume=fade.consumeSource,smart=fade.smart;fade=null;
+    if(s.playing)s.pause();
+    if(smart){s.n.autoLow.gain.setValueAtTime(0,ctx.currentTime);applyXfade()}
+    updateFadeUI();if(t.playing)t.scheduleTempoReturn();
+    if((s.buffer||s.streamEl)&&consume)s.markDone();autoMixArmed=true;autoFill();
+    if(autoMix)autoDjStatus("Auto DJ • volgende nummer voorbereiden");
+  }
 }
 function updateFadeUI(){
   const to=fade?(fade.to>0?"B":"A"):(fadeTargetIdx()===1?"B":"A");
@@ -2149,10 +2276,13 @@ const autoMixBtn=document.getElementById("autoMixBtn");
 function updateAutoMixUI(){
   autoMixBtn?.setAttribute("aria-pressed",String(autoMix));
   autoMixBtn?.classList.toggle("auto-mix-on",autoMix);
-  if(autoMixBtn) autoMixBtn.textContent=autoMix?"Auto \u2022 Aan":"Auto";
+  if(autoMixBtn) autoMixBtn.textContent=autoMix?"Auto DJ • Aan":"Auto DJ";
 }
 autoMixBtn?.addEventListener("click",()=>{
-  autoMix=!autoMix;
+  if(autoMix){takeOverAutoDj();return}
+  ensureCtx();autoMix=true;
+  for(const d of decks)if(d.voiceSupported&&!d.voiceSync)d.toggleVoice();
+  autoDjStatus("Auto DJ • playlist voorbereiden");
   autoMixArmed=true;
   autoMixPendingStart=autoMix&&!decks.some(d=>d.playing);
   autoMixNextDeck=autoMixPendingStart?(state.xf<=0?0:1):null;
@@ -2166,21 +2296,29 @@ function tickAutoMix(){
   if(!playing.length&&autoMixPendingStart){
     const preferred=autoMixNextDeck==null?null:decks[autoMixNextDeck];
     if(preferred?.loading)return;
-    const tgt=preferred&&preferred.buffer&&!preferred.done?preferred:decks.find(d=>d.buffer&&!d.loading&&!d.done&&!d.scr);
-    if(tgt){autoMixPendingStart=false;autoMixNextDeck=null;startAutoFade(decks.indexOf(tgt))}
+    const tgt=preferred&&(preferred.buffer||preferred.streamEl)&&!preferred.done?preferred:decks.find(d=>(d.buffer||d.streamEl)&&!d.loading&&!d.done&&!d.scr);
+    if(tgt){autoMixPendingStart=false;autoMixNextDeck=null;startAutoFade(decks.indexOf(tgt));autoDjStatus("Auto DJ • speelt")}
+    else if(!decks.some(d=>d.loading)&&!nextQueued())autoDjStatus("Auto DJ • playlist afgelopen");
     return;
   }
   if(playing.length!==1){autoMixArmed=true;return}
   const src=playing[0],ti=src===decks[0]?1:0,tgt=decks[ti];
-  if(!tgt.buffer||tgt.loading||tgt.done||tgt.scr||tgt.playing){autoMixArmed=true;return}
-  const remaining=Math.max(0,(src.dur-src.getPos())/Math.max(0.01,src.eff()));
-  const transition=fadeDuration(ti);
-  if(remaining>transition+0.35){autoMixArmed=true;return}
+  if((!tgt.buffer&&!tgt.streamEl)||tgt.loading||tgt.done||tgt.scr||tgt.playing){
+    autoMixArmed=true;autoDjStatus(tgt.loading?"Auto DJ • volgende nummer laden":"Auto DJ • wacht op volgende nummer");return;
+  }
+  const plan=planAutoTransition(src,tgt,FADE_BEATS[fadeIdx]);
+  if(src.getPos()<plan.start-2*src.eff()){autoMixArmed=true;return}
   if(!autoMixArmed) return;
   autoMixArmed=false;
-  startAutoFade(ti);
+  startAutoFade(ti,plan);
 }
 updateAutoMixUI();
+// Capture genuine user interaction before deck controls run; automation emits no DOM events.
+for(const name of ["pointerdown","keydown","click"])document.addEventListener(name,event=>{
+  if(event.target.closest?.("#deckA,#deckB,#xfader,#fadeBtn,#fadeLen,#autoSyncBtn"))takeOverAutoDj();
+},true);
+// Audio curves run on the audio clock; this timer handles completion and loading in hidden windows.
+setInterval(()=>{if(autoMix){tickFade();for(const d of decks)d.tick();tickAutoMix()}},100);
 
 const covers={A:document.querySelector("#meterA .cover"),B:document.querySelector("#meterB .cover"),M:document.querySelector("#meterM .cover")};
 function frame(){
@@ -2591,11 +2729,11 @@ autoBtn.addEventListener("click",()=>{
 function nextQueued(){return lib.find(t=>t.status==="queued")}
 function autoFill(){
   if(!(autoLoad||autoMix)||playlistRestoring||playlistClearing) return;
-  if(autoMix&&!decks.some(d=>d.playing)&&decks.some(d=>d.loading||(d.buffer&&!d.done)))return;
+  if(autoMix&&!decks.some(d=>d.playing)&&decks.some(d=>d.loading||((d.buffer||d.streamEl)&&!d.done)))return;
   for(const d of decks){
     if(fade&&d===fade.src)continue;
     if(d.loading||d.playing||d.scr) continue;
-    if(d.buffer&&!d.done) continue;
+    if((d.buffer||d.streamEl)&&!d.done) continue;
     const t=nextQueued();if(!t) return;
     t.status="loading";renderLib();playlistWrite();d.load(t.file,t);
   }
@@ -2733,7 +2871,7 @@ document.getElementById("libBtn").addEventListener("click",()=>library.classList
 document.getElementById("libClose").addEventListener("click",()=>library.classList.remove("open"));
 libList.addEventListener("click",e=>{if(e.target.closest("button")) library.classList.remove("open")});
 
-const WINDOWS_BUILD=235;
+const WINDOWS_BUILD=237;
 const updateBtn=document.getElementById("updateBtn");
 updateBtn?.addEventListener("click",async()=>{
   const old=updateBtn.textContent;updateBtn.disabled=true;updateBtn.textContent="Controleren\u2026";
@@ -2794,4 +2932,5 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",()=>decks
 </script>
 </body>
 </html>
+
 
