@@ -1288,7 +1288,14 @@ class Deck{
     this.returnAt=Math.abs(this.rate-1)<0.0005?null:ctx.currentTime+delay;
   }
   cancelTempoReturn(){this.returnAt=null;this.glide=null}
-  markDone(){this.done=true;if(this.libItem){this.libItem.status="played";renderLib();playlistWrite()}autoFill()}
+  markDone(){
+    this.done=true;
+    if(this.libItem){this.libItem.status="played";renderLib();playlistWrite()}
+    if(autoMix&&!decks.some(d=>d.playing)){
+      autoMixPendingStart=true;autoMixNextDeck=this.idx===0?1:0;
+    }
+    autoFill();
+  }
   play(){
     if(!this.buffer&&!this.streamEl) return;ensureCtx();this.done=false;
     if(this.pos>=this.dur-0.02) this.pos=0;
@@ -2313,7 +2320,8 @@ function tickAutoMix(){
   if(!autoMix||fade||!ctx) return;
   autoFill();
   const playing=decks.filter(d=>d.playing&&!d.scr);
-  if(!playing.length&&autoMixPendingStart){
+  if(!playing.length){
+    autoMixPendingStart=true;
     const preferred=autoMixNextDeck==null?null:decks[autoMixNextDeck];
     if(preferred?.loading)return;
     const tgt=preferred&&(preferred.buffer||preferred.streamEl)&&!preferred.done?preferred:decks.find(d=>(d.buffer||d.streamEl)&&!d.loading&&!d.done&&!d.scr);
@@ -2335,7 +2343,12 @@ function tickAutoMix(){
 updateAutoMixUI();
 // Capture genuine user interaction before deck controls run; automation emits no DOM events.
 for(const name of ["pointerdown","keydown","click"])document.addEventListener(name,event=>{
-  if(event.target.closest?.("#deckA,#deckB,#xfader,#fadeBtn,#fadeLen,#autoSyncBtn"))takeOverAutoDj();
+  if(!event.isTrusted)return;
+  const target=event.target;
+  if(event.type==="keydown"&&!["Enter"," ","ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Home"].includes(event.key))return;
+  // Scrolling, focus and automatic UI changes must not turn Auto DJ off.
+  if(target.closest?.("#xfader,#fadeBtn,#fadeLen,#autoSyncBtn")||
+     (target.closest?.("#deckA,#deckB")&&target.closest?.("button,.knob,.slider,.overview,.pad")))takeOverAutoDj();
 },true);
 // Audio curves run on the audio clock; this timer handles completion and loading in hidden windows.
 setInterval(()=>{if(autoMix){tickFade();for(const d of decks)d.tick();tickAutoMix()}},100);
