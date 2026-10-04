@@ -396,7 +396,8 @@ class CarPlayerActivity : AppCompatActivity() {
         }
 
         autoButton.setOnClickListener {
-            startActivity(Intent(this, CarAutoDjActivity::class.java))
+            UsbPlaybackService.setAutoDjEnabled(this, !UsbPlaybackService.isAutoDjEnabled(this))
+            refreshPlayer()
         }
 
         findViewById<TextView>(R.id.playerPrevious).setOnClickListener {
@@ -569,8 +570,8 @@ class CarPlayerActivity : AppCompatActivity() {
         muteB.text =
             if (UsbPlaybackService.isDeckBMuted(this)) "🔇 Muted" else "🔊 Mute"
 
-        val auto = UsbPlaybackService.isAutoPlayEnabled(this)
-        autoButton.text = "Auto DJ"
+        val auto = UsbPlaybackService.isAutoDjEnabled(this)
+        autoButton.text = if (auto) "Auto DJ • Aan" else "Auto DJ • Uit"
         autoButton.setTextColor(
             ContextCompat.getColor(
                 this,
@@ -903,3 +904,4 @@ class CarPlayerActivity : AppCompatActivity() {
     private val Int.dp: Int
         get() = (this * resources.displayMetrics.density).toInt()
 }
+
