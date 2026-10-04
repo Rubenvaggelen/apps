@@ -23,10 +23,14 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val event = GeofencingEvent.fromIntent(intent) ?: return
-        if (event.hasError()) return
+        if (event.hasError()) {
+            android.util.Log.w("SupermarketGeofence","Geofence event error: "+event.errorCode)
+            if(SupermarketGeofenceManager.isEnabled(context))SupermarketRefreshWorker.schedule(context)
+            return
+        }
 
         val triggeringIds = event.triggeringGeofences?.map { it.requestId } ?: emptyList()
-        val isSupermarketTransition = triggeringIds.any { it.startsWith("supermarkt_") }
+        val isSupermarketTransition = SupermarketGeofenceManager.isEnabled(context) && triggeringIds.any { it.startsWith("supermarkt_") }
 
         // Widget bijwerken: lijst zichtbaar bij aankomst, verbergen bij vertrek.
         if (isSupermarketTransition) {
@@ -43,7 +47,14 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             val pending = ShoppingListStore.getAll().filter { !it.done }
             if (pending.isNotEmpty()) {
                 val items = pending.map { it.text }
-                showSupermarketNotification(context, items)
+                val reminders=context.getSharedPreferences("supermarket_reminder_delivery",Context.MODE_PRIVATE)
+                val key=triggeringIds.filter { it.startsWith("supermarkt_") }.sorted().joinToString("|")
+                val now=System.currentTimeMillis()
+                if(now-reminders.getLong(key,0L)>=15*60*1000L &&
+                   androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()){
+                    showSupermarketNotification(context,items)
+                    reminders.edit().putLong(key,now).apply()
+                }
                 if (CarRadioConnectionService.isRadioConnected()) {
                     CarRadioConnectionService.sendSupermarketAlert(items)
                 }
