@@ -46,11 +46,19 @@ dependencies {
 
 
 tasks.register("syncDjEngine", Copy) {
-    from rootProject.file("windows/the-one-dj/index.html")
+    from rootProject.file("windows/the-one-dj")
+    include "index.html", "dj-logo.jpg", "dj-logo.svg"
     into project.file("src/main/assets")
-    rename { "index.html" }
 }
 
 tasks.named("preBuild").configure {
     dependsOn("syncDjEngine")
 }
+
+
+tasks.register("syncDjBranding", Copy) {
+    from rootProject.file("windows/the-one-dj/dj-logo.jpg")
+    into project.file("src/main/res/drawable-nodpi")
+    rename { "the_one_dj_logo.jpg" }
+}
+tasks.named("preBuild").configure { dependsOn("syncDjBranding") }
