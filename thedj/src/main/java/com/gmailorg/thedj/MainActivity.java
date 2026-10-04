@@ -55,6 +55,12 @@ public class MainActivity extends Activity {
         s.setAllowContentAccess(true);
 
         web.addJavascriptInterface(new Object() {
+            @JavascriptInterface public void openUpdates() {
+                runOnUiThread(() -> {
+                    try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Rubenvaggelen/apps/releases?q=dj-v"))); }
+                    catch (ActivityNotFoundException ignored) {}
+                });
+            }
             @JavascriptInterface public void toggleFullscreen() {
                 runOnUiThread(() -> toggleSystemBars());
             }
