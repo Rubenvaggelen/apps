@@ -449,7 +449,7 @@ html.in-app body{height:auto;min-height:100dvh;overflow:visible}
     </div>
     <div class="top-actions">
     <button class="btn small hp-btn" id="hpBtn" aria-haspopup="dialog" aria-label="Koptelefoon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15v-3a8 8 0 0 1 16 0v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="3" y="14" width="5" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="16" y="14" width="5" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg><span class="hp-label">Koptelefoon</span></button>
-    <button class="btn small" id="autoMixBtn" aria-pressed="false" title="Automatisch mixen; bedien een deck om over te nemen">Auto DJ</button>
+    <button class="btn small" id="autoMixBtn" aria-pressed="false" title="Automatisch mixen; blijft aan tot je Auto DJ zelf uitzet">Auto DJ</button>
     <span id="autoDjStatus" role="status" aria-live="polite"></span>
     <button class="btn small auto-mix-on" id="autoSyncBtn" aria-pressed="true">Auto Sync &bull; Aan</button>
     <button class="btn small only-compact" id="libBtn">Nummers</button>
@@ -2341,15 +2341,7 @@ function tickAutoMix(){
   startAutoFade(ti,plan);
 }
 updateAutoMixUI();
-// Capture genuine user interaction before deck controls run; automation emits no DOM events.
-for(const name of ["pointerdown","keydown","click"])document.addEventListener(name,event=>{
-  if(!event.isTrusted)return;
-  const target=event.target;
-  if(event.type==="keydown"&&!["Enter"," ","ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Home"].includes(event.key))return;
-  // Scrolling, focus and automatic UI changes must not turn Auto DJ off.
-  if(target.closest?.("#xfader,#fadeBtn,#fadeLen,#autoSyncBtn")||
-     (target.closest?.("#deckA,#deckB")&&target.closest?.("button,.knob,.slider,.overview,.pad")))takeOverAutoDj();
-},true);
+// Auto DJ stays enabled until its own button is explicitly switched off.
 // Audio curves run on the audio clock; this timer handles completion and loading in hidden windows.
 setInterval(()=>{if(autoMix){tickFade();for(const d of decks)d.tick();tickAutoMix()}},100);
 
