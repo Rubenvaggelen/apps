@@ -3876,7 +3876,7 @@ class MoviesActivity : AppCompatActivity() {
     }
     private fun startMediaPlayer(entry: MediaPlayerCatalog.Entry,episode: Boolean) {
         if(youtubeActive)musicWebPlayer.evaluateJavascript("window.theOneStop && window.theOneStop();",null)
-        if(SupremacyPlaybackService.isActive(this))sendSupremacyAction(SupremacyPlaybackService.ACTION_PAUSE)
+        if(SupremacyPlaybackService.isPlaying(this))sendSupremacyAction(SupremacyPlaybackService.ACTION_TOGGLE)
         startActivity(Intent(this,MediaCatalogPlaybackActivity::class.java).putExtra("id",entry.id)
             .putExtra("title",entry.title).putExtra("extension",entry.extension).putExtra("episode",episode))
     }
