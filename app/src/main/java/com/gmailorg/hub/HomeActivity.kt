@@ -480,7 +480,7 @@ class HomeAdapter(
         holder.label.text = tile.label
         val context = holder.itemView.context
 
-        val iconDrawable = if (tile.id == "com.gmailorg.thedj") ContextCompat.getDrawable(context, R.drawable.the_one_dj_logo) else if (tile.id == "com.gmailorg.runcoach") ContextCompat.getDrawable(context, R.drawable.ic_home_fitness_fancy) else when (tile.type) {
+        val iconDrawable = if (tile.id == "com.gmailorg.thedj") ContextCompat.getDrawable(context, R.drawable.the_one_dj_logo) else if (tile.id == "com.gmailorg.runcoach") ContextCompat.getDrawable(context, R.drawable.the_one_run_logo) else when (tile.type) {
             TileType.NOTIFICATIONS -> ContextCompat.getDrawable(context, R.drawable.ic_home_notifications_fancy)
             TileType.MAIL -> ContextCompat.getDrawable(context, R.drawable.ic_home_mail_fancy)
             TileType.ROUTE -> ContextCompat.getDrawable(context, R.drawable.ic_home_route_fancy)
