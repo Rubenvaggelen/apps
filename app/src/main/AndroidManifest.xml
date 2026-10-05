@@ -21,6 +21,7 @@
 
     <queries>
         <package android:name="com.gmailorg.thedj" />
+        <package android:name="com.gmailorg.runcoach" />
         <package android:name="nl.amsterdam.app" />
         <package android:name="com.android.vending" />
         <package android:name="com.waze" />

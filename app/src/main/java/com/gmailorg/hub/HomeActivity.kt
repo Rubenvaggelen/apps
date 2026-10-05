@@ -137,6 +137,7 @@ class HomeActivity : AppCompatActivity() {
             HomeTile(id = "currency", type = TileType.CURRENCY, label = "Koers (EUR / SRD / USD)"),
             HomeTile(id = "lifestyle", type = TileType.LIFESTYLE, label = "Lifestyle"),
             HomeTile(id = "com.gmailorg.thedj", type = TileType.APP, label = "The One DJ", packageName = "com.gmailorg.thedj"),
+            HomeTile(id = "com.gmailorg.runcoach", type = TileType.APP, label = "The One Run", packageName = "com.gmailorg.runcoach"),
             HomeTile(id = "remote_pc", type = TileType.REMOTE_PC, label = "Laptop"),
             HomeTile(id = "whatsapp", type = TileType.APP, label = "WhatsApp", packageName = "com.whatsapp"),
             HomeTile(id = "googlehome", type = TileType.APP, label = "Google Home", packageName = "com.google.android.apps.chromecast.app")
@@ -144,13 +145,14 @@ class HomeActivity : AppCompatActivity() {
             // Vaste snelkoppelingen naar apps (WhatsApp, Google Home) alleen
             // tonen als die app ook daadwerkelijk geïnstalleerd staat —
             // anders zie je een leeg "+"-icoontje voor een niet-bestaande app.
-            (tile.id == "com.gmailorg.thedj" || tile.packageName == null || isPackageInstalled(tile.packageName)) &&
+            (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") || tile.packageName == null || isPackageInstalled(tile.packageName)) &&
                 (tile.id != "com.gmailorg.thedj" || MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_DJ)) &&
+                (tile.id != "com.gmailorg.runcoach" || MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_RUN)) &&
                 (tile.id != "remote_pc" || MainDeviceRegistry.isLocallyOwner(this)) &&
-                !HiddenTilesStore.isHidden(tile.id)
+                ((tile.id == "com.gmailorg.runcoach" && MainDeviceRegistry.isLocallyOwner(this)) || !HiddenTilesStore.isHidden(tile.id))
         }
         val userApps = ShortcutStore.getAll().filter {
-            !HiddenTilesStore.isHidden(it.id) && it.packageName != "com.gmailorg.thedj"
+            !HiddenTilesStore.isHidden(it.id) && it.packageName !in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach")
         }
         val addButton = HomeTile(id = "add", type = TileType.ADD_BUTTON, label = "App toevoegen")
         adapter.updateTiles(fixed + userApps + addButton)
@@ -158,6 +160,7 @@ class HomeActivity : AppCompatActivity() {
 
     private fun handleTileClick(tile: HomeTile) {
         if (tile.id == "com.gmailorg.thedj") { openDj(); return }
+        if (tile.id == "com.gmailorg.runcoach") { openRun(); return }
         when (tile.type) {
             TileType.NOTIFICATIONS -> startActivity(Intent(this, NotificationsActivity::class.java))
             TileType.MAIL -> openMailInCustomTab()
@@ -184,12 +187,13 @@ class HomeActivity : AppCompatActivity() {
 
     private fun handleTileLongClick(tile: HomeTile): Boolean {
         if (tile.type == TileType.ADD_BUTTON) return false
+        if (tile.id == "com.gmailorg.runcoach" && MainDeviceRegistry.isLocallyOwner(this)) return true
 
         AlertDialog.Builder(this)
             .setTitle("Tegel verbergen?")
             .setMessage("\"${tile.label}\" wordt van het startscherm verwijderd. Je kunt 'm later terugzetten via Instellingen.")
             .setPositiveButton("Verbergen") { _, _ ->
-                if (tile.type == TileType.APP && tile.packageName != null && tile.packageName != "com.gmailorg.thedj" &&
+                if (tile.type == TileType.APP && tile.packageName != null && tile.packageName !in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") &&
                     ShortcutStore.getAll().any { it.packageName == tile.packageName }
                 ) {
                     // Zelf toegevoegde app-snelkoppeling: gewoon volledig verwijderen,
@@ -401,6 +405,23 @@ class HomeActivity : AppCompatActivity() {
         intent.launchUrl(this, Uri.parse("$mailUrl#route-standalone"))
     }
 
+    private fun openRun() {
+        if (!MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_RUN)) {
+            Toast.makeText(this, "The One Run is alleen beschikbaar met toestemming van de eigenaar.", Toast.LENGTH_LONG).show()
+            refreshTiles()
+            return
+        }
+        val launch = packageManager.getLaunchIntentForPackage("com.gmailorg.runcoach")
+        if (launch != null) startActivity(launch)
+        else AlertDialog.Builder(this)
+            .setTitle("The One Run installeren")
+            .setMessage("Installeer de aparte The One Run-app. Daarna opent deze vaste tegel de app.")
+            .setNegativeButton("Annuleren", null)
+            .setPositiveButton("Download") { _, _ ->
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Rubenvaggelen/apps/releases?q=run-v")))
+            }.show()
+    }
+
     private fun openDj() {
         if (!MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_DJ)) {
             Toast.makeText(this, "DJ is alleen beschikbaar met toestemming van de beheerder.", Toast.LENGTH_LONG).show()
@@ -459,7 +480,7 @@ class HomeAdapter(
         holder.label.text = tile.label
         val context = holder.itemView.context
 
-        val iconDrawable = if (tile.id == "com.gmailorg.thedj") ContextCompat.getDrawable(context, R.drawable.the_one_dj_logo) else when (tile.type) {
+        val iconDrawable = if (tile.id == "com.gmailorg.thedj") ContextCompat.getDrawable(context, R.drawable.the_one_dj_logo) else if (tile.id == "com.gmailorg.runcoach") ContextCompat.getDrawable(context, R.drawable.ic_home_fitness_fancy) else when (tile.type) {
             TileType.NOTIFICATIONS -> ContextCompat.getDrawable(context, R.drawable.ic_home_notifications_fancy)
             TileType.MAIL -> ContextCompat.getDrawable(context, R.drawable.ic_home_mail_fancy)
             TileType.ROUTE -> ContextCompat.getDrawable(context, R.drawable.ic_home_route_fancy)

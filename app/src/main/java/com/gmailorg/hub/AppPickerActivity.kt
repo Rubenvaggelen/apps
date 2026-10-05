@@ -29,7 +29,7 @@ class AppPickerActivity : AppCompatActivity() {
 
         val ownPackage = packageName
         val apps = resolved
-            .filter { it.activityInfo.packageName != ownPackage }
+            .filter { it.activityInfo.packageName != ownPackage && it.activityInfo.packageName != "com.gmailorg.runcoach" }
             .map {
                 InstalledApp(
                     label = it.loadLabel(pm).toString(),

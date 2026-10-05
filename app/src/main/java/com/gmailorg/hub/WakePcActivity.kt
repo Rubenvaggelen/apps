@@ -412,6 +412,12 @@ class WakePcActivity : AppCompatActivity() {
                     device.pendingDj
                 )
                 addAccessControl(
+                    "The One Run",
+                    MainDeviceRegistry.ACCESS_RUN,
+                    device.runRights,
+                    device.pendingRun
+                )
+                addAccessControl(
                     "Muziek organiseren",
                     MainDeviceRegistry.ACCESS_ORGANIZE,
                     device.downloadsRights,

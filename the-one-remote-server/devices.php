@@ -109,7 +109,7 @@ function clean_device_id(string $value): string {
 
 function clean_access_scope(string $value): string {
     $scope = strtolower(trim($value));
-    if (!in_array($scope, ['media_player', 'mixes', 'shared', 'favorites', 'dj', 'downloads', 'download_files'], true)) {
+    if (!in_array($scope, ['media_player', 'mixes', 'shared', 'favorites', 'dj', 'run', 'downloads', 'download_files'], true)) {
         respond_devices(400, ['ok' => false, 'error' => 'Invalid access scope']);
     }
     return $scope;
@@ -124,6 +124,7 @@ function device_access_rights(array $device): array {
         'shared' => (bool)($stored['shared'] ?? $legacy),
         'favorites' => (bool)($stored['favorites'] ?? $legacy),
         'dj' => (bool)($stored['dj'] ?? false),
+        'run' => (bool)($stored['run'] ?? false),
         // Nieuwe downloads blijft standaard privé. Legacy muziekrechten geven
         // dit beheerrecht bewust niet automatisch.
         'downloads' => (bool)($stored['downloads'] ?? false),
@@ -136,7 +137,7 @@ function device_access_rights(array $device): array {
 function device_access_requests(array $device): array {
     $stored = is_array($device['access_requests'] ?? null) ? $device['access_requests'] : [];
     $result = [];
-    foreach (['media_player', 'mixes', 'shared', 'favorites', 'dj', 'downloads', 'download_files'] as $scope) {
+    foreach (['media_player', 'mixes', 'shared', 'favorites', 'dj', 'run', 'downloads', 'download_files'] as $scope) {
         $row = is_array($stored[$scope] ?? null) ? $stored[$scope] : [];
         if (($row['status'] ?? '') === 'pending') {
             $result[$scope] = [
@@ -191,7 +192,7 @@ if ($action === 'heartbeat') {
     $existingRights = device_access_rights($old);
     $carFullAccess = $deviceRole === 'car';
     $scopedRights = $carFullAccess
-        ? ['media_player' => true, 'mixes' => true, 'shared' => true, 'favorites' => true, 'dj' => false, 'downloads' => false, 'download_files' => false]
+        ? ['media_player' => true, 'mixes' => true, 'shared' => true, 'favorites' => true, 'dj' => false, 'run' => false, 'downloads' => false, 'download_files' => false]
         : $existingRights;
 
     $state['devices'][$deviceId] = [
@@ -213,7 +214,7 @@ if ($action === 'heartbeat') {
     $owner = $ownerId !== '' && hash_equals($ownerId, $deviceId);
     $rights = device_access_rights($state['devices'][$deviceId]);
     if ($owner) {
-        $rights = ['media_player' => true, 'mixes' => true, 'shared' => true, 'favorites' => true, 'dj' => true, 'downloads' => true, 'download_files' => true];
+        $rights = ['media_player' => true, 'mixes' => true, 'shared' => true, 'favorites' => true, 'dj' => true, 'run' => true, 'downloads' => true, 'download_files' => true];
     }
     respond_devices(200, [
         'ok' => true,
@@ -456,7 +457,7 @@ if ($action === 'list') {
         $d['owner'] = $owner;
         $d['music_rights'] = $owner || (bool)($d['music_rights'] ?? false);
         $d['access_rights'] = $owner
-            ? ['media_player' => true, 'mixes' => true, 'shared' => true, 'favorites' => true, 'dj' => true, 'downloads' => true, 'download_files' => true]
+            ? ['media_player' => true, 'mixes' => true, 'shared' => true, 'favorites' => true, 'dj' => true, 'run' => true, 'downloads' => true, 'download_files' => true]
             : device_access_rights($d);
         $d['access_requests'] = device_access_requests($d);
         $d['person_name'] = $personName;
@@ -521,6 +522,7 @@ if ($action === 'set_music_rights') {
         'shared' => $ownerTarget ? true : $enabled,
         'favorites' => $ownerTarget ? true : $enabled,
         'dj' => false,
+        'run' => $ownerTarget ? true : (bool)($existingScoped['run'] ?? false),
         'downloads' => $ownerTarget ? true : false,
         'download_files' => $ownerTarget ? true : false
     ];
