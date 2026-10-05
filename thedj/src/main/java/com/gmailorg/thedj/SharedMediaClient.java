@@ -163,6 +163,35 @@ final class SharedMediaClient {
             for(String h:new String[]{"Content-Length","Content-Range","Accept-Ranges"}){String value=c.getHeaderField(h);if(value!=null)headers.put(h,value);}
             String mime=c.getContentType();if(mime==null)mime="audio/mpeg";mime=mime.split(";")[0];
             if(head){c.disconnect();return new WebResourceResponse(mime,null,code,"OK",headers,new ByteArrayInputStream(new byte[0]));}
+            // Long MP3 mixes and range requests must retain progressive playback.
+            if(range!=null||(file.toLowerCase(java.util.Locale.ROOT).endsWith(".mp3")&&c.getContentLengthLong()>=24L*1024*1024)){
+                InputStream stream=new FilterInputStream(c.getInputStream()){
+                private boolean released;
+                private long remaining=c.getContentLengthLong();
+                private void consumed(int count) throws IOException {
+                    if(count<0){release();return;}
+                    if(remaining>=0){remaining-=count;if(remaining<=0)release();}
+                }
+                private void release() throws IOException {
+                    if(released)return;
+                    released=true;
+                    try{super.close();}finally{c.disconnect();}
+                }
+                @Override public int read() throws IOException {
+                    if(released)return -1;
+                    try{int n=in.read();consumed(n<0?-1:1);return n;}
+                    catch(IOException e){try{release();}catch(IOException ignored){}throw e;}
+                }
+                @Override public int read(byte[] b,int offset,int length) throws IOException {
+                    if(length==0)return 0;
+                    if(released)return -1;
+                    try{int n=in.read(b,offset,length);consumed(n);return n;}
+                    catch(IOException e){try{release();}catch(IOException ignored){}throw e;}
+                }
+                @Override public void close() throws IOException {release();}
+            };
+                return new WebResourceResponse(mime,null,code,code==206?"Partial Content":"OK",headers,stream);
+            }
             // Finish the network transfer before handing audio to WebView. A WebView
             // consumer must never retain an upstream socket or receive partial audio.
             java.io.File audio=java.io.File.createTempFile("dj-transfer-",".audio",activity.getCacheDir());
