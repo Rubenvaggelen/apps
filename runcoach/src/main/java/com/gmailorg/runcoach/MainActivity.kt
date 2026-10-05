@@ -6,6 +6,7 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.Outline
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
@@ -16,8 +17,10 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.view.WindowInsets
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -149,8 +152,7 @@ class MainActivity : Activity() {
     // ------------------------------------------------------------------ startscherm
 
     private fun buildSetup() {
-        root.addView(tv("The One Run", 30f, TEXT, true))
-        root.addView(tv("part of The One family", 14f, MUTED))
+        root.addView(header())
 
         addSection("Doel")
         root.addView(
@@ -312,7 +314,8 @@ class MainActivity : Activity() {
     // ------------------------------------------------------------------ samenvatting
 
     private fun buildSummary(s: RunSnapshot) {
-        root.addView(tv("Training voltooid", 28f, TEXT, true))
+        root.addView(header())
+        root.addView(tv("Training voltooid", 28f, TEXT, true), lp(top = 20))
 
         fun line(label: String, value: String, color: Int = TEXT) {
             val r = row().apply { gravity = Gravity.CENTER_VERTICAL }
@@ -444,6 +447,27 @@ class MainActivity : Activity() {
         LinearLayout.LayoutParams(w, h).apply { topMargin = dp(top) }
 
     private fun row() = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+
+    /** Kop: rond The One-logo links, daarnaast de appnaam met de familieregel eronder. */
+    private fun header(): LinearLayout {
+        val logo = ImageView(this).apply {
+            setImageResource(R.drawable.the_one_logo)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: Outline) = outline.setOval(0, 0, view.width, view.height)
+            }
+            clipToOutline = true
+            contentDescription = "The One"
+        }
+        val text = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        text.addView(tv("The One Run", 30f, TEXT, true))
+        text.addView(tv("PART OF THE ONE FAMILY", 11f, MUTED, true).apply { letterSpacing = 0.18f })
+        return row().apply {
+            gravity = Gravity.CENTER_VERTICAL
+            addView(logo, LinearLayout.LayoutParams(dp(54), dp(54)))
+            addView(text, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = dp(12) })
+        }
+    }
 
     private fun addSection(title: String) {
         root.addView(tv(title.uppercase(), 13f, MUTED, true), lp(top = 24))
