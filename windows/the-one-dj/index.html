@@ -549,7 +549,13 @@ html.in-app body{height:auto;min-height:100dvh;overflow:visible}
 <script>
 "use strict";
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
-const nextFrame=()=>new Promise(r=>setTimeout(r,16));
+const nativeBackgroundYields=new Set();
+const nextFrame=()=>new Promise(resolve=>{
+  let done=false;
+  const finish=()=>{if(done)return;done=true;nativeBackgroundYields.delete(finish);resolve()};
+  if(document.hidden&&typeof window.TheOneNative?.setBackgroundPlayback==="function")nativeBackgroundYields.add(finish);
+  setTimeout(finish,16);
+});
 const baseName=f=>f.name.replace(/\.[^.]+$/,"");
 const cleanImportedName=name=>String(name||"").replace(/^[0-9a-f]{12}-/i,"");
 function fmtTime(t){
@@ -925,7 +931,7 @@ async function decodeWithAndroid(file,ab,ac){
       if(!native.append(id,btoa(binary))){
         const e=new Error("upload failed");e.userMsg="Het audiobestand kon niet worden voorbereid; controleer beschikbare ruimte en probeer opnieuw.";throw e;
       }
-      await new Promise(resolve=>setTimeout(resolve,0));
+      await nextFrame();
     }
     if(!native.finish(id))throw new Error("decoder could not start");
     const result=await fetch("/native-audio/"+encodeURIComponent(id),{cache:"no-store"});
@@ -1060,7 +1066,7 @@ async function voiceSyncWav(buffer){
     }
     parts.push(chunk);
     // Long mixes must not block the controls while the native source is prepared.
-    if(start%524288===0)await new Promise(resolve=>setTimeout(resolve,0));
+    if(start%524288===0)await nextFrame();
   }
   return new Blob(parts,{type:"audio/wav"});
 }
@@ -1542,7 +1548,7 @@ class Deck{
   async load(file,item=null){
     if(!file) return;
     ensureCtx();
-    const token=++this.loadToken;this.loading=true;this.loadingItem=item;
+    const token=++this.loadToken;this.loading=true;this.loadingItem=item;updateWake();
     this.ui.title.textContent=cleanImportedName(baseName(file));this.ui.sub.textContent="Bezig met laden";
     this.setBusy("Laden\u2026");
     try{
@@ -1583,7 +1589,7 @@ class Deck{
       this.ui.title.textContent="Dit bestand kan niet worden geopend";
       this.ui.sub.textContent=e?.userMsg||"Het nummer kon niet worden geladen. Tik op de melding in de playlist en probeer opnieuw.";
     }finally{
-      if(token===this.loadToken){this.setBusy(null);this.loading=false;this.loadingItem=null;renderLib();if(item&&item.status==="error") autoFill()}
+      if(token===this.loadToken){this.setBusy(null);this.loading=false;this.loadingItem=null;renderLib();if(item&&item.status==="error") autoFill();updateWake()}
     }
   }
   setBusy(msg){const b=this.ui.busy;if(msg){b.textContent=msg;b.hidden=false}else b.hidden=true}
@@ -2262,7 +2268,7 @@ function takeOverAutoDj(){
   saveAutoDjEnabled(false);
   autoMix=false;autoMixPendingStart=false;autoMixNextDeck=null;cancelFade();restoreAutoTone();
   for(const d of decks){d.syncLock=false;d.cancelTempoReturn()}
-  updateAutoMixUI();autoDjStatus("Handmatig • jij hebt de controle");
+  updateAutoMixUI();autoDjStatus("Handmatig • jij hebt de controle");updateWake();
 }
 
 /* auto fade */
@@ -2393,6 +2399,7 @@ autoMixBtn?.addEventListener("click",()=>{
   autoMixNextDeck=autoMixPendingStart?(state.xf<=0?0:1):null;
   updateAutoMixUI();
   if(autoMix) autoFill();
+  updateWake();
 });
 function tickAutoMix(){
   if(!autoMix||fade||!ctx) return;
@@ -2442,8 +2449,25 @@ function frame(){
 requestAnimationFrame(frame);
 
 let wakeLock=null;
+let nativePlaybackActive=null;
+window.theOneDjBackgroundTick=()=>{
+  if(!document.hidden){updateWake();return;}
+  for(const finish of [...nativeBackgroundYields])finish();
+  if(mediaRecoveryUntil&&Date.now()>=mediaRecoveryUntil){
+    clearTimeout(mediaRecoveryTimer);mediaRecoveryTimer=null;mediaRecoveryUntil=0;autoFill();
+  }
+  if(ctx){tickFade();for(const d of decks)d.tick();tickAutoMix();}
+  updateWake();
+};
 async function updateWake(){
   const any=decks.some(d=>d.playing);
+  const active=any||decks.some(d=>d.loading)||(autoMix&&(lib.some(t=>t.status==="queued")||decks.some(d=>(d.buffer||d.streamEl)&&!d.done)));
+  try{
+    if(typeof window.TheOneNative?.setBackgroundPlayback==="function"&&active!==nativePlaybackActive){
+      window.TheOneNative.setBackgroundPlayback(active);nativePlaybackActive=active;
+    }
+  }catch(e){}
+
   try{
     if(any&&!wakeLock&&navigator.wakeLock){wakeLock=await navigator.wakeLock.request("screen");wakeLock.addEventListener("release",()=>{wakeLock=null})}
     else if(!any&&wakeLock){await wakeLock.release();wakeLock=null}
@@ -3136,3 +3160,4 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",()=>decks
 </script>
 </body>
 </html>
+

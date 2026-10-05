@@ -33,6 +33,9 @@ public class MainActivity extends Activity {
     private NativeAudioDecoder audioDecoder;
     private ValueCallback<Uri[]> fileCallback;
     private boolean immersive = true;
+    private boolean playbackActive;
+    private boolean evaluating;
+    private long evaluationStarted;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -46,7 +49,9 @@ public class MainActivity extends Activity {
             .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
             .build();
 
+        DjPlaybackService.attach(this);
         web = new WebView(this);
+        web.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT,false);
         web.setBackgroundColor(Color.parseColor("#071019"));
         setContentView(web);
 
@@ -59,6 +64,9 @@ public class MainActivity extends Activity {
 
         web.addJavascriptInterface(audioDecoder,"TheOneAudioDecoder");
         web.addJavascriptInterface(new Object() {
+            @JavascriptInterface public void setBackgroundPlayback(boolean active) {
+                runOnUiThread(() -> setBackgroundPlaybackActive(active));
+            }
             @JavascriptInterface public void openUpdates() {
                 runOnUiThread(() -> {
                     try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Rubenvaggelen/apps/releases?q=dj-v"))); }
@@ -189,7 +197,41 @@ public class MainActivity extends Activity {
         web.saveState(outState);
     }
 
+    private void setBackgroundPlaybackActive(boolean active) {
+        if(isFinishing()||playbackActive==active)return;
+        Intent service=new Intent(this,DjPlaybackService.class);
+        if(active){
+            try{startForegroundService(service);playbackActive=true;}
+            catch(RuntimeException e){
+                android.widget.Toast.makeText(this,"DJ kon achtergrondafspelen niet starten. Open DJ opnieuw.",
+                    android.widget.Toast.LENGTH_LONG).show();
+            }
+        }else{playbackActive=false;stopService(service);}
+    }
+    void pumpBackgroundPlayback(){
+        if(web==null||isFinishing())return;
+        long now=android.os.SystemClock.elapsedRealtime();
+        if(evaluating&&now-evaluationStarted<5000)return;
+        evaluating=true;evaluationStarted=now;
+        web.evaluateJavascript("window.theOneDjBackgroundTick&&window.theOneDjBackgroundTick()",
+            ignored->evaluating=false);
+    }
+    @Override protected void onStart(){
+        super.onStart();DjPlaybackService.background(false);
+    }
+    @Override protected void onResume(){
+        super.onResume();
+        if(web!=null){web.onResume();web.resumeTimers();}
+    }
+    @Override protected void onStop(){
+        DjPlaybackService.background(true);
+        // DJ's timers and audio are intentionally not paused when WhatsApp opens.
+        super.onStop();
+    }
     @Override protected void onDestroy() {
+        DjPlaybackService.detach(this);
+        stopService(new Intent(this,DjPlaybackService.class));
+        playbackActive=false;
         if (web!=null) { web.loadUrl("about:blank"); web.destroy(); }
         if(audioDecoder!=null)audioDecoder.close();
         super.onDestroy();
