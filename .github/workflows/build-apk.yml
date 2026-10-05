@@ -64,7 +64,7 @@ jobs:
             | head -1 \
             | tr -d ':' \
             | tr '[:upper:]' '[:lower:]')
-          for APK in "app/build/outputs/apk/debug/app-debug.apk" "carradio/build/outputs/apk/debug/carradio-debug.apk" "remoteapp/build/outputs/apk/debug/remoteapp-debug.apk" "thedj/build/outputs/apk/debug/thedj-debug.apk"; do
+          for APK in "app/build/outputs/apk/debug/app-debug.apk" "carradio/build/outputs/apk/debug/carradio-debug.apk" "runcoach/build/outputs/apk/debug/runcoach-debug.apk" "remoteapp/build/outputs/apk/debug/remoteapp-debug.apk" "thedj/build/outputs/apk/debug/thedj-debug.apk"; do
             APK_CERT=$($APKSIGNER verify --print-certs "$APK" \
               | sed -n 's/.*certificate SHA-256 digest: //p' \
               | head -1 \
@@ -98,6 +98,12 @@ jobs:
           name: the-one-car-radio-apk
           path: carradio/build/outputs/apk/debug/carradio-debug.apk
 
+      - name: Upload The One Run APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: the-one-run-apk
+          path: runcoach/build/outputs/apk/debug/runcoach-debug.apk
+
       - name: Upload The One Remote APK as artifact
         uses: actions/upload-artifact@v4
         with:
@@ -118,6 +124,7 @@ jobs:
           files: |
             app/build/outputs/apk/debug/app-debug.apk
             carradio/build/outputs/apk/debug/carradio-debug.apk
+            runcoach/build/outputs/apk/debug/runcoach-debug.apk
             remoteapp/build/outputs/apk/debug/remoteapp-debug.apk
             thedj/build/outputs/apk/debug/thedj-debug.apk
         env:

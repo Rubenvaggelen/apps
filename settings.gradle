@@ -16,5 +16,6 @@ dependencyResolutionManagement {
 rootProject.name = "GmailOrgHub"
 include ':app'
 include ':carradio'
+include ':runcoach'
 include ':remoteapp'
 include ':thedj'
