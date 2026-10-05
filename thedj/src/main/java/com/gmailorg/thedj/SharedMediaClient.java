@@ -31,6 +31,9 @@ final class SharedMediaClient {
     private String token="";
     private long expires=0;
     private boolean nameDialog=false;
+    private static final class AccessError extends IOException {
+        AccessError(String message){super(message);}
+    }
 
     SharedMediaClient(Activity activity) {
         this.activity=activity;
@@ -91,12 +94,12 @@ final class SharedMediaClient {
             .put("device_id",deviceId).put("name","The One DJ • "+Build.MODEL)
             .put("person_name",name).put("platform","Android "+Build.VERSION.RELEASE)
             .put("version",activity.getPackageManager().getPackageInfo(activity.getPackageName(),0).versionName));
-        if(heartbeat.optBoolean("blocked"))throw new IOException("Dit DJ-apparaat is geblokkeerd in Main.");
+        if(heartbeat.optBoolean("blocked"))throw new AccessError("Dit DJ-apparaat is geblokkeerd in Main.");
         JSONObject status=post("devices.php","access_status",new JSONObject().put("device_id",deviceId).put("scope","dj"));
         if(!status.optBoolean("allowed")){
             if(!status.optBoolean("pending"))post("devices.php","request_access",new JSONObject().put("device_id",deviceId).put("scope","dj"));
             token="";expires=0;
-            throw new IOException("Toestemming gevraagd. Keur ‘The One DJ • "+Build.MODEL+"’ voor DJ goed in Main en open Shared Media opnieuw.");
+            throw new AccessError("Toestemming gevraagd. Keur ‘The One DJ • "+Build.MODEL+"’ voor DJ goed in Main en open Shared Media opnieuw.");
         }
         if(token.isEmpty()||System.currentTimeMillis()>=expires){
             JSONObject session=post("music.php","browse-login",new JSONObject());
@@ -115,7 +118,9 @@ final class SharedMediaClient {
             if(path.equals("/shared-media/inbox"))return json(200,"{\"items\":[]}");
             if(!path.equals("/shared-media/catalog")&&!path.equals("/shared-media/file"))
                 return json(404,"{\"error\":\"Deze functie is niet beschikbaar op Android\"}");
-            if(!"GET".equals(request.getMethod()))return json(405,"{\"error\":\"Alleen lezen toegestaan\"}");
+            boolean head="HEAD".equals(request.getMethod());
+            if(!"GET".equals(request.getMethod())&&!(head&&path.equals("/shared-media/file")))
+                return json(405,"{\"error\":\"Alleen lezen toegestaan\"}");
             authorize();
             if(path.equals("/shared-media/catalog")){
                 HttpURLConnection c=connect(ROOT+"music.php?action=catalog&include_inactive=1&request_device_id="+Uri.encode(deviceId));
@@ -128,24 +133,48 @@ final class SharedMediaClient {
             }
             String device=uri.getQueryParameter("device"),stick=uri.getQueryParameter("stick"),file=uri.getQueryParameter("path");
             if(device==null||stick==null||file==null)return json(400,"{\"error\":\"Onvolledige muziekverwijzing\"}");
-            HttpURLConnection c=connect(ROOT+"music.php?action=stream&token="+Uri.encode(token)
-                +"&device="+Uri.encode(device)+"&stick="+Uri.encode(stick)+"&path="+Uri.encode(file));
             String range=request.getRequestHeaders().get("Range");
-            if(range!=null)c.setRequestProperty("Range",range);
-            int code=c.getResponseCode();
-            if(code!=200&&code!=206){c.disconnect();if(code==401){token="";expires=0;}return json(code,"{\"error\":\"Nummer niet beschikbaar in Shared Media\"}");}
+            HttpURLConnection opened=null;
+            int code=0;
+            for(int attempt=0;attempt<2;attempt++){
+                opened=connect(ROOT+"music.php?action=stream&token="+Uri.encode(token)
+                    +"&device="+Uri.encode(device)+"&stick="+Uri.encode(stick)+"&path="+Uri.encode(file));
+                if(head)opened.setRequestMethod("HEAD");
+                if(range!=null)opened.setRequestProperty("Range",range);
+                code=opened.getResponseCode();
+                if(code==401&&attempt==0){
+                    opened.disconnect();
+                    synchronized(this){token="";expires=0;authorize();}
+                    continue;
+                }
+                break;
+            }
+            final HttpURLConnection c=opened;
+            if(code!=200&&code!=206){
+                c.disconnect();
+                String message=code==404?"Dit nummer is niet beschikbaar via Shared Media."
+                    :code==401?"Shared Media-aanmelding kon niet worden vernieuwd."
+                    :code==403?"DJ heeft geen toestemming voor dit nummer."
+                    :"Shared Media-server reageert met HTTP "+code+". Probeer opnieuw.";
+                JSONObject error=new JSONObject();error.put("error",message);
+                return json(code,error.toString());
+            }
             Map<String,String> headers=new HashMap<>();
             for(String h:new String[]{"Content-Length","Content-Range","Accept-Ranges"}){String value=c.getHeaderField(h);if(value!=null)headers.put(h,value);}
             String mime=c.getContentType();if(mime==null)mime="audio/mpeg";mime=mime.split(";")[0];
+            if(head){c.disconnect();return new WebResourceResponse(mime,null,code,"OK",headers,new ByteArrayInputStream(new byte[0]));}
             InputStream stream=new FilterInputStream(c.getInputStream()){
                 @Override public void close() throws IOException {try{super.close();}finally{c.disconnect();}}
             };
             return new WebResourceResponse(mime,null,code,code==206?"Partial Content":"OK",headers,stream);
         } catch(Exception e){
-            String message=e instanceof IOException?e.getMessage():"Shared Media is niet bereikbaar. Probeer opnieuw.";
+            String message=e instanceof AccessError?e.getMessage()
+                :e instanceof java.net.SocketTimeoutException?"Shared Media-verbinding duurde te lang. Probeer opnieuw."
+                :e instanceof java.net.UnknownHostException?"Shared Media-server kon niet worden gevonden. Controleer internet."
+                :"Android kon Shared Media niet bereiken ("+e.getClass().getSimpleName()+"). Probeer opnieuw.";
             JSONObject error=new JSONObject();
             try{error.put("error",message);}catch(Exception ignored){}
-            return json(503,error.toString());
+            return json(e instanceof AccessError?403:503,error.toString());
         }
     }
     private static WebResourceResponse json(int code,String body) {

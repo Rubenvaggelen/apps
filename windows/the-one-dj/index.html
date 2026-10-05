@@ -1072,13 +1072,22 @@ async function prepareDeckAudio(file,voiceSupported,isCurrent,onPhase){
     const buf=await decodeAnyAudio(file);
     if(!isCurrent())return null;
     onPhase("Tempo analyseren…");await nextFrame();
-    const an=await analyzeBuffer(buf);
+    let an,warning="";
+    try{an=await analyzeBuffer(buf)}catch(e){
+      // Decoding succeeded: analysis failure must not reject playable audio.
+      an={bpm:0,beat0:0,peaks:null,detail:null,mix:null};
+      warning="Tempoanalyse niet beschikbaar; audio kan wel worden afgespeeld.";
+    }
     let voiceBlob=null;
     if(voiceSupported){
       onPhase("Voice Sync voorbereiden…");
-      voiceBlob=await voiceSyncWav(buf);
+      try{voiceBlob=await voiceSyncWav(buf)}catch(e){
+        const error=new Error("voice preparation failed");
+        error.userMsg="De audio is leesbaar, maar Voice Sync kon niet worden voorbereid. Probeer opnieuw.";
+        throw error;
+      }
     }
-    return {buf,an,voiceBlob};
+    return {buf,an,voiceBlob,warning};
   };
   if(!window.TheOneAudioDecoder)return prepare();
   // On Android, do not run both decks' three OfflineAudioContexts and WAV
@@ -1318,8 +1327,16 @@ class Deck{
     const url=file.source?mediaUrl(file):URL.createObjectURL(file);
     this.streamUrl=url;el.src=url;
     await new Promise((resolve,reject)=>{
-      const cleanup=()=>{el.removeEventListener("loadedmetadata",ok);el.removeEventListener("canplay",ok);el.removeEventListener("error",bad)};
-      const ok=()=>{cleanup();resolve()};const bad=()=>{cleanup();reject(new Error("stream load failed"))};
+      let timer;
+      const cleanup=()=>{clearTimeout(timer);el.removeEventListener("loadedmetadata",ok);el.removeEventListener("canplay",ok);el.removeEventListener("error",bad)};
+      const ok=()=>{cleanup();resolve()};const bad=()=>{
+        cleanup();try{el.removeAttribute("src");el.load()}catch(e){}
+        if(url.startsWith("blob:"))URL.revokeObjectURL(url);
+        const error=new Error("stream load failed");
+        error.userMsg="Het nummer kon niet worden geladen. Probeer opnieuw; controleer bij herhaling de muziekbron.";
+        reject(error);
+      };
+      timer=setTimeout(bad,30000);
       el.addEventListener("loadedmetadata",ok,{once:true});el.addEventListener("canplay",ok,{once:true});el.addEventListener("error",bad,{once:true});el.load();
     });
     if(token!==this.loadToken){try{el.pause()}catch(e){};return}
@@ -1327,7 +1344,7 @@ class Deck{
     el.onended=()=>{if(this.streamEl===el){this.playing=false;this.pos=this.dur;updateWake();this.markDone()}};
     this.streamEl=el;this.streamNode=node;this.streamMode=true;this.streamDur=Number.isFinite(el.duration)?el.duration:0;
     if(this.libItem&&this.libItem!==item&&this.libItem.status===this.id)this.libItem.status="played";
-    if(item){item.status=this.id;playlistWrite()}
+    if(item){item.status=this.id;delete item.errorReason;delete item.sourceStatus;playlistWrite()}
     this.mixAnalysis=null;this.libItem=item;this.done=false;this.buffer=null;this.bpm=0;this.beat0=0;this.peaks=null;this.detail=null;
     this.pos=0;this.cue=0;this.hot=Array(8).fill(null);this.loopIn=null;this.loopOut=null;this.loopActive=false;this.slipLoopAnchor=null;this.syncLock=false;
     this.ui.sub.textContent="Streaming \u2022 "+fmtTime(this.dur).slice(0,-2);
@@ -1538,7 +1555,7 @@ class Deck{
       const prepared=await prepareDeckAudio(file,this.voiceSupported,
         ()=>token===this.loadToken,phase=>this.setBusy(phase));
       if(!prepared||token!==this.loadToken)return;
-      const {buf,an,voiceBlob}=prepared;
+      const {buf,an,voiceBlob,warning}=prepared;
       if(token!==this.loadToken) return;
       this._stopSrc();this.releaseVoice();this.playing=false;this.cueHeld=false;
       if(voiceBlob){this.voiceUrl=URL.createObjectURL(voiceBlob);this.voice.src=this.voiceUrl;this.voice.load()}
@@ -1548,16 +1565,20 @@ class Deck{
       this.scr=null;this.buffer=buf;this.bpm=an.bpm;this.beat0=an.beat0;this.peaks=an.peaks;this.detail=an.detail;
       this.mixAnalysis=an.mix;
       this.pos=0;this.cue=0;this.hot=Array(8).fill(null);this.loopIn=null;this.loopOut=null;this.loopActive=false;this.slipLoopAnchor=null;this.syncLock=false;this.cancelTempoReturn();
-      this.ui.sub.textContent=this.bpm?`Origineel ${this.bpm.toFixed(1)} bpm, ${fmtTime(buf.duration).slice(0,-2)}`:"Geen tempo gevonden";
+      this.ui.sub.textContent=warning||(this.bpm?`Origineel ${this.bpm.toFixed(1)} bpm, ${fmtTime(buf.duration).slice(0,-2)}`:"Geen tempo gevonden");
       this.renderPads();this.drawBase();this.updateEcho();updateWake();
     }catch(e){
       if(token!==this.loadToken) return;
       if(String(file?.name||"").toLowerCase().endsWith(".mp3")){
-        try{await this._loadStream(file,item,token);return}catch(streamErr){}
+        if(!e?.sourceStatus){
+          try{await this._loadStream(file,item,token);return}catch(streamErr){
+            if(!e?.userMsg)e=streamErr;
+          }
+        }
       }
       if(item){item.status="error";item.errorReason=e?.userMsg||"Dit bestand kon niet worden geladen.";item.sourceStatus=e?.sourceStatus||0;playlistWrite();}
       this.ui.title.textContent="Dit bestand kan niet worden geopend";
-      this.ui.sub.textContent=e&&e.userMsg?e.userMsg:"Dit formaat wordt niet herkend. Zet het om naar MP3, FLAC of WAV.";
+      this.ui.sub.textContent=e?.userMsg||"Het nummer kon niet worden geladen. Tik op de melding in de playlist en probeer opnieuw.";
     }finally{
       if(token===this.loadToken){this.setBusy(null);this.loading=false;this.loadingItem=null;renderLib();if(item&&item.status==="error") autoFill()}
     }
@@ -2714,12 +2735,27 @@ function mediaUrl(file){
 }
 async function mediaBytes(file){
   if(!file.source)return await file.arrayBuffer();
-  const r=await fetch(mediaUrl(file),{cache:"no-store"});
+  let r;
+  for(let attempt=0;attempt<2;attempt++){
+    try{r=await fetch(mediaUrl(file),{cache:"no-store"})}catch(cause){
+      if(attempt===0){await new Promise(resolve=>setTimeout(resolve,400));continue;}
+      const error=new Error("Android Shared Media request failed");error.sourceStatus=503;
+      error.userMsg="De verbinding werd onderbroken tijdens het ophalen van audio. Probeer opnieuw.";
+      throw error;
+    }
+    if(attempt===0&&[429,502,503,504].includes(r.status)){
+      try{await r.body?.cancel()}catch(e){}
+      await new Promise(resolve=>setTimeout(resolve,400));continue;
+    }
+    break;
+  }
   if(!r.ok){
     const e=new Error("Muziekbron niet bereikbaar");e.sourceStatus=r.status;
-    e.userMsg=r.status===404?"Het originele nummer is niet beschikbaar op de muziekbron en staat niet in de serveropslag. Dit is geen formaatfout. Herstel de bron en probeer opnieuw met A of B."
+    let detail="";
+    try{const response=await r.json();if(typeof response.error==="string")detail=response.error.slice(0,500)}catch(ignored){}
+    e.userMsg=detail|| (r.status===404?"Het nummer kon niet via Shared Media worden opgehaald (HTTP 404). Probeer opnieuw met A of B."
       :r.status===401||r.status===403?"DJ heeft geen toegang tot dit nummer. Controleer de toestemming in Main."
-      :"De muziekbron reageert niet (HTTP "+r.status+"). Herstel de verbinding en probeer opnieuw met A of B.";
+      :"Shared Media reageert niet (HTTP "+r.status+"). Probeer opnieuw met A of B.");
     throw e;
   }
   return await r.arrayBuffer();
@@ -2897,7 +2933,7 @@ function renderLib(){
     const tag=document.createElement("span");tag.className="lib-tag";
     tag.textContent={A:"Deck A",B:"Deck B",played:"Gespeeld",loading:"Laden\u2026",error:"Niet af te spelen"}[t.status]||(t===next?"Volgende":"");
     if(t.status==="error"){
-      if(t.sourceStatus)tag.textContent=t.sourceStatus===404?"Bron ontbreekt":"Bron niet bereikbaar";
+      if(t.sourceStatus)tag.textContent=[401,403].includes(t.sourceStatus)?"Geen toegang":t.sourceStatus===404?"Niet beschikbaar":"Verbinding mislukt";
       tag.title=t.errorReason||"Dit bestand kon niet worden geladen.";
       tag.style.cursor="pointer";
       tag.addEventListener("click",()=>alert(t.errorReason||"Dit bestand kon niet worden geladen. Probeer het opnieuw met A of B."));
@@ -2906,13 +2942,14 @@ function renderLib(){
     const name=document.createElement("span");name.className="lib-name";name.textContent=t.name;
     const a=document.createElement("button");a.className="btn small to-a";a.textContent="A";a.setAttribute("aria-label","Laad "+t.name+" in deck A");
     const b=document.createElement("button");b.className="btn small to-b";b.textContent="B";b.setAttribute("aria-label","Laad "+t.name+" in deck B");
-    const again=document.createElement("button");again.className="btn small lib-next";again.textContent="\u21A9";again.title="Zet dit nummer opnieuw als eerstvolgende";again.setAttribute("aria-label","Zet "+t.name+" opnieuw als eerstvolgende");again.hidden=t.status!=="played";
+    const again=document.createElement("button");again.className="btn small lib-next";again.textContent="\u21A9";again.title="Zet dit nummer opnieuw als eerstvolgende";again.setAttribute("aria-label","Zet "+t.name+" opnieuw als eerstvolgende");again.hidden=t.status!=="played"&&t.status!=="error";
     const x=document.createElement("button");x.className="btn small lib-remove";x.textContent="\u00D7";x.title="Verwijder uit playlist";x.setAttribute("aria-label","Verwijder "+t.name+" uit playlist");
     a.onclick=()=>{decks[0].load(t.file,t);playlistWrite()};
     b.onclick=()=>{decks[1].load(t.file,t);playlistWrite()};
     again.onclick=e=>{
       e.stopPropagation();
       t.status="queued";
+      delete t.errorReason;delete t.sourceStatus;
       const i=lib.indexOf(t);
       if(i>0){lib.splice(i,1);lib.unshift(t);}
       renderLib();playlistWrite();autoFill();
@@ -3062,5 +3099,3 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",()=>decks
 </script>
 </body>
 </html>
-
-
