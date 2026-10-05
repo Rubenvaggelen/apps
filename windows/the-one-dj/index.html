@@ -2807,7 +2807,7 @@ async function mediaByteSize(file){
   }catch(e){return 0}
 }
 function isLargeStreamCandidate(file,size){
-  return String(file?.name||"").toLowerCase().endsWith(".mp3")&&size>=24*1024*1024;
+  return /\.(mp3|m4a|mp4|aac|wav|ogg|flac)$/i.test(String(file?.name||""))&&size>=24*1024*1024;
 }
 function mediaReferenceKey(source){return JSON.stringify([source?.kind,source?.device,source?.stick,source?.path,source?.name])}
 function addMediaReferences(files){
