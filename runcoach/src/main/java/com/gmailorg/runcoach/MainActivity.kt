@@ -32,13 +32,19 @@ class MainActivity : Activity() {
         private const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         private const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
 
-        private val BG = Color.parseColor("#0E0E12")
-        private val CARD = Color.parseColor("#1C1C24")
-        private val ACCENT = Color.parseColor("#FF6A3D")
-        private val TEXT = Color.WHITE
-        private val MUTED = Color.parseColor("#9A9AA8")
-        private val GOOD = Color.parseColor("#3DDC84")
-        private val WARN = Color.parseColor("#FFB020")
+        // The One-huisstijl (zelfde palet als The One en The One DJ)
+        private val BG = Color.parseColor("#071019")
+        private val CARD = Color.parseColor("#0D1A28")
+        private val LINE = Color.parseColor("#174963")
+        private val ACCENT = Color.parseColor("#20B8FF")
+        private val ACCENT_HI = Color.parseColor("#58D0FF")
+        private val ACCENT_LO = Color.parseColor("#1590C9")
+        private val ACCENT_EDGE = Color.parseColor("#8FE0FF")
+        private val ACCENT_INK = Color.parseColor("#041522")
+        private val TEXT = Color.parseColor("#F3F8FC")
+        private val MUTED = Color.parseColor("#91A4BD")
+        private val GOOD = Color.parseColor("#39D98A")
+        private val WARN = Color.parseColor("#E8AA4E")
         private val DANGER = Color.parseColor("#C62828")
     }
 
@@ -426,12 +432,24 @@ class MainActivity : Activity() {
             this.gravity = gravity
         }
 
+    /** Vlakken in huisstijl: accent = blauw verloop met lichte rand, paneel = donker met lijnrand. */
     private fun rounded(color: Int, radiusDp: Int = 14) = GradientDrawable().apply {
-        setColor(color)
         cornerRadius = dp(radiusDp).toFloat()
+        when (color) {
+            ACCENT -> {
+                orientation = GradientDrawable.Orientation.TOP_BOTTOM
+                colors = intArrayOf(ACCENT_HI, ACCENT_LO)
+                setStroke(dp(1), ACCENT_EDGE)
+            }
+            CARD -> {
+                setColor(color)
+                setStroke(dp(1), LINE)
+            }
+            else -> setColor(color)
+        }
     }
 
-    private fun button(text: String, bg: Int, fg: Int = Color.WHITE, size: Float = 16f) = Button(this).apply {
+    private fun button(text: String, bg: Int, fg: Int = if (bg == ACCENT) ACCENT_INK else TEXT, size: Float = 16f) = Button(this).apply {
         this.text = text
         setTextColor(fg)
         textSize = size
@@ -453,8 +471,8 @@ class MainActivity : Activity() {
             contentDescription = "The One Run"
         }
         val text = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        text.addView(tv("The One Run", 30f, TEXT, true))
-        text.addView(tv("PART OF THE ONE FAMILY", 11f, MUTED, true).apply { letterSpacing = 0.18f })
+        text.addView(tv("The One Run", 30f, TEXT).apply { typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD) })
+        text.addView(tv("PART OF THE ONE FAMILY", 11f, ACCENT, true).apply { letterSpacing = 0.16f })
         return row().apply {
             gravity = Gravity.CENTER_VERTICAL
             addView(logo, LinearLayout.LayoutParams(dp(54), dp(54)))
