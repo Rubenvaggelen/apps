@@ -163,31 +163,56 @@ final class SharedMediaClient {
             for(String h:new String[]{"Content-Length","Content-Range","Accept-Ranges"}){String value=c.getHeaderField(h);if(value!=null)headers.put(h,value);}
             String mime=c.getContentType();if(mime==null)mime="audio/mpeg";mime=mime.split(";")[0];
             if(head){c.disconnect();return new WebResourceResponse(mime,null,code,"OK",headers,new ByteArrayInputStream(new byte[0]));}
-            InputStream stream=new FilterInputStream(c.getInputStream()){
-                private boolean released;
-                private long remaining=c.getContentLengthLong();
-                private void consumed(int count) throws IOException {
-                    if(count<0){release();return;}
-                    if(remaining>=0){remaining-=count;if(remaining<=0)release();}
+            // Finish the network transfer before handing audio to WebView. A WebView
+            // consumer must never retain an upstream socket or receive partial audio.
+            java.io.File audio=java.io.File.createTempFile("dj-transfer-",".audio",activity.getCacheDir());
+            boolean complete=false;
+            try {
+                long expected=c.getContentLengthLong(),total=0;
+                try(InputStream input=c.getInputStream();java.io.OutputStream out=new java.io.FileOutputStream(audio)){
+                    byte[] buffer=new byte[65536];int n;
+                    while((n=input.read(buffer))!=-1){
+                        total+=n;
+                        if(total>256L*1024*1024)throw new IOException("Audio exceeds download limit");
+                        out.write(buffer,0,n);
+                    }
                 }
-                private void release() throws IOException {
-                    if(released)return;
-                    released=true;
-                    try{super.close();}finally{c.disconnect();}
-                }
-                @Override public int read() throws IOException {
-                    if(released)return -1;
-                    try{int n=in.read();consumed(n<0?-1:1);return n;}
-                    catch(IOException e){try{release();}catch(IOException ignored){}throw e;}
-                }
-                @Override public int read(byte[] b,int offset,int length) throws IOException {
-                    if(length==0)return 0;
-                    if(released)return -1;
-                    try{int n=in.read(b,offset,length);consumed(n);return n;}
-                    catch(IOException e){try{release();}catch(IOException ignored){}throw e;}
-                }
-                @Override public void close() throws IOException {release();}
-            };
+                if(expected>=0&&total!=expected)throw new IOException("Incomplete audio transfer");
+                headers.put("Content-Length",Long.toString(total));
+                complete=true;
+            } finally {
+                c.disconnect();
+                if(!complete)audio.delete();
+            }
+            final java.io.File downloaded=audio;
+            InputStream stream;
+            try {
+                stream=new FilterInputStream(new java.io.FileInputStream(downloaded)){
+                    private boolean released;
+                    private long remaining=downloaded.length();
+                    private void consumed(int n) throws IOException {
+                        if(n<0){release();return;}
+                        remaining-=n;if(remaining<=0)release();
+                    }
+                    private void release() throws IOException {
+                        if(released)return;
+                        released=true;
+                        try{super.close();}finally{downloaded.delete();}
+                    }
+                    @Override public int read() throws IOException {
+                        if(released)return -1;
+                        try{int n=in.read();consumed(n<0?-1:1);return n;}
+                        catch(IOException e){try{release();}catch(IOException ignored){}throw e;}
+                    }
+                    @Override public int read(byte[] b,int offset,int length) throws IOException {
+                        if(length==0)return 0;
+                        if(released)return -1;
+                        try{int n=in.read(b,offset,length);consumed(n);return n;}
+                        catch(IOException e){try{release();}catch(IOException ignored){}throw e;}
+                    }
+                    @Override public void close() throws IOException {release();}
+                };
+            } catch(IOException e){downloaded.delete();throw e;}
             return new WebResourceResponse(mime,null,code,code==206?"Partial Content":"OK",headers,stream);
         } catch(Exception e){
             String message=e instanceof AccessError?e.getMessage()
