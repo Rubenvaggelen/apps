@@ -1576,7 +1576,10 @@ class Deck{
           }
         }
       }
-      if(item){item.status="error";item.errorReason=e?.userMsg||"Dit bestand kon niet worden geladen.";item.sourceStatus=e?.sourceStatus||0;playlistWrite();}
+      if(item){
+        if(!recoverTransientMediaFailure(item,e)){item.status="error";item.errorReason=e?.userMsg||"Dit bestand kon niet worden geladen.";item.sourceStatus=e?.sourceStatus||0;}
+        playlistWrite();
+      }
       this.ui.title.textContent="Dit bestand kan niet worden geopend";
       this.ui.sub.textContent=e?.userMsg||"Het nummer kon niet worden geladen. Tik op de melding in de playlist en probeer opnieuw.";
     }finally{
@@ -2393,6 +2396,7 @@ autoMixBtn?.addEventListener("click",()=>{
 });
 function tickAutoMix(){
   if(!autoMix||fade||!ctx) return;
+  if(Date.now()<mediaRecoveryUntil){autoDjStatus("Auto DJ • verbinding herstellen, opnieuw proberen…");return;}
   autoFill();
   const playing=decks.filter(d=>d.playing&&!d.scr);
   if(!playing.length){
@@ -2742,6 +2746,22 @@ function mediaUrl(file){
   if(src.kind==="shared")return "/shared-media/file?"+new URLSearchParams({device:src.device,stick:src.stick,path:src.path});
   throw new Error("Onbekende muziekbron");
 }
+let mediaRecoveryUntil=0,mediaRecoveryTimer=null;
+function recoverTransientMediaFailure(item,error){
+  if(!item||![429,502,503,504].includes(Number(error?.sourceStatus))||!(autoLoad||autoMix))return false;
+  // A transport outage is not evidence that every subsequent song is broken.
+  // Pause new automatic requests and keep the failed song queued for recovery.
+  item.status="queued";item.errorReason=error.userMsg||"Verbinding verbroken";
+  delete item.sourceStatus;
+  mediaRecoveryUntil=Date.now()+15000;
+  clearTimeout(mediaRecoveryTimer);
+  mediaRecoveryTimer=setTimeout(()=>{
+    mediaRecoveryTimer=null;mediaRecoveryUntil=0;
+    renderLib();autoFill();
+  },15000);
+  if(autoMix)autoDjStatus("Auto DJ • verbinding herstellen, opnieuw proberen…");
+  return true;
+}
 async function mediaBytes(file){
   if(!file.source)return await file.arrayBuffer();
   let r;
@@ -2897,9 +2917,9 @@ autoBtn.addEventListener("click",()=>{
   autoLoad=!autoLoad;autoBtn.setAttribute("aria-pressed",autoLoad);autoBtn.classList.toggle("on",autoLoad);
   renderLib();autoFill();
 });
-function nextQueued(){return lib.find(t=>t.status==="queued")}
+function nextQueued(){if(Date.now()<mediaRecoveryUntil)return null;return lib.find(t=>t.status==="queued")}
 function autoFill(){
-  if(!(autoLoad||autoMix)||playlistRestoring||playlistClearing) return;
+  if(!(autoLoad||autoMix)||playlistRestoring||playlistClearing||Date.now()<mediaRecoveryUntil) return;
   if(autoMix&&!decks.some(d=>d.playing)&&decks.some(d=>d.loading||((d.buffer||d.streamEl)&&!d.done)))return;
   for(const d of decks){
     if(fade&&d===fade.src)continue;
