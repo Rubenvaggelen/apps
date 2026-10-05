@@ -37,6 +37,9 @@ class RunService : Service(), LocationListener, SensorEventListener {
         const val ACTION_START_NOW = "com.gmailorg.runcoach.START_NOW"
         const val ACTION_PAUSE = "com.gmailorg.runcoach.PAUSE"
         const val ACTION_RESUME = "com.gmailorg.runcoach.RESUME"
+        const val ACTION_SPEED = "com.gmailorg.runcoach.SPEED"
+        private const val EXTRA_TREADMILL = "treadmill"
+        private const val EXTRA_SPEED = "speed_kmh"
         const val ACTION_STOP = "com.gmailorg.runcoach.STOP"
 
         private const val EXTRA_TARGET = "target"
@@ -55,7 +58,7 @@ class RunService : Service(), LocationListener, SensorEventListener {
         private const val PACE_WINDOW_MS = 25_000L    // glijdend venster huidig tempo
         private const val CADENCE_WINDOW_MS = 60_000L
 
-        fun start(ctx: Context, targetM: Double?, goalPace: Int?, level: Int, voice: Int, male: Boolean) {
+        fun start(ctx: Context, targetM: Double?, goalPace: Int?, level: Int, voice: Int, male: Boolean, treadmill: Boolean = false, speedKmh: Double = 6.0) {
             if (!RunAccessRegistry.allowed(ctx)) return
             val i = Intent(ctx, RunService::class.java)
                 .setAction(ACTION_START)
@@ -64,7 +67,14 @@ class RunService : Service(), LocationListener, SensorEventListener {
                 .putExtra(EXTRA_LEVEL, level)
                 .putExtra(EXTRA_VOICE, voice)
                 .putExtra(EXTRA_MALE, male)
+                .putExtra(EXTRA_TREADMILL, treadmill)
+                .putExtra(EXTRA_SPEED, speedKmh)
             ctx.startForegroundService(i)
+        }
+
+        fun speed(ctx: Context, kmh: Double) {
+            ctx.startService(Intent(ctx, RunService::class.java)
+                .setAction(ACTION_SPEED).putExtra(EXTRA_SPEED, kmh))
         }
 
         fun action(ctx: Context, action: String) {
@@ -84,6 +94,8 @@ class RunService : Service(), LocationListener, SensorEventListener {
     private var targetM: Double? = null
     private var goalPace: Int? = null
     private var level = 1
+    private var treadmill = false
+    private var meter: TreadmillMeter? = null
 
     // afstand / tijd
     private var distance = 0.0
@@ -141,6 +153,17 @@ class RunService : Service(), LocationListener, SensorEventListener {
         when (intent?.action) {
             ACTION_START -> startRun(intent)
             ACTION_START_NOW -> if (status == RunStatus.WAITING_GPS) beginRunning(null)
+            ACTION_SPEED -> {
+                val speed = intent.getDoubleExtra(EXTRA_SPEED, Double.NaN)
+                if (treadmill && speed.isFinite() && speed in 0.0..40.0 &&
+                    (status == RunStatus.RUNNING || status == RunStatus.PAUSED)) {
+                    meter?.changeSpeed(speed, elapsed())
+                    distance = meter?.distanceM ?: distance
+                    currentPace = if (status == RunStatus.RUNNING && speed > 0) 3600.0 / speed else null
+                    publish()
+                    updateNotification()
+                }
+            }
             ACTION_PAUSE -> pauseRun()
             ACTION_RESUME -> resumeRun()
             ACTION_STOP -> stopRun()
@@ -166,6 +189,9 @@ class RunService : Service(), LocationListener, SensorEventListener {
             goForeground()
             return
         }
+        treadmill = intent.getBooleanExtra(EXTRA_TREADMILL, false)
+        val speed = intent.getDoubleExtra(EXTRA_SPEED, 6.0).takeIf { it.isFinite() && it in 0.0..40.0 } ?: 6.0
+        meter = if (treadmill) TreadmillMeter(speed) else null
         targetM = intent.getDoubleExtra(EXTRA_TARGET, -1.0).takeIf { it > 0 }
         goalPace = intent.getIntExtra(EXTRA_GOAL, -1).takeIf { it > 0 }
         level = intent.getIntExtra(EXTRA_LEVEL, 1)
@@ -183,6 +209,7 @@ class RunService : Service(), LocationListener, SensorEventListener {
         coach.configure(level, goalPace, targetM, voice)
         startListening()
         handler.removeCallbacks(tick)
+        if (treadmill) beginRunning(null)
         handler.post(tick)
     }
 
@@ -196,13 +223,15 @@ class RunService : Service(), LocationListener, SensorEventListener {
         stepBase = lastRawSteps   // nulpunt van de stappenteller
         stepOffset = 0f
         steps = 0
-        coach.onStart(fix != null)
+        currentPace = if (treadmill && (meter?.speedKmh ?: 0.0) > 0) 3600.0 / meter!!.speedKmh else null
+        coach.onStart(fix != null, treadmill)
         publish()
         updateNotification()
     }
 
     private fun pauseRun() {
         if (status != RunStatus.RUNNING) return
+        if (treadmill) distance = meter!!.advance(elapsed())
         accumulatedMs += SystemClock.elapsedRealtime() - runStartRealtime
         status = RunStatus.PAUSED
         anchor = null
@@ -240,8 +269,10 @@ class RunService : Service(), LocationListener, SensorEventListener {
             return
         }
         if (status == RunStatus.RUNNING) {
+            if (treadmill) distance = meter!!.advance(elapsed())
             accumulatedMs += SystemClock.elapsedRealtime() - runStartRealtime
         }
+        recordSplits(accumulatedMs)
         status = RunStatus.FINISHED
         currentPace = null
         val snap = snapshot()
@@ -280,6 +311,7 @@ class RunService : Service(), LocationListener, SensorEventListener {
 
     private fun onTick() {
         val e = elapsed()
+        if (treadmill) distance = meter!!.advance(e)
         if (status == RunStatus.RUNNING) {
             // huidig tempo over glijdend venster
             paceWindow.addLast(e to distance)
@@ -287,13 +319,11 @@ class RunService : Service(), LocationListener, SensorEventListener {
             val (t0, d0) = paceWindow.first()
             val dtSec = (e - t0) / 1000.0
             val dd = distance - d0
-            currentPace = if (dtSec >= 10 && dd >= 15) dtSec / (dd / 1000.0) else null
+            currentPace = if (treadmill) meter!!.speedKmh.takeIf { it > 0 }?.let { 3600.0 / it }
+                else if (dtSec >= 10 && dd >= 15) dtSec / (dd / 1000.0) else null
 
             // kilometertijden
-            while (distance >= (splits.size + 1) * 1000.0) {
-                splits.add(Split(splits.size + 1, e - lastSplitMs, e))
-                lastSplitMs = e
-            }
+            recordSplits(e)
 
             // cadans over de laatste minuut
             stepWindow.addLast(e to steps)
@@ -310,6 +340,14 @@ class RunService : Service(), LocationListener, SensorEventListener {
         if (tickCount % 5 == 0) updateNotification()
     }
 
+    private fun recordSplits(e: Long) {
+        while (distance >= (splits.size + 1) * 1000.0) {
+            val time = if (treadmill) meter!!.kilometerTimes[splits.size] else e
+            splits.add(Split(splits.size + 1, time - lastSplitMs, time))
+            lastSplitMs = time
+        }
+    }
+
     private fun snapshot() = RunSnapshot(
         status = status,
         distanceM = distance,
@@ -322,7 +360,9 @@ class RunService : Service(), LocationListener, SensorEventListener {
         targetDistanceM = targetM,
         goalPaceSecPerKm = goalPace,
         coachLevel = level,
-        stepsAvailable = stepsAvailable
+        stepsAvailable = stepsAvailable,
+        treadmill = treadmill,
+        treadmillSpeedKmh = meter?.speedKmh
     )
 
     private fun publish() = RunRepository.update(snapshot())
@@ -330,6 +370,7 @@ class RunService : Service(), LocationListener, SensorEventListener {
     // ------------------------------------------------------------------ GPS
 
     override fun onLocationChanged(location: Location) {
+        if (treadmill) return
         lastAccuracy = if (location.hasAccuracy()) location.accuracy else null
         val acc = if (location.hasAccuracy()) location.accuracy else 99f
 
@@ -397,7 +438,7 @@ class RunService : Service(), LocationListener, SensorEventListener {
     private fun startListening() {
         if (listening) return
         listening = true
-        try {
+        if (!treadmill) try {
             lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, this, Looper.getMainLooper())
         } catch (e: Exception) {
             // geen GPS of geen toestemming
@@ -425,7 +466,9 @@ class RunService : Service(), LocationListener, SensorEventListener {
         val n = buildNotification()
         return try {
             if (Build.VERSION.SDK_INT >= 29) {
-                var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+                var type = if (treadmill) {
+                    if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
+                } else ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
                 if (Build.VERSION.SDK_INT >= 34 && has(Manifest.permission.ACTIVITY_RECOGNITION)) {
                     type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH
                 }
@@ -464,7 +507,7 @@ class RunService : Service(), LocationListener, SensorEventListener {
         val title = when (status) {
             RunStatus.WAITING_GPS -> "GPS zoeken…"
             RunStatus.PAUSED -> "Gepauzeerd · ${Fmt.km(distance)} km"
-            else -> "Hardlopen · ${Fmt.km(distance)} km"
+            else -> "${if (treadmill) "Loopband" else "Hardlopen"} · ${Fmt.km(distance)} km"
         }
         val text = "${Fmt.time(elapsed())} · tempo ${Fmt.pace(currentPace)} /km"
         val open = PendingIntent.getActivity(

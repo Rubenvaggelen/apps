@@ -59,6 +59,8 @@ object History {
             .put("elapsedMs", s.snap.elapsedMs)
             .put("steps", s.snap.steps)
             .put("stepsAvailable", s.snap.stepsAvailable)
+            .put("treadmill", s.snap.treadmill)
+            .put("treadmillSpeedKmh", s.snap.treadmillSpeedKmh ?: -1.0)
             .put("targetM", s.snap.targetDistanceM ?: -1.0)
             .put("goalPace", s.snap.goalPaceSecPerKm ?: -1)
             .put("splits", splits)
@@ -78,6 +80,8 @@ object History {
                 elapsedMs = o.getLong("elapsedMs"),
                 steps = o.optInt("steps", 0),
                 stepsAvailable = o.optBoolean("stepsAvailable", false),
+                treadmill = o.optBoolean("treadmill", false),
+                treadmillSpeedKmh = o.optDouble("treadmillSpeedKmh", -1.0).takeIf { it >= 0 },
                 targetDistanceM = o.optDouble("targetM", -1.0).takeIf { it > 0 },
                 goalPaceSecPerKm = o.optInt("goalPace", -1).takeIf { it > 0 },
                 splits = splits

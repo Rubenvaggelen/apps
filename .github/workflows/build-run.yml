@@ -39,7 +39,7 @@ jobs:
         shell: bash
         run: echo "VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
       - name: Build Run phone and watch
-        run: gradle :runcoach:assembleDebug :runcoach-wear:assembleDebug --no-daemon --no-build-cache -PappVersionCode=${VERSION_CODE}
+        run: gradle :runcoach:testDebugUnitTest :runcoach:assembleDebug :runcoach-wear:assembleDebug --no-daemon --no-build-cache -PappVersionCode=${VERSION_CODE}
       - name: Verify phone and watch use the same signing certificate
         shell: bash
         run: |

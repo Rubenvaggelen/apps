@@ -109,9 +109,10 @@ class Coach(private val speaker: Speaker) {
         motivationIdx = 0
     }
 
-    fun onStart(gpsFix: Boolean) {
+    fun onStart(gpsFix: Boolean, treadmill: Boolean = false) {
         val sb = StringBuilder(
-            if (gpsFix) v("GPS gevonden. Veel plezier!", "GPS gevonden. Succes!", "GPS gevonden. Lopen, nu!")
+            if (treadmill) "Loopbandtraining gestart. De afstand wordt berekend met de snelheid die je hebt ingevoerd."
+            else if (gpsFix) v("GPS gevonden. Veel plezier!", "GPS gevonden. Succes!", "GPS gevonden. Lopen, nu!")
             else "We starten. Het GPS-signaal kan in het begin nog wat onnauwkeurig zijn."
         )
         target?.let { sb.append(" Doel: ${Fmt.spokenKm(it)}.") }

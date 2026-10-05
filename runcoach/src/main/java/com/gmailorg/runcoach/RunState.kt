@@ -21,7 +21,9 @@ data class RunSnapshot(
     val targetDistanceM: Double? = null,
     val goalPaceSecPerKm: Int? = null,
     val coachLevel: Int = 1,
-    val stepsAvailable: Boolean = false
+    val stepsAvailable: Boolean = false,
+    val treadmill: Boolean = false,
+    val treadmillSpeedKmh: Double? = null
 ) {
     val avgPaceSecPerKm: Double?
         get() = if (distanceM >= 50) (elapsedMs / 1000.0) / (distanceM / 1000.0) else null

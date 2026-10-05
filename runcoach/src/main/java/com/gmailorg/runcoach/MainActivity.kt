@@ -135,6 +135,9 @@ class MainActivity : Activity() {
     private var shownScreen = ""
 
     // instellingen
+    private var treadmillMode = false
+    private var beltSpeedKmh = 6.0
+    private var beltSpeedText: TextView? = null
     private var targetKm = 0
     private var goalOn = false
     private var goalPace = 360
@@ -169,6 +172,8 @@ class MainActivity : Activity() {
         window.statusBarColor = BG
         window.navigationBarColor = BG
 
+        treadmillMode = prefs.getBoolean("treadmill", false)
+        beltSpeedKmh = prefs.getFloat("beltSpeed", 6f).toDouble().coerceIn(0.0, 40.0)
         targetKm = prefs.getInt("targetKm", 0)
         goalOn = prefs.getBoolean("goalOn", false)
         goalPace = prefs.getInt("goalPace", 360)
@@ -269,6 +274,8 @@ class MainActivity : Activity() {
 
     private fun save() {
         prefs.edit()
+            .putBoolean("treadmill", treadmillMode)
+            .putFloat("beltSpeed", beltSpeedKmh.toFloat())
             .putInt("targetKm", targetKm)
             .putBoolean("goalOn", goalOn)
             .putInt("goalPace", goalPace)
@@ -282,6 +289,16 @@ class MainActivity : Activity() {
 
     private fun buildSetup() {
         root.addView(header())
+        addSection("Waar loop je?")
+        root.addView(chipRow(listOf("Buiten" to !treadmillMode, "Loopband" to treadmillMode)) { i ->
+            treadmillMode = i == 1
+            refreshSetup()
+        }, lp(top = 8))
+        if (treadmillMode) {
+            addBeltSpeedControls(beltSpeedKmh) { speed -> beltSpeedKmh = speed; save() }
+            root.addView(tv("Voer dezelfde snelheid in als op je loopband. Afstand en tempo worden berekend. Pauzeer Run wanneer je de band pauzeert.", 13f, MUTED), lp(top = 8))
+            root.addView(tv("Stappen meten: draag je telefoon bij je. Op de console worden jouw stappen niet betrouwbaar geteld.", 13f, MUTED), lp(top = 6))
+        }
 
         addSection("Doel")
         root.addView(
@@ -402,6 +419,48 @@ class MainActivity : Activity() {
         )
     }
 
+
+    private fun addBeltSpeedControls(initial: Double, changed: (Double) -> Unit) {
+        var speed = initial
+        val label = tv("Bandsnelheid: ${Fmt.speed(speed)} km/u", 22f, ACCENT, true)
+        beltSpeedText = label
+        root.addView(label, lp(top = 16))
+        val controls = row()
+        fun applySpeed(value: Double) {
+            speed = (kotlin.math.round(value * 10) / 10).coerceIn(0.0, 40.0)
+            label.text = "Bandsnelheid: ${Fmt.speed(speed)} km/u"
+            changed(speed)
+        }
+        controls.addView(button("− 0,1", CARD).apply {
+            setOnClickListener { applySpeed(speed - 0.1) }
+        }, LinearLayout.LayoutParams(0, WRAP, 1f))
+        controls.addView(button("Invullen", CARD).apply {
+            setOnClickListener {
+                val input = android.widget.EditText(this@MainActivity).apply {
+                    inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+                    setText(Fmt.speed(speed))
+                    selectAll()
+                }
+                val dialog = AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Snelheid op je loopband (km/u)")
+                    .setView(input).setNegativeButton("Annuleren", null)
+                    .setPositiveButton("Opslaan", null).create()
+                dialog.setOnShowListener {
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                        val value = input.text.toString().replace(',', '.').toDoubleOrNull()
+                        if (value == null || !value.isFinite() || value !in 0.0..40.0) input.error = "Vul 0 tot 40 km/u in"
+                        else { applySpeed(value); dialog.dismiss() }
+                    }
+                }
+                dialog.show()
+            }
+        }, LinearLayout.LayoutParams(0, WRAP, 1f))
+        controls.addView(button("+ 0,1", CARD).apply {
+            setOnClickListener { applySpeed(speed + 0.1) }
+        }, LinearLayout.LayoutParams(0, WRAP, 1f))
+        root.addView(controls, lp(top = 8))
+    }
+
     private fun playSample() {
         val sp = preview ?: Speaker(this).also { preview = it }
         sp.setVoice(voice, voiceMale)
@@ -411,6 +470,14 @@ class MainActivity : Activity() {
     // ------------------------------------------------------------------ live-scherm
 
     private fun buildRun() {
+        val running = RunRepository.snapshot
+        if (running.treadmill) {
+            addBeltSpeedControls(running.treadmillSpeedKmh ?: beltSpeedKmh) { speed ->
+                beltSpeedKmh = speed
+                save()
+                RunService.speed(this, speed)
+            }
+        }
         tvStatus = tv("", 15f, ACCENT, true)
         root.addView(tvStatus)
 
@@ -455,10 +522,11 @@ class MainActivity : Activity() {
 
     private fun updateRun(s: RunSnapshot) {
         val acc = s.gpsAccuracyM?.roundToInt()
+        if (s.treadmill) beltSpeedText?.text = "Bandsnelheid: ${Fmt.speed(s.treadmillSpeedKmh)} km/u"
         tvStatus.text = when (s.status) {
             RunStatus.WAITING_GPS -> "GPS zoeken…" + (acc?.let { " (±$it m)" } ?: "")
             RunStatus.PAUSED -> "Gepauzeerd"
-            else -> "Bezig" + (acc?.let { " · GPS ±$it m" } ?: "")
+            else -> if (s.treadmill) "Loopband · afstand berekend" else "Bezig" + (acc?.let { " · GPS ±$it m" } ?: "")
         }
         tvDistance.text = Fmt.km(s.distanceM)
 
@@ -536,6 +604,7 @@ class MainActivity : Activity() {
             root.addView(r, lp(top = 10))
         }
 
+        line("Training", if (s.treadmill) "Loopband · berekend" else "Buiten")
         line("Afstand", "${Fmt.km(s.distanceM)} km")
         line("Totale tijd", Fmt.time(s.elapsedMs))
         line("Gemiddeld tempo", "${Fmt.pace(s.avgPaceSecPerKm)} /km")
@@ -666,10 +735,8 @@ class MainActivity : Activity() {
     // ------------------------------------------------------------------ starten + toestemmingen
 
     private fun onStartClicked() {
-        val needed = mutableListOf(
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION
-        )
+        val needed = mutableListOf<String>()
+        if (!treadmillMode) needed += listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
         if (Build.VERSION.SDK_INT >= 29) needed += Manifest.permission.ACTIVITY_RECOGNITION
         if (Build.VERSION.SDK_INT >= 33) needed += Manifest.permission.POST_NOTIFICATIONS
         val missing = needed.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
@@ -680,7 +747,7 @@ class MainActivity : Activity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode != REQ_PERMS) return
-        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+        if (treadmillMode || checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             checkBatteryThenStart()
         } else {
             AlertDialog.Builder(this)
@@ -726,7 +793,7 @@ class MainActivity : Activity() {
     private fun startRun() {
         val target = if (targetKm > 0) targetKm * 1000.0 else null
         val goal = if (goalOn) goalPace else null
-        RunService.start(this, target, goal, level, voice, voiceMale)
+        RunService.start(this, target, goal, level, voice, voiceMale, treadmillMode, beltSpeedKmh)
     }
 
     // ------------------------------------------------------------------ view-hulpjes
