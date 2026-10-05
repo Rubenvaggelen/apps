@@ -6,7 +6,6 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
-import android.graphics.Outline
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
@@ -17,7 +16,6 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.ViewOutlineProvider
 import android.view.WindowInsets
 import android.widget.Button
 import android.widget.ImageView
@@ -448,16 +446,11 @@ class MainActivity : Activity() {
 
     private fun row() = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
 
-    /** Kop: rond The One-logo links, daarnaast de appnaam met de familieregel eronder. */
+    /** Kop: ronde logo-badge links, daarnaast de appnaam met de familieregel eronder. */
     private fun header(): LinearLayout {
         val logo = ImageView(this).apply {
-            setImageResource(R.drawable.the_one_logo)
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            outlineProvider = object : ViewOutlineProvider() {
-                override fun getOutline(view: View, outline: Outline) = outline.setOval(0, 0, view.width, view.height)
-            }
-            clipToOutline = true
-            contentDescription = "The One"
+            setImageResource(R.drawable.logo_badge)
+            contentDescription = "The One Run"
         }
         val text = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         text.addView(tv("The One Run", 30f, TEXT, true))
