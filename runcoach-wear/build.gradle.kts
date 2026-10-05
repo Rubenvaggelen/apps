@@ -1,8 +1,7 @@
-// The One Run — losse hardloopcoach-app in de "apps"-repo.
-// Enige externe library: play-services-wearable, voor de koppeling met het horloge (runcoach-wear).
-//
-// Signing en Java/Kotlin-instellingen zijn gelijk aan carradio/build.gradle, zodat de APK
-// met dezelfde vaste sleutel wordt ondertekend en updates zonder "signature mismatch" werken.
+// The One Run – Wear OS-app voor Galaxy Watch 4 en nieuwer.
+// LET OP: applicationId, versie en signing zijn GELIJK aan runcoach/build.gradle.kts.
+// Telefoon en horloge kunnen alleen met elkaar praten als beide APK's dezelfde
+// applicationId hebben en met dezelfde vaste sleutel zijn ondertekend.
 
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -12,7 +11,7 @@ plugins {
 }
 
 android {
-    namespace = "com.gmailorg.runcoach"
+    namespace = "com.gmailorg.runcoach.wear"
     compileSdk = 35
 
     val appVersionCode = (project.findProperty("appVersionCode")?.toString()
@@ -20,8 +19,8 @@ android {
 
     defaultConfig {
         applicationId = "com.gmailorg.runcoach"
-        minSdk = 26
-        targetSdk = 35
+        minSdk = 30
+        targetSdk = 34
         versionCode = appVersionCode
         versionName = "1.0.$appVersionCode"
     }
@@ -55,6 +54,6 @@ kotlin {
 }
 
 dependencies {
-    // zelfde versie als in runcoach-wear
+    // zelfde versie als in runcoach
     implementation("com.google.android.gms:play-services-wearable:18.2.0")
 }

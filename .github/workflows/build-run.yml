@@ -5,6 +5,7 @@ on:
     branches: [ main ]
     paths:
       - 'runcoach/**'
+      - 'runcoach-wear/**'
       - '.github/workflows/build-run.yml'
       - 'build.gradle'
       - 'settings.gradle'
@@ -37,13 +38,29 @@ jobs:
       - name: Set Run version code
         shell: bash
         run: echo "VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
-      - name: Build Run only
-        run: gradle :runcoach:assembleDebug --no-daemon --no-build-cache -PappVersionCode=${VERSION_CODE}
+      - name: Build Run phone and watch
+        run: gradle :runcoach:assembleDebug :runcoach-wear:assembleDebug --no-daemon --no-build-cache -PappVersionCode=${VERSION_CODE}
+      - name: Verify phone and watch use the same signing certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)"
+          cert() { "$APKSIGNER" verify --print-certs "$1" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1; }
+          PHONE=$(cert runcoach/build/outputs/apk/debug/runcoach-debug.apk)
+          WATCH=$(cert runcoach-wear/build/outputs/apk/debug/runcoach-wear-debug.apk)
+          echo "Phone: $PHONE"
+          echo "Watch: $WATCH"
+          if [ -z "$PHONE" ] || [ "$PHONE" != "$WATCH" ]; then
+            echo "ERROR: phone and watch APK are not signed with the same key."
+            exit 1
+          fi
       - name: Release Run only
         uses: softprops/action-gh-release@v2
         with:
           tag_name: run-v${{ env.VERSION_CODE }}
           name: "The One Run — build ${{ env.VERSION_CODE }}"
-          files: runcoach/build/outputs/apk/debug/runcoach-debug.apk
+          files: |
+            runcoach/build/outputs/apk/debug/runcoach-debug.apk
+            runcoach-wear/build/outputs/apk/debug/runcoach-wear-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

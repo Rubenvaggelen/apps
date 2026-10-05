@@ -17,5 +17,6 @@ rootProject.name = "GmailOrgHub"
 include ':app'
 include ':carradio'
 include ':runcoach'
+include ':runcoach-wear'
 include ':remoteapp'
 include ':thedj'

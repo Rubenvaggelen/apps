@@ -74,6 +74,7 @@ class RunService : Service(), LocationListener, SensorEventListener {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var speaker: Speaker
     private lateinit var coach: Coach
+    private val wearListener: (RunSnapshot) -> Unit = { WearBridge.publish(this, it) }
     private lateinit var lm: LocationManager
     private lateinit var sm: SensorManager
     private var wakeLock: PowerManager.WakeLock? = null
@@ -128,6 +129,7 @@ class RunService : Service(), LocationListener, SensorEventListener {
         lm = getSystemService(LocationManager::class.java)
         sm = getSystemService(SensorManager::class.java)
         createChannel()
+        RunRepository.addListener(wearListener)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -143,6 +145,7 @@ class RunService : Service(), LocationListener, SensorEventListener {
     }
 
     override fun onDestroy() {
+        RunRepository.removeListener(wearListener)
         handler.removeCallbacksAndMessages(null)
         stopListening()
         speaker.shutdown()
