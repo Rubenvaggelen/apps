@@ -53,6 +53,83 @@ class MainActivity : Activity() {
         private val DANGER = Color.parseColor("#C62828")
     }
 
+
+    private var accessReady = false
+    private var accessBusy = false
+    private var nameDialogShowing = false
+    private val accessPoll = android.os.Handler(android.os.Looper.getMainLooper())
+    private val accessTick = object : Runnable {
+        override fun run() { checkRunAccess(false) }
+    }
+
+    private fun checkRunAccess(ask: Boolean) {
+        if (accessBusy || isFinishing || isDestroyed) return
+        if (RunAccessRegistry.name(this).isBlank()) {
+            showNameRegistration()
+            return
+        }
+        accessBusy = true
+        Thread {
+            val result = runCatching { RunAccessRegistry.check(this, ask) }
+            runOnUiThread {
+                accessBusy = false
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                val status = result.getOrNull()
+                accessReady = status?.allowed == true
+                shownScreen = ""
+                if (accessReady) render(RunRepository.snapshot)
+                else showAccessGate(when {
+                    status == null -> "Verbinding mislukt. Controleer je internet en probeer opnieuw."
+                    status.blocked -> "Dit apparaat is geblokkeerd. De eigenaar moet het vrijgeven."
+                    status.pending -> "Je aanvraag is verstuurd. Wacht op toestemming van The One."
+                    else -> "Vraag The One om toestemming om deze app te gebruiken."
+                })
+                accessPoll.removeCallbacks(accessTick)
+                if (!accessReady && status?.pending == true) accessPoll.postDelayed(accessTick, 15000)
+            }
+        }.start()
+    }
+
+    private fun showNameRegistration() {
+        showAccessGate("Vul eerst je naam in en vraag toestemming.")
+        if (nameDialogShowing) return
+        nameDialogShowing = true
+        val input = android.widget.EditText(this).apply {
+            hint = "Jouw naam"
+            isSingleLine = true
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Wie gebruikt The One Run?")
+            .setMessage("Vul je naam in. The One moet daarna je toegang goedkeuren.")
+            .setView(input)
+            .setPositiveButton("Toestemming vragen", null)
+            .setNegativeButton("Sluiten") { _, _ -> finish() }
+            .setCancelable(false)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val name = input.text.toString().trim()
+                if (name.length < 2) input.error = "Vul je naam in"
+                else {
+                    RunAccessRegistry.saveName(this, name)
+                    dialog.dismiss()
+                    checkRunAccess(true)
+                }
+            }
+        }
+        dialog.setOnDismissListener { nameDialogShowing = false }
+        dialog.show()
+    }
+
+    private fun showAccessGate(message: String) {
+        root.removeAllViews()
+        root.addView(header())
+        root.addView(tv(message, 17f, TEXT), lp(top = 24))
+        root.addView(button("Toegang controleren / aanvragen", ACCENT).apply {
+            setOnClickListener { checkRunAccess(true) }
+        }, lp(top = 24))
+    }
+
     private val prefs by lazy { getSharedPreferences("runcoach", MODE_PRIVATE) }
     private lateinit var root: LinearLayout
     private var shownScreen = ""
@@ -120,15 +197,19 @@ class MainActivity : Activity() {
             insets
         }
         setContentView(scroll)
+        RunAccessRegistry.bindFromMain(this)
     }
 
     override fun onResume() {
         super.onResume()
         RunRepository.addListener(listener)
-        render(RunRepository.snapshot)
+        accessReady = false
+        showAccessGate("Toegang controleren…")
+        checkRunAccess(false)
     }
 
     override fun onPause() {
+        accessPoll.removeCallbacks(accessTick)
         RunRepository.removeListener(listener)
         super.onPause()
     }
@@ -152,6 +233,7 @@ class MainActivity : Activity() {
     // ------------------------------------------------------------------ render
 
     private fun render(s: RunSnapshot) {
+        if (!accessReady) return
         val screen = when (s.status) {
             RunStatus.IDLE -> if (page.isEmpty()) "setup" else page
             RunStatus.FINISHED -> "summary"

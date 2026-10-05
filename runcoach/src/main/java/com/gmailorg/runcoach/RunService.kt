@@ -56,6 +56,7 @@ class RunService : Service(), LocationListener, SensorEventListener {
         private const val CADENCE_WINDOW_MS = 60_000L
 
         fun start(ctx: Context, targetM: Double?, goalPace: Int?, level: Int, voice: Int, male: Boolean) {
+            if (!RunAccessRegistry.allowed(ctx)) return
             val i = Intent(ctx, RunService::class.java)
                 .setAction(ACTION_START)
                 .putExtra(EXTRA_TARGET, targetM ?: -1.0)
@@ -133,6 +134,10 @@ class RunService : Service(), LocationListener, SensorEventListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action != ACTION_STOP && !RunAccessRegistry.allowed(this)) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
         when (intent?.action) {
             ACTION_START -> startRun(intent)
             ACTION_START_NOW -> if (status == RunStatus.WAITING_GPS) beginRunning(null)

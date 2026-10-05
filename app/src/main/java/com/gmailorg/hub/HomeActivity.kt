@@ -412,7 +412,12 @@ class HomeActivity : AppCompatActivity() {
             return
         }
         val launch = packageManager.getLaunchIntentForPackage("com.gmailorg.runcoach")
-        if (launch != null) startActivity(launch)
+        if (launch != null) {
+            launch.flags = launch.flags and Intent.FLAG_ACTIVITY_NEW_TASK.inv()
+            launch.putExtra("the_one_main_device_id", MainDeviceRegistry.deviceId(this))
+            @Suppress("DEPRECATION")
+            startActivityForResult(launch, 9401)
+        }
         else AlertDialog.Builder(this)
             .setTitle("The One Run installeren")
             .setMessage("Installeer de aparte The One Run-app. Daarna opent deze vaste tegel de app.")
