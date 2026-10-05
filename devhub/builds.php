@@ -126,6 +126,14 @@ $djDownload = $latestTag !== '' ? 'https://github.com/Rubenvaggelen/apps/release
       <form method="post" id="buildForm"><input type="hidden" name="csrf" value="<?=htmlspecialchars($_SESSION['csrf'])?>"><input type="hidden" name="action" value="build"><button class="btn primary" id="buildBtn" type="submit">▶ Start nieuwe Android build</button></form>
     </div>
 
+
+    <div class="card">
+      <h2>The One Run</h2>
+      <div class="big">Build 1008</div>
+      <p class="muted">Zelfstandige Android-app • opgeslagen werkende versie.</p>
+      <div class="download-row"><a class="btn ok" href="https://github.com/Rubenvaggelen/apps/releases/download/run-v1008/runcoach-debug.apk">⬇ The One Run APK</a></div>
+    </div>
+
     <div class="card wide">
       <h2>Recente releases</h2>
       <?php if(!$recentTags): ?><p class="muted">Nog geen tags gevonden.</p><?php else: ?><div class="tags"><?php foreach($recentTags as $tag): ?><span class="tag"><?=htmlspecialchars($tag)?></span><?php endforeach; ?></div><?php endif; ?>
