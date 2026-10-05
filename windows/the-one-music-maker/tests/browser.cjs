@@ -1,13 +1,13 @@
 'use strict';
-const {chromium}=require('playwright');const path=require('node:path');const assert=require('node:assert/strict');const fs=require('node:fs/promises');
+const {chromium}=require('playwright');const path=require('node:path');const {pathToFileURL}=require('node:url');const assert=require('node:assert/strict');const fs=require('node:fs/promises');
 (async()=>{
  const browser=await chromium.launch({headless:true,args:['--no-sandbox','--autoplay-policy=no-user-gesture-required']});
  const page=await browser.newPage({viewport:{width:1440,height:950},acceptDownloads:true});const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto('file://'+path.resolve(__dirname,'../index.html'));
+ await page.goto(pathToFileURL(path.resolve(__dirname,'../index.html')).href);
  await page.getByRole('button',{name:'Demo laden',exact:true}).click();await page.waitForSelector('.track');assert.equal(await page.locator('.track').count(),2);
  await page.getByRole('button',{name:'▶ Afspelen',exact:true}).click();await page.waitForTimeout(350);
  assert(await page.evaluate(()=>playing));const before=await page.evaluate(()=>current());await page.getByRole('button',{name:'Ⅱ Pauze',exact:true}).click();await page.waitForTimeout(120);const paused=await page.evaluate(()=>current());assert(paused>=before);await page.waitForTimeout(180);assert.equal(await page.evaluate(()=>current()),paused);
- await page.getByRole('button',{name:'▶ Afspelen',exact:true}).click();await page.waitForTimeout(120);assert(await page.evaluate(()=>current()>paused));await page.getByRole('button',{name:'■ Stop',exact:true}).click();assert.equal(await page.evaluate(()=>position),0);
+ await page.getByRole('button',{name:'▶ Afspelen',exact:true}).click();await page.waitForTimeout(120);assert(await page.evaluate(value=>current()>value,paused));await page.getByRole('button',{name:'■ Stop',exact:true}).click();assert.equal(await page.evaluate(()=>position),0);
  const solo=page.locator('.track-head button').filter({hasText:/^S$/}).first();await solo.click();assert.equal(await solo.getAttribute('aria-pressed'),'true');
  const dm=page.waitForEvent('download');await page.getByRole('button',{name:'WAV exporteren',exact:true}).click();const wav=await dm;const bytes=await fs.readFile(await wav.path());assert.equal(bytes.toString('ascii',0,4),'RIFF');assert.equal(bytes.readUInt16LE(22),2);assert.equal(bytes.readUInt32LE(24),44100);assert(bytes.length>100000);let max=0;for(let i=44;i<bytes.length;i+=2)max=Math.max(max,Math.abs(bytes.readInt16LE(i)));assert(max>1000);assert(max<=32768);
  const ds=page.waitForEvent('download');await page.getByRole('button',{name:'Project opslaan',exact:true}).click();const saved=await ds;const projectFile=await saved.path();const project=JSON.parse(await fs.readFile(projectFile,'utf8'));assert.equal(project.tracks.length,2);assert(Object.keys(project.media).length===2);
