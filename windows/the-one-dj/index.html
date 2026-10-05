@@ -2256,6 +2256,7 @@ function scheduleAutoCurve(plan){
 }
 function takeOverAutoDj(){
   if(!autoMix)return;
+  saveAutoDjEnabled(false);
   autoMix=false;autoMixPendingStart=false;autoMixNextDeck=null;cancelFade();restoreAutoTone();
   for(const d of decks){d.syncLock=false;d.cancelTempoReturn()}
   updateAutoMixUI();autoDjStatus("Handmatig • jij hebt de controle");
@@ -2365,7 +2366,13 @@ autoSyncBtn?.addEventListener("click",()=>{
 updateAutoSyncUI();
 
 /* continuous Auto mix: fade at the end; Auto Sync only applies when enabled above. */
-let autoMix=false,autoMixArmed=true,autoMixPendingStart=false,autoMixNextDeck=null;
+function savedAutoDjEnabled(){
+  try{return localStorage.getItem("theOneDjAutoDjEnabled")==="on"}catch(e){return false}
+}
+function saveAutoDjEnabled(enabled){
+  try{localStorage.setItem("theOneDjAutoDjEnabled",enabled?"on":"off")}catch(e){}
+}
+let autoMix=savedAutoDjEnabled(),autoMixArmed=true,autoMixPendingStart=autoMix,autoMixNextDeck=null;
 const autoMixBtn=document.getElementById("autoMixBtn");
 function updateAutoMixUI(){
   autoMixBtn?.setAttribute("aria-pressed",String(autoMix));
@@ -2375,6 +2382,7 @@ function updateAutoMixUI(){
 autoMixBtn?.addEventListener("click",()=>{
   if(autoMix){takeOverAutoDj();return}
   ensureCtx();autoMix=true;
+  saveAutoDjEnabled(true);
   for(const d of decks)if(d.voiceSupported&&!d.voiceSync)d.toggleVoice();
   autoDjStatus("Auto DJ • playlist voorbereiden");
   autoMixArmed=true;
@@ -2408,6 +2416,7 @@ function tickAutoMix(){
   startAutoFade(ti,plan);
 }
 updateAutoMixUI();
+if(autoMix)autoDjStatus("Auto DJ • playlist herstellen");
 // Auto DJ stays enabled until its own button is explicitly switched off.
 // Audio curves run on the audio clock; this timer handles completion and loading in hidden windows.
 setInterval(()=>{if(autoMix){tickFade();for(const d of decks)d.tick();tickAutoMix()}},100);
