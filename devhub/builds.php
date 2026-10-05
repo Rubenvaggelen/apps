@@ -58,15 +58,23 @@ $commit = trim(gitRun('log -1 --oneline'));
 $status = trim(gitRun('status --short'));
 $tagsRaw = trim(gitRun('tag --list ' . escapeshellarg('v*') . ' --sort=-version:refname'));
 $tags = $tagsRaw === '' ? [] : array_values(array_filter(preg_split('/\R/', $tagsRaw)));
-$latestTag = $tags[0] ?? '';
+$mainTagsRaw = trim(gitRun('tag --list ' . escapeshellarg('main-v*') . ' --sort=-version:refname'));
+$mainTags = $mainTagsRaw === '' ? [] : array_values(array_filter(preg_split('/\\R/', $mainTagsRaw)));
+$latestTag = $mainTags[0] ?? ($tags[0] ?? '');
+$carTagsRaw = trim(gitRun('tag --list ' . escapeshellarg('car-v*') . ' --sort=-version:refname'));
+$carTags = $carTagsRaw === '' ? [] : array_values(array_filter(preg_split('/\\R/', $carTagsRaw)));
+$carTag = $carTags[0] ?? '';
+$djTagsRaw = trim(gitRun('tag --list ' . escapeshellarg('dj-v*') . ' --sort=-version:refname'));
+$djTags = $djTagsRaw === '' ? [] : array_values(array_filter(preg_split('/\\R/', $djTagsRaw)));
+$djTag = $djTags[0] ?? '';
 $tagCommit = $latestTag !== '' ? trim(gitRun('rev-list -n 1 ' . escapeshellarg($latestTag))) : '';
 $buildReady = $latestTag !== '' && $tagCommit === $head;
 $recentTags = array_slice($tags, 0, 8);
 $appDownload = $latestTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releases/download/' . rawurlencode($latestTag) . '/app-debug.apk' : '';
-$carDownload = $latestTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releases/download/' . rawurlencode($latestTag) . '/carradio-debug.apk' : '';
+$carDownload = $carTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releases/download/' . rawurlencode($carTag) . '/carradio-debug.apk' : '';
 $mediaDownload = 'https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2316/The-One-Media-Player-v2316.apk';
 $tvDownload = 'https://github.com/Rubenvaggelen/apps/releases/download/media-player-tv-latest/The-One-Media-Player-TV.apk';
-$djDownload = $latestTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releases/download/' . rawurlencode($latestTag) . '/thedj-debug.apk' : '';
+$djDownload = $djTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releases/download/' . rawurlencode($djTag) . '/thedj-debug.apk' : '';
 ?>
 <!doctype html>
 <html lang="nl">
@@ -116,7 +124,7 @@ $djDownload = $latestTag !== '' ? 'https://github.com/Rubenvaggelen/apps/release
       <?php else: ?>
         <div class="big" id="releaseVersion"><?=htmlspecialchars($latestTag)?></div>
         <p class="<?= $buildReady?'ok':'warn' ?>" id="releaseState"><?= $buildReady?'✓ Deze release hoort bij de nieuwste commit':'● Nieuwere commit/build aanwezig; dit is de laatste afgeronde release' ?></p>
-        <div class="download-row"><a class="btn ok" id="appDownload" href="<?=htmlspecialchars($appDownload)?>">⬇ The One APK</a><a class="btn ok" id="carDownload" href="<?=htmlspecialchars($carDownload)?>">⬇ The One Car APK</a><a class="btn ok" href="<?=htmlspecialchars($mediaDownload)?>">⬇ The One Media Player APK</a><a class="btn ok" href="<?=htmlspecialchars($tvDownload)?>">⬇ Media Player Android TV APK</a><a class="btn ok" href="<?=htmlspecialchars($djDownload)?>">⬇ The One DJ APK</a><a class="btn ok" href="https://github.com/Rubenvaggelen/apps/releases/download/dj-windows-v234/The-One-DJ-Windows.zip">⬇ The One DJ Windows</a></div>
+        <div class="download-row"><a class="btn ok" id="appDownload" href="<?=htmlspecialchars($appDownload)?>">⬇ The One APK</a><a class="btn ok" id="carDownload" href="<?=htmlspecialchars($carDownload)?>">⬇ The One Car APK</a><a class="btn ok" href="<?=htmlspecialchars($mediaDownload)?>">⬇ The One Media Player APK</a><a class="btn ok" href="<?=htmlspecialchars($tvDownload)?>">⬇ Media Player Android TV APK</a><a class="btn ok" id="djDownload" href="<?=htmlspecialchars($djDownload)?>">⬇ The One DJ APK</a><a class="btn ok" href="https://github.com/Rubenvaggelen/apps/releases/download/dj-windows-v234/The-One-DJ-Windows.zip">⬇ The One DJ Windows</a></div>
       <?php endif; ?>
     </div>
 
@@ -147,9 +155,30 @@ let wasBusy=false;
 let polls=0;
 function setLive(kind,title,text,run){const dot=document.getElementById('liveDot');const spin=document.getElementById('spinner');const status=document.getElementById('liveStatus');dot.className='statusdot'+(kind?' '+kind:'');spin.style.display=kind==='busy'?'inline-block':'none';status.textContent=title;document.getElementById('liveText').textContent=text;document.getElementById('runNumber').textContent=run?'#'+run.run_number:'—';document.getElementById('runBranch').textContent=run?.head_branch||'main';document.getElementById('checkedAt').textContent=new Date().toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit',second:'2-digit'});const link=document.getElementById('runLink');if(run?.html_url)link.href=run.html_url}
 function setBuildButton(busy){const btn=document.getElementById('buildBtn');btn.disabled=busy;btn.textContent=busy?'Build bezig…':'▶ Start nieuwe Android build'}
-async function loadLive(){polls++;try{const r=await fetch(apiUrl+'&t='+Date.now(),{cache:'no-store',headers:{Accept:'application/vnd.github+json'}});if(!r.ok)throw new Error('HTTP '+r.status);const j=await r.json();const run=j.workflow_runs&&j.workflow_runs[0];if(!run){setLive('','Geen builds','Er zijn nog geen GitHub Actions-runs gevonden.',null);setBuildButton(false);return}const busy=run.status==='queued'||run.status==='in_progress';setBuildButton(busy);if(busy){wasBusy=true;setLive('busy',run.status==='queued'?'In wachtrij':'Bezig met bouwen','The One en The One Car worden nu gebouwd.',run);if(polls<25)setTimeout(loadLive,20000);return}if(run.conclusion==='success'){setLive('ok','Geslaagd','Build '+run.run_number+' is succesvol afgerond.',run);const version='v'+run.run_number;const release=document.getElementById('releaseVersion');if(release)release.textContent=version;const state=document.getElementById('releaseState');if(state){state.textContent='✓ Laatste GitHub-build is afgerond';state.className='ok'}const app=document.getElementById('appDownload');const car=document.getElementById('carDownload');if(app)app.href='https://github.com/Rubenvaggelen/apps/releases/download/'+version+'/app-debug.apk';if(car)car.href='https://github.com/Rubenvaggelen/apps/releases/download/'+version+'/carradio-debug.apk';if(wasBusy)setTimeout(()=>location.reload(),2500)}else{setLive('bad','Mislukt',run.conclusion==='cancelled'?'De build is geannuleerd.':'De laatste build is niet geslaagd: '+(run.conclusion||'onbekend')+'.',run)}}catch(e){setLive('bad','Status niet beschikbaar','GitHub Actions kon nu niet worden uitgelezen. Gebruik de knop naar GitHub Actions voor details.',null);setBuildButton(false)}}
+async function loadLive(){polls++;try{const r=await fetch(apiUrl+'&t='+Date.now(),{cache:'no-store',headers:{Accept:'application/vnd.github+json'}});if(!r.ok)throw new Error('HTTP '+r.status);const j=await r.json();const run=j.workflow_runs&&j.workflow_runs[0];if(!run){setLive('','Geen builds','Er zijn nog geen GitHub Actions-runs gevonden.',null);setBuildButton(false);return}const busy=run.status==='queued'||run.status==='in_progress';setBuildButton(busy);if(busy){wasBusy=true;setLive('busy',run.status==='queued'?'In wachtrij':'Bezig met bouwen','The One en The One Car worden nu gebouwd.',run);if(polls<25)setTimeout(loadLive,20000);return}if(run.conclusion==='success'){setLive('ok','Geslaagd','Build '+run.run_number+' is succesvol afgerond.',run);const version='v'+run.run_number;const release=document.getElementById('releaseVersion');if(release)release.textContent=version;const state=document.getElementById('releaseState');if(state){state.textContent='✓ Laatste GitHub-build is afgerond';state.className='ok'}if(wasBusy)setTimeout(()=>location.reload(),2500)}else{setLive('bad','Mislukt',run.conclusion==='cancelled'?'De build is geannuleerd.':'De laatste build is niet geslaagd: '+(run.conclusion||'onbekend')+'.',run)}}catch(e){setLive('bad','Status niet beschikbaar','GitHub Actions kon nu niet worden uitgelezen. Gebruik de knop naar GitHub Actions voor details.',null);setBuildButton(false)}}
 document.getElementById('buildForm').addEventListener('submit',e=>{const btn=document.getElementById('buildBtn');if(btn.disabled){e.preventDefault();return}btn.disabled=true;btn.textContent='Build starten…'});
-loadLive();
+async function loadDownloads(){
+  try{
+    const response=await fetch('https://api.github.com/repos/Rubenvaggelen/apps/releases?per_page=100&t='+Date.now(),{cache:'no-store',headers:{Accept:'application/vnd.github+json'}});
+    if(!response.ok)return;
+    const releases=await response.json();
+    for(const [prefix,assetName,id] of [['main-v','app-debug.apk','appDownload'],['car-v','carradio-debug.apk','carDownload'],['dj-v','thedj-debug.apk','djDownload']]){
+      const candidates=releases.filter(r=>!r.draft&&!r.prerelease&&new RegExp('^'+prefix+'[0-9]+
+</body>
+</html>
+).test(r.tag_name||''))
+        .sort((a,b)=>Number(b.tag_name.slice(prefix.length))-Number(a.tag_name.slice(prefix.length)));
+      for(const release of candidates){
+        const asset=(release.assets||[]).find(a=>a.name===assetName);
+        if(!asset)continue;
+        const link=document.getElementById(id);if(link){link.href=asset.browser_download_url;link.textContent='⬇ '+(prefix==='main-v'?'The One Main':prefix==='car-v'?'The One Car':'The One DJ')+' • '+release.tag_name;}
+        if(prefix==='main-v'){document.getElementById('releaseVersion').textContent=release.tag_name;document.getElementById('releaseState').textContent='Main, Car en DJ hebben ieder hun eigen update.';}
+        break;
+      }
+    }
+  }catch(e){/* Keep independent server-rendered download links on connection failure. */}
+}
+loadLive().finally(loadDownloads);
 </script>
 </body>
 </html>
