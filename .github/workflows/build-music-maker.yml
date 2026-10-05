@@ -1,0 +1,40 @@
+name: Build The One Music Maker
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'windows/the-one-music-maker/**'
+      - '.github/workflows/build-music-maker.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: windows/the-one-music-maker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: windows/the-one-music-maker/package-lock.json
+      - name: Install pinned build dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Test audio scheduling and WAV encoding
+        run: npm test
+      - name: Install browser for audio integration checks
+        run: npx playwright install chromium
+      - name: Test playback, export and project round trip
+        run: npm run test:ui
+      - name: Build standalone Windows application
+        run: npm run dist:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: The-One-Music-Maker-Windows
+          path: windows/the-one-music-maker/dist/*.exe
+          if-no-files-found: error
+          retention-days: 30

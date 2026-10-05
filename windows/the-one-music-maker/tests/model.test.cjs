@@ -1,0 +1,10 @@
+'use strict';const {test}=require('node:test');const assert=require('node:assert/strict');const M=require('../model.js');
+const clip=M.cleanClip({start:3,trimStart:2,trimEnd:7,gain:1},10);
+test('scheduled clip keeps silence before its start',()=>assert.deepEqual(M.plan(clip,0),{delay:3,offset:2,duration:5,elapsed:0,length:5}));
+test('resume inside clip uses correct source offset and remaining duration',()=>assert.deepEqual(M.plan(clip,5),{delay:0,offset:4,duration:3,elapsed:2,length:5}));
+test('finished and empty clips are not scheduled',()=>{assert.equal(M.plan(clip,8),null);assert.equal(M.plan({...clip,trimEnd:2},0),null);});
+test('solo and mute are respected together',()=>{const a={id:1,solo:true,mute:true},b={id:2,solo:false},c={id:3,solo:true};assert.deepEqual(M.audible([a,b,c]),[c]);assert.deepEqual(M.audible([b]),[b]);});
+test('trim and mixer settings clamp unsafe values',()=>{const c=M.cleanClip({start:-1,trimStart:-9,trimEnd:100,gain:8,pan:-4},4);assert.equal(c.start,0);assert.equal(c.trimStart,0);assert.equal(c.trimEnd,4);assert.equal(c.gain,2);assert.equal(c.pan,-1);});
+test('fade envelope resumes at the current fade level',()=>{const t={gain:.8,fadeIn:2,fadeOut:1};const p={elapsed:1,length:5};assert.deepEqual(M.envelope(t,p),[{time:0,value:.4},{time:1,value:.8},{time:3,value:.8},{time:4,value:0}]);});
+test('overlapping fades include the crossover, avoiding an incorrect plateau',()=>{const t={gain:1,fadeIn:4,fadeOut:4};const pts=M.envelope(t,{elapsed:0,length:4});assert.deepEqual(pts,[{time:0,value:0},{time:2,value:.5},{time:4,value:0}]);});
+test('WAV exports interleaved stereo with valid header and clipped integer samples',()=>{const b={length:2,numberOfChannels:2,sampleRate:44100,getChannelData:c=>c===0?new Float32Array([1,-1]):new Float32Array([.5,2])};const v=new DataView(M.wav(b));assert.equal(v.byteLength,52);assert.equal(v.getUint32(4,true),44);assert.equal(v.getUint16(22,true),2);assert.equal(v.getUint32(40,true),8);assert.equal(v.getInt16(44,true),32767);assert.equal(v.getInt16(46,true),16384);assert.equal(v.getInt16(48,true),-32768);assert.equal(v.getInt16(50,true),32767);});
