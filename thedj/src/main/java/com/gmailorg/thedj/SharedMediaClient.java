@@ -164,7 +164,7 @@ final class SharedMediaClient {
             String mime=c.getContentType();if(mime==null)mime="audio/mpeg";mime=mime.split(";")[0];
             if(head){c.disconnect();return new WebResourceResponse(mime,null,code,"OK",headers,new ByteArrayInputStream(new byte[0]));}
             // Long MP3 mixes and range requests must retain progressive playback.
-            if(range!=null||(file.toLowerCase(java.util.Locale.ROOT).endsWith(".mp3")&&c.getContentLengthLong()>=24L*1024*1024)){
+            if(range!=null||(file.toLowerCase(java.util.Locale.ROOT).matches(".*\\.(mp3|m4a|mp4|aac|wav|ogg|flac)$")&&c.getContentLengthLong()>=24L*1024*1024)){
                 InputStream stream=new FilterInputStream(c.getInputStream()){
                 private boolean released;
                 private long remaining=c.getContentLengthLong();
