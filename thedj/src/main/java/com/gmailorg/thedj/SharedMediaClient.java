@@ -164,7 +164,29 @@ final class SharedMediaClient {
             String mime=c.getContentType();if(mime==null)mime="audio/mpeg";mime=mime.split(";")[0];
             if(head){c.disconnect();return new WebResourceResponse(mime,null,code,"OK",headers,new ByteArrayInputStream(new byte[0]));}
             InputStream stream=new FilterInputStream(c.getInputStream()){
-                @Override public void close() throws IOException {try{super.close();}finally{c.disconnect();}}
+                private boolean released;
+                private long remaining=c.getContentLengthLong();
+                private void consumed(int count) throws IOException {
+                    if(count<0){release();return;}
+                    if(remaining>=0){remaining-=count;if(remaining<=0)release();}
+                }
+                private void release() throws IOException {
+                    if(released)return;
+                    released=true;
+                    try{super.close();}finally{c.disconnect();}
+                }
+                @Override public int read() throws IOException {
+                    if(released)return -1;
+                    try{int n=in.read();consumed(n<0?-1:1);return n;}
+                    catch(IOException e){try{release();}catch(IOException ignored){}throw e;}
+                }
+                @Override public int read(byte[] b,int offset,int length) throws IOException {
+                    if(length==0)return 0;
+                    if(released)return -1;
+                    try{int n=in.read(b,offset,length);consumed(n);return n;}
+                    catch(IOException e){try{release();}catch(IOException ignored){}throw e;}
+                }
+                @Override public void close() throws IOException {release();}
             };
             return new WebResourceResponse(mime,null,code,code==206?"Partial Content":"OK",headers,stream);
         } catch(Exception e){
