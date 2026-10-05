@@ -33,6 +33,7 @@ $csrf = $_SESSION['csrf'];
     <a class="download-link" id="mediaDownload" href="https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2316/The-One-Media-Player-v2316.apk">↓ The One Media Player APK</a>
     <a class="download-link" id="tvDownload" href="https://github.com/Rubenvaggelen/apps/releases/download/media-player-tv-latest/The-One-Media-Player-TV.apk">↓ Media Player Android TV APK</a>
     <a class="download-link" id="djDownload" aria-disabled="true">↓ The One DJ APK</a>
+    <a class="download-link" id="runDownload" aria-disabled="true">↓ The One Run APK</a>
     <a class="download-link" id="windowsDownload" aria-disabled="true">↓ The One Window</a>
     <a class="download-link" id="djWindowsDownload" aria-disabled="true">↓ The One DJ Windows</a>
     <div class="download-note" id="releaseNote">The One/Car volgen de nieuwste release. Media Player v2316 en Android TV staan als aparte APK's klaar.</div>
@@ -55,8 +56,8 @@ function humanSize(n){if(n==null)return'';if(n<1024)return n+' B';if(n<1048576)r
 async function loadStatus(){try{const j=await api('status');$('#branch').textContent=j.data.branch||'main';$('#latestCommit').textContent=j.data.commit||'';const clean=!j.data.status;$('#repoStatus').textContent=clean?'Working tree clean':'Wijzigingen aanwezig';$('#gitDot').style.background=clean?'var(--ok)':'var(--warn)'}catch(e){$('#repoStatus').textContent='Status fout';$('#gitDot').style.background='var(--danger)'}}
 async function loadBuildStatus(){const pill=$('#buildPill');try{const r=await fetch('https://api.github.com/repos/Rubenvaggelen/apps/actions/workflows/build-apk.yml/runs?branch=main&per_page=1',{headers:{Accept:'application/vnd.github+json'},cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);const j=await r.json();const run=j.workflow_runs&&j.workflow_runs[0];if(!run){pill.textContent='Geen builds';pill.className='build-pill';return{busy:false,success:false}}const busy=run.status==='queued'||run.status==='in_progress';if(busy){pill.textContent='Build bezig • #'+run.run_number;pill.className='build-pill busy'}else if(run.conclusion==='success'){pill.textContent='Build geslaagd • v'+run.run_number;pill.className='build-pill success'}else{pill.textContent='Build '+(run.conclusion||'mislukt')+' • #'+run.run_number;pill.className='build-pill fail'}return{busy,success:run.conclusion==='success',number:run.run_number}}catch(e){pill.textContent='Buildstatus onbekend';pill.className='build-pill';return null}}
 async function loadLatestRelease(){
- const version=$('#releaseVersion'),note=$('#releaseNote'),app=$('#appDownload'),car=$('#carDownload'),dj=$('#djDownload'),win=$('#windowsDownload'),djWin=$('#djWindowsDownload');
- for(const el of [app,car,dj,win,djWin]){el.removeAttribute('href');el.setAttribute('aria-disabled','true')}
+ const version=$('#releaseVersion'),note=$('#releaseNote'),app=$('#appDownload'),car=$('#carDownload'),dj=$('#djDownload'),run=$('#runDownload'),win=$('#windowsDownload'),djWin=$('#djWindowsDownload');
+ for(const el of [app,car,dj,run,win,djWin]){el.removeAttribute('href');el.setAttribute('aria-disabled','true')}
  try{
   const r=await fetch('https://api.github.com/repos/Rubenvaggelen/apps/releases?per_page=60',{headers:{Accept:'application/vnd.github+json'},cache:'no-store'});
   if(!r.ok)throw new Error('HTTP '+r.status);
@@ -65,16 +66,18 @@ async function loadLatestRelease(){
   const mainRel=pick('main-v','app-debug.apk');
   const carRel=pick('car-v','carradio-debug.apk');
   const djRel=pick('dj-v','thedj-debug.apk');
+  const runRel=pick('run-v','runcoach-debug.apk');
   const winRel=pick('windows-v','The-One-Main-Windows.zip');
   const djWinRel=pick('dj-windows-v','The-One-DJ-Windows.zip');
   if(mainRel){app.href=mainRel.url;app.removeAttribute('aria-disabled')}
   if(carRel){car.href=carRel.url;car.removeAttribute('aria-disabled')}
   if(djRel){dj.href=djRel.url;dj.removeAttribute('aria-disabled')}
+  if(runRel){run.href=runRel.url;run.removeAttribute('aria-disabled')}
   if(winRel){win.href=winRel.url;win.removeAttribute('aria-disabled')}
   if(djWinRel){djWin.href=djWinRel.url;djWin.removeAttribute('aria-disabled')}
-  version.textContent='Main '+(mainRel?.tag||'—')+' • Car '+(carRel?.tag||'—')+' • DJ '+(djRel?.tag||'—')+' • Windows '+(winRel?.tag||'—')+' • DJ Windows '+(djWinRel?.tag||'—');
+  version.textContent='Main '+(mainRel?.tag||'—')+' • Car '+(carRel?.tag||'—')+' • DJ '+(djRel?.tag||'—')+' • Run '+(runRel?.tag||'—')+' • Windows '+(winRel?.tag||'—')+' • DJ Windows '+(djWinRel?.tag||'—');
   note.textContent=mainRel&&carRel&&djRel&&winRel&&djWinRel?'Alle Family-apps hebben een eigen download- en updatekanaal.':'Een of meer losse Family-releases moeten nog worden gebouwd.';
-  return {main:mainRel,car:carRel,dj:djRel,windows:winRel,djWindows:djWinRel};
+  return {main:mainRel,car:carRel,dj:djRel,run:runRel,windows:winRel,djWindows:djWinRel};
  }catch(e){
   version.textContent='Releases onbekend';
   note.textContent='Kon de losse releasekanalen niet laden. Gebruik Builds als alternatief.';
