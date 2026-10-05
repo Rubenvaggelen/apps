@@ -42,6 +42,8 @@ class RunService : Service(), LocationListener, SensorEventListener {
         private const val EXTRA_TARGET = "target"
         private const val EXTRA_GOAL = "goal"
         private const val EXTRA_LEVEL = "level"
+        private const val EXTRA_VOICE = "voice"
+        const val MIN_SAVE_DISTANCE_M = 50.0          // kortere pogingen komen niet in de geschiedenis
         private const val CHANNEL_ID = "run_tracking"
         private const val NOTIF_ID = 4242
 
@@ -52,12 +54,13 @@ class RunService : Service(), LocationListener, SensorEventListener {
         private const val PACE_WINDOW_MS = 25_000L    // glijdend venster huidig tempo
         private const val CADENCE_WINDOW_MS = 60_000L
 
-        fun start(ctx: Context, targetM: Double?, goalPace: Int?, level: Int) {
+        fun start(ctx: Context, targetM: Double?, goalPace: Int?, level: Int, voice: Int) {
             val i = Intent(ctx, RunService::class.java)
                 .setAction(ACTION_START)
                 .putExtra(EXTRA_TARGET, targetM ?: -1.0)
                 .putExtra(EXTRA_GOAL, goalPace ?: -1)
                 .putExtra(EXTRA_LEVEL, level)
+                .putExtra(EXTRA_VOICE, voice)
             ctx.startForegroundService(i)
         }
 
@@ -156,6 +159,7 @@ class RunService : Service(), LocationListener, SensorEventListener {
         targetM = intent.getDoubleExtra(EXTRA_TARGET, -1.0).takeIf { it > 0 }
         goalPace = intent.getIntExtra(EXTRA_GOAL, -1).takeIf { it > 0 }
         level = intent.getIntExtra(EXTRA_LEVEL, 1)
+        val voice = intent.getIntExtra(EXTRA_VOICE, Coach.VOICE_NORMAL)
 
         resetStats()
         status = RunStatus.WAITING_GPS
@@ -165,7 +169,8 @@ class RunService : Service(), LocationListener, SensorEventListener {
             return
         }
         acquireWakeLock()
-        coach.configure(level, goalPace, targetM)
+        speaker.setVoice(voice)
+        coach.configure(level, goalPace, targetM, voice)
         startListening()
         handler.removeCallbacks(tick)
         handler.post(tick)
@@ -230,6 +235,7 @@ class RunService : Service(), LocationListener, SensorEventListener {
         status = RunStatus.FINISHED
         currentPace = null
         val snap = snapshot()
+        if (snap.distanceM >= MIN_SAVE_DISTANCE_M) History.add(this, snap)
         RunRepository.update(snap)
         coach.onFinish(snap)
         stopForeground(STOP_FOREGROUND_REMOVE)

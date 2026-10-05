@@ -6,6 +6,7 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.Outline
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
@@ -16,12 +17,16 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.view.WindowInsets
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -57,6 +62,13 @@ class MainActivity : Activity() {
     private var goalOn = false
     private var goalPace = 360
     private var level = 1
+    private var voice = Coach.VOICE_NORMAL
+
+    // geschiedenis: "" = startscherm, "history" = lijst, "detail" = één training
+    private var page = ""
+    private var detail: Session? = null
+    private var preview: Speaker? = null
+    private val dateFmt = SimpleDateFormat("EEE d MMM yyyy, HH:mm", Locale.forLanguageTag("nl-NL"))
 
     // live-scherm
     private lateinit var tvStatus: TextView
@@ -83,6 +95,7 @@ class MainActivity : Activity() {
         goalOn = prefs.getBoolean("goalOn", false)
         goalPace = prefs.getInt("goalPace", 360)
         level = prefs.getInt("level", 1)
+        voice = prefs.getInt("voice", Coach.VOICE_NORMAL)
 
         val scroll = ScrollView(this).apply { setBackgroundColor(BG); isFillViewport = true }
         root = LinearLayout(this).apply {
@@ -118,20 +131,39 @@ class MainActivity : Activity() {
         super.onPause()
     }
 
+    override fun onDestroy() {
+        preview?.shutdown()
+        preview = null
+        super.onDestroy()
+    }
+
+    @Suppress("DEPRECATION")
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        when (page) {
+            "detail" -> open("history")
+            "history" -> open("")
+            else -> super.onBackPressed()
+        }
+    }
+
     // ------------------------------------------------------------------ render
 
     private fun render(s: RunSnapshot) {
         val screen = when (s.status) {
-            RunStatus.IDLE -> "setup"
+            RunStatus.IDLE -> if (page.isEmpty()) "setup" else page
             RunStatus.FINISHED -> "summary"
             else -> "run"
         }
+        if (s.status != RunStatus.IDLE) page = ""
         if (screen != shownScreen) {
             shownScreen = screen
             root.removeAllViews()
             when (screen) {
                 "setup" -> buildSetup()
                 "run" -> buildRun()
+                "history" -> buildHistory()
+                "detail" -> buildDetail()
                 else -> buildSummary(s)
             }
         }
@@ -144,12 +176,20 @@ class MainActivity : Activity() {
         render(RunRepository.snapshot)
     }
 
+    private fun open(p: String) {
+        page = p
+        shownScreen = ""
+        render(RunRepository.snapshot)
+        (root.parent as? ScrollView)?.scrollTo(0, 0)
+    }
+
     private fun save() {
         prefs.edit()
             .putInt("targetKm", targetKm)
             .putBoolean("goalOn", goalOn)
             .putInt("goalPace", goalPace)
             .putInt("level", level)
+            .putInt("voice", voice)
             .apply()
     }
 
@@ -215,12 +255,65 @@ class MainActivity : Activity() {
             root.addView(tv("Tip: zet een doeltempo aan, dan kan de coach je tempo corrigeren.", 13f, WARN), lp(top = 4))
         }
 
+        addSection("Stem van de coach")
+        root.addView(
+            chipRow(
+                listOf(
+                    "Rustig" to (voice == Coach.VOICE_CALM),
+                    "Normaal" to (voice == Coach.VOICE_NORMAL),
+                    "Streng" to (voice == Coach.VOICE_STRICT)
+                )
+            ) { i ->
+                voice = i
+                refreshSetup()
+                playSample()
+            }, lp(top = 8)
+        )
+        val voiceExpl = when (voice) {
+            Coach.VOICE_CALM -> "Rustige, vriendelijke stem die je ontspannen laat lopen."
+            Coach.VOICE_STRICT -> "Strenge motivator: lage, snelle stem die je bij elke kilometer aanpakt en geen excuses accepteert."
+            else -> "Duidelijke coach: heldere updates over afstand en tempo."
+        }
+        root.addView(tv("$voiceExpl Tik op een stem om hem te horen.", 13f, MUTED), lp(top = 6))
+        if (voice == Coach.VOICE_STRICT && level == 0) {
+            root.addView(tv("Tip: zet het coachniveau op Normaal of Veel, anders houdt de motivator zich in.", 13f, WARN), lp(top = 4))
+        }
+
         val start = button("START HARDLOPEN", ACCENT, size = 22f).apply {
             typeface = Typeface.DEFAULT_BOLD
             setPadding(dp(8), dp(22), dp(8), dp(22))
             setOnClickListener { onStartClicked() }
         }
         root.addView(start, lp(top = 32))
+
+        val history = button("GESCHIEDENIS", CARD, size = 16f).apply {
+            typeface = Typeface.DEFAULT_BOLD
+            setOnClickListener { open("history") }
+        }
+        root.addView(history, lp(top = 12))
+
+        val logo = ImageView(this).apply {
+            setImageResource(R.drawable.the_one_logo)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: Outline) = outline.setOval(0, 0, view.width, view.height)
+            }
+            clipToOutline = true
+            contentDescription = "The One"
+        }
+        root.addView(
+            logo,
+            LinearLayout.LayoutParams(dp(120), dp(120)).apply {
+                topMargin = dp(28)
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
+        )
+    }
+
+    private fun playSample() {
+        val sp = preview ?: Speaker(this).also { preview = it }
+        sp.setVoice(voice)
+        sp.say(Coach.voiceSample(voice))
     }
 
     // ------------------------------------------------------------------ live-scherm
@@ -320,7 +413,30 @@ class MainActivity : Activity() {
     private fun buildSummary(s: RunSnapshot) {
         root.addView(header())
         root.addView(tv("Training voltooid", 28f, TEXT, true), lp(top = 20))
+        addStats(s)
+        if (s.distanceM >= RunService.MIN_SAVE_DISTANCE_M) {
+            root.addView(tv("Opgeslagen in je geschiedenis.", 13f, MUTED), lp(top = 14))
+        }
 
+        val again = button("NIEUWE TRAINING", ACCENT, size = 20f).apply {
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(dp(8), dp(18), dp(8), dp(18))
+            setOnClickListener { RunRepository.update(RunSnapshot()) }
+        }
+        root.addView(again, lp(top = 28))
+
+        val history = button("GESCHIEDENIS", CARD, size = 16f).apply {
+            typeface = Typeface.DEFAULT_BOLD
+            setOnClickListener {
+                page = "history"
+                RunRepository.update(RunSnapshot())
+            }
+        }
+        root.addView(history, lp(top = 12))
+    }
+
+    /** Statistieken en kilometertijden van één training (samenvatting én geschiedenis). */
+    private fun addStats(s: RunSnapshot) {
         fun line(label: String, value: String, color: Int = TEXT) {
             val r = row().apply { gravity = Gravity.CENTER_VERTICAL }
             r.addView(tv(label, 16f, MUTED), LinearLayout.LayoutParams(0, WRAP, 1f))
@@ -344,13 +460,115 @@ class MainActivity : Activity() {
         val lastTotal = s.splits.lastOrNull()?.totalMs ?: 0L
         if (rest >= 50) line("Laatste ${Fmt.km(rest)} km", Fmt.time(s.elapsedMs - lastTotal))
         if (s.splits.isEmpty() && rest < 50) root.addView(tv("Nog geen afstand gemeten.", 14f, MUTED), lp(top = 8))
+    }
 
-        val again = button("NIEUWE TRAINING", ACCENT, size = 20f).apply {
-            typeface = Typeface.DEFAULT_BOLD
-            setPadding(dp(8), dp(18), dp(8), dp(18))
-            setOnClickListener { RunRepository.update(RunSnapshot()) }
+    // ------------------------------------------------------------------ geschiedenis
+
+    private fun buildHistory() {
+        root.addView(header())
+        root.addView(tv("Geschiedenis", 28f, TEXT, true), lp(top = 20))
+
+        val sessions = History.load(this)
+        if (sessions.isEmpty()) {
+            root.addView(
+                tv("Nog geen trainingen opgeslagen. Elke training van minstens 50 meter komt hier vanzelf te staan.", 14f, MUTED),
+                lp(top = 8)
+            )
+        } else {
+            root.addView(tv("Tik op een training voor alle details.", 13f, MUTED), lp(top = 6))
         }
-        root.addView(again, lp(top = 28))
+
+        sessions.forEach { se ->
+            val card = row().apply {
+                gravity = Gravity.CENTER_VERTICAL
+                background = rounded(CARD, 16)
+                setPadding(dp(14), dp(10), dp(10), dp(10))
+                setOnClickListener {
+                    detail = se
+                    open("detail")
+                }
+            }
+            val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            info.addView(tv(dateFmt.format(Date(se.id)), 15f, TEXT, true))
+            info.addView(
+                tv(
+                    "${Fmt.km(se.snap.distanceM)} km  •  ${Fmt.time(se.snap.elapsedMs)}  •  ${Fmt.pace(se.snap.avgPaceSecPerKm)} /km",
+                    14f, MUTED
+                ),
+                lp(top = 2)
+            )
+            card.addView(info, LinearLayout.LayoutParams(0, WRAP, 1f))
+            val del = button("Wis", DANGER, size = 14f)
+            del.setOnClickListener { confirmDelete(se) }
+            card.addView(del, LinearLayout.LayoutParams(dp(72), WRAP).apply { marginStart = dp(8) })
+            root.addView(card, lp(top = 10))
+        }
+
+        if (sessions.isNotEmpty()) {
+            val clear = button("ALLES WISSEN", DANGER, size = 16f).apply {
+                typeface = Typeface.DEFAULT_BOLD
+                setOnClickListener { confirmClear(sessions.size) }
+            }
+            root.addView(clear, lp(top = 24))
+        }
+        val back = button("TERUG", CARD, size = 16f).apply {
+            typeface = Typeface.DEFAULT_BOLD
+            setOnClickListener { open("") }
+        }
+        root.addView(back, lp(top = 12))
+    }
+
+    private fun buildDetail() {
+        val se = detail
+        if (se == null) {
+            open("history")
+            return
+        }
+        root.addView(header())
+        root.addView(tv(dateFmt.format(Date(se.id)), 22f, TEXT, true), lp(top = 20))
+        val extra = listOfNotNull(
+            se.snap.targetDistanceM?.let { "Doel ${Fmt.km(it)} km" },
+            se.snap.goalPaceSecPerKm?.let { "Doeltempo ${Fmt.pace(it.toDouble())} /km" }
+        )
+        if (extra.isNotEmpty()) root.addView(tv(extra.joinToString("  •  "), 13f, MUTED), lp(top = 4))
+        addStats(se.snap)
+
+        val del = button("WIS DEZE TRAINING", DANGER, size = 16f).apply {
+            typeface = Typeface.DEFAULT_BOLD
+            setOnClickListener { confirmDelete(se) }
+        }
+        root.addView(del, lp(top = 28))
+        val back = button("TERUG", CARD, size = 16f).apply {
+            typeface = Typeface.DEFAULT_BOLD
+            setOnClickListener { open("history") }
+        }
+        root.addView(back, lp(top = 12))
+    }
+
+    private fun confirmDelete(se: Session) {
+        AlertDialog.Builder(this)
+            .setTitle("Training wissen?")
+            .setMessage("${dateFmt.format(Date(se.id))} (${Fmt.km(se.snap.distanceM)} km) wordt definitief verwijderd.")
+            .setPositiveButton("Wissen") { _, _ ->
+                History.delete(this, se.id)
+                detail = null
+                open("history")
+            }
+            .setNegativeButton("Annuleren", null)
+            .show()
+    }
+
+    private fun confirmClear(count: Int) {
+        AlertDialog.Builder(this)
+            .setTitle("Alles wissen?")
+            .setMessage("Alle $count opgeslagen trainingen worden definitief verwijderd.")
+            .setPositiveButton("Alles wissen") { _, _ ->
+                History.clear(this)
+                detail = null
+                open("history")
+            }
+            .setNegativeButton("Annuleren", null)
+            .show()
     }
 
     // ------------------------------------------------------------------ starten + toestemmingen
@@ -416,7 +634,7 @@ class MainActivity : Activity() {
     private fun startRun() {
         val target = if (targetKm > 0) targetKm * 1000.0 else null
         val goal = if (goalOn) goalPace else null
-        RunService.start(this, target, goal, level)
+        RunService.start(this, target, goal, level, voice)
     }
 
     // ------------------------------------------------------------------ view-hulpjes

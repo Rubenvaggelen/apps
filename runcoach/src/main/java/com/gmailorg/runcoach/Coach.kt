@@ -8,10 +8,22 @@ import kotlin.math.roundToInt
  *  0 = Stil     -> alleen elke kilometer (+ doel gehaald)
  *  1 = Normaal  -> kilometerupdates + tempocorrecties (als doeltempo aan staat)
  *  2 = Veel     -> alles van Normaal + elke 500 m tempo-info + motivatie
+ *
+ * Stemmen: Rustig, Normaal of Streng (een strenge motivator die je bij elke kilometer aanpakt).
  */
 class Coach(private val speaker: Speaker) {
 
     companion object {
+        const val VOICE_CALM = 0
+        const val VOICE_NORMAL = 1
+        const val VOICE_STRICT = 2
+
+        fun voiceSample(voice: Int) = when (voice) {
+            VOICE_CALM -> "Hallo, ik ben je rustige coach. We lopen ontspannen en op gevoel."
+            VOICE_STRICT -> "Luister goed. Ik ben je strenge motivator. Geen excuses, geen smoesjes. Lopen!"
+            else -> "Hallo, ik ben je coach. Ik houd je op de hoogte van je afstand en je tempo."
+        }
+
         private const val OFF_THRESHOLD = 12.0      // sec/km afwijking voordat de coach ingrijpt
         private const val BACK_THRESHOLD = 8.0      // sec/km marge om "weer op tempo" te zeggen
         private const val SUSTAIN_MS = 20_000L      // zo lang moet de afwijking aanhouden
@@ -21,6 +33,7 @@ class Coach(private val speaker: Speaker) {
     }
 
     private var level = 1
+    private var voice = VOICE_NORMAL
     private var goal: Int? = null
     private var target: Double? = null
 
@@ -36,7 +49,7 @@ class Coach(private val speaker: Speaker) {
     private var finishDone = false
     private var motivationIdx = 0
 
-    private val motivation = listOf(
+    private val motivationNormal = listOf(
         "Lekker bezig, blijf ontspannen ademen.",
         "Schouders los, armen soepel mee laten bewegen.",
         "Mooi ritme, hou dit vast.",
@@ -44,8 +57,43 @@ class Coach(private val speaker: Speaker) {
         "Korte, lichte passen. Je loopt sterk."
     )
 
-    fun configure(level: Int, goal: Int?, target: Double?) {
+    private val motivationCalm = listOf(
+        "Rustig ademen, je doet het prima.",
+        "Geniet van je loop, je hoeft niets te bewijzen.",
+        "Ontspan je schouders en laat je armen los meebewegen.",
+        "Mooi zo, stap voor stap.",
+        "Je loopt heerlijk, blijf lekker in je eigen ritme."
+    )
+
+    private val motivationStrict = listOf(
+        "Niet verslappen! Je bent hier om te werken.",
+        "Geen excuses. Doorlopen!",
+        "Moe zijn telt niet. Tempo houden!",
+        "Je kunt veel meer dan dit. Laat het zien!",
+        "Hoofd omhoog, borst vooruit, doorgaan!",
+        "Niemand zei dat het makkelijk was. Door!",
+        "Opgeven is geen optie. Bijten!",
+        "Dit is het moment waarop anderen stoppen. Jij niet!"
+    )
+
+    private fun v(calm: String, normal: String, strict: String) = when (voice) {
+        VOICE_CALM -> calm
+        VOICE_STRICT -> strict
+        else -> normal
+    }
+
+    private fun nextMotivation(): String {
+        val list = when (voice) {
+            VOICE_CALM -> motivationCalm
+            VOICE_STRICT -> motivationStrict
+            else -> motivationNormal
+        }
+        return list[motivationIdx++ % list.size]
+    }
+
+    fun configure(level: Int, goal: Int?, target: Double?, voice: Int = VOICE_NORMAL) {
         this.level = level
+        this.voice = voice
         this.goal = goal
         this.target = target
         lastKm = 0
@@ -63,7 +111,7 @@ class Coach(private val speaker: Speaker) {
 
     fun onStart(gpsFix: Boolean) {
         val sb = StringBuilder(
-            if (gpsFix) "GPS gevonden. Succes!"
+            if (gpsFix) v("GPS gevonden. Veel plezier!", "GPS gevonden. Succes!", "GPS gevonden. Lopen, nu!")
             else "We starten. Het GPS-signaal kan in het begin nog wat onnauwkeurig zijn."
         )
         target?.let { sb.append(" Doel: ${Fmt.spokenKm(it)}.") }
@@ -71,13 +119,21 @@ class Coach(private val speaker: Speaker) {
         speaker.say(sb.toString())
     }
 
-    fun onPause() = speaker.say("Training gepauzeerd.")
-    fun onResume() = speaker.say("We gaan weer verder.")
+    fun onPause() = speaker.say(
+        v("Training gepauzeerd. Neem rustig je tijd.", "Training gepauzeerd.", "Pauze. Maak het kort, we zijn nog niet klaar.")
+    )
+
+    fun onResume() = speaker.say(
+        v("We gaan rustig weer verder.", "We gaan weer verder.", "Genoeg gerust. Lopen!")
+    )
 
     fun onFinish(s: RunSnapshot) {
         val sb = StringBuilder("Training gestopt. Je liep ${Fmt.spokenKm(s.distanceM)} in ${Fmt.spokenTime(s.elapsedMs)}.")
         s.avgPaceSecPerKm?.let { sb.append(" Gemiddeld tempo ${Fmt.spokenPace(it)}.") }
         if (s.stepsAvailable && s.steps > 0) sb.append(" ${s.steps} stappen.")
+        sb.append(
+            v(" Mooi gedaan, wees trots op jezelf.", " Goed gedaan!", " Niet slecht. Volgende keer verder en harder.")
+        )
         speaker.say(sb.toString())
     }
 
@@ -90,7 +146,7 @@ class Coach(private val speaker: Speaker) {
             finishedNow = true
             val avg = s.avgPaceSecPerKm?.let { Fmt.spokenPace(it) } ?: "onbekend"
             speaker.say(
-                "Gefeliciteerd! ${Fmt.spokenKm(t)} voltooid in ${Fmt.spokenTime(s.elapsedMs)}. " +
+                v("Wat goed van je!", "Gefeliciteerd!", "Doel gehaald. Zo doe je dat!") + " ${Fmt.spokenKm(t)} voltooid in ${Fmt.spokenTime(s.elapsedMs)}. " +
                     "Gemiddeld tempo $avg. Je mag uitlopen of op stop drukken."
             )
         }
@@ -113,11 +169,23 @@ class Coach(private val speaker: Speaker) {
         if (t != null && !finishDone) {
             if (level >= 2 && !halfwayDone && t >= 2000 && s.distanceM >= t / 2) {
                 halfwayDone = true
-                speaker.say("Halverwege! Goed bezig, hou dit vast.")
+                speaker.say(
+                    v(
+                        "Je bent halverwege. Blijf lekker ontspannen lopen.",
+                        "Halverwege! Goed bezig, hou dit vast.",
+                        "Halverwege. Het zware deel begint nu. Niet inhouden!"
+                    )
+                )
             }
             if (level >= 1 && !lastKmDone && t > 1000 && s.distanceM >= t - 1000) {
                 lastKmDone = true
-                speaker.say("Nog één kilometer. Alles geven!")
+                speaker.say(
+                    v(
+                        "Nog één kilometer. Je bent er bijna.",
+                        "Nog één kilometer. Alles geven!",
+                        "Nog één kilometer. Nu ga je helemaal leeg. Alles eruit!"
+                    )
+                )
             }
         }
 
@@ -131,6 +199,8 @@ class Coach(private val speaker: Speaker) {
         val split = s.splits.lastOrNull()
         if (split != null && km > 1) sb.append(" Deze kilometer in ${Fmt.spokenTime(split.splitMs)}.")
         if (s.stepsAvailable && s.steps > 0) sb.append(" ${s.steps} stappen.")
+        // de strenge motivator pakt je bij elke kilometer aan
+        if (voice == VOICE_STRICT && level >= 1) sb.append(" ").append(nextMotivation())
         speaker.say(sb.toString())
     }
 
@@ -148,9 +218,9 @@ class Coach(private val speaker: Speaker) {
                     else -> " ${-d} seconden per kilometer sneller dan je doel."
                 }
             )
+            if (voice == VOICE_STRICT) sb.append(" ").append(nextMotivation())
         } else {
-            sb.append(" ").append(motivation[motivationIdx % motivation.size])
-            motivationIdx++
+            sb.append(" ").append(nextMotivation())
         }
         speaker.say(sb.toString())
     }
@@ -176,8 +246,16 @@ class Coach(private val speaker: Speaker) {
             }
             if (now - offSince >= SUSTAIN_MS && now - lastCorrection >= COOLDOWN_MS) {
                 speaker.say(
-                    if (dir == 1) "Iets versnellen, je loopt nu ${Fmt.spokenPace(cur)}."
-                    else "Rustiger aan, je zit op ${Fmt.spokenPace(cur)}."
+                    if (dir == 1) v(
+                        "Je mag iets versnellen als het lukt, je loopt nu ${Fmt.spokenPace(cur)}.",
+                        "Iets versnellen, je loopt nu ${Fmt.spokenPace(cur)}.",
+                        "Te langzaam! ${Fmt.spokenPace(cur)} is niet goed genoeg. Versnellen, nu!"
+                    )
+                    else v(
+                        "Doe maar iets rustiger, je zit op ${Fmt.spokenPace(cur)}.",
+                        "Rustiger aan, je zit op ${Fmt.spokenPace(cur)}.",
+                        "Te snel, ${Fmt.spokenPace(cur)}. Houd je aan het plan en neem gas terug!"
+                    )
                 )
                 lastCorrection = now
                 correctedDir = dir
@@ -188,7 +266,9 @@ class Coach(private val speaker: Speaker) {
             if (correctedDir != 0 && abs(diff) <= BACK_THRESHOLD) {
                 if (backSince < 0) backSince = now
                 if (now - backSince >= BACK_SUSTAIN_MS) {
-                    speaker.say("Goed zo, je zit weer op tempo.")
+                    speaker.say(
+                        v("Mooi, je zit weer op tempo.", "Goed zo, je zit weer op tempo.", "Zo ja. En nu vasthouden!")
+                    )
                     correctedDir = 0
                     backSince = -1L
                 }

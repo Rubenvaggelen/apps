@@ -35,6 +35,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
     private val pending = mutableListOf<String>()
     private var active = 0
     private var counter = 0
+    private var persona = Coach.VOICE_NORMAL
 
     private val abandon = Runnable {
         if (active == 0) audio.abandonAudioFocusRequest(focusRequest)
@@ -57,9 +58,32 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             override fun onError(utteranceId: String?, errorCode: Int) { finished() }
         })
         ready = true
+        applyVoice()
         val queued = pending.toList()
         pending.clear()
         queued.forEach { say(it) }
+    }
+
+    /** Kiest de stem (Coach.VOICE_*): eigen toonhoogte en spreeksnelheid, en waar mogelijk een andere Nederlandse stem. */
+    fun setVoice(persona: Int) {
+        this.persona = persona
+        if (ready && !released) applyVoice()
+    }
+
+    private fun applyVoice() {
+        try {
+            val voices = tts.voices.orEmpty()
+                .filter { it.locale.language == "nl" && !it.isNetworkConnectionRequired }
+                .sortedBy { it.name }
+            if (voices.size > 1) tts.voice = voices[persona.coerceIn(0, voices.size - 1)]
+        } catch (e: Exception) {
+            // toestel geeft geen stemmenlijst: alleen toonhoogte en snelheid aanpassen
+        }
+        when (persona) {
+            Coach.VOICE_CALM -> { tts.setPitch(1.08f); tts.setSpeechRate(0.94f) }
+            Coach.VOICE_STRICT -> { tts.setPitch(0.78f); tts.setSpeechRate(1.14f) }
+            else -> { tts.setPitch(1.0f); tts.setSpeechRate(1.0f) }
+        }
     }
 
     /** Altijd aanroepen vanaf de main thread. */
