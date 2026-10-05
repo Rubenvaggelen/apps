@@ -43,6 +43,7 @@ class RunService : Service(), LocationListener, SensorEventListener {
         private const val EXTRA_GOAL = "goal"
         private const val EXTRA_LEVEL = "level"
         private const val EXTRA_VOICE = "voice"
+        private const val EXTRA_MALE = "male"
         const val MIN_SAVE_DISTANCE_M = 50.0          // kortere pogingen komen niet in de geschiedenis
         private const val CHANNEL_ID = "run_tracking"
         private const val NOTIF_ID = 4242
@@ -54,13 +55,14 @@ class RunService : Service(), LocationListener, SensorEventListener {
         private const val PACE_WINDOW_MS = 25_000L    // glijdend venster huidig tempo
         private const val CADENCE_WINDOW_MS = 60_000L
 
-        fun start(ctx: Context, targetM: Double?, goalPace: Int?, level: Int, voice: Int) {
+        fun start(ctx: Context, targetM: Double?, goalPace: Int?, level: Int, voice: Int, male: Boolean) {
             val i = Intent(ctx, RunService::class.java)
                 .setAction(ACTION_START)
                 .putExtra(EXTRA_TARGET, targetM ?: -1.0)
                 .putExtra(EXTRA_GOAL, goalPace ?: -1)
                 .putExtra(EXTRA_LEVEL, level)
                 .putExtra(EXTRA_VOICE, voice)
+                .putExtra(EXTRA_MALE, male)
             ctx.startForegroundService(i)
         }
 
@@ -169,7 +171,7 @@ class RunService : Service(), LocationListener, SensorEventListener {
             return
         }
         acquireWakeLock()
-        speaker.setVoice(voice)
+        speaker.setVoice(voice, intent.getBooleanExtra(EXTRA_MALE, false))
         coach.configure(level, goalPace, targetM, voice)
         startListening()
         handler.removeCallbacks(tick)

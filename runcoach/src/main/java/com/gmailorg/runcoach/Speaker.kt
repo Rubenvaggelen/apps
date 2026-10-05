@@ -16,6 +16,12 @@ import java.util.Locale
  */
 class Speaker(context: Context) : TextToSpeech.OnInitListener {
 
+    private companion object {
+        // Nederlandse stemmen van Google Spraakservices
+        val GOOGLE_MALE = listOf("nl-nl-x-bmh", "nl-nl-x-dma")
+        val GOOGLE_FEMALE = listOf("nl-nl-x-lfc", "nl-nl-x-tfb", "nl-nl-x-yfr")
+    }
+
     private val main = Handler(Looper.getMainLooper())
     private val audio: AudioManager = context.getSystemService(AudioManager::class.java)
 
@@ -36,6 +42,7 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
     private var active = 0
     private var counter = 0
     private var persona = Coach.VOICE_NORMAL
+    private var male = false
 
     private val abandon = Runnable {
         if (active == 0) audio.abandonAudioFocusRequest(focusRequest)
@@ -64,26 +71,54 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
         queued.forEach { say(it) }
     }
 
-    /** Kiest de stem (Coach.VOICE_*): eigen toonhoogte en spreeksnelheid, en waar mogelijk een andere Nederlandse stem. */
-    fun setVoice(persona: Int) {
+    /**
+     * Kiest de stem: karakter (Coach.VOICE_*) en man of vrouw.
+     * Android geeft geen geslacht door, dus dat wordt herkend aan de naam van de geïnstalleerde stem.
+     */
+    fun setVoice(persona: Int, male: Boolean) {
         this.persona = persona
+        this.male = male
         if (ready && !released) applyVoice()
     }
 
+    /** true = man, false = vrouw, null = onbekend. */
+    private fun isMale(name: String): Boolean? {
+        val n = name.lowercase()
+        return when {
+            GOOGLE_MALE.any { n.contains(it) } -> true
+            GOOGLE_FEMALE.any { n.contains(it) } -> false
+            n.contains("female") -> false
+            n.contains("male") -> true
+            Regex("smt[a-z]?m\d").containsMatchIn(n) -> true     // Samsung
+            Regex("smt[a-z]?f\d").containsMatchIn(n) -> false
+            else -> null
+        }
+    }
+
     private fun applyVoice() {
+        var matched = false
         try {
             val voices = tts.voices.orEmpty()
                 .filter { it.locale.language == "nl" && !it.isNetworkConnectionRequired }
                 .sortedBy { it.name }
-            if (voices.size > 1) tts.voice = voices[persona.coerceIn(0, voices.size - 1)]
+            val wanted = voices.filter { isMale(it.name) == male }
+            if (wanted.isNotEmpty()) {
+                tts.voice = wanted[persona % wanted.size]
+                matched = true
+            }
         } catch (e: Exception) {
-            // toestel geeft geen stemmenlijst: alleen toonhoogte en snelheid aanpassen
+            // toestel geeft geen stemmenlijst
         }
+        var pitch = 1.0f
+        var rate = 1.0f
         when (persona) {
-            Coach.VOICE_CALM -> { tts.setPitch(1.08f); tts.setSpeechRate(0.94f) }
-            Coach.VOICE_STRICT -> { tts.setPitch(0.78f); tts.setSpeechRate(1.14f) }
-            else -> { tts.setPitch(1.0f); tts.setSpeechRate(1.0f) }
+            Coach.VOICE_CALM -> { pitch = 1.06f; rate = 0.94f }
+            Coach.VOICE_STRICT -> { pitch = 0.86f; rate = 1.14f }
         }
+        // geen passende stem gevonden: benader man/vrouw met de toonhoogte
+        if (!matched) pitch *= if (male) 0.72f else 1.12f
+        tts.setPitch(pitch)
+        tts.setSpeechRate(rate)
     }
 
     /** Altijd aanroepen vanaf de main thread. */

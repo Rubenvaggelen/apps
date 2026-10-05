@@ -63,6 +63,7 @@ class MainActivity : Activity() {
     private var goalPace = 360
     private var level = 1
     private var voice = Coach.VOICE_NORMAL
+    private var voiceMale = false
 
     // geschiedenis: "" = startscherm, "history" = lijst, "detail" = één training
     private var page = ""
@@ -96,6 +97,7 @@ class MainActivity : Activity() {
         goalPace = prefs.getInt("goalPace", 360)
         level = prefs.getInt("level", 1)
         voice = prefs.getInt("voice", Coach.VOICE_NORMAL)
+        voiceMale = prefs.getBoolean("voiceMale", false)
 
         val scroll = ScrollView(this).apply { setBackgroundColor(BG); isFillViewport = true }
         root = LinearLayout(this).apply {
@@ -190,6 +192,7 @@ class MainActivity : Activity() {
             .putInt("goalPace", goalPace)
             .putInt("level", level)
             .putInt("voice", voice)
+            .putBoolean("voiceMale", voiceMale)
             .apply()
     }
 
@@ -269,6 +272,13 @@ class MainActivity : Activity() {
                 playSample()
             }, lp(top = 8)
         )
+        root.addView(
+            chipRow(listOf("Vrouwenstem" to !voiceMale, "Mannenstem" to voiceMale)) { i ->
+                voiceMale = i == 1
+                refreshSetup()
+                playSample()
+            }, lp(top = 8)
+        )
         val voiceExpl = when (voice) {
             Coach.VOICE_CALM -> "Rustige, vriendelijke stem die je ontspannen laat lopen."
             Coach.VOICE_STRICT -> "Strenge motivator: lage, snelle stem die je bij elke kilometer aanpakt en geen excuses accepteert."
@@ -312,7 +322,7 @@ class MainActivity : Activity() {
 
     private fun playSample() {
         val sp = preview ?: Speaker(this).also { preview = it }
-        sp.setVoice(voice)
+        sp.setVoice(voice, voiceMale)
         sp.say(Coach.voiceSample(voice))
     }
 
@@ -634,7 +644,7 @@ class MainActivity : Activity() {
     private fun startRun() {
         val target = if (targetKm > 0) targetKm * 1000.0 else null
         val goal = if (goalOn) goalPace else null
-        RunService.start(this, target, goal, level, voice)
+        RunService.start(this, target, goal, level, voice, voiceMale)
     }
 
     // ------------------------------------------------------------------ view-hulpjes
