@@ -89,8 +89,8 @@ class Speaker(context: Context) : TextToSpeech.OnInitListener {
             GOOGLE_FEMALE.any { n.contains(it) } -> false
             n.contains("female") -> false
             n.contains("male") -> true
-            Regex("smt[a-z]?m\d").containsMatchIn(n) -> true     // Samsung
-            Regex("smt[a-z]?f\d").containsMatchIn(n) -> false
+            Regex("smt[a-z]?m[0-9]").containsMatchIn(n) -> true     // Samsung
+            Regex("smt[a-z]?f[0-9]").containsMatchIn(n) -> false
             else -> null
         }
     }
