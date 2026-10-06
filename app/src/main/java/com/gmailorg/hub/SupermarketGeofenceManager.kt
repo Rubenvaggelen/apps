@@ -102,7 +102,8 @@ object SupermarketGeofenceManager {
             if(!isEnabled(app)){onResult(false,"Supermarktmeldingen zijn uitgezet.");return}
             if(location==null){fail("Geen actuele locatie. Zet locatie aan en probeer opnieuw.");return}
             checkCurrentProximity(app, location, readCachedSupermarkets(app))
-            fetchNearbySupermarkets(location.latitude, location.longitude) { supermarkets ->
+            fetchNearbySupermarkets(location.latitude, location.longitude) { lookup ->
+                val supermarkets = lookup.points
                 if(!isEnabled(app)){onResult(false,"Supermarktmeldingen zijn uitgezet.");return@fetchNearbySupermarkets}
                 val stored=readCachedSupermarkets(app)
                 val nearby=if(supermarkets.isNotEmpty())supermarkets else stored.filter { point ->
@@ -110,12 +111,16 @@ object SupermarketGeofenceManager {
                     Location.distanceBetween(location.latitude,location.longitude,point.first,point.second,distance)
                     distance[0]<=SEARCH_RADIUS_METERS
                 }
-                if(nearby.isEmpty()){fail("Supermarkten ophalen mislukt of geen supermarkt binnen 5 km. Main probeert het opnieuw.");return@fetchNearbySupermarkets}
+                if(nearby.isEmpty()){
+                    fail(if (lookup.error != null) "Supermarkten ophalen mislukt: ${lookup.error}. Main probeert het opnieuw."
+                        else "De kaartbron heeft geen supermarkt binnen 5 km van je huidige locatie gevonden. Tik op Controleren om opnieuw te zoeken.")
+                    return@fetchNearbySupermarkets
+                }
                 if (supermarkets.isNotEmpty()) cacheSupermarkets(app, supermarkets)
                 checkCurrentProximity(app, location, nearby)
                 registerGeofences(app,nearby, location.latitude to location.longitude){success,message->
                     if(success){
-                        prefs(app).edit().putString("last_error","").putLong("last_registered",System.currentTimeMillis())
+                        prefs(app).edit().putString("last_error", if (lookup.error != null) "Kaartserver tijdelijk niet bereikbaar. Meldingen blijven actief voor ${nearby.size} eerder gevonden supermarkten." else "").putLong("last_registered",System.currentTimeMillis())
                             .putString("scan_lat", location.latitude.toString()).putString("scan_lon", location.longitude.toString()).apply()
                     }else prefs(app).edit().putString("last_error",message).apply()
                     onResult(success,message)
@@ -167,41 +172,77 @@ object SupermarketGeofenceManager {
         SupermarketRefreshWorker.refreshNow(context)
     }
 
+    private data class Lookup(val points: List<Pair<Double, Double>>, val error: String? = null)
+    private val pendingLookups = mutableMapOf<String, MutableList<(Lookup) -> Unit>>()
+
     private fun fetchNearbySupermarkets(
         lat: Double,
         lon: Double,
-        callback: (List<Pair<Double, Double>>) -> Unit
+        callback: (Lookup) -> Unit
     ) {
-        Thread {
-            val results = mutableListOf<Pair<Double, Double>>()
-            try {
-                val query = """
-                    [out:json][timeout:15];
-                    nwr["shop"="supermarket"](around:$SEARCH_RADIUS_METERS,$lat,$lon);
-                    out center;
-                """.trimIndent()
-                val url = URL("https://overpass-api.de/api/interpreter?data=" + URLEncoder.encode(query, "UTF-8"))
-                val connection = url.openConnection() as HttpURLConnection
-                connection.connectTimeout = 15000
-                connection.readTimeout = 15000
-                connection.requestMethod = "GET"
-
-                val body = connection.inputStream.bufferedReader().use { it.readText() }
-                val json = JSONObject(body)
-                val elements = json.getJSONArray("elements")
-                for (i in 0 until elements.length()) {
-                    val el = elements.getJSONObject(i)
-                    val point=el.optJSONObject("center")?:el
-                    if(point.has("lat")&&point.has("lon"))results.add(Pair(point.getDouble("lat"),point.getDouble("lon")))
-                }
-                connection.disconnect()
-            } catch (e: Exception) {
-                Log.e(TAG, "Supermarkten ophalen mislukt", e)
+        val key = java.lang.String.format(java.util.Locale.US, "%.3f,%.3f", lat, lon)
+        synchronized(pendingLookups) {
+            val existing = pendingLookups[key]
+            if (existing != null) {
+                existing.add(callback)
+                return
             }
-            val sorted=results.distinct().sortedBy { point ->
-                val distance=FloatArray(1);Location.distanceBetween(lat,lon,point.first,point.second,distance);distance[0]
-            }.take(MAX_GEOFENCES)
-            mainHandler.post { callback(sorted) }
+            pendingLookups[key] = mutableListOf(callback)
+        }
+        Thread {
+            val query = """
+                [out:json][timeout:12];
+                nwr["shop"="supermarket"](around:$SEARCH_RADIUS_METERS,$lat,$lon);
+                out center;
+            """.trimIndent()
+            val endpoints = listOf(
+                "https://overpass-api.de/api/interpreter",
+                "https://overpass.kumi.systems/api/interpreter",
+                "https://overpass.private.coffee/api/interpreter"
+            )
+            var result: Lookup? = null
+            var emptyResponse = false
+            var lastFailure = "geen verbinding met de kaartservers"
+            for (endpoint in endpoints) {
+                val connection = URL(endpoint).openConnection() as HttpURLConnection
+                try {
+                    connection.connectTimeout = 8000
+                    connection.readTimeout = 18000
+                    connection.requestMethod = "POST"
+                    connection.doOutput = true
+                    connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+                    connection.setRequestProperty("Accept", "application/json")
+                    connection.setRequestProperty("User-Agent", "TheOneMain/1.0 (supermarket-reminders)")
+                    val request = ("data=" + URLEncoder.encode(query, "UTF-8")).toByteArray(Charsets.UTF_8)
+                    connection.setFixedLengthStreamingMode(request.size)
+                    connection.outputStream.use { it.write(request) }
+                    val status = connection.responseCode
+                    require(status == 200) { "HTTP $status" }
+                    val body = connection.inputStream.bufferedReader().use { it.readText() }
+                    val points = SupermarketLookupParser.parse(body)
+                    val sorted = points.distinct().sortedBy { point ->
+                        val distance = FloatArray(1)
+                        Location.distanceBetween(lat,lon,point.first,point.second,distance)
+                        distance[0]
+                    }.take(MAX_GEOFENCES)
+                    if (sorted.isNotEmpty()) { result = Lookup(sorted); break }
+                    emptyResponse = true
+                } catch (e: Exception) {
+                    lastFailure = when (e) {
+                        is java.net.SocketTimeoutException -> "kaartserver reageert niet op tijd"
+                        is java.net.UnknownHostException -> "kaartserver niet bereikbaar; controleer internet"
+                        else -> e.message?.takeIf { it.startsWith("HTTP ") } ?: "kaartserver gaf geen bruikbare winkelgegevens"
+                    }
+                    Log.w(TAG, "Supermarktzoekopdracht mislukt bij " + URL(endpoint).host, e)
+                } finally {
+                    connection.disconnect()
+                }
+            }
+            val completed = result ?: Lookup(emptyList(), if (emptyResponse) null else lastFailure)
+            mainHandler.post {
+                val callbacks = synchronized(pendingLookups) { pendingLookups.remove(key).orEmpty() }
+                callbacks.forEach { it(completed) }
+            }
         }.start()
     }
 
