@@ -1,6 +1,6 @@
 {
   "name": "the-one-music-maker",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "The One Music Maker standalone local music studio",
   "author": "The One Family",
@@ -9,7 +9,7 @@
     "start": "electron .",
     "test": "node --test tests/model.test.cjs",
     "dist:win": "electron-builder --win portable --x64",
-    "test:ui": "node tests/browser.cjs"
+    "test:ui": "node tests/browser.cjs && node tests/studio-browser.cjs"
   },
   "devDependencies": {
     "electron": "44.5.1",
@@ -18,7 +18,7 @@
   },
   "build": {
     "appId": "com.theone.musicmaker",
-    "productName": "The One Music Maker",
+    "productName": "The One Studio",
     "directories": {
       "output": "dist"
     },
@@ -28,11 +28,12 @@
       "style.css",
       "app.js",
       "model.js",
-      "package.json"
+      "package.json",
+      "studio/**/*"
     ],
     "win": {
       "target": "portable",
-      "artifactName": "The-One-Music-Maker-${version}-Windows.exe",
+      "artifactName": "The-One-Studio-${version}-Windows.exe",
       "signAndEditExecutable": false
     }
   }
