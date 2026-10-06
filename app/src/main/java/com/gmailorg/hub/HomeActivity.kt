@@ -46,7 +46,6 @@ class HomeActivity : AppCompatActivity() {
         setContentView(R.layout.activity_home)
         ShortcutStore.init(applicationContext)
         HiddenTilesStore.init(applicationContext)
-        migrateFitnessTileToLifestyle()
         cleanUpMissingShortcuts()
 
         val grid = findViewById<RecyclerView>(R.id.homeGrid)
@@ -91,13 +90,6 @@ class HomeActivity : AppCompatActivity() {
         super.onPause()
     }
 
-    /** Neemt de oude verborgen Fitness-tegelinstelling mee naar de nieuwe Lifestyle-tegel. */
-    private fun migrateFitnessTileToLifestyle() {
-        if (HiddenTilesStore.isHidden("fitness")) {
-            HiddenTilesStore.hide("lifestyle")
-            HiddenTilesStore.unhide("fitness")
-        }
-    }
 
     /**
      * Verwijdert zelf toegevoegde app-snelkoppelingen waarvan de app niet
@@ -135,7 +127,6 @@ class HomeActivity : AppCompatActivity() {
             HomeTile(id = "news", type = TileType.NEWS, label = "Nieuws"),
             HomeTile(id = "radio", type = TileType.RADIO, label = "Radio"),
             HomeTile(id = "currency", type = TileType.CURRENCY, label = "Koers (EUR / SRD / USD)"),
-            HomeTile(id = "lifestyle", type = TileType.LIFESTYLE, label = "Lifestyle"),
             HomeTile(id = "com.gmailorg.thedj", type = TileType.APP, label = "The One DJ", packageName = "com.gmailorg.thedj"),
             HomeTile(id = "com.gmailorg.runcoach", type = TileType.APP, label = "The One Run", packageName = "com.gmailorg.runcoach"),
             HomeTile(id = "remote_pc", type = TileType.REMOTE_PC, label = "Laptop"),
