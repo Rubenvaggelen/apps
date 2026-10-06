@@ -15,10 +15,13 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict'),path
   const legacy={format:'the-one-music-maker',version:1,bpm:120,master:.7,tracks:[{id:'old',name:'Old',start:3,trimStart:.1,trimEnd:.8,gain:.5,pan:-.4,fadeIn:.1,fadeOut:.2,solo:true}],media:{old:audioBase64(b)}};
   const converted=await TheOneStudioAdditions.stageProject(legacy),t=converted.project.tracks[0],cl=t.clips[0];
   commit();c.name='Changed';save();undo();const afterUndo=P.tracks[0].clips[0].name;redo();const afterRedo=P.tracks[0].clips[0].name;
-  return {version:doc.version,samples:audio.length,value:audio.getChannelData(0)[100],fade:imported.fadeOut,rejected,atomic,afterUndo,afterRedo,legacy:{start:cl.start,len:cl.len,offset:cl.offset,vol:t.vol,pan:t.pan,solo:t.solo,fade:cl.fadeIn}};
+  return {version:doc.version,samples:audio.length,sampleRate:audio.sampleRate,value:audio.getChannelData(0)[100],fade:imported.fadeOut,rejected,atomic,afterUndo,afterRedo,legacy:{start:cl.start,len:cl.len,offset:cl.offset,vol:t.vol,pan:t.pan,solo:t.solo,fade:cl.fadeIn}};
  });
- assert.equal(result.version,2);assert.equal(result.samples,44100);assert(Math.abs(result.value-.4)<.0001);assert.equal(result.fade,.3);assert.equal(result.rejected,true);assert.equal(result.atomic,true);assert.equal(result.afterUndo,'Sound');assert.equal(result.afterRedo,'Changed');
+ assert.equal(result.version,2);assert.equal(result.samples,result.sampleRate);assert(Math.abs(result.value-.4)<.0001);assert.equal(result.fade,.3);assert.equal(result.rejected,true);assert.equal(result.atomic,true);assert.equal(result.afterUndo,'Sound');assert.equal(result.afterRedo,'Changed');
  assert.equal(result.legacy.start,6);assert(Math.abs(result.legacy.len-1.4)<1e-8);assert.equal(result.legacy.offset,.1);assert.equal(result.legacy.vol,.5);assert.equal(result.legacy.pan,-.4);assert.equal(result.legacy.solo,true);assert.equal(result.legacy.fade,.1);
+ await page.locator('[data-studio-copy]').first().evaluate(b=>b.click());
+ const copied=await page.evaluate(()=>({count:P.tracks.length,start:P.tracks[1].clips[0].start,end:P.tracks[0].clips[0].start+P.tracks[0].clips[0].len,buffer:P.tracks[1].clips[0].bufferId===P.tracks[0].clips[0].bufferId}));
+ assert.equal(copied.count,2);assert.equal(copied.start,copied.end);assert.equal(copied.buffer,true);
  const fading=await page.evaluate(async()=>{
   P=baseProject(120);P.loop.on=false;const t=mkTrack('audio','Fade');t.rev=0;t.dly=0;t.vol=1;P.tracks=[t];const b=new AudioBuffer({length:44100,numberOfChannels:1,sampleRate:44100});b.getChannelData(0).fill(.4);addAudioClip(t,b,'Fade',0);t.clips[0].fadeIn=.4;t.clips[0].fadeOut=.4;
   const oc=new OfflineAudioContext(2,44100,44100),g=buildGraph(oc,false);playClipAudio(g,t,t.clips[0],0,0,Infinity);const out=await oc.startRendering(),d=out.getChannelData(0);const mean=(a,z)=>{let s=0;for(let i=a;i<z;i++)s+=Math.abs(d[i]);return s/(z-a)};return {early:mean(400,1000),middle:mean(21000,22000),late:mean(42000,43000)};

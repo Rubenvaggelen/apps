@@ -6,6 +6,8 @@ Toegevoegd vanuit The One Music Maker:
 
 - Standalone Windows-app zonder losse browser of Node-installatie.
 - Redo naast undo: Ctrl+Shift+Z of Ctrl+Y.
+- Compleet spoor kopiëren via de mixer; de kopie komt na de oorspronkelijke clips.
+- Numerieke startpositie en brontrims in seconden; zonder loop stopt afspelen aan het projecteinde.
 - Fade in en fade uit in seconden per audioclip, ook tijdens hervatten en export.
 - Directe stereo-WAV-export (44,1 kHz, 16 bit) naast de bestaande WAV-in-ZIP-export. Pieken worden zo nodig verlaagd tegen clipping.
 - Project opslaan inclusief audio, zodat het bestand op een ander apparaat werkt.

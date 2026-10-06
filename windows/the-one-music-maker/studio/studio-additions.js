@@ -43,13 +43,17 @@ playClipAudio=function(g,t,c,time,offBeats,maxBeats){
 
 function audioBase64(buf){const bytes=new Uint8Array(MusicModel.wav(buf));let s='';for(let i=0;i<bytes.length;i+=16384)s+=String.fromCharCode(...bytes.subarray(i,i+16384));return btoa(s);}
 function referencedAudio(project){return [...new Set(project.tracks.filter(t=>t.type==='audio').flatMap(t=>t.clips.map(c=>c.bufferId)))];}
+function studioFilename(){return String(P.name||'The One Studio').replace(/[^\p{L}\p{N} _-]/gu,'').trim()||'The One Studio';}
+const projectName=el('input');projectName.id='studioProjectName';projectName.type='text';projectName.placeholder='Projectnaam';projectName.setAttribute('aria-label','Projectnaam');projectName.style.width='140px';projectName.value=P?.name||'Mijn mix';$('#projMenu').before(projectName);
+projectName.onchange=()=>{P.name=projectName.value.trim()||'Mijn mix';save();};
+const oldRenderAll=renderAll;renderAll=function(){oldRenderAll();projectName.value=P.name||'Mijn mix';};
 async function portableProject(){
   const media={};for(const id of referencedAudio(P)){if(!buffers[id])throw new Error('Audio ontbreekt: '+id);media[id]={name:buffers[id].name,wav:audioBase64(buffers[id].buffer)};}
   return {app:'The One Studio',version:2,project:JSON.parse(JSON.stringify(P)),media};
 }
 async function savePortable(){
   if(studioBusy||recording)return;studioBusy=true;
-  try{await saveFile('the-one-studio-project.json',new Blob([JSON.stringify(await portableProject())],{type:'application/json'}));studioDirty=false;toast('Projectbestand inclusief audio gemaakt.');}
+  try{await saveFile(studioFilename()+'.json',new Blob([JSON.stringify(await portableProject())],{type:'application/json'}));studioDirty=false;toast('Projectbestand inclusief audio gemaakt.');}
   catch(e){toast('Opslaan mislukt: '+e.message,5000);}finally{studioBusy=false;}
 }
 async function decodeEmbedded(base64){if(typeof base64!=='string')throw new Error('Ongeldige projectaudio.');const bin=atob(base64),bytes=Uint8Array.from(bin,c=>c.charCodeAt(0));ensureCtx();return ctx.decodeAudioData(bytes.buffer);}
@@ -59,6 +63,7 @@ async function stageProject(o){
   if(o.format==='the-one-music-maker'){
     if(o.version!==1||!Array.isArray(o.tracks)||o.tracks.length>200)throw new Error('Geen ondersteund Music Maker-project.');
     const bpm=clamp(Number(o.bpm)||120,40,240),beats=bpm/60;project=baseProject(bpm);project.loop.on=false;project.master.vol=clamp(Number(o.master)||0,0,1);project.master.limiter=false;project.tracks=[];
+    project.name=String(o.name||'Mijn mix');
     const ids=new Set();
     for(const source of o.tracks){
       if(typeof source.id!=='string'||ids.has(source.id))throw new Error('Ongeldige spoor-ID.');ids.add(source.id);
@@ -101,9 +106,30 @@ async function exportDirectWav(){
     const rendered=await oc.startRendering();let peak=0;
     for(let ch=0;ch<rendered.numberOfChannels;ch++)for(const x of rendered.getChannelData(ch))peak=Math.max(peak,Math.abs(x));
     if(peak>1)for(let ch=0;ch<rendered.numberOfChannels;ch++){const data=rendered.getChannelData(ch);for(let i=0;i<data.length;i++)data[i]/=peak;}
-    await saveFile('the-one-studio-mix.wav',new Blob([MusicModel.wav(rendered)],{type:'audio/wav'}));
+    await saveFile(studioFilename()+'.wav',new Blob([MusicModel.wav(rendered)],{type:'audio/wav'}));
   }catch(e){toast('Exporteren mislukt: '+e.message,5000);}finally{studioBusy=false;}
 }
 const wavButton=el('button','pill');wavButton.id='bWav';wavButton.textContent='WAV opslaan';wavButton.onclick=exportDirectWav;$('#bExport').after(wavButton);
+const oldRenderMixer=renderMixer;
+renderMixer=function(){
+  oldRenderMixer();
+  for(const strip of $$('.strip[data-id]',mixEl)){
+    const track=trackById(strip.dataset.id);if(!track)continue;
+    const volume=strip.querySelector('input.fader');if(volume){volume.max='2';volume.value=String(track.vol);}
+    const copy=el('button','pill small');copy.textContent='Spoor kopiëren';copy.dataset.studioCopy=track.id;
+    copy.onclick=()=>{
+      if(recording)return;commit();const clone=JSON.parse(JSON.stringify(track));clone.id=uid();clone.name=track.name+' kopie';clone.arm=false;
+      const first=clone.clips.length?Math.min(...clone.clips.map(c=>c.start)):0,last=Math.max(0,...clone.clips.map(c=>c.start+c.len));
+      for(const c of clone.clips){c.id=uid();c.start+=last-first;}
+      P.tracks.push(clone);sel.track=clone.id;sel.clip=clone.clips[0]?.id||null;syncGraph();renderAll();save();
+    };strip.append(copy);
+  }
+};
+const oldFrame=frame;
+frame=function(){
+  if(playing&&!recording&&!P.loop.on){const end=Math.max(0,...P.tracks.flatMap(t=>t.clips.map(c=>c.start+c.len)));if(end>0&&currentBeat()>=end){stop();curBeat=end;}}
+  oldFrame();
+};
+if(P)renderAll();
 window.addEventListener('beforeunload',e=>{if(studioDirty||recording){e.preventDefault();e.returnValue='';}});
 window.TheOneStudioAdditions={version:'1.1.0',portableProject,stageProject,openPortable,savePortable,exportDirectWav,redo};
