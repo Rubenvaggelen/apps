@@ -137,10 +137,8 @@ class HomeActivity : AppCompatActivity() {
             // tonen als die app ook daadwerkelijk geïnstalleerd staat —
             // anders zie je een leeg "+"-icoontje voor een niet-bestaande app.
             (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") || tile.packageName == null || isPackageInstalled(tile.packageName)) &&
-                (tile.id != "com.gmailorg.thedj" || MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_DJ)) &&
-                (tile.id != "com.gmailorg.runcoach" || MainDeviceRegistry.hasAccess(this, MainDeviceRegistry.ACCESS_RUN)) &&
                 (tile.id != "remote_pc" || MainDeviceRegistry.isLocallyOwner(this)) &&
-                ((tile.id == "com.gmailorg.runcoach" && MainDeviceRegistry.isLocallyOwner(this)) || !HiddenTilesStore.isHidden(tile.id))
+                (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") || !HiddenTilesStore.isHidden(tile.id))
         }
         val userApps = ShortcutStore.getAll().filter {
             !HiddenTilesStore.isHidden(it.id) && it.packageName !in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach")
@@ -178,7 +176,7 @@ class HomeActivity : AppCompatActivity() {
 
     private fun handleTileLongClick(tile: HomeTile): Boolean {
         if (tile.type == TileType.ADD_BUTTON) return false
-        if (tile.id == "com.gmailorg.runcoach" && MainDeviceRegistry.isLocallyOwner(this)) return true
+        if (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach")) return true
 
         AlertDialog.Builder(this)
             .setTitle("Tegel verbergen?")
