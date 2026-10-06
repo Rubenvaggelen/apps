@@ -30,6 +30,13 @@ class HouseholdActivity : AppCompatActivity() {
     private lateinit var supermarketSwitch: Switch
     private lateinit var supermarketStatus: TextView
     private var resumeAfterLocationSettings = false
+    private val proximityHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val proximityCheck = object : Runnable {
+        override fun run() {
+            SupermarketGeofenceManager.checkStoredShopsAtCurrentLocation(this@HouseholdActivity)
+            proximityHandler.postDelayed(this, 30000)
+        }
+    }
     private val statusListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
         if (::supermarketStatus.isInitialized) supermarketStatus.text = SupermarketGeofenceManager.statusText(this)
     }
@@ -170,6 +177,8 @@ class HouseholdActivity : AppCompatActivity() {
     }
     override fun onResume() {
         super.onResume()
+        proximityHandler.removeCallbacks(proximityCheck)
+        proximityHandler.post(proximityCheck)
         updateSupermarketStatus()
         if(resumeAfterLocationSettings){
             resumeAfterLocationSettings=false
@@ -178,6 +187,11 @@ class HouseholdActivity : AppCompatActivity() {
                 SupermarketGeofenceManager.hasBackgroundLocationPermission(this) &&
                 SupermarketReminderDelivery.blockedReason(this) == null) armSupermarketAlerts()
         }
+    }
+
+    override fun onPause() {
+        proximityHandler.removeCallbacks(proximityCheck)
+        super.onPause()
     }
 
     override fun onStart() {

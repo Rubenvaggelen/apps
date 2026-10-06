@@ -65,13 +65,41 @@ object SupermarketGeofenceManager {
         if (!hasBackgroundLocationPermission(context)) return "Locatie staat niet op Altijd toestaan. Tik op Controleren."
         if (!androidx.core.location.LocationManagerCompat.isLocationEnabled(context.getSystemService(LocationManager::class.java))) return "Zet de locatie van je telefoon aan."
         val store = prefs(context)
-        store.getString("last_error", "")?.takeIf { it.isNotBlank() }?.let { return it }
+        val detail = proximityStatus(context)
+        store.getString("last_error", "")?.takeIf { it.isNotBlank() }?.let { return it + "\n" + detail }
         val count = store.getStringSet("registered_ids", emptySet()).orEmpty().count { it.startsWith("supermarkt_") }
         if (count == 0) return "Nog geen supermarkten ingesteld. Tik op Controleren."
         ShoppingListStore.init(context.applicationContext)
         val pending = ShoppingListStore.getAll().count { !it.done }
         return if (pending == 0) "Meldingen ingesteld voor $count supermarkten. Je lijst bevat geen openstaande boodschappen."
-        else "Meldingen ingesteld voor $count supermarkten · $pending openstaande boodschappen. Android kan aankomst enkele minuten later melden."
+        else "Meldingen ingesteld voor $count supermarkten · $pending openstaande boodschappen.\n$detail"
+    }
+
+    private fun proximityStatus(context: Context): String {
+        val store = prefs(context)
+        val checked = store.getLong("proximity_checked", 0)
+        if (checked == 0L) return "Afstand nog niet gecontroleerd. Melding bij een winkel binnen 180 meter."
+        val time = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(checked))
+        return "Controle $time: " + store.getString("proximity_status", "locatie onbekend") +
+            "\nWinkelgegevens: © OpenStreetMap contributors · ODbL."
+    }
+
+    /** Checks stored shops without any map request, including while a lookup is slow. */
+    @SuppressLint("MissingPermission")
+    fun checkStoredShopsAtCurrentLocation(context: Context) {
+        val app = context.applicationContext
+        if (!isEnabled(app) || !hasLocationPermission(app)) return
+        LocationServices.getFusedLocationProviderClient(app)
+            .getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+            .addOnSuccessListener { location ->
+                if (location != null) checkCurrentProximity(app, location, readCachedSupermarkets(app))
+                else prefs(app).edit().putLong("proximity_checked", System.currentTimeMillis())
+                    .putString("proximity_status", "geen actuele locatie; afstand niet te bepalen.").apply()
+            }
+            .addOnFailureListener {
+                prefs(app).edit().putLong("proximity_checked", System.currentTimeMillis())
+                    .putString("proximity_status", "locatie ophalen mislukt; afstand niet te bepalen.").apply()
+            }
     }
 
     private fun setEnabled(context: Context, enabled: Boolean) {
@@ -101,7 +129,14 @@ object SupermarketGeofenceManager {
         fun useLocation(location: Location?) {
             if(!isEnabled(app)){onResult(false,"Supermarktmeldingen zijn uitgezet.");return}
             if(location==null){fail("Geen actuele locatie. Zet locatie aan en probeer opnieuw.");return}
+            val age=(SystemClock.elapsedRealtimeNanos()-location.elapsedRealtimeNanos)/1000000
+            if (age !in 0..SupermarketReminderPolicy.MAX_FIX_AGE_MS ||
+                !location.hasAccuracy() || !location.accuracy.isFinite() ||
+                location.accuracy <= 0 || location.accuracy > GEOFENCE_RADIUS_METERS) {
+                fail("Geen voldoende nauwkeurige actuele locatie; Main probeert het opnieuw.");return
+            }
             checkCurrentProximity(app, location, readCachedSupermarkets(app))
+            fun refreshLookup() {
             fetchNearbySupermarkets(location.latitude, location.longitude) { lookup ->
                 val supermarkets = lookup.points
                 if(!isEnabled(app)){onResult(false,"Supermarktmeldingen zijn uitgezet.");return@fetchNearbySupermarkets}
@@ -110,22 +145,46 @@ object SupermarketGeofenceManager {
                     val distance=FloatArray(1)
                     Location.distanceBetween(location.latitude,location.longitude,point.first,point.second,distance)
                     distance[0]<=SEARCH_RADIUS_METERS
-                }
+                }.sortedBy { point ->
+                    val distance=FloatArray(1)
+                    Location.distanceBetween(location.latitude,location.longitude,point.first,point.second,distance)
+                    distance[0]
+                }.take(MAX_GEOFENCES)
                 if(nearby.isEmpty()){
                     fail(if (lookup.error != null) "Supermarkten ophalen mislukt: ${lookup.error}. Main probeert het opnieuw."
                         else "De kaartbron heeft geen supermarkt binnen 5 km van je huidige locatie gevonden. Tik op Controleren om opnieuw te zoeken.")
                     return@fetchNearbySupermarkets
                 }
                 if (supermarkets.isNotEmpty()) cacheSupermarkets(app, supermarkets)
-                checkCurrentProximity(app, location, nearby)
+                // A lookup can take longer than the location's useful lifetime.
+                // Never infer current arrival from its old search centre.
+                checkStoredShopsAtCurrentLocation(app)
                 registerGeofences(app,nearby, location.latitude to location.longitude){success,message->
                     if(success){
-                        prefs(app).edit().putString("last_error", if (lookup.error != null) "Kaartserver tijdelijk niet bereikbaar. Meldingen blijven actief voor ${nearby.size} eerder gevonden supermarkten." else "").putLong("last_registered",System.currentTimeMillis())
+                        prefs(app).edit().putString("last_error", if (lookup.error != null) "Live kaart niet bereikbaar: ${lookup.error}. ${nearby.size} winkels uit opgeslagen gegevens en de meegeleverde Nederlandse kaart worden bewaakt." else "").putLong("last_registered",System.currentTimeMillis())
                             .putString("scan_lat", location.latitude.toString()).putString("scan_lon", location.longitude.toString()).apply()
                     }else prefs(app).edit().putString("last_error",message).apply()
                     onResult(success,message)
                 }
             }
+            }
+            val cachedNearby = readCachedSupermarkets(app).map { point ->
+                val distance = FloatArray(1)
+                Location.distanceBetween(location.latitude,location.longitude,point.first,point.second,distance)
+                point to distance[0]
+            }.filter { it.second <= SEARCH_RADIUS_METERS }.sortedBy { it.second }
+                .take(MAX_GEOFENCES).map { it.first }
+            // Arm the offline catalog before waiting for public map servers.
+            if (cachedNearby.isNotEmpty()) {
+                registerGeofences(app,cachedNearby,location.latitude to location.longitude) { success, _ ->
+                    if (success) prefs(app).edit()
+                        .putString("scan_lat",location.latitude.toString())
+                        .putString("scan_lon",location.longitude.toString())
+                        .putString("last_error","Meegeleverde kaart actief voor ${cachedNearby.size} winkels. Live gegevens worden ververst.")
+                        .apply()
+                    refreshLookup()
+                }
+            } else refreshLookup()
         }
         fused.lastLocation.addOnSuccessListener { location: Location? ->
             val age=if(location==null)Long.MAX_VALUE else (SystemClock.elapsedRealtimeNanos()-location.elapsedRealtimeNanos)/1000000
@@ -136,35 +195,58 @@ object SupermarketGeofenceManager {
         }.addOnFailureListener { fail("Locatie ophalen mislukt. Controleer locatietoegang.") }
     }
     private fun checkCurrentProximity(context: Context, location: Location, points: List<Pair<Double, Double>>) {
-        if (!isEnabled(context) || !location.hasAccuracy()) return
+        if (!isEnabled(context)) return
         val age = (SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos) / 1000000
-        if (points.any { point ->
-                val distance = FloatArray(1)
-                Location.distanceBetween(location.latitude, location.longitude, point.first, point.second, distance)
-                SupermarketReminderPolicy.isNearby(distance[0], location.accuracy, age)
-            }) {
-            ShoppingListWidgetProvider.setNearSupermarket(context, true)
-            SupermarketReminderDelivery.deliver(context)
+        val distances = points.map { point ->
+            val distance = FloatArray(1)
+            Location.distanceBetween(location.latitude, location.longitude, point.first, point.second, distance)
+            distance[0]
         }
+        val nearest = distances.minOrNull()
+        val accuracy = if (location.hasAccuracy()) location.accuracy else Float.NaN
+        val near = nearest != null && SupermarketReminderPolicy.isNearby(nearest, accuracy, age)
+        val status = when {
+            age !in 0..SupermarketReminderPolicy.MAX_FIX_AGE_MS ->
+                "locatie te oud; nog geen betrouwbare aankomstcontrole."
+            !accuracy.isFinite() || accuracy <= 0 || accuracy > GEOFENCE_RADIUS_METERS ->
+                "locatie onvoldoende nauwkeurig; nog geen betrouwbare aankomstcontrole."
+            nearest == null || nearest > SEARCH_RADIUS_METERS ->
+                "geen bekende supermarkt binnen 5 km; winkelgegevens moeten worden ververst."
+            near -> SupermarketReminderDelivery.deliver(context).ifBlank { "Bij een bekende supermarkt." }
+            else -> "dichtstbijzijnde bekende supermarkt op ${nearest.toInt()} meter. Melding binnen 180 meter."
+        }
+        ShoppingListWidgetProvider.setNearSupermarket(context, near)
+        prefs(context).edit().putLong("proximity_checked", System.currentTimeMillis())
+            .putString("proximity_status", status).apply()
     }
     private fun cacheSupermarkets(context: Context, points: List<Pair<Double,Double>>) {
         val array=org.json.JSONArray()
         for(point in points)array.put(org.json.JSONArray().put(point.first).put(point.second))
         prefs(context).edit().putString("supermarkets",array.toString()).apply()
     }
-    private fun readCachedSupermarkets(context: Context): List<Pair<Double,Double>> = runCatching {
+    private fun readCachedSupermarkets(context: Context): List<Pair<Double,Double>> = (runCatching {
         val array=org.json.JSONArray(prefs(context).getString("supermarkets","[]"))
         (0 until array.length()).map { i -> array.getJSONArray(i).let { it.getDouble(0) to it.getDouble(1) } }
-    }.getOrDefault(emptyList())
+    }.getOrDefault(emptyList()) + SupermarketOfflineCatalog.points(context)).distinct()
 
     /** Opnieuw registreren na een herstart van het toestel (geofences overleven een reboot niet). */
     @SuppressLint("MissingPermission")
     fun reArmAfterBootIfEnabled(context: Context) {
         if (!isEnabled(context)) return
-        val cached=readCachedSupermarkets(context)
+        val lat = prefs(context).getString("scan_lat", null)?.toDoubleOrNull()
+        val lon = prefs(context).getString("scan_lon", null)?.toDoubleOrNull()
+        val cached = readCachedSupermarkets(context).filter { point ->
+            if (lat == null || lon == null) false else {
+                val distance = FloatArray(1)
+                Location.distanceBetween(lat,lon,point.first,point.second,distance)
+                distance[0] <= SEARCH_RADIUS_METERS
+            }
+        }.sortedBy { point ->
+            val distance = FloatArray(1)
+            Location.distanceBetween(lat!!,lon!!,point.first,point.second,distance)
+            distance[0]
+        }.take(MAX_GEOFENCES)
         if(cached.isNotEmpty()&&hasLocationPermission(context)&&hasBackgroundLocationPermission(context)) {
-            val lat = prefs(context).getString("scan_lat", null)?.toDoubleOrNull()
-            val lon = prefs(context).getString("scan_lon", null)?.toDoubleOrNull()
             val center = if (lat != null && lon != null) lat to lon else null
             registerGeofences(context,cached,center){_,_->}
         }

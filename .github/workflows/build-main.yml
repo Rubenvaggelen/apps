@@ -85,6 +85,8 @@ jobs:
           target.write_text(json.dumps(config))
           print("Working Media Player source restored; credentials not displayed.")
           PY
+      - name: Bundle verified offline NL supermarket map
+        run: python3 .github/scripts/supermarket-snapshot.py
       - name: Build Main only
         env:
           ORG_GRADLE_PROJECT_YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
@@ -111,6 +113,8 @@ jobs:
         with:
           tag_name: main-v${{ env.VERSION_CODE }}
           name: "The One Main — build ${{ env.VERSION_CODE }}"
-          files: app/build/outputs/apk/debug/app-debug.apk
+          files: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/src/main/assets/supermarkets-nl.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

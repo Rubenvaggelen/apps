@@ -41,7 +41,13 @@ object SupermarketReminderDelivery {
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
         if (!test && !SupermarketReminderPolicy.mayDeliver(SupermarketGeofenceManager.isEnabled(app),
-                items.size, true, prefs.getLong(LAST_DELIVERED, 0), now)) return ""
+                items.size, true, prefs.getLong(LAST_DELIVERED, 0), now)) {
+            return when {
+                !SupermarketGeofenceManager.isEnabled(app) -> "Supermarktmeldingen staan uit."
+                items.isEmpty() -> "Bij een supermarkt, maar je lijst bevat geen openstaande boodschappen."
+                else -> "Bij een supermarkt. Er is de afgelopen 15 minuten al een boodschappenmelding geplaatst."
+            }
+        }
         val content = if (test && items.isEmpty()) listOf("Je boodschappenmeldingen kunnen worden getoond.") else items
         if (!GeofenceBroadcastReceiver().showSupermarketNotification(app, content, test))
             return "Android kon de boodschappenmelding niet plaatsen."
