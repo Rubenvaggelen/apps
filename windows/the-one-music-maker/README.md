@@ -1,32 +1,16 @@
-# The One Music Maker — 0.1.0 owner preview
+# The One Studio 1.1.0 — owner preview
 
-Standalone Windows music studio. No Main, DJ, server connection or installation of Node.js is needed to run the packaged Windows executable. Its own version and build workflow are independent of the other apps.
+The supplied thestudio-v1.zip is the Studio base. Its original interface and engine remain unchanged, with additive scripts for the missing Music Maker features. Original Music Maker source and tests remain in this folder; the Windows entry point now opens studio/index.html.
 
-## Current features
+## Retained Studio features
+Arrangement, audio recording/import, clip edits, synth/piano roll, MIDI, drums, EQ/reverb/delay, metronome, loop, mixer and browser autosave. The unchanged uploaded source is retained in studio/original/.
 
-- Import multiple locally supported audio files as separate tracks.
-- Shared sample-clock playback, pause, resume, stop and timeline seek.
-- Editable track names, start positions and source start/end trims.
-- Per-track volume, stereo pan, mute/solo and fade envelopes.
-- Duplicate tracks, remove tracks, undo/redo of track edits.
-- Microphone recording into a new track (explicit microphone permission).
-- BPM visual grid; changing BPM does not stretch existing audio.
-- Master gain and peak meter.
-- Save/open `.onemusic` projects with embedded audio, no missing source-file paths.
-- Offline stereo PCM WAV export (44.1 kHz/16-bit), peak normalization if necessary to prevent clipping.
-- Two generated demo tracks; no external samples or assets.
-- Unsaved changes confirmation on close.
+## Added Music Maker features
+Standalone Windows shell, redo, project naming, complete track copying, numeric start/source trims, clip fade envelopes, end-of-project stop without loop, portable projects with embedded audio, legacy .onemusic import, direct 44.1 kHz/16-bit stereo WAV export with peak protection, and unsaved-change confirmation.
 
-## Preview limits
+## Run and test
+Run The-One-Studio-1.1.0-Windows.exe. Browser source: studio/index.html with its companion files. npm ci; npm test; npm run test:ui; npm run dist:win.
 
-This is a first local owner prototype, not a Cubase-equivalent finished DAW. Export currently allows up to 30 minutes. Project audio is stored as 16-bit PCM WAV and the entire project is held in memory: use short sessions initially. Codec support follows the bundled Electron engine; unsupported audio produces an explicit error. No automatic project recovery yet. Recording does not yet perform latency-calibrated overdubbing. No effects rack, MIDI, time stretching, stem separation, plugin hosting, Shared Media connection or Family enrollment yet. Do not distribute it to other users until name registration and owner approval are implemented. No Main tile is added by this change.
+This remains a local owner preview. Family enrollment and owner approval, Shared Media, an update service, plugins, sample instruments and time stretching remain follow-up work. Microphone and MIDI require real hardware checks; browser tests prove actual offline audio rendering, not physical device routing. The Windows executable is not publisher-signed.
 
-## Windows
-
-Download the workflow's `The-One-Music-Maker-Windows` artifact, extract the ZIP, and run `The-One-Music-Maker-0.1.0-Windows.exe`. This is a portable app; no separate browser is needed. The preview executable is not signed with a publisher certificate.
-
-## Development and checks
-
-`npm ci`, `npm test`, `npm start`; build Windows using `npm run dist:win`.
-
-`tests/model.test.cjs` covers scheduling, resume offsets, mute/solo, input bounds, fade envelopes and WAV encoding. `tests/browser.cjs` verifies actual audio rendering, project round trip and UI transport via Playwright (requires Playwright and Chromium for development only).
+Read studio/UITBREIDINGEN.md for use and project migration. Old JSON projects without embedded audio require the original browser's IndexedDB. Missing audio aborts opening without discarding the active project.

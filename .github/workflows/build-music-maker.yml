@@ -1,4 +1,4 @@
-name: Build The One Music Maker
+name: Build The One Studio
 on:
   push:
     branches: [main]
@@ -7,7 +7,7 @@ on:
       - '.github/workflows/build-music-maker.yml'
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   windows:
     runs-on: windows-latest
@@ -38,3 +38,14 @@ jobs:
           path: windows/the-one-music-maker/dist/*.exe
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish standalone Studio download
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: studio-v1.1.0
+          name: The One Studio 1.1.0 — owner preview
+          prerelease: true
+          make_latest: false
+          files: windows/the-one-music-maker/dist/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
