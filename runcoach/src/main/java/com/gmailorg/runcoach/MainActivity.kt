@@ -130,6 +130,7 @@ class MainActivity : Activity() {
         }, lp(top = 24))
     }
 
+    private val updater by lazy { RunUpdater(this) }
     private val prefs by lazy { getSharedPreferences("runcoach", MODE_PRIVATE) }
     private lateinit var root: LinearLayout
     private var shownScreen = ""
@@ -207,6 +208,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        updater.onResume()
         RunRepository.addListener(listener)
         accessReady = false
         showAccessGate("Toegang controleren…")
@@ -214,12 +216,14 @@ class MainActivity : Activity() {
     }
 
     override fun onPause() {
+        updater.onPause()
         accessPoll.removeCallbacks(accessTick)
         RunRepository.removeListener(listener)
         super.onPause()
     }
 
     override fun onDestroy() {
+        updater.close()
         preview?.shutdown()
         preview = null
         super.onDestroy()
@@ -341,12 +345,10 @@ class MainActivity : Activity() {
         }
 
         addSection("Coachniveau")
-        root.addView(
-            chipRow(listOf("Stil" to (level == 0), "Normaal" to (level == 1), "Veel" to (level == 2))) { i ->
-                level = i
-                refreshSetup()
-            }, lp(top = 8)
-        )
+        root.addView(dropdown(listOf("Stil", "Normaal", "Veel"), level) { i ->
+            level = i
+            refreshSetup()
+        }, lp(top = 8))
         val expl = when (level) {
             0 -> "Alleen een gesproken update bij elke kilometer."
             1 -> "Kilometerupdates en correcties als je te snel of te langzaam loopt."
@@ -358,26 +360,16 @@ class MainActivity : Activity() {
         }
 
         addSection("Stem van de coach")
-        root.addView(
-            chipRow(
-                listOf(
-                    "Rustig" to (voice == Coach.VOICE_CALM),
-                    "Normaal" to (voice == Coach.VOICE_NORMAL),
-                    "Streng" to (voice == Coach.VOICE_STRICT)
-                )
-            ) { i ->
-                voice = i
-                refreshSetup()
-                playSample()
-            }, lp(top = 8)
-        )
-        root.addView(
-            chipRow(listOf("Vrouwenstem" to !voiceMale, "Mannenstem" to voiceMale)) { i ->
-                voiceMale = i == 1
-                refreshSetup()
-                playSample()
-            }, lp(top = 8)
-        )
+        root.addView(dropdown(listOf("Rustig", "Normaal", "Streng"), voice) { i ->
+            voice = i
+            refreshSetup()
+            playSample()
+        }, lp(top = 8))
+        root.addView(dropdown(listOf("Vrouwenstem", "Mannenstem"), if (voiceMale) 1 else 0) { i ->
+            voiceMale = i == 1
+            refreshSetup()
+            playSample()
+        }, lp(top = 8))
         val voiceExpl = when (voice) {
             Coach.VOICE_CALM -> "Rustige, vriendelijke stem die je ontspannen laat lopen."
             Coach.VOICE_STRICT -> "Strenge motivator: lage, snelle stem die je bij elke kilometer aanpakt en geen excuses accepteert."
@@ -401,6 +393,9 @@ class MainActivity : Activity() {
         }
         root.addView(history, lp(top = 12))
 
+        root.addView(button("Updates controleren", CARD).apply {
+            setOnClickListener { updater.check(true) }
+        }, lp(top = 12))
         val logo = ImageView(this).apply {
             setImageResource(R.drawable.the_one_logo)
             scaleType = ImageView.ScaleType.CENTER_CROP
@@ -859,6 +854,31 @@ class MainActivity : Activity() {
 
     private fun addSection(title: String) {
         root.addView(tv(title.uppercase(), 13f, MUTED, true), lp(top = 24))
+    }
+
+    private fun dropdown(options: List<String>, selected: Int, changed: (Int) -> Unit): android.widget.Spinner {
+        val initial = selected.coerceIn(options.indices)
+        return android.widget.Spinner(this, android.widget.Spinner.MODE_DROPDOWN).apply {
+            background = rounded(CARD)
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            adapter = object : android.widget.ArrayAdapter<String>(this@MainActivity, android.R.layout.simple_spinner_item, options) {
+                override fun getView(position: Int, convertView: View?, parent: ViewGroup): View =
+                    tv(options[position] + "  ▾", 17f, TEXT).apply { setPadding(dp(8), dp(12), dp(8), dp(12)) }
+                override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View =
+                    tv(options[position], 17f, TEXT).apply {
+                        setBackgroundColor(CARD)
+                        setPadding(dp(16), dp(16), dp(16), dp(16))
+                    }
+            }
+            setSelection(initial, false)
+            var current = initial
+            onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+                override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    if (position != current) { current = position; changed(position) }
+                }
+            }
+        }
     }
 
     private fun chipRow(options: List<Pair<String, Boolean>>, onClick: (Int) -> Unit): LinearLayout {
