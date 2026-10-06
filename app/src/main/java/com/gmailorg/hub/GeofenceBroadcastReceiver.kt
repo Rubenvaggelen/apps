@@ -54,6 +54,12 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
         if (isSupermarketTransition) {
             SupermarketReminderDelivery.deliver(context)
+            // Radio alerts stay independent of Android's phone notification permission.
+            if (event.geofenceTransition == Geofence.GEOFENCE_TRANSITION_ENTER && CarRadioConnectionService.isRadioConnected()) {
+                ShoppingListStore.init(context.applicationContext)
+                val items = ShoppingListStore.getAll().filter { !it.done }.map { it.text }
+                if (items.isNotEmpty()) CarRadioConnectionService.sendSupermarketAlert(items)
+            }
         }
 
         if (event.geofenceTransition != Geofence.GEOFENCE_TRANSITION_ENTER) return

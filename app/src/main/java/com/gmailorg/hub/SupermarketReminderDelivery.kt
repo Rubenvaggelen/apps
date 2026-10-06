@@ -47,7 +47,6 @@ object SupermarketReminderDelivery {
             return "Android kon de boodschappenmelding niet plaatsen."
         if (!test) {
             prefs.edit().putLong(LAST_DELIVERED, now).apply()
-            if (CarRadioConnectionService.isRadioConnected()) CarRadioConnectionService.sendSupermarketAlert(items)
         }
         return if (test) "Testmelding aangeboden. Controleer je meldingen." else "Boodschappenmelding geplaatst."
     }
