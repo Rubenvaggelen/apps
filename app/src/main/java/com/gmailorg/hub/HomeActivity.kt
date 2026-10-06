@@ -7,6 +7,7 @@ import android.graphics.Canvas
 import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.RectF
+import android.graphics.drawable.LayerDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -508,7 +509,7 @@ class HomeAdapter(
             }
         }
         val styledIcon = if (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") && iconDrawable != null) {
-            buildBadgedAppIcon(context, iconDrawable)
+            buildTheOneAppTileIcon(context, iconDrawable)
         } else iconDrawable
         holder.icon.setImageDrawable(styledIcon)
 
@@ -524,11 +525,20 @@ class HomeAdapter(
      * launcher-icoon dat qua stijl niet bij de rest paste.
      */
     private fun buildBadgedAppIcon(context: Context, appIcon: Drawable): Drawable {
+        val badge = ContextCompat.getDrawable(context, R.drawable.bg_home_tile_badge)!!.mutate()
+        // Zelfde verhouding als de glyphs in de vaste badges (~31dp icoon
+        // gecentreerd in een 56dp tegel, dus ~12-13dp inspringen rondom).
+        val inset = (13 * context.resources.displayMetrics.density).toInt()
+        val layered = LayerDrawable(arrayOf(badge, appIcon))
+        layered.setLayerInset(1, inset, inset, inset, inset)
+        return layered
+    }
+
+    private fun buildTheOneAppTileIcon(context: Context, appIcon: Drawable): Drawable {
         val density = context.resources.displayMetrics.density
         val badge = ContextCompat.getDrawable(context, R.drawable.bg_home_tile_badge)!!.mutate()
-        // The official DJ and Run artwork stays untouched. Clip its square
-        // launcher background to a circle so both logos sit inside the same
-        // badge used by Main's built-in tiles.
+        // Keep the official DJ and Run artwork intact, while clipping square
+        // launcher backgrounds to the circular Main tile badge.
         return CircularAppTileBadge(
             badge = badge,
             appIcon = appIcon,
