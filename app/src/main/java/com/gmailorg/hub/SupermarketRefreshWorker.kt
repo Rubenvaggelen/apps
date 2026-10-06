@@ -4,10 +4,10 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
-import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.NetworkType
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -29,21 +29,27 @@ class SupermarketRefreshWorker(context: Context, params: WorkerParameters) : Cor
         private const val WORK_NAME = "supermarket_geofence_refresh"
 
         fun schedule(context: Context) {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
             val request = PeriodicWorkRequestBuilder<SupermarketRefreshWorker>(
                 15, java.util.concurrent.TimeUnit.MINUTES
-            ).setConstraints(constraints).build()
+            ).build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
+                ExistingPeriodicWorkPolicy.UPDATE,
                 request
+            )
+        }
+
+        fun refreshNow(context: Context) {
+            if (!SupermarketGeofenceManager.isEnabled(context)) return
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                WORK_NAME + "_now", ExistingWorkPolicy.KEEP,
+                OneTimeWorkRequestBuilder<SupermarketRefreshWorker>().build()
             )
         }
 
         fun cancel(context: Context) {
             WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
+            WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME + "_now")
         }
     }
 

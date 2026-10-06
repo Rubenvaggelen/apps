@@ -28,7 +28,11 @@ class HouseholdActivity : AppCompatActivity() {
     private lateinit var emptyState: TextView
     private lateinit var input: EditText
     private lateinit var supermarketSwitch: Switch
+    private lateinit var supermarketStatus: TextView
     private var resumeAfterLocationSettings = false
+    private val statusListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+        if (::supermarketStatus.isInitialized) supermarketStatus.text = SupermarketGeofenceManager.statusText(this)
+    }
 
     private val requestForegroundLocation = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -36,8 +40,8 @@ class HouseholdActivity : AppCompatActivity() {
         if (grants[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
             requestBackgroundLocationIfNeeded()
         } else {
-            supermarketSwitch.isChecked = false
             Toast.makeText(this, "Locatietoegang is nodig voor supermarkt-meldingen.", Toast.LENGTH_LONG).show()
+            updateSupermarketStatus()
         }
     }
 
@@ -46,6 +50,7 @@ class HouseholdActivity : AppCompatActivity() {
     ) { granted ->
         if(granted)armSupermarketAlerts()
         else Toast.makeText(this,"Kies Altijd toestaan voor supermarkt-meldingen op de achtergrond.",Toast.LENGTH_LONG).show()
+        updateSupermarketStatus()
     }
 
     private val requestNotificationPermission = registerForActivityResult(
@@ -53,6 +58,7 @@ class HouseholdActivity : AppCompatActivity() {
     ) { granted ->
         if(granted)ensureForegroundLocationThenArm()
         else Toast.makeText(this,"Sta meldingen toe voor Main; anders kan je boodschappenlijst niet worden gemeld.",Toast.LENGTH_LONG).show()
+        updateSupermarketStatus()
     }
 
     private val voiceRecognition = registerForActivityResult(
@@ -77,7 +83,16 @@ class HouseholdActivity : AppCompatActivity() {
         emptyState = findViewById(R.id.emptyState)
         input = findViewById(R.id.newItemInput)
         supermarketSwitch = findViewById(R.id.supermarketAlertSwitch)
+        supermarketStatus = findViewById(R.id.supermarketAlertStatus)
         supermarketSwitch.isChecked = SupermarketGeofenceManager.isEnabled(this)
+        findViewById<View>(R.id.supermarketCheckButton).setOnClickListener {
+            if (!supermarketSwitch.isChecked) supermarketSwitch.isChecked = true
+            else ensureNotificationThenArm()
+        }
+        findViewById<View>(R.id.supermarketTestButton).setOnClickListener {
+            Toast.makeText(this, SupermarketReminderDelivery.deliver(this, test = true), Toast.LENGTH_LONG).show()
+            updateSupermarketStatus()
+        }
 
         val list = findViewById<RecyclerView>(R.id.itemList)
         list.layoutManager = LinearLayoutManager(this)
@@ -116,6 +131,7 @@ class HouseholdActivity : AppCompatActivity() {
                 SupermarketRefreshWorker.cancel(this)
                 if (CarRadioConnectionService.isRadioConnected()) CarRadioConnectionService.sendHouseholdSnapshot(this)
             }
+            updateSupermarketStatus()
         }
 
         refresh()
@@ -130,7 +146,9 @@ class HouseholdActivity : AppCompatActivity() {
         if(!androidx.core.app.NotificationManagerCompat.from(this).areNotificationsEnabled()){
             androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Meldingen toestaan")
                 .setMessage("Android blokkeert meldingen van Main. Zet ze aan om je boodschappenlijst bij de supermarkt te ontvangen.")
-                .setPositiveButton("Instellingen"){_,_->startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,packageName))}
+                .setPositiveButton("Instellingen"){_,_->
+                    resumeAfterLocationSettings = true
+                    startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,packageName))}
                 .setNegativeButton("Later",null).show()
             return
         }
@@ -140,7 +158,9 @@ class HouseholdActivity : AppCompatActivity() {
             if(manager.getNotificationChannel(channelId)?.importance==android.app.NotificationManager.IMPORTANCE_NONE){
                 androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Supermarktmeldingen geblokkeerd")
                     .setMessage("Zet het meldingskanaal Supermarkt-herinneringen aan om je boodschappenlijst bij aankomst te ontvangen.")
-                    .setPositiveButton("Instellingen"){_,_->startActivity(Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                    .setPositiveButton("Instellingen"){_,_->
+                        resumeAfterLocationSettings = true
+                        startActivity(Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
                         .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,packageName).putExtra(android.provider.Settings.EXTRA_CHANNEL_ID,channelId))}
                     .setNegativeButton("Later",null).show()
                 return
@@ -150,14 +170,40 @@ class HouseholdActivity : AppCompatActivity() {
     }
     override fun onResume() {
         super.onResume()
+        updateSupermarketStatus()
         if(resumeAfterLocationSettings){
             resumeAfterLocationSettings=false
-            if(SupermarketGeofenceManager.hasBackgroundLocationPermission(this))ensureNotificationThenArm()
-            else Toast.makeText(this,"Supermarktmeldingen wachten op locatietoegang: Altijd toestaan.",Toast.LENGTH_LONG).show()
+            if (SupermarketGeofenceManager.isEnabled(this) &&
+                SupermarketGeofenceManager.hasLocationPermission(this) &&
+                SupermarketGeofenceManager.hasBackgroundLocationPermission(this) &&
+                SupermarketReminderDelivery.blockedReason(this) == null) armSupermarketAlerts()
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        getSharedPreferences("household_geofence_prefs", MODE_PRIVATE).registerOnSharedPreferenceChangeListener(statusListener)
+    }
+
+    override fun onStop() {
+        getSharedPreferences("household_geofence_prefs", MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(statusListener)
+        super.onStop()
+    }
+
+    private fun updateSupermarketStatus() {
+        if (::supermarketStatus.isInitialized) supermarketStatus.text = SupermarketGeofenceManager.statusText(this)
+    }
+
     private fun ensureForegroundLocationThenArm() {
+        if (!androidx.core.location.LocationManagerCompat.isLocationEnabled(getSystemService(android.location.LocationManager::class.java))) {
+            androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Locatie aanzetten")
+                .setMessage("Zet de locatie van je telefoon aan voor supermarktmeldingen.")
+                .setPositiveButton("Instellingen") { _, _ ->
+                    resumeAfterLocationSettings = true
+                    startActivity(Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                }.setNegativeButton("Later", null).show()
+            return
+        }
         val granted = ContextCompat.checkSelfPermission(
             this, Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
@@ -193,6 +239,7 @@ class HouseholdActivity : AppCompatActivity() {
         Toast.makeText(this, "Supermarkten in de buurt zoeken...", Toast.LENGTH_SHORT).show()
         SupermarketGeofenceManager.enableForCurrentLocation(this) { success, message ->
             Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+            updateSupermarketStatus()
             // Keep the requested setting during temporary network/location errors; the worker retries.
             if (CarRadioConnectionService.isRadioConnected()) CarRadioConnectionService.sendHouseholdSnapshot(this)
         }
@@ -227,6 +274,7 @@ class HouseholdActivity : AppCompatActivity() {
         val items = ShoppingListStore.getAll()
         adapter.updateItems(items)
         emptyState.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+        updateSupermarketStatus()
     }
 }
 

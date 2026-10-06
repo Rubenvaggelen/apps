@@ -25,42 +25,38 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         val event = GeofencingEvent.fromIntent(intent) ?: return
         if (event.hasError()) {
             android.util.Log.w("SupermarketGeofence","Geofence event error: "+event.errorCode)
-            if(SupermarketGeofenceManager.isEnabled(context))SupermarketRefreshWorker.schedule(context)
+            if(SupermarketGeofenceManager.isEnabled(context)) {
+                context.getSharedPreferences("household_geofence_prefs", Context.MODE_PRIVATE).edit()
+                    .putString("last_error", "Locatiebewaking onderbroken. Main probeert deze opnieuw te activeren.").apply()
+                SupermarketRefreshWorker.refreshNow(context)
+            }
             return
         }
 
         val triggeringIds = event.triggeringGeofences?.map { it.requestId } ?: emptyList()
+        if (SupermarketGeofenceManager.isEnabled(context) &&
+            event.geofenceTransition == Geofence.GEOFENCE_TRANSITION_EXIT &&
+            SupermarketGeofenceManager.REFRESH_ANCHOR_ID in triggeringIds)
+            SupermarketRefreshWorker.refreshNow(context)
         val isSupermarketTransition = SupermarketGeofenceManager.isEnabled(context) && triggeringIds.any { it.startsWith("supermarkt_") }
 
         // Widget bijwerken: lijst zichtbaar bij aankomst, verbergen bij vertrek.
         if (isSupermarketTransition) {
             when (event.geofenceTransition) {
-                Geofence.GEOFENCE_TRANSITION_ENTER -> ShoppingListWidgetProvider.setNearSupermarket(context, true)
+                Geofence.GEOFENCE_TRANSITION_ENTER, Geofence.GEOFENCE_TRANSITION_DWELL -> ShoppingListWidgetProvider.setNearSupermarket(context, true)
                 Geofence.GEOFENCE_TRANSITION_EXIT -> ShoppingListWidgetProvider.setNearSupermarket(context, false)
             }
         }
 
-        if (event.geofenceTransition != Geofence.GEOFENCE_TRANSITION_ENTER) return
+        val arrival = event.geofenceTransition == Geofence.GEOFENCE_TRANSITION_ENTER ||
+            event.geofenceTransition == Geofence.GEOFENCE_TRANSITION_DWELL
+        if (!arrival) return
 
         if (isSupermarketTransition) {
-            ShoppingListStore.init(context.applicationContext)
-            val pending = ShoppingListStore.getAll().filter { !it.done }
-            if (pending.isNotEmpty()) {
-                val items = pending.map { it.text }
-                val reminders=context.getSharedPreferences("supermarket_reminder_delivery",Context.MODE_PRIVATE)
-                val key=triggeringIds.filter { it.startsWith("supermarkt_") }.sorted().joinToString("|")
-                val now=System.currentTimeMillis()
-                if(now-reminders.getLong(key,0L)>=15*60*1000L &&
-                   androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()){
-                    showSupermarketNotification(context,items)
-                    reminders.edit().putLong(key,now).apply()
-                }
-                if (CarRadioConnectionService.isRadioConnected()) {
-                    CarRadioConnectionService.sendSupermarketAlert(items)
-                }
-            }
+            SupermarketReminderDelivery.deliver(context)
         }
 
+        if (event.geofenceTransition != Geofence.GEOFENCE_TRANSITION_ENTER) return
         val triggeredParkingIds = triggeringIds.mapNotNull { ParkingGeofenceManager.addressIdFromRequestId(it) }
         if (triggeredParkingIds.isNotEmpty()) {
             ParkingAddressStore.init(context.applicationContext)
@@ -131,13 +127,14 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         manager.notify(PARKING_NOTIFICATION_ID, notification)
     }
 
-    private fun showSupermarketNotification(context: Context, items: List<String>) {
+    internal fun showSupermarketNotification(context: Context, items: List<String>, test: Boolean = false): Boolean {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channelId = ensureChannel(
             context, manager, CHANNEL_BASE_ID,
             "Supermarkt-herinneringen",
             "Melding als je bij een supermarkt bent en nog iets op je boodschappenlijst staat."
         )
+        if (SupermarketReminderDelivery.blockedReason(context) != null) return false
 
         val openIntent = Intent(context, HouseholdActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
@@ -155,7 +152,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_tile_household)
-            .setContentTitle("Je bent bij een supermarkt 🛒")
+            .setContentTitle(if (test) "Test · boodschappenlijst 🛒" else "Je bent bij een supermarkt 🛒")
             .setContentText("Vergeet niet: $itemsText")
             .setStyle(NotificationCompat.BigTextStyle().bigText("Vergeet niet: $itemsText"))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -163,6 +160,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             .setAutoCancel(true)
             .build()
 
-        manager.notify(NOTIFICATION_ID, notification)
+        return try { manager.notify(NOTIFICATION_ID, notification); true }
+        catch (_: SecurityException) { false }
     }
 }

@@ -9,6 +9,7 @@ class TheOneApplication : Application() {
         AccessRequestNotificationWorker.schedule(this)
         AccessRequestNotificationWorker.checkNow(this)
         DailyMotivationWorker.schedule(this)
+        SupermarketGeofenceManager.reArmAfterBootIfEnabled(this)
     }
 
     override fun onTrimMemory(level: Int) {

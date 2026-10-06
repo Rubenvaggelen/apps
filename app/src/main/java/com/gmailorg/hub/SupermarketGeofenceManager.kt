@@ -38,9 +38,10 @@ object SupermarketGeofenceManager {
     private const val TAG = "SupermarketGeofence"
     private const val PREFS = "household_geofence_prefs"
     private const val KEY_ENABLED = "enabled"
-    private const val GEOFENCE_RADIUS_METERS = 180f
+    private const val GEOFENCE_RADIUS_METERS = SupermarketReminderPolicy.RADIUS_METERS
     private const val SEARCH_RADIUS_METERS = 5000 // 5 km rondom de gebruiker
     private const val MAX_GEOFENCES = 40 // ruim onder de limiet van 100 per app
+    const val REFRESH_ANCHOR_ID = "supermarket_refresh_anchor"
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -55,7 +56,23 @@ object SupermarketGeofenceManager {
     fun hasLocationPermission(context: Context): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
-    fun requestEnable(context: Context) { setEnabled(context,true); SupermarketRefreshWorker.schedule(context) }
+    fun requestEnable(context: Context) { setEnabled(context,true); SupermarketRefreshWorker.schedule(context); SupermarketRefreshWorker.refreshNow(context) }
+
+    fun statusText(context: Context): String {
+        if (!isEnabled(context)) return "Supermarktmeldingen staan uit."
+        SupermarketReminderDelivery.blockedReason(context)?.let { return it }
+        if (!hasLocationPermission(context)) return "Nauwkeurige locatietoegang ontbreekt. Tik op Controleren."
+        if (!hasBackgroundLocationPermission(context)) return "Locatie staat niet op Altijd toestaan. Tik op Controleren."
+        if (!androidx.core.location.LocationManagerCompat.isLocationEnabled(context.getSystemService(LocationManager::class.java))) return "Zet de locatie van je telefoon aan."
+        val store = prefs(context)
+        store.getString("last_error", "")?.takeIf { it.isNotBlank() }?.let { return it }
+        val count = store.getStringSet("registered_ids", emptySet()).orEmpty().count { it.startsWith("supermarkt_") }
+        if (count == 0) return "Nog geen supermarkten ingesteld. Tik op Controleren."
+        ShoppingListStore.init(context.applicationContext)
+        val pending = ShoppingListStore.getAll().count { !it.done }
+        return if (pending == 0) "Meldingen ingesteld voor $count supermarkten. Je lijst bevat geen openstaande boodschappen."
+        else "Meldingen ingesteld voor $count supermarkten · $pending openstaande boodschappen. Android kan aankomst enkele minuten later melden."
+    }
 
     private fun setEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_ENABLED, enabled).apply()
@@ -63,6 +80,7 @@ object SupermarketGeofenceManager {
 
     fun disable(context: Context) {
         setEnabled(context, false)
+        SupermarketRefreshWorker.cancel(context)
         val client = LocationServices.getGeofencingClient(context)
         client.removeGeofences(geofencePendingIntent(context))
     }
@@ -77,12 +95,13 @@ object SupermarketGeofenceManager {
         fun fail(message: String) { prefs(app).edit().putString("last_error",message).apply(); onResult(false,message) }
         if(!hasLocationPermission(app)){fail("Geef Main nauwkeurige locatietoegang.");return}
         if(!hasBackgroundLocationPermission(app)){fail("Zet locatietoegang voor Main op Altijd toestaan.");return}
-        val notifications=app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if(!notifications.areNotificationsEnabled()){fail("Sta meldingen voor Main toe in Android-instellingen.");return}
+        SupermarketReminderDelivery.blockedReason(app)?.let { fail(it); return }
+        if (!androidx.core.location.LocationManagerCompat.isLocationEnabled(app.getSystemService(LocationManager::class.java))) { fail("Zet de locatie van je telefoon aan."); return }
         val fused = LocationServices.getFusedLocationProviderClient(app)
         fun useLocation(location: Location?) {
             if(!isEnabled(app)){onResult(false,"Supermarktmeldingen zijn uitgezet.");return}
             if(location==null){fail("Geen actuele locatie. Zet locatie aan en probeer opnieuw.");return}
+            checkCurrentProximity(app, location, readCachedSupermarkets(app))
             fetchNearbySupermarkets(location.latitude, location.longitude) { supermarkets ->
                 if(!isEnabled(app)){onResult(false,"Supermarktmeldingen zijn uitgezet.");return@fetchNearbySupermarkets}
                 val stored=readCachedSupermarkets(app)
@@ -92,10 +111,12 @@ object SupermarketGeofenceManager {
                     distance[0]<=SEARCH_RADIUS_METERS
                 }
                 if(nearby.isEmpty()){fail("Supermarkten ophalen mislukt of geen supermarkt binnen 5 km. Main probeert het opnieuw.");return@fetchNearbySupermarkets}
-                registerGeofences(app,nearby){success,message->
+                if (supermarkets.isNotEmpty()) cacheSupermarkets(app, supermarkets)
+                checkCurrentProximity(app, location, nearby)
+                registerGeofences(app,nearby, location.latitude to location.longitude){success,message->
                     if(success){
-                        prefs(app).edit().putString("last_error","").putLong("last_registered",System.currentTimeMillis()).apply()
-                        if(supermarkets.isNotEmpty())cacheSupermarkets(app,supermarkets)
+                        prefs(app).edit().putString("last_error","").putLong("last_registered",System.currentTimeMillis())
+                            .putString("scan_lat", location.latitude.toString()).putString("scan_lon", location.longitude.toString()).apply()
                     }else prefs(app).edit().putString("last_error",message).apply()
                     onResult(success,message)
                 }
@@ -103,11 +124,23 @@ object SupermarketGeofenceManager {
         }
         fused.lastLocation.addOnSuccessListener { location: Location? ->
             val age=if(location==null)Long.MAX_VALUE else (SystemClock.elapsedRealtimeNanos()-location.elapsedRealtimeNanos)/1000000
-            if(location!=null && age in 0..120000){useLocation(location)}
-            else fused.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY,null)
+            if(location!=null && location.hasAccuracy() && location.accuracy <= GEOFENCE_RADIUS_METERS && age in 0..120000){useLocation(location)}
+            else fused.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY,null)
                 .addOnSuccessListener { fresh -> useLocation(fresh) }
                 .addOnFailureListener { fail("Actuele locatie ophalen mislukt. Controleer locatietoegang.") }
         }.addOnFailureListener { fail("Locatie ophalen mislukt. Controleer locatietoegang.") }
+    }
+    private fun checkCurrentProximity(context: Context, location: Location, points: List<Pair<Double, Double>>) {
+        if (!isEnabled(context) || !location.hasAccuracy()) return
+        val age = (SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos) / 1000000
+        if (points.any { point ->
+                val distance = FloatArray(1)
+                Location.distanceBetween(location.latitude, location.longitude, point.first, point.second, distance)
+                SupermarketReminderPolicy.isNearby(distance[0], location.accuracy, age)
+            }) {
+            ShoppingListWidgetProvider.setNearSupermarket(context, true)
+            SupermarketReminderDelivery.deliver(context)
+        }
     }
     private fun cacheSupermarkets(context: Context, points: List<Pair<Double,Double>>) {
         val array=org.json.JSONArray()
@@ -124,8 +157,14 @@ object SupermarketGeofenceManager {
     fun reArmAfterBootIfEnabled(context: Context) {
         if (!isEnabled(context)) return
         val cached=readCachedSupermarkets(context)
-        if(cached.isNotEmpty()&&hasLocationPermission(context)&&hasBackgroundLocationPermission(context))registerGeofences(context,cached){_,_->}
+        if(cached.isNotEmpty()&&hasLocationPermission(context)&&hasBackgroundLocationPermission(context)) {
+            val lat = prefs(context).getString("scan_lat", null)?.toDoubleOrNull()
+            val lon = prefs(context).getString("scan_lon", null)?.toDoubleOrNull()
+            val center = if (lat != null && lon != null) lat to lon else null
+            registerGeofences(context,cached,center){_,_->}
+        }
         SupermarketRefreshWorker.schedule(context)
+        SupermarketRefreshWorker.refreshNow(context)
     }
 
     private fun fetchNearbySupermarkets(
@@ -167,19 +206,27 @@ object SupermarketGeofenceManager {
     }
 
     @SuppressLint("MissingPermission")
-    private fun registerGeofences(context: Context, supermarkets: List<Pair<Double, Double>>, onResult: (Boolean,String)->Unit) {
+    private fun registerGeofences(context: Context, supermarkets: List<Pair<Double, Double>>, center: Pair<Double, Double>? = null, onResult: (Boolean,String)->Unit) {
         val client: GeofencingClient = LocationServices.getGeofencingClient(context)
-        val geofences = supermarkets.mapIndexed { index, (lat, lon) ->
+        val geofences = supermarkets.map { (lat, lon) ->
             Geofence.Builder()
                 .setRequestId("supermarkt_"+lat.toString()+"_"+lon.toString())
                 .setCircularRegion(lat, lon, GEOFENCE_RADIUS_METERS)
                 .setExpirationDuration(Geofence.NEVER_EXPIRE)
-                .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER or Geofence.GEOFENCE_TRANSITION_EXIT)
+                .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER or Geofence.GEOFENCE_TRANSITION_EXIT or Geofence.GEOFENCE_TRANSITION_DWELL)
+                .setLoiteringDelay(30000)
+                .setNotificationResponsiveness(60000)
                 .build()
+        }.toMutableList()
+        center?.let { (lat, lon) ->
+            geofences.add(Geofence.Builder().setRequestId(REFRESH_ANCHOR_ID)
+                .setCircularRegion(lat, lon, 2000f).setExpirationDuration(Geofence.NEVER_EXPIRE)
+                .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_EXIT)
+                .setNotificationResponsiveness(60000).build())
         }
 
         val geofencingRequest = GeofencingRequest.Builder()
-            .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER)
+            .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER or GeofencingRequest.INITIAL_TRIGGER_DWELL)
             .addGeofences(geofences)
             .build()
 

@@ -69,6 +69,8 @@ object ShoppingListStore {
         prefs?.edit()?.putString(KEY_ITEMS, arr.toString())?.apply()
         appContext?.let {
             ShoppingListWidgetProvider.updateAllWidgets(it)
+            if (SupermarketGeofenceManager.isEnabled(it) && items.any { item -> !item.done })
+                SupermarketRefreshWorker.refreshNow(it)
             if (CarRadioConnectionService.isRadioConnected()) CarRadioConnectionService.sendHouseholdSnapshot(it)
         }
     }

@@ -88,7 +88,7 @@ jobs:
       - name: Build Main only
         env:
           ORG_GRADLE_PROJECT_YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-        run: gradle :app:assembleDebug --no-daemon --no-build-cache -PappVersionCode=${VERSION_CODE}
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon --no-build-cache -PappVersionCode=${VERSION_CODE}
       - name: Verify TMDB key is included in Main
         shell: bash
         run: |
