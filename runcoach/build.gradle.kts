@@ -57,6 +57,8 @@ kotlin {
 }
 
 dependencies {
+    implementation("com.google.android.gms:play-services-location:21.4.0")
+    testImplementation("org.json:json:20240303")
     implementation("androidx.core:core:1.13.1")
     testImplementation("junit:junit:4.13.2")
     // zelfde versie als in runcoach-wear

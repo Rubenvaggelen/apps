@@ -9,4 +9,10 @@
     <color name="ink">#FFF3F8FC</color>
     <color name="muted">#FF91A4BD</color>
     <color name="icon_bg">#FF071019</color>
+    <color name="text_main">@color/ink</color>
+    <color name="text_dim">@color/muted</color>
+    <color name="surface">@color/panel</color>
+    <color name="surface_raised">#122639</color>
+    <color name="amber">@color/accent</color>
+    <color name="on_amber">@color/accent_ink</color>
 </resources>

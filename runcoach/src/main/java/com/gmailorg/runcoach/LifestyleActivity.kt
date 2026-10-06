@@ -1,4 +1,4 @@
-package com.gmailorg.hub
+package com.gmailorg.runcoach
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -9,7 +9,7 @@ import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
+import android.app.Activity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.LocationServices
@@ -19,7 +19,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
 
-class LifestyleActivity : AppCompatActivity() {
+class LifestyleActivity : Activity() {
 
     companion object {
         private const val LOCATION_REQUEST = 7301
@@ -33,22 +33,8 @@ class LifestyleActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Updated Run owns Lifestyle. Keep the original screen as fallback until Run is updated.
-        val runReady = runCatching {
-            val info = packageManager.getPackageInfo("com.gmailorg.runcoach", 0)
-            val version = if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
-            version >= 1012 && packageManager.checkSignatures(packageName, "com.gmailorg.runcoach") == PackageManager.SIGNATURE_MATCH
-        }.getOrDefault(false)
-        if (runReady) {
-            try {
-                startActivity(Intent().setClassName("com.gmailorg.runcoach", "com.gmailorg.runcoach.MainActivity")
-                    .putExtra("open_lifestyle", true))
-                finish()
-                return
-            } catch (_: android.content.ActivityNotFoundException) { }
-        }
         setContentView(R.layout.activity_lifestyle)
-        MenuButtonHelper.attach(this)
+        LifestyleNav.attach(this)
 
         weatherStatus = findViewById(R.id.lifestyleWeatherStatus)
         weatherAdvice = findViewById(R.id.lifestyleWeatherAdvice)
@@ -62,6 +48,45 @@ class LifestyleActivity : AppCompatActivity() {
             showWeatherSectionAndLoad()
         }
         weatherRefresh.setOnClickListener { loadOutdoorForecast() }
+        findViewById<Button>(R.id.lifestyleImportButton).setOnClickListener { importMainData() }
+        if (!getSharedPreferences("lifestyle_migration", MODE_PRIVATE).getBoolean("imported", false)) importMainData()
+
+    }
+
+    @Suppress("DEPRECATION")
+    private fun importMainData() {
+        try {
+            startActivityForResult(Intent().setClassName("com.gmailorg.hub", "com.gmailorg.hub.FitnessTransferActivity"), 7401)
+        } catch (_: android.content.ActivityNotFoundException) {
+            Toast.makeText(this, "Werk Main eenmalig bij om je bestaande Fitness-gegevens over te nemen. Lifestyle kan ook met een nieuw profiel worden gebruikt.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != 7401 || resultCode != RESULT_OK) return
+        val raw = data?.getStringExtra("fitness_data") ?: return
+        runCatching {
+            val values = FitnessTransferCodec.decode(raw)
+            val destination = getSharedPreferences("fitness_progress", MODE_PRIVATE)
+            val editor = destination.edit()
+            var imported = 0
+            values.forEach { (key, value) ->
+                if (!destination.contains(key)) {
+                    when (value) {
+                        is String -> editor.putString(key, value)
+                        is Boolean -> editor.putBoolean(key, value)
+                        is Int -> editor.putInt(key, value)
+                        is Float -> editor.putFloat(key, value)
+                    }
+                    imported++
+                }
+            }
+            check(editor.commit()) { "Opslaan mislukt" }
+            getSharedPreferences("lifestyle_migration", MODE_PRIVATE).edit().putBoolean("imported", true).apply()
+            Toast.makeText(this, if (values.isEmpty()) "Main bevat nog geen Fitness-profiel." else "Fitness-gegevens overgenomen. Bestaande Run-gegevens behouden.", Toast.LENGTH_LONG).show()
+        }.onFailure { Toast.makeText(this, "Overnemen mislukt. Je gegevens in Main blijven behouden.", Toast.LENGTH_LONG).show() }
     }
 
     private fun showWeatherSectionAndLoad() {
@@ -118,6 +143,7 @@ class LifestyleActivity : AppCompatActivity() {
     private fun fetchWeather(lat: Double, lon: Double) {
         WeatherForecastClient.fetch(lat, lon) { result ->
             weatherRefresh.isEnabled = true
+            if (isFinishing || isDestroyed) return@fetch
             result.onSuccess { days -> renderForecast(days) }
                 .onFailure { error ->
                     weatherStatus.text = "Weer kon niet worden opgehaald"

@@ -18,6 +18,7 @@
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
     <uses-feature android:name="android.hardware.sensor.stepcounter" android:required="false" />
 
+    <queries><package android:name="com.gmailorg.hub" /></queries>
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -39,6 +40,8 @@
             android:authorities="${applicationId}.updates" android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/update_paths" />
         </provider>
+        <activity android:name=".LifestyleActivity" android:exported="false" />
+        <activity android:name=".FitnessActivity" android:exported="false" />
         <service
             android:name=".RunService"
             android:exported="false"

@@ -77,7 +77,13 @@ class MainActivity : Activity() {
                 val status = result.getOrNull()
                 accessReady = status?.allowed == true
                 shownScreen = ""
-                if (accessReady) render(RunRepository.snapshot)
+                if (accessReady) {
+                    render(RunRepository.snapshot)
+                    if (intent.getBooleanExtra("open_lifestyle", false)) {
+                        intent.removeExtra("open_lifestyle")
+                        startActivity(Intent(this, LifestyleActivity::class.java))
+                    }
+                }
                 else showAccessGate(when {
                     status == null -> "Verbinding mislukt. Controleer je internet en probeer opnieuw."
                     status.blocked -> "Dit apparaat is geblokkeerd. De eigenaar moet het vrijgeven."
@@ -293,6 +299,9 @@ class MainActivity : Activity() {
 
     private fun buildSetup() {
         root.addView(header())
+        root.addView(button("LIFESTYLE · Fitness en weer", CARD).apply {
+            setOnClickListener { startActivity(Intent(this@MainActivity, LifestyleActivity::class.java)) }
+        }, lp(top = 18))
         addSection("Waar loop je?")
         root.addView(chipRow(listOf("Buiten" to !treadmillMode, "Loopband" to treadmillMode)) { i ->
             treadmillMode = i == 1
