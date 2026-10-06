@@ -3,7 +3,10 @@ package com.gmailorg.hub
 import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Drawable
-import android.graphics.drawable.LayerDrawable
+import android.graphics.Canvas
+import android.graphics.Path
+import android.graphics.PixelFormat
+import android.graphics.RectF
 import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -521,12 +524,70 @@ class HomeAdapter(
      * launcher-icoon dat qua stijl niet bij de rest paste.
      */
     private fun buildBadgedAppIcon(context: Context, appIcon: Drawable): Drawable {
+        val density = context.resources.displayMetrics.density
         val badge = ContextCompat.getDrawable(context, R.drawable.bg_home_tile_badge)!!.mutate()
-        val layered = LayerDrawable(arrayOf(badge, appIcon))
-        // Zelfde verhouding als de glyphs in de vaste badges (~31dp icoon
-        // gecentreerd in een 56dp tegel, dus ~12-13dp inspringen rondom).
-        val inset = (13 * context.resources.displayMetrics.density).toInt()
-        layered.setLayerInset(1, inset, inset, inset, inset)
-        return layered
+        // The official DJ and Run artwork stays untouched. Clip its square
+        // launcher background to a circle so both logos sit inside the same
+        // badge used by Main's built-in tiles.
+        return CircularAppTileBadge(
+            badge = badge,
+            appIcon = appIcon,
+            insetPx = (13 * density).toInt(),
+            sizePx = (56 * density).toInt()
+        )
+    }
+
+    private class CircularAppTileBadge(
+        private val badge: Drawable,
+        private val appIcon: Drawable,
+        private val insetPx: Int,
+        private val sizePx: Int
+    ) : Drawable() {
+        private val clipPath = Path()
+        private val clipBounds = RectF()
+
+        override fun draw(canvas: Canvas) {
+            val outer = bounds
+            if (outer.width() <= 0 || outer.height() <= 0) return
+
+            badge.bounds = outer
+            badge.draw(canvas)
+
+            clipBounds.set(
+                (outer.left + insetPx).toFloat(),
+                (outer.top + insetPx).toFloat(),
+                (outer.right - insetPx).toFloat(),
+                (outer.bottom - insetPx).toFloat()
+            )
+            clipPath.reset()
+            clipPath.addOval(clipBounds, Path.Direction.CW)
+
+            val save = canvas.save()
+            canvas.clipPath(clipPath)
+            appIcon.bounds = android.graphics.Rect(
+                clipBounds.left.toInt(),
+                clipBounds.top.toInt(),
+                clipBounds.right.toInt(),
+                clipBounds.bottom.toInt()
+            )
+            appIcon.draw(canvas)
+            canvas.restoreToCount(save)
+        }
+
+        override fun setAlpha(alpha: Int) {
+            badge.alpha = alpha
+            appIcon.alpha = alpha
+        }
+
+        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
+            badge.colorFilter = colorFilter
+            appIcon.colorFilter = colorFilter
+        }
+
+        @Suppress("DEPRECATION")
+        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+
+        override fun getIntrinsicWidth(): Int = sizePx
+        override fun getIntrinsicHeight(): Int = sizePx
     }
 }
