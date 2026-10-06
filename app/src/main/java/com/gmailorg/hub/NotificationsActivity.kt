@@ -55,7 +55,7 @@ class NotificationsActivity : AppCompatActivity() {
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
                 val position = viewHolder.adapterPosition
                 val item = currentFilteredItems().getOrNull(position) ?: return
-                if (item.persistent) {
+                if (item.persistent && item.actionType != "access_request") {
                     adapter.updateItems(currentFilteredItems())
                     return
                 }

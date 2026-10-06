@@ -372,6 +372,7 @@ object MainDeviceRegistry {
         scope: String,
         enabled: Boolean
     ) {
+        synchronized(AccessRequestNotifications.syncLock) {
         request(
             "set_access_right",
             JSONObject()
@@ -381,6 +382,8 @@ object MainDeviceRegistry {
                 .put("scope", scope)
                 .put("enabled", enabled)
         )
+        AccessRequestNotifications.resolve(context, targetDeviceId, scope)
+        }
     }
 
     fun refreshMusicRights(context: Context): Boolean {

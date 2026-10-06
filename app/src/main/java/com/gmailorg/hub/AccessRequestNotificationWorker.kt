@@ -29,6 +29,7 @@ class AccessRequestNotificationWorker(
             return Result.success()
         }
 
+        return synchronized(AccessRequestNotifications.syncLock) {
         val pending = runCatching {
             MainDeviceRegistry.pendingAccessRequests(applicationContext)
         }.getOrElse {
@@ -36,7 +37,8 @@ class AccessRequestNotificationWorker(
         }
 
         AccessRequestNotifications.notifyNew(applicationContext, pending)
-        return Result.success()
+        Result.success()
+        }
     }
 
     companion object {
@@ -69,6 +71,19 @@ class AccessRequestNotificationWorker(
 }
 
 object AccessRequestNotifications {
+    val syncLock = Any()
+
+    fun resolve(context: Context, deviceId: String, scope: String) {
+        NotifStore.init(context.applicationContext)
+        val prefix = "theone-access|$deviceId|$scope|"
+        NotifStore.removeWhere(includePersistent = true) { it.actionType == "access_request" && it.key.startsWith(prefix) }
+        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val seen = preferences.getStringSet(KEY_SEEN, emptySet()).orEmpty()
+        val resolved = seen.filter { it.startsWith("$deviceId|$scope|") }.toSet()
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        resolved.forEach { manager.cancel(("access|" + it).hashCode()) }
+        preferences.edit().putStringSet(KEY_SEEN, seen - resolved).apply()
+    }
     private const val CHANNEL_ID = "the_one_access_requests"
     private const val PREFS = "access_request_notifications"
     private const val KEY_SEEN = "seen_keys"
@@ -84,8 +99,7 @@ object AccessRequestNotifications {
         val activeKeys = requests.map { requestKey(it) }.toSet()
         val activeNotifKeys = activeKeys.map { "theone-access|" + it }.toSet()
 
-        // The One Main Meldingen is authoritative: each pending request gets
-        // one persistent item that cannot be swiped or cleared.
+        // Dismissing a message never approves or rejects the actual request.
         requests.forEach { request ->
             val person = request.personName.ifBlank {
                 request.deviceName.ifBlank { "Iemand" }
@@ -105,7 +119,7 @@ object AccessRequestNotifications {
                     text = "$person vraagt toestemming voor $scopeLabel.",
                     postTime = time,
                     hasReplyAction = false,
-                    persistent = true,
+                    persistent = false,
                     actionType = "access_request",
                     actionValue = request.deviceId
                 )
@@ -164,12 +178,12 @@ object AccessRequestNotifications {
                     .setStyle(
                         NotificationCompat.BigTextStyle().bigText(
                             "$person vraagt toestemming voor $scopeLabel. " +
-                                "Deze melding blijft staan totdat je de aanvraag behandelt."
+                                "Tik om de aanvraag te behandelen."
                         )
                     )
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
-                    .setOngoing(true)
-                    .setAutoCancel(false)
+                    .setOngoing(false)
+                    .setAutoCancel(true)
                     .setContentIntent(pendingIntent)
                     .build()
 
