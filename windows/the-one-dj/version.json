@@ -1,7 +1,7 @@
 {
-  "build": 239,
-  "version": "2.3.9",
-  "notes": "Auto DJ selects compatible queued tracks using measured tempo and energy, including takeover from manual mixing. Sequential cached audition; playback deadline fallback; independent Android and Windows updates.",
+  "build": 240,
+  "version": "2.4.0",
+  "notes": "Independent Android DJ update discovery, in-app download and verified Android installation; correct Windows engine build number. Smart Auto DJ tempo and energy selection retained.",
   "sha256": "",
   "files": [
     "Update-The-One-DJ.ps1",

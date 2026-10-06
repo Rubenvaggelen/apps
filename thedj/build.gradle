@@ -41,6 +41,8 @@ android {
 }
 
 dependencies {
+    implementation 'androidx.core:core:1.13.1'
+    testImplementation 'junit:junit:4.13.2'
     implementation 'androidx.webkit:webkit:1.11.0'
     // LGPL audio build; supports WMA, AAC/ALAC, FLAC, Vorbis/Opus, AC3, AMR and container demuxing.
     implementation 'io.github.maxrave-dev:ffmpeg-kit-audio:6.0.1'

@@ -30,6 +30,7 @@ public class MainActivity extends Activity {
         "https://appassets.androidplatform.net/assets/index.html?app=android";
     private static final int PICK_AUDIO = 4201;
     private WebView web;
+    private DjUpdater updater;
     private NativeAudioDecoder audioDecoder;
     private ValueCallback<Uri[]> fileCallback;
     private boolean immersive = true;
@@ -43,6 +44,7 @@ public class MainActivity extends Activity {
         setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
+        updater=new DjUpdater(this,()->playbackActive);
         final SharedMediaClient sharedMedia = new SharedMediaClient(this);
         audioDecoder=new NativeAudioDecoder(this);
         final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
@@ -68,10 +70,7 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> setBackgroundPlaybackActive(active));
             }
             @JavascriptInterface public void openUpdates() {
-                runOnUiThread(() -> {
-                    try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Rubenvaggelen/apps/releases?q=dj-v"))); }
-                    catch (ActivityNotFoundException ignored) {}
-                });
+                runOnUiThread(() -> updater.check(true));
             }
             @JavascriptInterface public void toggleFullscreen() {
                 runOnUiThread(() -> toggleSystemBars());
@@ -222,6 +221,11 @@ public class MainActivity extends Activity {
     @Override protected void onResume(){
         super.onResume();
         if(web!=null){web.onResume();web.resumeTimers();}
+        if(updater!=null)updater.onResume();
+    }
+    @Override protected void onPause(){
+        if(updater!=null)updater.onPause();
+        super.onPause();
     }
     @Override protected void onStop(){
         DjPlaybackService.background(true);
@@ -229,6 +233,7 @@ public class MainActivity extends Activity {
         super.onStop();
     }
     @Override protected void onDestroy() {
+        if(updater!=null)updater.close();
         DjPlaybackService.detach(this);
         stopService(new Intent(this,DjPlaybackService.class));
         playbackActive=false;

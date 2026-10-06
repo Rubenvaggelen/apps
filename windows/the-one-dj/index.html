@@ -3189,7 +3189,7 @@ document.getElementById("jumpToTracks").addEventListener("click",()=>{
 document.getElementById("libClose").addEventListener("click",()=>library.classList.remove("open"));
 libList.addEventListener("click",e=>{if(e.target.closest("button")) library.classList.remove("open")});
 
-const WINDOWS_BUILD=237;
+const WINDOWS_BUILD=240;
 const updateBtn=document.getElementById("updateBtn");
 updateBtn?.addEventListener("click",async()=>{
   if(IN_APP && window.TheOneNative && typeof window.TheOneNative.openUpdates==="function"){window.TheOneNative.openUpdates();return}

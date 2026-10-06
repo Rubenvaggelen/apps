@@ -46,7 +46,7 @@ jobs:
           node windows/the-one-dj/tests/smart-selection.cjs
           node windows/the-one-dj/tests/background-playback.cjs
       - name: Build DJ only
-        run: gradle :thedj:assembleDebug --no-daemon --no-build-cache -PappVersionCode=${VERSION_CODE}
+        run: gradle :thedj:testDebugUnitTest :thedj:assembleDebug --no-daemon --no-build-cache -PappVersionCode=${VERSION_CODE}
       - name: Release DJ only
         uses: softprops/action-gh-release@v2
         with:
