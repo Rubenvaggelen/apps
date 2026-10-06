@@ -3,6 +3,7 @@ import datetime
 import json
 import math
 import pathlib
+import re
 import urllib.parse
 import urllib.request
 
@@ -71,6 +72,55 @@ def fetch():
     except Exception as error:
         previous = None
         print("Previous snapshot unavailable:", type(error).__name__)
+    # Independent OSM read service: do not depend solely on Overpass availability.
+    try:
+        sparql = """
+PREFIX geo: <http://www.opengis.net/ont/geosparql#>
+PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
+PREFIX osmkey: <https://www.openstreetmap.org/wiki/Key:>
+SELECT ?shop ?lat ?lon ?name WHERE {
+  ?country <https://www.openstreetmap.org/wiki/Key:ISO3166-1> "NL" ;
+           osmkey:admin_level "2" ; geo:hasGeometry/geo:asWKT ?boundary .
+  ?shop osmkey:shop "supermarket" ; geo:hasCentroid/geo:asWKT ?point .
+  FILTER(geof:sfWithin(?point, ?boundary))
+  BIND(geof:latitude(?point) AS ?lat)
+  BIND(geof:longitude(?point) AS ?lon)
+  OPTIONAL { ?shop osmkey:name ?name }
+}
+"""
+        endpoint = "https://qlever.dev/api/osm-planet"
+        request = urllib.request.Request(endpoint,
+            data=urllib.parse.urlencode({"query": sparql}).encode(),
+            headers={"User-Agent": "TheOneMain-offline-catalog/1.0",
+                     "Accept": "application/sparql-results+json"})
+        with urllib.request.urlopen(request, timeout=75) as response:
+            raw = response.read(8 * 1024 * 1024 + 1)
+        if len(raw) > 8 * 1024 * 1024:
+            raise ValueError("Oversized QLever response")
+        data = json.loads(raw)
+        elements = []
+        for row in data["results"]["bindings"]:
+            match = re.fullmatch(r"https://www.openstreetmap.org/(node|way|relation)/(\d+)",
+                                 row["shop"]["value"])
+            if not match:
+                raise ValueError("Unexpected OSM shop identifier")
+            tags = {"shop": "supermarket"}
+            if row.get("name"):
+                tags["name"] = row["name"]["value"]
+            elements.append({"type": match[1], "id": int(match[2]),
+                             "lat": float(row["lat"]["value"]), "lon": float(row["lon"]["value"]),
+                             "tags": tags})
+        shops = validate({"elements": elements})
+        snapshot = {"elements": shops, "source": endpoint,
+            "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "attribution": "© OpenStreetMap contributors", "license": "ODbL 1.0",
+            "license_url": "https://www.openstreetmap.org/copyright"}
+        TARGET.parent.mkdir(parents=True, exist_ok=True)
+        TARGET.write_text(json.dumps(snapshot, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        print("Validated independent national snapshot:", len(shops), "shops; Almere Buiten covered.")
+        return
+    except Exception as error:
+        print("Independent snapshot source failed:", type(error).__name__, str(error)[:200])
     for endpoint in ENDPOINTS:
         try:
             request = urllib.request.Request(endpoint,
