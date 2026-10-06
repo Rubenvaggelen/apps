@@ -504,7 +504,10 @@ class HomeAdapter(
                 ContextCompat.getDrawable(context, R.drawable.ic_home_add_fancy)
             }
         }
-        holder.icon.setImageDrawable(iconDrawable)
+        val styledIcon = if (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") && iconDrawable != null) {
+            buildBadgedAppIcon(context, iconDrawable)
+        } else iconDrawable
+        holder.icon.setImageDrawable(styledIcon)
 
         holder.itemView.setOnClickListener { onTileClick(tile) }
         holder.itemView.setOnLongClickListener { onTileLongClick(tile) }
