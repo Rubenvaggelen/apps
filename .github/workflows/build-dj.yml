@@ -38,6 +38,13 @@ jobs:
       - name: Set independent DJ version code
         shell: bash
         run: echo "VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Verify Auto DJ selection and background playback
+        run: |
+          node windows/the-one-dj/tests/smart-selection.cjs
+          node windows/the-one-dj/tests/background-playback.cjs
       - name: Build DJ only
         run: gradle :thedj:assembleDebug --no-daemon --no-build-cache -PappVersionCode=${VERSION_CODE}
       - name: Release DJ only

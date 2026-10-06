@@ -10,7 +10,7 @@ let fills=0,ticks=0,states=[],callbacks=[];
 const s={window:{TheOneNative:{setBackgroundPlayback:a=>states.push(a)}},document:{hidden:true},
  setTimeout:f=>{callbacks.push(f);return 1},clearTimeout(){},Date,Set,navigator:{},wakeLock:null,
  decks:[{playing:false,loading:true,done:false,tick(){ticks++}}],lib:[],autoMix:false,
- mediaRecoveryUntil:0,mediaRecoveryTimer:null,ctx:{},autoFill(){fills++},tickFade(){},tickAutoMix(){}};
+ mediaRecoveryUntil:0,mediaRecoveryTimer:null,ctx:{},autoFill(){fills++},tickFade(){},tickAutoMix(){},djAnalyzeQueue(){}};
 vm.createContext(s);vm.runInContext(yieldCode+'\nlet nativePlaybackActive=null;\n'+pump+wake,s);
 (async()=>{
  await s.updateWake();assert.deepEqual(states,[true]);

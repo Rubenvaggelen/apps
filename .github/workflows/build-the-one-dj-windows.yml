@@ -19,6 +19,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Verify Auto DJ selection and background playback
+        run: |
+          node windows/the-one-dj/tests/smart-selection.cjs
+          node windows/the-one-dj/tests/background-playback.cjs
       - name: Read DJ build
         id: version
         shell: pwsh

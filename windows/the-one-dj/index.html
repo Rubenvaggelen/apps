@@ -1570,6 +1570,7 @@ class Deck{
       this.libItem=item;this.done=false;
       this.scr=null;this.buffer=buf;this.bpm=an.bpm;this.beat0=an.beat0;this.peaks=an.peaks;this.detail=an.detail;
       this.mixAnalysis=an.mix;
+      if(item){item.djProfile=djProfile(buf,an.bpm,an.mix?.confidence);playlistWrite()}
       this.pos=0;this.cue=0;this.hot=Array(8).fill(null);this.loopIn=null;this.loopOut=null;this.loopActive=false;this.slipLoopAnchor=null;this.syncLock=false;this.cancelTempoReturn();
       this.ui.sub.textContent=warning||(this.bpm?`Origineel ${this.bpm.toFixed(1)} bpm, ${fmtTime(buf.duration).slice(0,-2)}`:"Geen tempo gevonden");
       this.renderPads();this.drawBase();this.updateEcho();updateWake();
@@ -2456,7 +2457,7 @@ window.theOneDjBackgroundTick=()=>{
   if(mediaRecoveryUntil&&Date.now()>=mediaRecoveryUntil){
     clearTimeout(mediaRecoveryTimer);mediaRecoveryTimer=null;mediaRecoveryUntil=0;autoFill();
   }
-  if(ctx){tickFade();for(const d of decks)d.tick();tickAutoMix();}
+  if(ctx){tickFade();for(const d of decks)d.tick();tickAutoMix();if(autoMix)djAnalyzeQueue();}
   updateWake();
 };
 async function updateWake(){
@@ -2515,7 +2516,7 @@ async function playlistWrite(){
   if(playlistRestoring) return;
   try{
     const db=await sfxDB();
-    const rows=lib.map((t,index)=>({id:t.id,index,name:t.name,status:t.status,file:t.file,sharedName:t.sharedName||""}));
+    const rows=lib.map((t,index)=>({id:t.id,index,name:t.name,status:t.status,file:t.file,sharedName:t.sharedName||"",djProfile:t.djProfile||null}));
     await new Promise((res,rej)=>{
       const tx=db.transaction("playlist","readwrite");
       tx.objectStore("playlist").put(rows,"current");
@@ -2540,7 +2541,7 @@ async function playlistRead(){
         if(!r||!r.file) continue;
         // A failed attempt is temporary: restored playlists must retry these tracks.
         const status=r.status==="played"?"played":"queued";
-        const item={id:r.id||playlistId(),file:r.file,name:cleanImportedName(r.name||baseName(r.file)),status,sharedName:r.sharedName||""};
+        const item={id:r.id||playlistId(),file:r.file,name:cleanImportedName(r.name||baseName(r.file)),status,sharedName:r.sharedName||"",djProfile:r.djProfile?.v===1?r.djProfile:null};
         lib.push(item);
         if(item.sharedName) sharedLoaded.add(item.sharedName);
       }
@@ -2552,7 +2553,7 @@ async function playlistRead(){
 async function savePlaylistBank(n){
   try{
     const db=await sfxDB();
-    const rows=lib.map((t,index)=>({id:t.id,index,name:t.name,status:"queued",file:t.file,sharedName:t.sharedName||""}));
+    const rows=lib.map((t,index)=>({id:t.id,index,name:t.name,status:"queued",file:t.file,sharedName:t.sharedName||"",djProfile:t.djProfile||null}));
     await new Promise((res,rej)=>{
       const tx=db.transaction("playlist","readwrite");
       tx.objectStore("playlist").put(rows,"bank"+n);
@@ -2574,7 +2575,7 @@ async function loadPlaylistBank(n){
     rows.sort((a,b)=>(a.index??0)-(b.index??0));
     for(const r of rows){
       if(!r||!r.file)continue;
-      const item={id:r.id||playlistId(),file:r.file,name:cleanImportedName(r.name||baseName(r.file)),status:"queued",sharedName:r.sharedName||""};
+      const item={id:r.id||playlistId(),file:r.file,name:cleanImportedName(r.name||baseName(r.file)),status:"queued",sharedName:r.sharedName||"",djProfile:r.djProfile?.v===1?r.djProfile:null};
       lib.push(item);if(item.sharedName)sharedLoaded.add(item.sharedName);
     }
     renderLib();playlistWrite();autoFill();
@@ -2941,7 +2942,96 @@ autoBtn.addEventListener("click",()=>{
   autoLoad=!autoLoad;autoBtn.setAttribute("aria-pressed",autoLoad);autoBtn.classList.toggle("on",autoLoad);
   renderLib();autoFill();
 });
-function nextQueued(){if(Date.now()<mediaRecoveryUntil)return null;return lib.find(t=>t.status==="queued")}
+/* Auto DJ selects from the whole queue; it never changes the user's order. */
+function djProfile(buffer,bpm,confidence){
+  const ch=buffer.getChannelData(0),sr=buffer.sampleRate;
+  const energy=(from,to)=>{let sum=0,n=0;for(let i=Math.floor(from*sr);i<Math.min(ch.length,to*sr);i+=64){sum+=ch[i]*ch[i];n++}return Math.sqrt(sum/Math.max(1,n))};
+  return {v:1,bpm:bpm||0,confidence:confidence||0,energy:energy(0,buffer.duration),introEnergy:energy(0,Math.min(20,buffer.duration)),outroEnergy:energy(Math.max(0,buffer.duration-30),buffer.duration)};
+}
+function djMatchScore(source,target){
+  if(!target||target.v!==1)return Infinity;
+  let score=0;
+  if(source?.bpm&&target.bpm&&source.confidence>=.15&&target.confidence>=.15){
+    let ratio=source.bpm/target.bpm;
+    while(ratio>1.41)ratio/=2;while(ratio<.707)ratio*=2;
+    score+=Math.abs(Math.log2(ratio))*160;
+    if(ratio<.82||ratio>1.18)score+=35;
+  }else score+=30;
+  if(source?.energy&&target.energy)score+=Math.min(3,Math.abs(Math.log2(target.energy/source.energy)))*5;
+  if(source?.outroEnergy&&target.introEnergy)score+=Math.min(3,Math.abs(Math.log2(target.introEnergy/source.outroEnergy)))*3;
+  return score;
+}
+function djChoose(queue,source){
+  if(!source)return queue[0]||null;
+  let best=null,score=Infinity;
+  for(const track of queue){const s=djMatchScore(source,track.djProfile);if(s<score){score=s;best=track}}
+  return best||queue[0]||null;
+}
+function djSourceProfile(){
+  const d=decks.find(d=>d.playing&&!d.scr)||decks.find(d=>(d.buffer||d.streamEl)&&!d.done&&!d.loading);
+  if(!d)return null;
+  const p=d.libItem?.djProfile;
+  return {...p,bpm:d.bpm*d.eff(),confidence:d.mixAnalysis?.confidence||p?.confidence||0};
+}
+let djAnalysisRunning=false,djAnalysisRetry=new WeakMap(),djAnalysisPlan=[];
+function djAnalysisOrder(){
+  const q=lib.filter(t=>t.status==='queued'&&!t.djProfile&&Date.now()>(djAnalysisRetry.get(t)||0));
+  djAnalysisPlan=djAnalysisPlan.filter(t=>q.includes(t));
+  if(djAnalysisPlan.length)return djAnalysisPlan.concat(q.filter(t=>!djAnalysisPlan.includes(t)));
+  // Spread the initial audition pool over the entire playlist, not its first rows.
+  const first=[],used=new Set();
+  for(let i=0;i<Math.min(8,q.length);i++){const t=q[Math.floor(i*q.length/Math.min(8,q.length))];first.push(t);used.add(t)}
+  djAnalysisPlan=first.concat(q.filter(t=>!used.has(t)));return djAnalysisPlan;
+}
+async function djAnalyzeQueue(){
+  if(djAnalysisRunning||!autoMix||!ctx||playlistRestoring||playlistClearing||Date.now()<mediaRecoveryUntil)return;
+  if(decks.some(d=>d.loading))return;
+  const t=djAnalysisOrder()[0];if(!t)return;
+  djAnalysisRunning=true;
+  try{
+    const work=async()=>{
+      if(!autoMix||!lib.includes(t))return;
+      const size=await mediaByteSize(t.file);
+      if(!autoMix||!lib.includes(t))return;
+      if(isLargeStreamCandidate(t.file,size)){t.djProfile={v:1,bpm:0,confidence:0};return}
+      const buf=await decodeAnyAudio(t.file);
+      if(!autoMix||!lib.includes(t))return;
+      // Only a bounded central sample needs tempo filtering; do not retain decoded songs.
+      const seconds=Math.min(40,buf.duration),sample=ctx.createBuffer(1,Math.max(1,Math.floor(seconds*buf.sampleRate)),buf.sampleRate);
+      const start=Math.floor(Math.max(0,(buf.duration-seconds)/2)*buf.sampleRate);
+      sample.copyToChannel(buf.getChannelData(0).subarray(start,start+sample.length),0);
+      const low=await renderBand(sample,'lowpass',180,.7),tempo=detectTempo(low,11025);
+      if(lib.includes(t))t.djProfile=djProfile(buf,tempo.bpm,tempo.confidence);
+    };
+    // Share the Android preparation lock with deck loading; native decoders must not overlap.
+    if(window.TheOneAudioDecoder){const result=androidAudioPreparation.then(work,work);androidAudioPreparation=result.then(()=>{},()=>{});await result}else await work();
+    await playlistWrite();
+  }catch(e){
+    // Audition failure is not a playback failure. Leave the track available to the deck.
+    djAnalysisRetry.set(t,Date.now()+60000);
+  }finally{djAnalysisRunning=false;renderLib();autoFill()}
+}
+setInterval(()=>{if(autoMix)djAnalyzeQueue()},1200);
+function djSelectionReady(){
+  const q=lib.filter(t=>t.status==='queued');
+  const source=decks.find(d=>d.playing);
+  if(!source)return true;
+  const known=q.filter(t=>t.djProfile?.v===1).length;
+  if(known>=Math.min(8,q.length))return true;
+  // Playback continuity wins if analysis cannot finish before the outgoing song ends.
+  return (source.dur-source.getPos())/Math.max(.01,source.eff())<30||(!djAnalysisRunning&&!djAnalysisOrder().length);
+}
+function djRequeueIdleDecks(){
+  if(fade)return;
+  for(const d of decks){
+    if(d.playing||d.scr||d.loading||!d.libItem||d.done)continue;
+    d.libItem.status='queued';d.libItem=null;d._stopSrc();d._clearStream();d.releaseVoice();
+    d.buffer=null;d.mixAnalysis=null;d.bpm=0;d.done=true;
+    d.ui.title.textContent='Auto DJ kiest volgend nummer';d.ui.sub.textContent='';
+  }
+}
+
+function nextQueued(){if(Date.now()<mediaRecoveryUntil)return null;const q=lib.filter(t=>t.status==="queued");return autoMix?djChoose(q,djSourceProfile()):q[0]}
 function autoFill(){
   if(!(autoLoad||autoMix)||playlistRestoring||playlistClearing||Date.now()<mediaRecoveryUntil) return;
   if(autoMix&&!decks.some(d=>d.playing)&&decks.some(d=>d.loading||((d.buffer||d.streamEl)&&!d.done)))return;
@@ -2949,6 +3039,7 @@ function autoFill(){
     if(fade&&d===fade.src)continue;
     if(d.loading||d.playing||d.scr) continue;
     if((d.buffer||d.streamEl)&&!d.done) continue;
+    if(autoMix&&!djSelectionReady()){djAnalyzeQueue();autoDjStatus("Auto DJ • passende nummers analyseren");return}
     const t=nextQueued();if(!t) return;
     t.status="loading";renderLib();playlistWrite();d.load(t.file,t);
   }
@@ -3160,4 +3251,3 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",()=>decks
 </script>
 </body>
 </html>
-

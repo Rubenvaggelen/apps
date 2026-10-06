@@ -1,7 +1,7 @@
 {
-  "build": 238,
-  "version": "2.3.8",
-  "notes": "Auto DJ stays enabled until explicitly switched off. Continuous playback recovery after track end; Android scrolling and per-folder selection; Pull up retained, Dancehall and Boom hidden.",
+  "build": 239,
+  "version": "2.3.9",
+  "notes": "Auto DJ selects compatible queued tracks using measured tempo and energy, including takeover from manual mixing. Sequential cached audition; playback deadline fallback; independent Android and Windows updates.",
   "sha256": "",
   "files": [
     "Update-The-One-DJ.ps1",

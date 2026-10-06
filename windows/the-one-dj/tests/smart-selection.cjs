@@ -1,0 +1,35 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
+const source=fs.readFileSync(process.argv[2]||__dirname+'/../index.html','utf8');
+const start=source.indexOf('function djProfile('),end=source.indexOf('async function removeLibItem',start);
+let playing={playing:true,bpm:120,eff:()=>1,mixAnalysis:{confidence:.8},libItem:{djProfile:{v:1,energy:.1,outroEnergy:.1}},dur:240,getPos:()=>20};
+const s={decks:[playing,{playing:false}],lib:[],autoMix:true,autoLoad:false,playlistRestoring:false,playlistClearing:false,mediaRecoveryUntil:0,ctx:{},fade:null,Date,Math,WeakMap,Set,
+ setInterval(){},renderLib(){},playlistWrite(){},updateWake(){},autoDjStatus(){}};
+vm.createContext(s);vm.runInContext(source.slice(start,end),s);
+const profile=(bpm,energy=.1)=>({v:1,bpm,confidence:.8,energy,introEnergy:energy,outroEnergy:energy});
+const rows=[{id:'wrong-first',status:'queued',djProfile:profile(90)},{id:'match',status:'queued',djProfile:profile(121)},{id:'played',status:'played',djProfile:profile(120)}];
+s.lib.push(...rows);assert.equal(s.nextQueued().id,'match');assert.deepEqual(rows.map(x=>x.id),['wrong-first','match','played']);
+s.autoMix=false;assert.equal(s.nextQueued().id,'wrong-first');s.autoMix=true;
+assert(s.djMatchScore(profile(120),profile(60))<s.djMatchScore(profile(120),profile(90)));
+assert(s.djMatchScore(profile(120),profile(120,.1))<s.djMatchScore(profile(120),profile(120,.7)));
+s.lib.splice(0,s.lib.length,...Array.from({length:32},(_,i)=>({id:i,status:'queued'})));
+const order=s.djAnalysisOrder();assert.deepEqual(Array.from(order.slice(0,8),t=>t.id),[0,4,8,12,16,20,24,28]);
+order[0].djProfile=profile(120);assert.equal(s.djAnalysisOrder()[0].id,4);
+assert.equal(s.djSelectionReady(),false);playing.getPos=()=>220;assert.equal(s.djSelectionReady(),true);
+s.mediaRecoveryUntil=Date.now()+1000;assert.equal(s.nextQueued(),null);s.mediaRecoveryUntil=0;
+let cleared=0;const idle={playing:false,loading:false,done:false,libItem:{status:'B'},_stopSrc(){cleared++},_clearStream(){},releaseVoice(){},ui:{title:{},sub:{}}};
+const old=idle.libItem;s.decks.push(idle);s.djRequeueIdleDecks();assert.equal(old.status,'queued');assert.equal(idle.libItem,null);assert.equal(cleared,1);assert.equal(playing.playing,true);assert.equal(s.autoMix,true);
+console.log('PASS: best tempo/energy match, half-time, queued-only, stable playlist, distributed audition pool, deadline fallback, recovery and manual takeover preserve active playback/Auto DJ');
+;(async()=>{
+  s.autoFill=()=>{};s.decks=[playing];s.window={};s.mediaByteSize=async()=>100;s.isLargeStreamCandidate=()=>false;
+  s.lib.splice(0,s.lib.length,{id:'retry',status:'queued',file:{}});
+  s.decodeAnyAudio=async()=>{throw Error('temporary connection error')};
+  await s.djAnalyzeQueue();assert.equal(s.lib[0].status,'queued');assert.equal(s.lib[0].djProfile,undefined);assert.equal(s.autoMix,true);
+  let decodes=0;const ch=new Float32Array(44100*10).fill(.1),buf={duration:10,sampleRate:44100,getChannelData:()=>ch};
+  s.lib.splice(0,s.lib.length,{id:'fresh',status:'queued',file:{}});
+  s.ctx.createBuffer=(_,length)=>({length,copyToChannel(){}});
+  s.decodeAnyAudio=async()=>{decodes++;await Promise.resolve();return buf};
+  s.renderBand=async()=>[];s.detectTempo=()=>({bpm:123,confidence:.7});
+  await Promise.all([s.djAnalyzeQueue(),s.djAnalyzeQueue()]);
+  assert.equal(decodes,1);assert.equal(s.lib[0].djProfile.bpm,123);assert.equal(s.lib[0].status,'queued');
+  console.log('PASS: single analysis worker; transient audition failure does not reject playback or disable Auto DJ; successful analysis stores measured metadata');
+})().catch(e=>{console.error(e);process.exit(1)});
