@@ -18,6 +18,8 @@ object NotifStore {
     private const val MAX_ITEMS = 300
     private const val KEY_DISMISSED_ACCESS = "dismissed_access_keys"
     private val dismissedAccess = mutableSetOf<String>()
+    private const val KEY_DISMISSED = "dismissed_notification_versions"
+    private var dismissals = NotificationDismissals()
 
     private val items = mutableListOf<NotifItem>()
     private val listeners = mutableListOf<() -> Unit>()
@@ -28,6 +30,11 @@ object NotifStore {
         if (prefs != null) return
         prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         dismissedAccess.addAll(prefs?.getStringSet(KEY_DISMISSED_ACCESS, emptySet()).orEmpty())
+        val saved = runCatching {
+            val json = JSONObject(prefs?.getString(KEY_DISMISSED, "{}") ?: "{}")
+            json.keys().asSequence().associateWith { json.getString(it) }
+        }.getOrDefault(emptyMap())
+        dismissals = NotificationDismissals(saved)
         load()
     }
 
@@ -37,6 +44,7 @@ object NotifStore {
     @Synchronized
     fun addOrUpdate(item: NotifItem) {
         if (item.actionType == "access_request" && item.key in dismissedAccess) return
+        if (item.actionType.isBlank() && dismissals.shouldSuppress(item)) return
         items.removeAll { it.key == item.key }
         items.add(item)
         if (items.size > MAX_ITEMS) {
@@ -56,14 +64,21 @@ object NotifStore {
     }
 
     @Synchronized
-    fun removeByKey(key: String, force: Boolean = false) {
+    fun removeByKey(key: String, force: Boolean = false, rememberDismissal: Boolean = true) {
+        if (rememberDismissal) {
+            items.filter { it.key == key && it.actionType.isBlank() && (force || !it.persistent) }
+                .forEach { dismissals.remember(it) }
+        } else {
+            // Android confirms the source notification ended. A later new session is allowed.
+            dismissals.sourceRemoved(key)
+        }
         val dismissed = items.filter { it.key == key && it.actionType == "access_request" }
         dismissedAccess.addAll(dismissed.map { it.key })
         val changed = items.removeAll { it.key == key && (force || !it.persistent || it.actionType == "access_request") }
         if (changed) {
             persist()
             notifyListeners()
-        }
+        } else if (!rememberDismissal) persist()
     }
 
     @Synchronized
@@ -82,6 +97,7 @@ object NotifStore {
 
     @Synchronized
     fun clearAll() {
+        items.filter { !it.persistent && it.actionType.isBlank() }.forEach { dismissals.remember(it) }
         dismissedAccess.addAll(items.filter { it.actionType == "access_request" }.map { it.key })
         val changed = items.removeAll { !it.persistent || it.actionType == "access_request" }
         if (changed) {
@@ -118,9 +134,14 @@ object NotifStore {
             o.put("persistent", n.persistent)
             o.put("actionType", n.actionType)
             o.put("actionValue", n.actionValue)
+            o.put("ongoing", n.ongoing)
             arr.put(o)
         }
-        prefs?.edit()?.putString(KEY_ITEMS, arr.toString())?.putStringSet(KEY_DISMISSED_ACCESS, dismissedAccess.toSet())?.apply()
+        val hidden = JSONObject()
+        dismissals.snapshot().forEach { (key, signature) -> hidden.put(key, signature) }
+        prefs?.edit()?.putString(KEY_ITEMS, arr.toString())
+            ?.putString(KEY_DISMISSED, hidden.toString())
+            ?.putStringSet(KEY_DISMISSED_ACCESS, dismissedAccess.toSet())?.apply()
     }
 
     private fun load() {
@@ -140,7 +161,8 @@ object NotifStore {
                         hasReplyAction = o.optBoolean("hasReplyAction", false),
                         persistent = o.optBoolean("persistent", false),
                         actionType = o.optString("actionType", ""),
-                        actionValue = o.optString("actionValue", "")
+                        actionValue = o.optString("actionValue", ""),
+                        ongoing = o.optBoolean("ongoing", false)
                     )
                 )
             }

@@ -10,5 +10,6 @@ data class NotifItem(
     val hasReplyAction: Boolean,
     val persistent: Boolean = false,
     val actionType: String = "",
-    val actionValue: String = ""
+    val actionValue: String = "",
+    val ongoing: Boolean = false
 )

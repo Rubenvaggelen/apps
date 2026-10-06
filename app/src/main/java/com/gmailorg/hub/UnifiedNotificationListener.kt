@@ -202,7 +202,7 @@ class UnifiedNotificationListener : NotificationListenerService() {
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
-        NotifStore.removeByKey(sbn.key)
+        NotifStore.removeByKey(sbn.key, rememberDismissal = false)
         // Voor WhatsApp bewaren we de laatste RemoteInput zolang die PendingIntent nog geldig is.
         // Daardoor kan The One Car binnen een gesprek vaak nog een vervolgreply sturen, ook
         // als Android de zichtbare melding al heeft weggehaald. Bij een CanceledException
@@ -703,7 +703,9 @@ class UnifiedNotificationListener : NotificationListenerService() {
                 title = title,
                 text = text,
                 postTime = sbn.postTime,
-                hasReplyAction = hasReply
+                hasReplyAction = hasReply,
+                ongoing = sbn.isOngoing || sbn.notification.category == Notification.CATEGORY_TRANSPORT ||
+                    extras.containsKey(Notification.EXTRA_MEDIA_SESSION)
             )
         )
 
