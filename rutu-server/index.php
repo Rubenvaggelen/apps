@@ -385,7 +385,8 @@ function clean_order_for_business(array $order): array {
 $catalog = [
     'BBQ Regular' => 10.00,
     'BBQ Extra' => 15.00,
-    'BBQ Gezin' => 25.00,
+    'BBQ Family' => 25.00,
+    'BBQ Gezin' => 25.00, // Legacy clients
     'Extra bout' => 3.00,
     'Extra salade' => 2.50,
     'Portie saté' => 5.00

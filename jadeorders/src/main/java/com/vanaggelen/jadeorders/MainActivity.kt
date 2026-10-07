@@ -44,17 +44,17 @@ import java.util.UUID
 
 class MainActivity : AppCompatActivity() {
     private enum class Role { NONE, CUSTOMER, BUSINESS }
-    data class Product(val name: String, val price: Double, val category: String, val description: String)
+    data class Product(val name: String, val price: Double, val category: String, val description: String, val imageRes: Int = 0)
     data class Order(val id: Int, val items: LinkedHashMap<String, Int>, val total: Double, var status: String, val trackingToken: String = "", val delivery: Boolean = false, val address: String = "", val postcode: String = "", val deliveryFee: Double = 0.0, val paymentMethod: String = "", val paymentUrl: String = "", val paymentStatus: String = "")
     data class Announcement(val title: String = "", val message: String = "", val from: String = "", val until: String = "", val active: Boolean = false, val orderingBlocked: Boolean = false, val orderingMessage: String = "", val testOrderAllowed: Boolean = false)
 
     private val products = listOf(
-        Product("BBQ Regular", 10.00, "BBQ", "1 bout • 2 stokjes saté • salade"),
+        Product("BBQ Regular", 10.00, "BBQ", "1 bout • 2 stokjes saté • salade", R.drawable.menu_bbq_regular),
         Product("BBQ Extra", 15.00, "BBQ", "2 bouten • 4 stokjes saté • salade"),
-        Product("BBQ Gezin", 25.00, "BBQ", "3 bouten • 6 stokjes saté • 3 salades"),
+        Product("BBQ Family", 25.00, "BBQ", "3 bouten • 6 stokjes saté • 3 salades", R.drawable.menu_bbq_family),
         Product("Extra bout", 3.00, "Extra's", "Los bij te bestellen"),
         Product("Extra salade", 2.50, "Extra's", "Los bij te bestellen"),
-        Product("Portie saté", 5.00, "Extra's", "Los bij te bestellen")
+        Product("Portie saté", 5.00, "Extra's", "Los bij te bestellen", R.drawable.menu_portie_sate)
     )
     private val cart = linkedMapOf<String, Int>()
     private var deliverySelected = false
@@ -189,7 +189,8 @@ class MainActivity : AppCompatActivity() {
             val json = JSONObject(raw)
             json.keys().forEach { name ->
                 val qty = json.optInt(name, 0)
-                if (qty > 0 && products.any { it.name == name }) cart[name] = qty.coerceAtMost(25)
+                val normalizedName = if (name == "BBQ Gezin") "BBQ Family" else name
+                if (qty > 0 && products.any { it.name == normalizedName }) cart[normalizedName] = qty.coerceAtMost(25)
             }
         } catch (_: Exception) {
             getSharedPreferences("rutu_customer_cart", Context.MODE_PRIVATE).edit().remove("items").apply()
@@ -1427,7 +1428,7 @@ class MainActivity : AppCompatActivity() {
             section(category)
             items.forEach { p ->
                 val qty = cart[p.name] ?: 0
-                card("${p.name}\n${p.description}\n${money.format(p.price)}${if (qty > 0) "   •   $qty× in mand" else ""}") {
+                card("${p.name}\n${p.description}\n${money.format(p.price)}${if (qty > 0) "   •   $qty× in mand" else ""}", p.imageRes.takeIf { it != 0 }) {
                     button("+ Toevoegen / Add") { cart[p.name] = qty + 1; saveCart(); renderCustomer() }
                 }
             }
@@ -1703,8 +1704,15 @@ class MainActivity : AppCompatActivity() {
         root.addView(box, marginParams(0, 0, 0, 14))
     }
 
-    private fun card(text: String, actions: LinearLayout.() -> Unit = {}) {
+    private fun card(text: String, imageRes: Int? = null, actions: LinearLayout.() -> Unit = {}) {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(16)); background = rounded(Color.rgb(23, 20, 15), Color.rgb(70, 56, 32)) }
+        imageRes?.let { res ->
+            box.addView(ImageView(this).apply {
+                setImageResource(res)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                contentDescription = text.substringBefore("\n")
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(200)))
+        }
         box.addView(TextView(this).apply { this.text = text; textSize = 16f; setTextColor(Color.WHITE); setLineSpacing(0f, 1.15f) })
         box.actions(); root.addView(box, marginParams(0, 0, 0, 10))
     }
