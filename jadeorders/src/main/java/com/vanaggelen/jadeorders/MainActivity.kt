@@ -1414,10 +1414,6 @@ class MainActivity : AppCompatActivity() {
             }
             return
         }
-        connectionCard()
-        section("Online bestellen / Order online")
-        centered(bi("Je bestelling gaat via internet naar Rutu BBQ. Hetzelfde wifi-netwerk is niet nodig.", "Your order is sent to Rutu BBQ via the internet. You do not need to be on the same Wi-Fi network."), 14f, Color.rgb(210, 199, 182))
-        button("Internetverbinding opnieuw controleren / Check internet connection again", secondary = true) { testOnlineConnection(false) }
         announcementCard()
         showEatWellBannerIfActive()
         if (announcement.orderingBlocked) {
@@ -1442,7 +1438,7 @@ class MainActivity : AppCompatActivity() {
             renderCustomer()
             return
         }
-        screen = "cart"; page(true); back { renderCustomer() }; logoMark(true); title("Jouw winkelmand / Your cart"); connectionCard(); announcementCard()
+        screen = "cart"; page(true); back { renderCustomer() }; logoMark(true); title("Jouw winkelmand / Your cart"); announcementCard()
         val openOrders = openOrders().reversed()
         if (openOrders.isNotEmpty()) {
             section("Openstaande bestellingen / Open orders")
@@ -1624,7 +1620,7 @@ class MainActivity : AppCompatActivity() {
             renderCustomer()
             return
         }
-        screen = "orders"; page(true); back { renderCustomer() }; logoMark(true); title("Mijn bestellingen / My orders"); connectionCard(); announcementCard()
+        screen = "orders"; page(true); back { renderCustomer() }; logoMark(true); title("Mijn bestellingen / My orders"); announcementCard()
         if (sync) syncOnlineStatuses()
         label("🔄 " + lastStatusRefreshText + " • automatisch elke 2 seconden / updates every 2 seconds", Color.rgb(24, 31, 25))
 
