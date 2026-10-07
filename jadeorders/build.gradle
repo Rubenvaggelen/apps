@@ -7,6 +7,10 @@ android {
     namespace 'com.vanaggelen.jadeorders'
     compileSdk 34
 
+    buildFeatures {
+        buildConfig true
+    }
+
     def appVersionCode = project.hasProperty('appVersionCode') ? project.property('appVersionCode').toString().toInteger() : 1
 
     defaultConfig {
