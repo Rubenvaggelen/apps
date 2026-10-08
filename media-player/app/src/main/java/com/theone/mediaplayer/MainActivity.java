@@ -25,6 +25,12 @@ import androidx.media3.common.MediaItem;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -60,7 +66,12 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = getSharedPreferences("media_player", Context.MODE_PRIVATE);
-        showShell("Live TV");
+        String playUrl = getIntent().getStringExtra("play_url");
+        if (playUrl != null && (playUrl.startsWith("http://") || playUrl.startsWith("https://"))) {
+            showPlayer(playUrl);
+        } else {
+            showShell("Live TV");
+        }
     }
 
     private void showShell(String section) {
@@ -85,8 +96,9 @@ public class MainActivity extends Activity {
         nav.setOrientation(LinearLayout.HORIZONTAL);
         nav.setPadding(0, dp(16), 0, dp(14));
         addNavButton(nav, "Live TV", this::showLiveTv);
-        addNavButton(nav, "Films", this::showFilms);
-        addNavButton(nav, "Series", () -> showSection("Series", "Series verschijnen hier zodra je bron is gekoppeld."));
+        addNavButton(nav, "Films", () -> openCatalog("movie"));
+        addNavButton(nav, "Series", () -> openCatalog("tv"));
+        addNavButton(nav, "Ontdekken", () -> openCatalog("all"));
         addNavButton(nav, "Test M3U", this::showDemoM3u);
         addNavButton(nav, "Verder kijken", () -> showSection("Verder kijken", "Je kijkvoortgang verschijnt hier."));
         addNavButton(nav, "Favorieten", () -> showSection("Favorieten", "Je favoriete zenders, films en series verschijnen hier."));
@@ -105,17 +117,103 @@ public class MainActivity extends Activity {
         else showLiveTv();
     }
 
+    private void openCatalog(String mode) {
+        Intent intent = new Intent(this, TmdbCatalogActivity.class);
+        intent.putExtra("mode", mode);
+        startActivity(intent);
+    }
+
     private void showLiveTv() {
         content.removeAllViews();
         ScrollView scroll = new ScrollView(this);
-        LinearLayout box = baseBox("Live TV", "Gebruik de gratis teststreams of koppel je eigen bron via Instellingen.");
+        LinearLayout box = baseBox("Live TV", "Je ingestelde bron wordt direct in The One Media Player geladen.");
         addConfiguredSourceSummary(box);
-        addPlayableCard(box, "Apple HLS Test", "Adaptieve HLS teststream", APPLE_HLS);
-        addPlayableCard(box, "Mux HLS Test", "Big Buck Bunny via HLS", MUX_HLS);
-        addExternalCard(box, "NASA Live", "Gratis officiële NASA-stream via YouTube", NASA_YOUTUBE);
+
+        String type = prefs.getString("source_type", "STALKER");
+        String m3uUrl = prefs.getString("m3u_url", "").trim();
+        if ("M3U".equals(type) && !m3uUrl.isEmpty()) {
+            loadConfiguredM3u(box, m3uUrl);
+        } else {
+            addInfo(box, "Nog geen privé M3U-bron ingesteld. Hieronder staan alleen de teststreams.");
+            addPlayableCard(box, "Apple HLS Test", "Adaptieve HLS teststream", APPLE_HLS);
+            addPlayableCard(box, "Mux HLS Test", "Big Buck Bunny via HLS", MUX_HLS);
+            addExternalCard(box, "NASA Live", "Gratis officiële NASA-stream via YouTube", NASA_YOUTUBE);
+        }
+
         addInfo(box, "The One Media Player bevat zelf geen advertenties.");
         scroll.addView(box);
         content.addView(scroll);
+    }
+
+    private void loadConfiguredM3u(LinearLayout box, String playlistUrl) {
+        TextView loading = text("Bron laden…", 15, MUTED, false);
+        loading.setPadding(0, dp(8), 0, dp(12));
+        box.addView(loading);
+
+        new Thread(() -> {
+            try {
+                String m3u = downloadText(playlistUrl);
+                List<DemoEntry> all = parseM3u(m3u);
+                List<DemoEntry> live = new ArrayList<>();
+                for (DemoEntry entry : all) {
+                    if (isLiveEntry(entry)) live.add(entry);
+                }
+
+                runOnUiThread(() -> {
+                    try {
+                        box.removeView(loading);
+                        if (live.isEmpty()) {
+                            addInfo(box, "De bron is geladen, maar er zijn geen Live TV-zenders herkend.");
+                            return;
+                        }
+
+                        addInfo(box, "Jouw bron: " + live.size() + " Live TV-zenders gevonden.");
+                        int limit = Math.min(live.size(), 250);
+                        for (int i = 0; i < limit; i++) {
+                            DemoEntry entry = live.get(i);
+                            addPlayableCard(box, entry.title, entry.group, entry.url);
+                        }
+                        if (live.size() > limit) {
+                            addInfo(box, "Eerste " + limit + " zenders getoond. Zoeken en categorieën voegen we in de volgende uitbreiding toe.");
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    box.removeView(loading);
+                    addInfo(box, "Bron kon niet worden geladen. Controleer je verbinding of importeer de bron opnieuw.");
+                });
+            }
+        }).start();
+    }
+
+    private boolean isLiveEntry(DemoEntry entry) {
+        String lower = entry.url.toLowerCase();
+        return !lower.contains("/movie/") && !lower.contains("/series/");
+    }
+
+    private String downloadText(String urlValue) throws Exception {
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) new URL(urlValue).openConnection();
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(30000);
+            conn.setRequestProperty("User-Agent", "TheOneMediaPlayer/0.4");
+            int code = conn.getResponseCode();
+            InputStream stream = code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream();
+            if (stream == null) throw new IllegalStateException("HTTP " + code);
+
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+                StringBuilder out = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) out.append(line).append('\n');
+                if (code < 200 || code >= 300) throw new IllegalStateException("HTTP " + code);
+                return out.toString();
+            }
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
     }
 
     private void addConfiguredSourceSummary(LinearLayout box) {
@@ -127,7 +225,8 @@ public class MainActivity extends Activity {
             value = prefs.getString("xtream_server", "http://line.liondnscloud.ru:80");
         } else if ("M3U".equals(type)) {
             label = "M3U";
-            value = prefs.getString("m3u_url", "Nog geen M3U-URL ingesteld");
+            String source = prefs.getString("m3u_url", "").trim();
+            value = source.isEmpty() ? "Nog geen M3U-bron ingesteld" : "Privé M3U-bron ingesteld";
         } else {
             label = "Stalker / MAC";
             value = prefs.getString("stalker_server", "http://line.liondnscloud.ru:80");
