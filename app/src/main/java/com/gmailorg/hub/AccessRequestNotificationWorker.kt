@@ -37,6 +37,14 @@ class AccessRequestNotificationWorker(
         }
 
         AccessRequestNotifications.notifyNew(applicationContext, pending)
+
+        // License requests are a separate, owner-paired endpoint. If the
+        // licensing service is offline, keep the existing in-app notifications
+        // untouched and retry on the next poll.
+        if (MainLicenseClient.ownerIsPaired(applicationContext)) {
+            runCatching { MainLicenseClient.pendingOwnerApprovals(applicationContext) }
+                .onSuccess { AccessRequestNotifications.notifyPendingLicenses(applicationContext, it) }
+        }
         Result.success()
         }
     }
@@ -75,6 +83,75 @@ object AccessRequestNotifications {
 
     fun resolve(context: Context, deviceId: String, scope: String) {
         NotifStore.init(context.applicationContext)
+    fun notifyPendingLicenses(context: Context, requests: List<MainPendingLicenseRequest>) {
+        if (!MainDeviceRegistry.isLocallyOwner(context)) return
+        NotifStore.init(context.applicationContext)
+
+        val liveKeys = requests.map { "theone-license|" + it.id }.toSet()
+        requests.forEach { request ->
+            val who = request.person.ifBlank { "Onbekende gebruiker" }
+            val key = "theone-license|" + request.id
+            val created = runCatching {
+                java.time.Instant.parse(request.createdAt).toEpochMilli()
+            }.getOrDefault(System.currentTimeMillis())
+
+            NotifStore.addOrUpdate(NotifItem(
+                key = key,
+                packageName = "the.one.license.requests",
+                appLabel = "The One Main",
+                title = "Nieuwe aanmelding: $who",
+                text = "$who wil The One Main gebruiken. Goedkeuren via Laptop → Apparaten beheren.",
+                postTime = created,
+                hasReplyAction = false,
+                persistent = true,
+                actionType = "license_request",
+                actionValue = request.id,
+                ongoing = true
+            ))
+        }
+        // Only owner-approved / server-resolved requests vanish. Never remove
+        // cached requests following network errors or an empty local refresh.
+        NotifStore.removeWhere(includePersistent = true) { item ->
+            item.actionType == "license_request" && item.key !in liveKeys
+        }
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val seen = preferences.getStringSet(KEY_SEEN_LICENSES, emptySet()).orEmpty().toMutableSet()
+        val old = seen.filter { it !in liveKeys }
+        old.forEach { key -> manager.cancel(("license|" + key).hashCode()) }
+        seen.removeAll(old.toSet())
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED) {
+            ensureChannel(context)
+            requests.forEach { request ->
+                val key = "theone-license|" + request.id
+                if (seen.contains(key)) return@forEach
+                val who = request.person.ifBlank { "Onbekende gebruiker" }
+                val intent = Intent(context, WakePcActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    putExtra("open_access_management", true)
+                    putExtra("focus_license_request_id", request.id)
+                }
+                val open = PendingIntent.getActivity(context, key.hashCode(), intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                    .setSmallIcon(R.mipmap.ic_launcher)
+                    .setContentTitle("The One Main: nieuwe aanmelding van $who")
+                    .setContentText("Wacht op jouw goedkeuring in Apparaten beheren.")
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setOngoing(true)
+                    .setAutoCancel(false)
+                    .setContentIntent(open)
+                    .build()
+                manager.notify(("license|" + key).hashCode(), notification)
+                seen.add(key)
+            }
+        }
+        preferences.edit().putStringSet(KEY_SEEN_LICENSES, seen.toSet()).apply()
+    }
+
         val prefix = "theone-access|$deviceId|$scope|"
         NotifStore.removeWhere(includePersistent = true) { it.actionType == "access_request" && it.key.startsWith(prefix) }
         val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -87,6 +164,7 @@ object AccessRequestNotifications {
     private const val CHANNEL_ID = "the_one_access_requests"
     private const val PREFS = "access_request_notifications"
     private const val KEY_SEEN = "seen_keys"
+    private const val KEY_SEEN_LICENSES = "seen_license_keys"
 
     fun notifyNew(
         context: Context,
@@ -119,7 +197,7 @@ object AccessRequestNotifications {
                     text = "$person vraagt toestemming voor $scopeLabel.",
                     postTime = time,
                     hasReplyAction = false,
-                    persistent = false,
+                    persistent = true,
                     actionType = "access_request",
                     actionValue = request.deviceId
                 )
@@ -182,8 +260,8 @@ object AccessRequestNotifications {
                         )
                     )
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
-                    .setOngoing(false)
-                    .setAutoCancel(true)
+                    .setOngoing(true)
+                    .setAutoCancel(false)
                     .setContentIntent(pendingIntent)
                     .build()
 
