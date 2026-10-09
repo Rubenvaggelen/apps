@@ -19,9 +19,22 @@ if ($authenticatedUser === '' || !$httpsOn) {
     echo 'Access denied: this area requires HTTPS and cPanel Directory Privacy authentication.';
     exit;
 }
-$home = dirname((string)($_SERVER['DOCUMENT_ROOT'] ?? ''));
-$core = $home . '/public_html/the-one-remote-api/license-core.php';
-if (!is_file($core)) {
+// Locate the canonical API source from the Dev Hub docroot without
+// accidentally creating a second license database in the subdomain.
+$docroot = (string)($_SERVER['DOCUMENT_ROOT'] ?? '');
+$candidates = [
+    dirname($docroot) . '/public_html/the-one-remote-api/license-core.php',
+    dirname(dirname($docroot)) . '/public_html/the-one-remote-api/license-core.php',
+    dirname(dirname(dirname($docroot))) . '/public_html/the-one-remote-api/license-core.php'
+];
+$core = '';
+foreach ($candidates as $candidate) {
+    if (is_file($candidate)) {
+        $core = realpath($candidate) ?: $candidate;
+        break;
+    }
+}
+if ($core === '' || !is_file($core)) {
     http_response_code(503);
     echo 'Private license service not deployed. No changes made.';
     exit;
@@ -102,8 +115,8 @@ try {
                 if ((string)($_POST['confirmation'] ?? '') !== 'BEHOUD BESTAANDE APPARATEN') {
                     throw new InvalidArgumentException('Typ eerst de bevestiging precies over');
                 }
-                $home = dirname((string)($_SERVER['DOCUMENT_ROOT'] ?? ''));
-                $registry = $home . '/the-one-remote-data/main-devices.json';
+                $hostingHome = dirname(dirname(dirname($core)));
+                $registry = $hostingHome . '/the-one-remote-data/main-devices.json';
                 $out = one_license_initialize_main($state, $registry);
                 $dirty();
                 return ['message' => $out['grandfathered'] . ' bestaande Main-apparaten vastgelegd. Nieuwe installaties vereisen nu activatie.'];
