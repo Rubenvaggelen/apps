@@ -207,19 +207,106 @@ function one_license_create_code(array &$state, string $app, string $label, int 
     return ['code' => $code, 'license_id' => $id, 'app' => $app, 'limit' => $limit];
 }
 
-function one_license_request(array &$state, string $app, string $device, string $person): array {
+function one_license_request(array &$state, string $app, string $device, string $person, string $installationId): array {
     if (!in_array($app, ['main', 'studio'], true)) throw new InvalidArgumentException('Unknown application');
-    foreach ($state['requests'] as $id => $request) {
-        if ($request['app'] === $app && $request['device'] === $device && $request['status'] === 'pending') {
-            return ['request_id' => $id, 'status' => 'pending', 'detail' => 'Await owner approval'];
+    foreach ($state['requests'] as $id => $req) {
+        if (($req['app'] ?? '') === $app && ($req['device'] ?? '') === $device &&
+            ($req['installation_id'] ?? '') === $installationId &&
+            in_array(($req['status'] ?? ''), ['pending', 'approved'], true)) {
+            return ['request_id' => $id, 'status' => $req['status']];
         }
     }
+    // Keep a bounded queue; prevent resource exhaustion via public submissions.
+    if (count($state['requests']) >= 1000) throw new RuntimeException('Approval queue capacity reached');
     $id = bin2hex(random_bytes(12));
+    $secret = one_license_token();
     $state['requests'][$id] = [
-        'id' => $id, 'app' => $app, 'device' => $device,
-        'person' => $person, 'status' => 'pending', 'created_at' => gmdate('c')
+        'id' => $id, 'app' => $app, 'device' => $device, 'installation_id' => $installationId,
+        'person' => $person, 'status' => 'pending', 'created_at' => gmdate('c'),
+        'request_secret_hash' => one_license_hash($secret)
     ];
-    return ['request_id' => $id, 'status' => 'pending'];
+    // Applicant must keep this private proof. It is never available in owner lists.
+    return ['request_id' => $id, 'request_secret' => $secret, 'status' => 'pending'];
+}
+
+function one_license_request_claim(array &$state, string $requestId, string $device, string $installationId, string $secret): array {
+    $req = $state['requests'][$requestId] ?? null;
+    if (!is_array($req) ||
+        !hash_equals((string)($req['device'] ?? ''), $device) ||
+        !hash_equals((string)($req['installation_id'] ?? ''), $installationId) ||
+        strlen($secret) !== 64 ||
+        !hash_equals((string)($req['request_secret_hash'] ?? ''), one_license_hash($secret))) {
+        return ['allowed' => false, 'status' => 'unknown'];
+    }
+    if (($req['status'] ?? '') !== 'approved') {
+        return ['allowed' => false, 'status' => (string)($req['status'] ?? 'unknown')];
+    }
+    $grant = one_license_issue_grant(
+        $state, (string)$req['app'], $device, (string)$req['person'],
+        'owner_approved', $requestId, $installationId
+    );
+    $state['requests'][$requestId]['status'] = 'claimed';
+    $state['requests'][$requestId]['claimed_at'] = gmdate('c');
+    return ['allowed' => true, 'status' => 'claimed', 'credential' => $grant];
+}
+
+function one_license_owner_pairing_create(array &$state): string {
+    $code = 'OWNER-' . strtoupper(bin2hex(random_bytes(20)));
+    $state['owner_pairing'] = [
+        'hash' => one_license_hash($code),
+        'expires_at' => time() + 600
+    ];
+    return $code;
+}
+
+function one_license_owner_pair(array &$state, string $code, string $device, string $installationId): array {
+    $p = $state['owner_pairing'] ?? [];
+    if (!is_array($p) || strlen($code) !== 46 ||
+        (int)($p['expires_at'] ?? 0) < time() ||
+        !hash_equals((string)($p['hash'] ?? ''), one_license_hash(strtoupper(trim($code))))) {
+        return ['paired' => false];
+    }
+    $token = one_license_token();
+    $id = bin2hex(random_bytes(12));
+    $state['owner_tokens'][$id] = [
+        'id' => $id, 'device' => $device, 'installation_id' => $installationId,
+        'hash' => one_license_hash($token), 'created_at' => gmdate('c'),
+        'revoked' => false
+    ];
+    unset($state['owner_pairing']);
+    return ['paired' => true, 'owner_token' => $token];
+}
+
+function one_license_owner_authenticated(array $state, string $device, string $installationId, string $token): bool {
+    if (strlen($token) !== 64) return false;
+    foreach (($state['owner_tokens'] ?? []) as $owner) {
+        if (!empty($owner['revoked'])) continue;
+        if (!hash_equals((string)($owner['device'] ?? ''), $device)) continue;
+        if (!hash_equals((string)($owner['installation_id'] ?? ''), $installationId)) continue;
+        if (hash_equals((string)($owner['hash'] ?? ''), one_license_hash($token))) return true;
+    }
+    return false;
+}
+
+function one_license_owner_pending(array $state): array {
+    $result = [];
+    foreach ($state['requests'] as $req) {
+        if (($req['app'] ?? '') !== 'main' || ($req['status'] ?? '') !== 'pending') continue;
+        $result[] = [
+            'id' => (string)$req['id'], 'device' => (string)$req['device'],
+            'person' => (string)$req['person'], 'installation_id' => (string)$req['installation_id'],
+            'created_at' => (string)$req['created_at'], 'status' => 'pending'
+        ];
+    }
+    return $result;
+}
+
+function one_license_owner_approve(array &$state, string $requestId): bool {
+    if (!isset($state['requests'][$requestId]) ||
+        $state['requests'][$requestId]['status'] !== 'pending') return false;
+    $state['requests'][$requestId]['status'] = 'approved';
+    $state['requests'][$requestId]['approved_at'] = gmdate('c');
+    return true;
 }
 
 function one_license_list_admin(array $state): array {
@@ -228,7 +315,7 @@ function one_license_list_admin(array $state): array {
     return [
         'main_enforced' => (bool)$state['main_enforced'], 'studio_enforced' => (bool)$state['studio_enforced'],
         'grandfathered_count' => count($state['legacy_main']),
-        'requests' => array_values($state['requests']), 'grants' => $grants, 'codes' => $codes
+        'requests' => array_values(array_map(static fn(array $r): array => array_diff_key($r, ['request_secret_hash' => true]), $state['requests'])), 'grants' => $grants, 'codes' => $codes
     ];
 }
 
