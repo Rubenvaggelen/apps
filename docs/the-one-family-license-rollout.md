@@ -42,3 +42,17 @@ Alle bestaande Main-apparaten worden alleen grandfathered wanneer hun registrati
 Bij problemen niet zomaar de bestaande Main-registratie wissen. Laat de oude Main-versie en Ruben Studio 1.4.0 beschikbaar voor herstel. Bewaar een herstelkopie van de registry en van de serverlicentiedatamap met juiste bestandsrechten, buiten publieke opslag. 
 
 **Status van de ontwikkeltak:** de PHP-licentieserver, Main-activatiescherm, eigenaarstoegang en testworkflow zijn voorbereid. Nog niet uitgerold naar productie. De nieuwe beveiligde Windows-installer, publieke/privé downloads en server-authenticatie van beheerders moeten volledig getest worden voordat live activatie verplicht wordt.
+
+
+## Blijvende Main-aanmeldingen (eigenaar)
+
+De aangemelde eigenaar ziet **Main → Meldingen** met een teller voor openstaande verzoeken. Een Main-licentieaanvraag heeft `persistent=true` en `actionType=license_request` en wordt in de Main-notificatiestore bewaard over app-herstarts heen. Wegvegen, wissen-alles of een tijdelijke netwerkstoring mag dit verzoek niet verwijderen.
+
+De licentieserver houdt een nieuwe aanvraag op status **pending**. De goedgekeurde eigenaar kan deze zien en beslissen via **Main → Laptop → Apparaten beheren**, niet door de melding te openen of te wissen. De eigenaar wordt eenmalig gekoppeld met een 10 minuten geldige code, gemaakt vanuit de **cPanel-authenticated** licentiebeheerpagina. De server valideert daarna een geheim eigenaartoken, gekoppeld aan de installatie, bij ieder overzicht en iedere goedkeuring; een spoofbaar device-ID is **niet voldoende**.
+
+Pas na een server-bevestigde `owner_approve` wordt de aanmelding uit de eigenaar-notificaties verwijderd. De aanvrager kan vervolgens met het bij de aanvraag gegenereerde private `request_secret` eenmalig een installatiespecifieke toegangstoken ophalen, zonder dat de beheerder handmatig een code naar die persoon hoeft te sturen.
+
+Bij niet-bereikbare server blijven de bestaande Main-meldingen bewaard en worden ze bij volgende synchronisatie opnieuw gecontroleerd. De cPanel-pagina biedt voor Main geen actie 'Afwijzen' die het verzoek ongemerkt uit de lijst zou halen.
+
+**Uitrolstatus:** alleen ontwikkeltak. Zowel `license-core.php`, `licenses.php`, de afgeschermde `studio-licenses.php` als de nieuwe Main APK moeten gezamenlijk gecontroleerd en uitgebracht worden. Niet simpelweg de GitHub-serverversie deployen: de huidige live `devices.php` bevat Car- en Main-allowlists uit eerdere handmatige cleanupacties die niet onbedoeld overschreven mogen worden.
+
