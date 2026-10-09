@@ -43,8 +43,12 @@ class HomeActivity : AppCompatActivity() {
     private var personRegistrationLookupRunning = false
     private val accessRequestPoll = object : Runnable {
         override fun run() {
-            if (!isFinishing && !isDestroyed && MainDeviceRegistry.isLocallyOwner(this@HomeActivity)) {
-                AccessRequestNotificationWorker.checkNow(this@HomeActivity)
+            if (!isFinishing && !isDestroyed) {
+                if (MainDeviceRegistry.isLocallyOwner(this@HomeActivity)) {
+                    AccessRequestNotificationWorker.checkNow(this@HomeActivity)
+                }
+                // Always reschedule: on first launch the owner flag can be
+                // populated after the first poll by the remote heartbeat.
                 findViewById<RecyclerView>(R.id.homeGrid).postDelayed(this, 30_000L)
             }
         }
