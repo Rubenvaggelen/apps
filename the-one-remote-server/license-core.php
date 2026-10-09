@@ -10,9 +10,12 @@ declare(strict_types=1);
 function one_license_data_dir(): string {
     $custom = getenv('THE_ONE_LICENSE_DATA_DIR');
     if (is_string($custom) && $custom !== '') return $custom;
-    $documentRoot = (string)($_SERVER['DOCUMENT_ROOT'] ?? '');
-    if ($documentRoot === '') throw new RuntimeException('License data directory not configured');
-    return dirname($documentRoot) . '/the-one-private-licenses';
+    // The licensing storage must be identical whether called by the Main API
+    // or by the Dev Hub subdomain (which may have a different DOCUMENT_ROOT).
+    // Code lives under $HOME/public_html/the-one-remote-api/license-core.php.
+    $hostingHome = dirname(dirname(__DIR__));
+    if (!is_dir($hostingHome)) throw new RuntimeException('Hosting root not available');
+    return $hostingHome . '/the-one-private-licenses';
 }
 
 function one_license_path(): string {
