@@ -30,22 +30,28 @@ class AccessRequestNotificationWorker(
         }
 
         return synchronized(AccessRequestNotifications.syncLock) {
-        val pending = runCatching {
+        // Read license approvals independently of the existing media-rights
+        // endpoint: a failure in one must not hide requests from the other.
+        val accessResult = runCatching {
             MainDeviceRegistry.pendingAccessRequests(applicationContext)
-        }.getOrElse {
-            return Result.retry()
         }
+        accessResult.onSuccess { AccessRequestNotifications.notifyNew(applicationContext, it) }
 
-        AccessRequestNotifications.notifyNew(applicationContext, pending)
+        val ownerPaired = MainLicenseClient.ownerIsPaired(applicationContext)
+        val licenseResult = if (ownerPaired) {
+            runCatching {
+                MainLicenseClient.pendingOwnerApprovals(applicationContext)
+            }.onSuccess {
+                AccessRequestNotifications.notifyPendingLicenses(applicationContext, it)
+            }
+        } else null
 
-        // License requests are a separate, owner-paired endpoint. If the
-        // licensing service is offline, keep the existing in-app notifications
-        // untouched and retry on the next poll.
-        if (MainLicenseClient.ownerIsPaired(applicationContext)) {
-            runCatching { MainLicenseClient.pendingOwnerApprovals(applicationContext) }
-                .onSuccess { AccessRequestNotifications.notifyPendingLicenses(applicationContext, it) }
-        }
-        Result.success()
+        if (accessResult.isFailure || licenseResult?.isFailure == true) {
+            Result.retry()
+        } else Result.success()
+        //
+
+
         }
     }
 
