@@ -102,21 +102,23 @@ function one_license_valid_code(string $code): bool {
     return (bool)preg_match('/^ONE-(?:[0-9A-F]{8}-){4}[0-9A-F]{8}$/D', strtoupper(trim($code)));
 }
 
-function one_license_find_grant(array $state, string $app, string $device, string $token): ?array {
+function one_license_find_grant(array $state, string $app, string $device, string $token, string $installationId): ?array {
     foreach ($state['grants'] as $grant) {
         if (($grant['app'] ?? '') !== $app || ($grant['device'] ?? '') !== $device) continue;
         if (($grant['status'] ?? '') !== 'active') continue;
+        if (!hash_equals((string)($grant['installation_id'] ?? ''), $installationId)) continue;
         if (hash_equals((string)$grant['token_hash'], one_license_hash($token))) return $grant;
     }
     return null;
 }
 
-function one_license_issue_grant(array &$state, string $app, string $device, string $name, string $kind, string $licenseId): array {
+function one_license_issue_grant(array &$state, string $app, string $device, string $name, string $kind, string $licenseId, string $installationId): array {
     $token = one_license_token();
     $id = bin2hex(random_bytes(12));
     $state['grants'][$id] = [
         'id' => $id, 'app' => $app, 'device' => $device,
         'person' => $name, 'type' => $kind, 'license_id' => $licenseId,
+        'installation_id' => $installationId,
         'status' => 'active', 'token_hash' => one_license_hash($token),
         'issued_at' => gmdate('c'), 'last_seen' => gmdate('c')
     ];
@@ -147,10 +149,10 @@ function one_license_initialize_main(array &$state, string $registryFile): array
     return ['grandfathered' => count($state['legacy_main']), 'at' => $state['migration_at']];
 }
 
-function one_license_main_status(array &$state, string $device, string $token): array {
+function one_license_main_status(array &$state, string $device, string $token, string $installationId, int $firstInstalledMs): array {
     if (!$state['main_enforced']) return ['enabled' => false, 'allowed' => true, 'mode' => 'not_enabled'];
     if ($token !== '') {
-        $grant = one_license_find_grant($state, 'main', $device, $token);
+        $grant = one_license_find_grant($state, 'main', $device, $token, $installationId);
         if ($grant !== null) return ['enabled' => true, 'allowed' => true, 'mode' => $grant['type']];
     }
     if (isset($state['legacy_main'][$device])) {
@@ -162,15 +164,19 @@ function one_license_main_status(array &$state, string $device, string $token): 
                 break;
             }
         }
-        if (!$bound) {
-            $new = one_license_issue_grant($state, 'main', $device, (string)$state['legacy_main'][$device]['name'], 'grandfathered', 'legacy');
+        // Installed BEFORE the cutover? Upgrading retains Android's firstInstallTime.
+        // Uninstall/reinstall resets firstInstallTime, even if an OS backup restores
+        // SharedPreferences/device IDs. Never grandfather a fresh installation.
+        $cutoff = $state['migration_at'] !== null ? strtotime($state['migration_at']) * 1000 : 0;
+        if (!$bound && $cutoff > 0 && $firstInstalledMs > 0 && $firstInstalledMs < $cutoff) {
+            $new = one_license_issue_grant($state, 'main', $device, (string)$state['legacy_main'][$device]['name'], 'grandfathered', 'legacy', $installationId);
             return ['enabled' => true, 'allowed' => true, 'mode' => 'grandfathered', 'credential' => $new];
         }
     }
     return ['enabled' => true, 'allowed' => false, 'mode' => 'activation_required'];
 }
 
-function one_license_redeem(array &$state, string $app, string $device, string $person, string $code): array {
+function one_license_redeem(array &$state, string $app, string $device, string $person, string $code, string $installationId): array {
     if (!in_array($app, ['main', 'studio'], true)) throw new InvalidArgumentException('Unknown application');
     if (!one_license_valid_code($code)) return ['allowed' => false, 'error' => 'invalid_code'];
     $digest = one_license_hash(strtoupper(trim($code)));
@@ -180,7 +186,7 @@ function one_license_redeem(array &$state, string $app, string $device, string $
         if ($entry['redeemed'] >= $entry['limit']) return ['allowed' => false, 'error' => 'code_already_used'];
         $entry['redeemed']++;
         if ($entry['redeemed'] >= $entry['limit']) $entry['status'] = 'used';
-        $result = one_license_issue_grant($state, $app, $device, $person, 'code', $id);
+        $result = one_license_issue_grant($state, $app, $device, $person, 'code', $id, $installationId);
         return ['allowed' => true, 'credential' => $result];
     }
     unset($entry);
@@ -224,4 +230,9 @@ function one_license_list_admin(array $state): array {
         'grandfathered_count' => count($state['legacy_main']),
         'requests' => array_values($state['requests']), 'grants' => $grants, 'codes' => $codes
     ];
+}
+
+function one_license_installation_id(string $installationId): string {
+    if (!preg_match('/^[0-9a-fA-F-]{36}$/D', $installationId)) throw new InvalidArgumentException('Invalid installation identifier');
+    return strtolower($installationId);
 }
