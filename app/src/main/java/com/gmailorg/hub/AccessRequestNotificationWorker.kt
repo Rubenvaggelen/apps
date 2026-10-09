@@ -83,6 +83,20 @@ object AccessRequestNotifications {
 
     fun resolve(context: Context, deviceId: String, scope: String) {
         NotifStore.init(context.applicationContext)
+    fun resolveLicense(context: Context, requestId: String) {
+        if (!requestId.matches(Regex("^[a-f0-9]{24}$"))) return
+        val key = "theone-license|" + requestId
+        NotifStore.init(context.applicationContext)
+        NotifStore.removeWhere(includePersistent = true) {
+            it.actionType == "license_request" && it.key == key
+        }
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.cancel(("license|" + key).hashCode())
+        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val seen = preferences.getStringSet(KEY_SEEN_LICENSES, emptySet()).orEmpty()
+        preferences.edit().putStringSet(KEY_SEEN_LICENSES, seen - key).apply()
+    }
+
     fun notifyPendingLicenses(context: Context, requests: List<MainPendingLicenseRequest>) {
         if (!MainDeviceRegistry.isLocallyOwner(context)) return
         NotifStore.init(context.applicationContext)
