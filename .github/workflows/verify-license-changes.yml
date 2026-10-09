@@ -50,5 +50,7 @@ jobs:
           set -euo pipefail
           mkdir -p "$HOME/.android"
           keytool -genkeypair -keystore "$HOME/.android/debug.keystore" -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 2 -dname 'CN=Local CI,O=The One Test,C=NL' >/dev/null 2>&1
+      - name: Prepare existing offline supermarket test snapshot
+        run: python3 .github/scripts/supermarket-snapshot.py
       - name: Compile Main and tests only
         run: gradle :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon --no-build-cache -PappVersionCode=9999
