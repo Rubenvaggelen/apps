@@ -12,7 +12,9 @@ header('X-Frame-Options: DENY');
  * sessions alone or a client-submitted Android device ID are not sufficient.
  */
 $authenticatedUser = trim((string)($_SERVER['REMOTE_USER'] ?? $_SERVER['PHP_AUTH_USER'] ?? ''));
-if ($authenticatedUser === '' || (string)($_SERVER['HTTPS'] ?? '') === 'off') {
+$httpsOn = in_array(strtolower((string)($_SERVER['HTTPS'] ?? '')), ['on', '1'], true)
+    || (int)($_SERVER['SERVER_PORT'] ?? 0) === 443;
+if ($authenticatedUser === '' || !$httpsOn) {
     http_response_code(403);
     echo 'Access denied: this area requires HTTPS and cPanel Directory Privacy authentication.';
     exit;
