@@ -303,7 +303,7 @@ class WakePcActivity : AppCompatActivity() {
                                         "Aanmelding goedgekeurd. De gebruiker kan nu activeren.",
                                         Toast.LENGTH_LONG).show()
                                     AccessRequestNotificationWorker.checkNow(this@WakePcActivity)
-                                    openDeviceManager(findViewById(R.id.manageDevicesButton))
+                                    list.removeView(entry)
                                 } else {
                                     action.isEnabled = true
                                     Toast.makeText(this@WakePcActivity,
