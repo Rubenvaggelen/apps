@@ -24,6 +24,39 @@ try {
                 'studio' => ['required' => (bool)$state['studio_enforced']]
             ];
         }
+        // Owner credentials are paired once from a cPanel-authenticated session,
+        // never by trusting the caller's device ID or Android owner flag.
+        if (in_array($action, ['owner_pair', 'owner_pending', 'owner_approve'], true)) {
+            $device = one_license_device((string)($body['device_id'] ?? ''));
+            $install = one_license_installation_id((string)($body['installation_id'] ?? ''));
+            if ($action === 'owner_pair') {
+                $value = one_license_owner_pair($state, (string)($body['pairing_code'] ?? ''), $device, $install);
+                if (!empty($value['paired'])) $dirty();
+                return $value;
+            }
+            if (!one_license_owner_authenticated($state, $device, $install, (string)($body['owner_token'] ?? ''))) {
+                throw new RuntimeException('Owner pairing required');
+            }
+            if ($action === 'owner_pending') {
+                return ['requests' => one_license_owner_pending($state)];
+            }
+            if ($action === 'owner_approve') {
+                $id = (string)($body['request_id'] ?? '');
+                if (!preg_match('/^[a-f0-9]{24}$/D', $id)) throw new InvalidArgumentException('Invalid request');
+                $approved = one_license_owner_approve($state, $id);
+                if ($approved) $dirty();
+                return ['approved' => $approved];
+            }
+        }
+        if ($action === 'claim') {
+            $device = one_license_device((string)($body['device_id'] ?? ''));
+            $install = one_license_installation_id((string)($body['installation_id'] ?? ''));
+            $id = (string)($body['request_id'] ?? '');
+            if (!preg_match('/^[a-f0-9]{24}$/D', $id)) throw new InvalidArgumentException('Invalid request');
+            $result = one_license_request_claim($state, $id, $device, $install, (string)($body['request_secret'] ?? ''));
+            if (!empty($result['allowed'])) $dirty();
+            return $result;
+        }
         $app = strtolower(trim((string)($body['app'] ?? '')));
         if (!in_array($app, ['main', 'studio'], true)) throw new InvalidArgumentException('Unknown app');
         $device = one_license_device((string)($body['device_id'] ?? ''));
@@ -52,9 +85,8 @@ try {
         }
         if ($action === 'request') {
             $person = one_license_person((string)($body['person'] ?? ''));
-            $result = one_license_request($state, $app, $device, $person);
-            $state['requests'][$result['request_id']]['installation_id'] = $installationId;
-            $dirty();
+            $result = one_license_request($state, $app, $device, $person, $installationId);
+            if (isset($result['request_secret'])) $dirty();
             return $result;
         }
         throw new InvalidArgumentException('Unknown action');
