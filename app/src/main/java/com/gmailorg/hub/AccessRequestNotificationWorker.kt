@@ -83,6 +83,15 @@ object AccessRequestNotifications {
 
     fun resolve(context: Context, deviceId: String, scope: String) {
         NotifStore.init(context.applicationContext)
+        val prefix = "theone-access|$deviceId|$scope|"
+        NotifStore.removeWhere(includePersistent = true) { it.actionType == "access_request" && it.key.startsWith(prefix) }
+        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val seen = preferences.getStringSet(KEY_SEEN, emptySet()).orEmpty()
+        val resolved = seen.filter { it.startsWith("$deviceId|$scope|") }.toSet()
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        resolved.forEach { manager.cancel(("access|" + it).hashCode()) }
+        preferences.edit().putStringSet(KEY_SEEN, seen - resolved).apply()
+    }
     fun resolveLicense(context: Context, requestId: String) {
         if (!requestId.matches(Regex("^[a-f0-9]{24}$"))) return
         val key = "theone-license|" + requestId
@@ -166,15 +175,6 @@ object AccessRequestNotifications {
         preferences.edit().putStringSet(KEY_SEEN_LICENSES, seen.toSet()).apply()
     }
 
-        val prefix = "theone-access|$deviceId|$scope|"
-        NotifStore.removeWhere(includePersistent = true) { it.actionType == "access_request" && it.key.startsWith(prefix) }
-        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val seen = preferences.getStringSet(KEY_SEEN, emptySet()).orEmpty()
-        val resolved = seen.filter { it.startsWith("$deviceId|$scope|") }.toSet()
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        resolved.forEach { manager.cancel(("access|" + it).hashCode()) }
-        preferences.edit().putStringSet(KEY_SEEN, seen - resolved).apply()
-    }
     private const val CHANNEL_ID = "the_one_access_requests"
     private const val PREFS = "access_request_notifications"
     private const val KEY_SEEN = "seen_keys"
