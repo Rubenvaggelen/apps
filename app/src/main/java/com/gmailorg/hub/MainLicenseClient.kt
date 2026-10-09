@@ -13,11 +13,22 @@ import java.util.UUID
  * App updates preserve this directory; uninstall/reinstall removes it.
  * Even if Android restores legacy device preferences, a reinstall gets a NEW install ID.
  */
+data class MainPendingLicenseRequest(
+    val id: String,
+    val person: String,
+    val deviceId: String,
+    val installationId: String,
+    val createdAt: String
+)
+
 object MainLicenseClient {
     private const val ENDPOINT = "https://rubenvanaggelen.com/the-one-remote-api/licenses.php"
     private const val ID_FILE = "the-one-main-install-id"
     private const val TOKEN_FILE = "the-one-main-license-token"
     private const val SEEN_FILE = "the-one-main-license-verified-at"
+    private const val REQUEST_ID_FILE = "the-one-main-request-id"
+    private const val REQUEST_SECRET_FILE = "the-one-main-request-secret"
+    private const val OWNER_TOKEN_FILE = "the-one-main-owner-pairing-token"
     private const val OFFLINE_GRACE_MS = 24L * 60L * 60L * 1000L
 
     data class State(
@@ -100,6 +111,11 @@ object MainLicenseClient {
 
     fun status(context: Context): State {
         return try {
+            // A pending owner approval remains on the server until approved.
+            // The applicant's private request secret lets only that installation
+            // claim the approved grant without copying a code between devices.
+            claimApprovedRequest(context)
+
             val query = payload(context).put("token", readToken(context))
             val json = request("status", query)
             val enabled = json.optBoolean("enabled", false)
@@ -129,6 +145,76 @@ object MainLicenseClient {
 
     fun askForAccess(context: Context): State {
         val json = request("request", payload(context))
-        return State(true, false, "pending", pending = json.optString("status") == "pending")
+        val requestId = json.optString("request_id", "")
+        val secret = json.optString("request_secret", "")
+        if (requestId.matches(Regex("^[a-f0-9]{24}$")) &&
+            secret.matches(Regex("^[a-f0-9]{64}$"))) {
+            File(context.noBackupFilesDir, REQUEST_ID_FILE).writeText(requestId)
+            File(context.noBackupFilesDir, REQUEST_SECRET_FILE).writeText(secret)
+        }
+        return State(true, false, "pending", pending =
+            json.optString("status") == "pending" || json.optString("status") == "approved")
+    }
+
+    private fun claimApprovedRequest(context: Context) {
+        val id = runCatching { File(context.noBackupFilesDir, REQUEST_ID_FILE).readText().trim() }.getOrDefault("")
+        val secret = runCatching { File(context.noBackupFilesDir, REQUEST_SECRET_FILE).readText().trim() }.getOrDefault("")
+        if (!id.matches(Regex("^[a-f0-9]{24}$")) ||
+            !secret.matches(Regex("^[a-f0-9]{64}$"))) return
+        val result = request("claim", payload(context)
+            .put("request_id", id).put("request_secret", secret))
+        if (result.optBoolean("allowed", false)) {
+            val token = result.optJSONObject("credential")?.optString("token", "").orEmpty()
+            storeToken(context, token)
+            setVerified(context)
+            File(context.noBackupFilesDir, REQUEST_ID_FILE).delete()
+            File(context.noBackupFilesDir, REQUEST_SECRET_FILE).delete()
+        }
+    }
+
+    private fun ownerToken(context: Context): String =
+        runCatching { File(context.noBackupFilesDir, OWNER_TOKEN_FILE).readText().trim() }.getOrDefault("")
+
+    fun ownerIsPaired(context: Context): Boolean =
+        ownerToken(context).matches(Regex("^[a-f0-9]{64}$"))
+
+    /** Call only after a real cPanel-authenticated owner created a one-time code. */
+    fun pairOwner(context: Context, pairingCode: String): Boolean {
+        if (!MainDeviceRegistry.isLocallyOwner(context)) return false
+        val json = request("owner_pair",
+            payload(context).put("pairing_code", pairingCode.trim().uppercase()))
+        if (!json.optBoolean("paired", false)) return false
+        val token = json.optString("owner_token", "")
+        if (!token.matches(Regex("^[a-f0-9]{64}$"))) return false
+        File(context.noBackupFilesDir, OWNER_TOKEN_FILE).writeText(token)
+        return true
+    }
+
+    fun pendingOwnerApprovals(context: Context): List<MainPendingLicenseRequest> {
+        if (!MainDeviceRegistry.isLocallyOwner(context) || !ownerIsPaired(context)) {
+            return emptyList()
+        }
+        val json = request("owner_pending", payload(context).put("owner_token", ownerToken(context)))
+        val items = json.optJSONArray("requests") ?: return emptyList()
+        return buildList {
+            for (i in 0 until items.length()) {
+                val entry = items.optJSONObject(i) ?: continue
+                add(MainPendingLicenseRequest(
+                    id = entry.optString("id", ""),
+                    person = entry.optString("person", ""),
+                    deviceId = entry.optString("device", ""),
+                    installationId = entry.optString("installation_id", ""),
+                    createdAt = entry.optString("created_at", "")
+                ))
+            }
+        }
+    }
+
+    fun approveOwnerRequest(context: Context, requestId: String): Boolean {
+        if (!MainDeviceRegistry.isLocallyOwner(context) || !ownerIsPaired(context)) return false
+        val json = request("owner_approve", payload(context)
+            .put("owner_token", ownerToken(context))
+            .put("request_id", requestId))
+        return json.optBoolean("approved", false)
     }
 }
