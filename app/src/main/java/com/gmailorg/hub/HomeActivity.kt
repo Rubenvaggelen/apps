@@ -33,6 +33,10 @@ class HomeActivity : AppCompatActivity() {
     private val mailUrl = "https://rubenvaggelen.github.io/Gmailorg/"
 
     private lateinit var adapter: HomeAdapter
+    private val pendingNotificationListener: () -> Unit = {
+        runOnUiThread { if (!isFinishing && !isDestroyed) refreshTiles() }
+    }
+
     private var blockedDialogShowing = false
     private var mainLicenseDialogShowing = false
     private var personRegistrationDialogShowing = false
@@ -49,6 +53,8 @@ class HomeActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_home)
+        NotifStore.init(applicationContext)
+        NotifStore.subscribe(pendingNotificationListener)
         ShortcutStore.init(applicationContext)
         HiddenTilesStore.init(applicationContext)
         cleanUpMissingShortcuts()
@@ -92,6 +98,11 @@ class HomeActivity : AppCompatActivity() {
         grid.post(accessRequestPoll)
     }
 
+    override fun onDestroy() {
+        NotifStore.unsubscribe(pendingNotificationListener)
+        super.onDestroy()
+    }
+
     override fun onPause() {
         findViewById<RecyclerView>(R.id.homeGrid).removeCallbacks(accessRequestPoll)
         super.onPause()
@@ -121,8 +132,14 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private fun refreshTiles() {
+        val waitingCount = if (MainDeviceRegistry.isLocallyOwner(this)) {
+            NotifStore.getAll().count {
+                it.actionType == "license_request" || it.actionType == "access_request"
+            }
+        } else 0
         val fixed = listOf(
-            HomeTile(id = "notifications", type = TileType.NOTIFICATIONS, label = "Meldingen"),
+            HomeTile(id = "notifications", type = TileType.NOTIFICATIONS,
+                label = if (waitingCount > 0) "Meldingen • $waitingCount" else "Meldingen"),
             HomeTile(id = "mail", type = TileType.MAIL, label = "Mail & Kalender"),
             HomeTile(id = "route", type = TileType.ROUTE, label = "Route"),
             HomeTile(id = "household", type = TileType.HOUSEHOLD, label = "Huishouden"),
