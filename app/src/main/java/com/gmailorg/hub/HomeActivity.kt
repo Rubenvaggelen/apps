@@ -34,6 +34,7 @@ class HomeActivity : AppCompatActivity() {
 
     private lateinit var adapter: HomeAdapter
     private var blockedDialogShowing = false
+    private var mainLicenseDialogShowing = false
     private var personRegistrationDialogShowing = false
     private var personRegistrationLookupRunning = false
     private val accessRequestPoll = object : Runnable {
@@ -330,6 +331,15 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private fun checkDeviceAccess() {
+        // Registration and licensing are separate. Existing installations retain
+        // their Android firstInstallTime across an ordinary update. A complete
+        // uninstall/reinstall gets a new installation ID and requires approval.
+        Thread {
+            val license = MainLicenseClient.status(this)
+            if (!license.allowed && license.enabled) {
+                runOnUiThread { showMainLicenseDialog(license.mode) }
+            }
+        }.start()
         if (MainDeviceRegistry.isLocallyBlocked(this)) {
             showBlockedDeviceDialog()
         }
@@ -351,6 +361,95 @@ class HomeActivity : AppCompatActivity() {
                 if (blocked) showBlockedDeviceDialog()
             }
         }.start()
+    }
+
+
+    private fun showMainLicenseDialog(reason: String) {
+        if (mainLicenseDialogShowing || isFinishing || isDestroyed) return
+        mainLicenseDialogShowing = true
+        val density = resources.displayMetrics.density
+        val pad = (18 * density).toInt()
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, 0)
+        }
+        val explanation = TextView(this).apply {
+            text = if (reason == "server_offline") {
+                "De licentieserver is momenteel niet bereikbaar. Een nieuwe installatie moet online worden geactiveerd. Bestaande geactiveerde apparaten behouden tijdelijk offline toegang."
+            } else {
+                "Deze nieuwe installatie van The One Main moet eerst door de beheerder worden goedgekeurd. Dit geldt ook na verwijderen en opnieuw installeren op een eerder gebruikt toestel."
+            }
+            setTextColor(ContextCompat.getColor(this@HomeActivity, R.color.text_main))
+        }
+        container.addView(explanation)
+        val codeInput = EditText(this).apply {
+            hint = "Activatiecode uit The One Main"
+            isSingleLine = true
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+            setPadding(pad / 2, pad, pad / 2, pad)
+        }
+        container.addView(codeInput)
+        val status = TextView(this).apply {
+            text = "Vraag een code aan bij de beheerder of vul je activatiecode in."
+            setTextColor(ContextCompat.getColor(this@HomeActivity, R.color.text_dim))
+        }
+        container.addView(status)
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("The One Main — activatie vereist")
+            .setView(container)
+            .setPositiveButton("Activeren", null)
+            .setNegativeButton("Toegang aanvragen", null)
+            .setNeutralButton("App sluiten") { _, _ -> finishAffinity() }
+            .setCancelable(false)
+            .create()
+
+        dialog.setOnShowListener {
+            val activate = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            val request = dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
+            fun setBusy(busy: Boolean) {
+                activate.isEnabled = !busy
+                request.isEnabled = !busy
+            }
+            activate.setOnClickListener {
+                val code = codeInput.text.toString().trim()
+                if (code.isBlank()) {
+                    status.text = "Vul eerst je activatiecode in."
+                    return@setOnClickListener
+                }
+                setBusy(true)
+                status.text = "Code controleren…"
+                Thread {
+                    val result = runCatching { MainLicenseClient.redeem(this, code) }
+                    runOnUiThread {
+                        setBusy(false)
+                        if (result.getOrNull()?.allowed == true) {
+                            dialog.dismiss()
+                            Toast.makeText(this, "The One Main is geactiveerd.", Toast.LENGTH_LONG).show()
+                            refreshTiles()
+                        } else {
+                            status.text = "Code niet geldig of server tijdelijk onbereikbaar. Probeer opnieuw."
+                        }
+                    }
+                }.start()
+            }
+            request.setOnClickListener {
+                setBusy(true)
+                status.text = "Aanvraag versturen…"
+                Thread {
+                    val result = runCatching { MainLicenseClient.askForAccess(this) }
+                    runOnUiThread {
+                        setBusy(false)
+                        status.text = if (result.getOrNull()?.pending == true)
+                            "Aanvraag verzonden. De beheerder behandelt hem vanuit The One Main → Laptop → Licenties."
+                        else "Verbinding mislukt. Probeer later opnieuw."
+                    }
+                }.start()
+            }
+        }
+        dialog.setOnDismissListener { mainLicenseDialogShowing = false }
+        dialog.show()
     }
 
     private fun showBlockedDeviceDialog() {
