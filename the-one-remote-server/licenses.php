@@ -27,15 +27,17 @@ try {
         $app = strtolower(trim((string)($body['app'] ?? '')));
         if (!in_array($app, ['main', 'studio'], true)) throw new InvalidArgumentException('Unknown app');
         $device = one_license_device((string)($body['device_id'] ?? ''));
+        $installationId = one_license_installation_id((string)($body['installation_id'] ?? ''));
+        $firstInstalledMs = (int)($body['first_installed_ms'] ?? 0);
         if ($action === 'status') {
             $token = (string)($body['token'] ?? '');
             if ($app === 'main') {
-                $value = one_license_main_status($state, $device, $token);
+                $value = one_license_main_status($state, $device, $token, $installationId, $firstInstalledMs);
                 if (isset($value['credential'])) $dirty();
                 return $value;
             }
             if (!$state['studio_enforced']) return ['enabled' => false, 'allowed' => false, 'mode' => 'not_configured'];
-            $grant = ($token !== '') ? one_license_find_grant($state, $app, $device, $token) : null;
+            $grant = ($token !== '') ? one_license_find_grant($state, $app, $device, $token, $installationId) : null;
             return ['enabled' => true, 'allowed' => $grant !== null, 'mode' => $grant !== null ? 'active' : 'activation_required'];
         }
         if ($action === 'redeem') {
@@ -44,13 +46,14 @@ try {
             }
             $person = one_license_person((string)($body['person'] ?? ''));
             $code = (string)($body['code'] ?? '');
-            $value = one_license_redeem($state, $app, $device, $person, $code);
+            $value = one_license_redeem($state, $app, $device, $person, $code, $installationId);
             if (($value['allowed'] ?? false)) $dirty();
             return $value;
         }
         if ($action === 'request') {
             $person = one_license_person((string)($body['person'] ?? ''));
             $result = one_license_request($state, $app, $device, $person);
+            $state['requests'][$result['request_id']]['installation_id'] = $installationId;
             $dirty();
             return $result;
         }
