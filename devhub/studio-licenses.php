@@ -75,6 +75,9 @@ try {
                 if (!in_array($decision, ['approved', 'rejected'], true)) throw new InvalidArgumentException('Ongeldige beslissing');
                 $request = &$state['requests'][$id];
                 if ($request['status'] !== 'pending') throw new InvalidArgumentException('Aanvraag al behandeld');
+                if ($request['app'] === 'main' && $decision === 'rejected') {
+                    throw new InvalidArgumentException('Main-aanmeldingen blijven zichtbaar tot eigenaar goedkeurt');
+                }
                 $request['status'] = $decision;
                 $request['resolved_at'] = gmdate('c');
                 $dirty();
@@ -163,7 +166,7 @@ code{color:#7ddfff}.scroll{overflow:auto}
 <section><h2>Openstaande licentieaanvragen</h2><div class="scroll"><table><thead><tr><th>App</th><th>Naam</th><th>Apparaat</th><th>Datum</th><th>Beslissing</th></tr></thead><tbody>
 <?php foreach ($current['requests'] as $request): if (($request['status'] ?? '') !== 'pending') continue; ?>
 <tr><td><?=el($request['app'])?></td><td><?=el($request['person'])?></td><td><?=el(substr($request['device'],0,25))?></td><td><?=el($request['created_at'])?></td><td>
-<form method="post" class="inline"><input type="hidden" name="csrf" value="<?=el($csrf)?>"><input type="hidden" name="action" value="resolve_request"><input type="hidden" name="id" value="<?=el($request['id'])?>"><button name="decision" value="approved">Goedkeuren + code</button><button class="danger" name="decision" value="rejected">Afwijzen</button></form></td></tr>
+<form method="post" class="inline"><input type="hidden" name="csrf" value="<?=el($csrf)?>"><input type="hidden" name="action" value="resolve_request"><input type="hidden" name="id" value="<?=el($request['id'])?>"><button name="decision" value="approved">Goedkeuren</button><?php if ($request['app'] !== 'main'): ?><button class="danger" name="decision" value="rejected">Afwijzen</button><?php endif; ?></form></td></tr>
 <?php endforeach; ?></tbody></table></div></section>
 <section><h2>Actieve apparaatlicenties</h2><div class="scroll"><table><thead><tr><th>App</th><th>Gebruiker</th><th>Apparaat</th><th>Type</th><th>Status</th><th>Actie</th></tr></thead><tbody>
 <?php foreach ($current['grants'] as $grant): ?><tr><td><?=el($grant['app'])?></td><td><?=el($grant['person'])?></td><td><?=el(substr($grant['device'],0,25))?></td><td><?=el($grant['type'])?></td><td><?=el($grant['status'])?></td><td>
