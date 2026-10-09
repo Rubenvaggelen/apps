@@ -291,38 +291,9 @@ class HomeActivity : AppCompatActivity() {
 
                 dialog.dismiss()
                 refreshTiles()
-
-                Thread {
-                    val blocked = runCatching {
-                        MainDeviceRegistry.heartbeat(this)
-                    }.getOrNull()
-
-                    var owner = MainDeviceRegistry.isLocallyOwner(this)
-                    if (isTheOne && !owner) {
-                        owner = MainDeviceRegistry.claimInitialOwner(this)
-                    }
-
-                    runOnUiThread {
-                        refreshTiles()
-                        if (isTheOne) {
-                            Toast.makeText(
-                                this,
-                                if (owner) {
-                                    "$personName is geregistreerd als The One • beheerder"
-                                } else {
-                                    "$personName is opgeslagen. Beheerderstatus wordt gecontroleerd zodra dit toestel daarvoor is geautoriseerd."
-                                },
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-
-                        if (blocked == true) {
-                            showBlockedDeviceDialog()
-                        } else {
-                            checkDeviceAccess()
-                        }
-                    }
-                }.start()
+                // Licensing must run before the first heartbeat, including
+                // a newly registered owner device.
+                checkDeviceAccess()
             }
         }
 
@@ -333,44 +304,35 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private fun checkDeviceAccess() {
-        // Registration and licensing are separate. Existing installations retain
-        // their Android firstInstallTime across an ordinary update. A complete
-        // uninstall/reinstall gets a new installation ID and requires approval.
+        // Check license BEFORE registration or owner-claiming. An unlicensed
+        // clean reinstall must not recreate the old Main device registration.
         Thread {
             val license = MainLicenseClient.status(this)
-            runOnUiThread {
-                val grid = findViewById<RecyclerView>(R.id.homeGrid)
-                if (license.allowed) {
-                    grid.visibility = View.VISIBLE
-                } else if (license.enabled) {
-                    grid.visibility = View.INVISIBLE
-                    showMainLicenseDialog(license.mode)
+            if (!license.allowed) {
+                runOnUiThread {
+                    findViewById<RecyclerView>(R.id.homeGrid).visibility = View.INVISIBLE
+                    if (license.enabled) showMainLicenseDialog(license.mode)
                 }
+                return@Thread
             }
-        }.start()
-        if (MainDeviceRegistry.isLocallyBlocked(this)) {
-            showBlockedDeviceDialog()
-        }
-
-        Thread {
             val blocked = runCatching { MainDeviceRegistry.heartbeat(this) }.getOrNull()
-                ?: return@Thread
-
             if (
+                blocked != true &&
                 !MainDeviceRegistry.isLocallyOwner(this) &&
                 MainDeviceRegistry.isOwnerEligible() &&
                 MainDeviceRegistry.isTheOneProfile(this)
             ) {
-                MainDeviceRegistry.claimInitialOwner(this)
+                runCatching { MainDeviceRegistry.claimInitialOwner(this) }
             }
-
             runOnUiThread {
+                findViewById<RecyclerView>(R.id.homeGrid).visibility = View.VISIBLE
                 refreshTiles()
-                if (blocked) showBlockedDeviceDialog()
+                if (blocked == true || MainDeviceRegistry.isLocallyBlocked(this)) {
+                    showBlockedDeviceDialog()
+                }
             }
         }.start()
     }
-
 
     private fun showMainLicenseDialog(reason: String) {
         if (mainLicenseDialogShowing || isFinishing || isDestroyed) return
@@ -434,9 +396,8 @@ class HomeActivity : AppCompatActivity() {
                         setBusy(false)
                         if (result.getOrNull()?.allowed == true) {
                             dialog.dismiss()
-                            findViewById<RecyclerView>(R.id.homeGrid).visibility = View.VISIBLE
                             Toast.makeText(this, "The One Main is geactiveerd.", Toast.LENGTH_LONG).show()
-                            refreshTiles()
+                            checkDeviceAccess()
                         } else {
                             status.text = "Code niet geldig of server tijdelijk onbereikbaar. Probeer opnieuw."
                         }
