@@ -110,6 +110,7 @@ class WakePcActivity : AppCompatActivity() {
         val sleepButton = findViewById<View>(R.id.sleepPcButton)
         val remoteButton = findViewById<View>(R.id.remotePcButton)
         val manageDevicesButton = findViewById<View>(R.id.manageDevicesButton)
+        val musicStudioAccessButton = findViewById<View>(R.id.musicStudioAccessButton)
 
         findViewById<View>(R.id.backButton).setOnClickListener { finish() }
 
@@ -117,6 +118,7 @@ class WakePcActivity : AppCompatActivity() {
         sleepButton.isEnabled = false
         remoteButton.isEnabled = false
         manageDevicesButton.isEnabled = false
+        musicStudioAccessButton.isEnabled = false
         status.setTextColor(ContextCompat.getColor(this, R.color.text_dim))
         status.text = "Eigenaarsrechten controleren…"
 
@@ -138,6 +140,7 @@ class WakePcActivity : AppCompatActivity() {
                 sleepButton.isEnabled = true
                 remoteButton.isEnabled = true
                 manageDevicesButton.isEnabled = true
+                musicStudioAccessButton.isEnabled = true
                 status.text = "Klaar"
                 if (intent.getBooleanExtra("open_access_management", false)) {
                     intent.removeExtra("open_access_management")
@@ -177,6 +180,15 @@ class WakePcActivity : AppCompatActivity() {
 
         manageDevicesButton.setOnClickListener {
             openDeviceManager(manageDevicesButton)
+        }
+        // Alleen de eigenaar ziet deze toegang. De server vereist daarnaast
+        // een echte Dev Hub-beheerderssessie; een apparaat-ID is niet voldoende.
+        musicStudioAccessButton.setOnClickListener {
+            val portal = android.net.Uri.parse("https://dev.rubenvanaggelen.com/studio-licenses.php")
+            androidx.browser.customtabs.CustomTabsIntent.Builder()
+                .setShowTitle(true)
+                .build()
+                .launchUrl(this, portal)
         }
     }
 
