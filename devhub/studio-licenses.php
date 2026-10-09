@@ -37,6 +37,11 @@ try {
         if (!hash_equals($csrf, (string)($_POST['csrf'] ?? ''))) throw new RuntimeException('Beveiligingscontrole mislukt');
         $action = (string)($_POST['action'] ?? '');
         $result = one_license_locked(static function(array &$state, callable $dirty) use ($action): array {
+            if ($action === 'create_owner_pairing') {
+                $code = one_license_owner_pairing_create($state);
+                $dirty();
+                return ['message' => 'Koppelcode voor de eigenaar aangemaakt; geldig gedurende 10 minuten.', 'code' => $code];
+            }
             if ($action === 'create_code') {
                 $app = (string)($_POST['app'] ?? '');
                 $name = trim((string)($_POST['person'] ?? ''));
@@ -76,6 +81,11 @@ try {
                 // Give the code to the user yourself: it is never displayed to
                 // the unauthenticated applicant in a pending request response.
                 if ($decision === 'approved') {
+                    if (!empty($request['request_secret_hash'])) {
+                        // The requesting installation can claim access securely by
+                        // presenting its private request secret. No manual code needed.
+                        return ['message' => 'Aanvraag goedgekeurd. De aanvrager kan automatisch activeren.'];
+                    }
                     $issued = one_license_create_code($state, $request['app'], $request['person'], 1);
                     $request['code_id'] = $issued['license_id'];
                     return ['message' => 'Aanvraag goedgekeurd: geef de eenmalige code veilig aan deze persoon', 'code' => $issued['code']];
@@ -139,6 +149,11 @@ code{color:#7ddfff}.scroll{overflow:auto}
  · Bestaande apparaten vastgelegd: <strong><?=count($current['grants'])>=0?(int)$current['grandfathered_count']:0?></strong></p>
 <p>Music Studio-licenties: <strong><?=!empty($current['studio_enforced'])?'ACTIEF':'Nog niet ingeschakeld'?></strong></p>
 <p>Een licentieblokkade op Main mag pas worden aangezet na een gecontroleerde back-up en momentopname van de bestaande registratie.</p>
+</section>
+<section><h2>Main eigenaar koppelen voor blijvende aanmeldmeldingen</h2>
+<p>Alleen de eigenaar kan een koppelcode maken. Open in Main: Laptop → Apparaten beheren → Koppel licentiemeldingen. Vul daar de code binnen tien minuten in. Na koppeling verschijnen nieuwe aanmeldingen blijvend in Main Meldingen totdat je ze goedkeurt.</p>
+<form method="post"><input type="hidden" name="csrf" value="<?=el($csrf)?>"><input type="hidden" name="action" value="create_owner_pairing">
+<button>Maak een eenmalige Main-koppelcode</button></form>
 </section>
 <section><h2>Nieuwe code toewijzen</h2>
 <form method="post"><input type="hidden" name="csrf" value="<?=el($csrf)?>"><input type="hidden" name="action" value="create_code">
