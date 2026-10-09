@@ -52,10 +52,41 @@ try {
     $id = $redeemed['credential']['grant_id'];
     $s['grants'][$id]['status'] = 'revoked';
     assert_state(!one_license_main_status($s, $oldDevice, $newToken, $reinstalled, $after)['allowed'], 'revoked license is denied');
-    $request = one_license_request($s, 'main', $oldDevice, 'Person');
+    $request = one_license_request($s, 'main', $oldDevice, 'Person', $reinstalled);
     assert_state($request['status'] === 'pending', 'new activation request created');
-    $requestAgain = one_license_request($s, 'main', $oldDevice, 'Person');
+    assert_state(strlen($request['request_secret']) === 64, 'request proof generated privately');
+    $requestAgain = one_license_request($s, 'main', $oldDevice, 'Person', $reinstalled);
     assert_state($requestAgain['request_id'] === $request['request_id'], 'pending request deduplicated');
+    assert_state(!isset($requestAgain['request_secret']), 'applicant proof returned only once');
+    assert_state(count(one_license_owner_pending($s)) === 1, 'request remains visible before owner approval');
+
+    $pairCode = one_license_owner_pairing_create($s);
+    assert_state(!one_license_owner_pair($s, 'OWNER-wrong', $oldDevice, $oldInstall)['paired'], 'wrong owner pairing rejected');
+    $paired = one_license_owner_pair($s, $pairCode, $oldDevice, $oldInstall);
+    assert_state($paired['paired'], 'authenticated owner pairing code works once');
+    assert_state(!one_license_owner_pair($s, $pairCode, $oldDevice, $oldInstall)['paired'], 'owner pairing cannot be reused');
+    assert_state(one_license_owner_authenticated($s, $oldDevice, $oldInstall, $paired['owner_token']), 'paired owner token validates');
+    assert_state(!one_license_owner_authenticated($s, $otherDevice, $oldInstall, $paired['owner_token']), 'different device cannot approve');
+    assert_state(!one_license_owner_authenticated($s, $oldDevice, $reinstalled, $paired['owner_token']), 'reinstalled owner must pair again');
+
+    $requestId = $request['request_id'];
+    assert_state(!one_license_request_claim($s, $requestId, $oldDevice, $reinstalled, $request['request_secret'])['allowed'],
+        'applicant cannot activate before approval');
+    assert_state(!one_license_request_claim($s, $requestId, $oldDevice, $reinstalled, str_repeat('0', 64))['allowed'],
+        'wrong applicant secret cannot activate');
+    assert_state(count(one_license_owner_pending($s)) === 1, 'pending request persists after read and failed claim');
+    assert_state(one_license_owner_approve($s, $requestId), 'owner approval recorded');
+    assert_state(count(one_license_owner_pending($s)) === 0, 'only approved request leaves owner notification list');
+    $claimed = one_license_request_claim($s, $requestId, $oldDevice, $reinstalled, $request['request_secret']);
+    assert_state($claimed['allowed'], 'approved requester claims activation with private proof');
+    assert_state(one_license_main_status($s, $oldDevice, $claimed['credential']['token'], $reinstalled, $after)['allowed'],
+        'server-issued approved token authorizes installation');
+    assert_state(!one_license_request_claim($s, $requestId, $oldDevice, $reinstalled, $request['request_secret'])['allowed'],
+        'request proof cannot claim license a second time');
+
+    $adminSnapshot = json_encode(one_license_list_admin($s));
+    assert_state(!str_contains($adminSnapshot, $request['request_secret']), 'request secret never appears in owner listing');
+    assert_state(!str_contains($adminSnapshot, $paired['owner_token']), 'owner token never appears in owner listing');
     echo 'ALL MAIN LICENSE LIFECYCLE TESTS PASSED' . PHP_EOL;
 } finally {
     @unlink($mainRegistry);
