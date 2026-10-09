@@ -49,9 +49,6 @@ class AccessRequestNotificationWorker(
         if (accessResult.isFailure || licenseResult?.isFailure == true) {
             Result.retry()
         } else Result.success()
-        //
-
-
         }
     }
 
