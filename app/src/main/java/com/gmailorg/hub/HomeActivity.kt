@@ -54,6 +54,8 @@ class HomeActivity : AppCompatActivity() {
         cleanUpMissingShortcuts()
 
         val grid = findViewById<RecyclerView>(R.id.homeGrid)
+        // No Main tiles become interactive until this installation is licensed.
+        grid.visibility = View.INVISIBLE
         grid.layoutManager = GridLayoutManager(this, 3)
         adapter = HomeAdapter(
             onTileClick = ::handleTileClick,
@@ -336,8 +338,14 @@ class HomeActivity : AppCompatActivity() {
         // uninstall/reinstall gets a new installation ID and requires approval.
         Thread {
             val license = MainLicenseClient.status(this)
-            if (!license.allowed && license.enabled) {
-                runOnUiThread { showMainLicenseDialog(license.mode) }
+            runOnUiThread {
+                val grid = findViewById<RecyclerView>(R.id.homeGrid)
+                if (license.allowed) {
+                    grid.visibility = View.VISIBLE
+                } else if (license.enabled) {
+                    grid.visibility = View.INVISIBLE
+                    showMainLicenseDialog(license.mode)
+                }
             }
         }.start()
         if (MainDeviceRegistry.isLocallyBlocked(this)) {
@@ -426,6 +434,7 @@ class HomeActivity : AppCompatActivity() {
                         setBusy(false)
                         if (result.getOrNull()?.allowed == true) {
                             dialog.dismiss()
+                            findViewById<RecyclerView>(R.id.homeGrid).visibility = View.VISIBLE
                             Toast.makeText(this, "The One Main is geactiveerd.", Toast.LENGTH_LONG).show()
                             refreshTiles()
                         } else {
