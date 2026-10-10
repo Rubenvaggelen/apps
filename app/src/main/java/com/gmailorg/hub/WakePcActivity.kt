@@ -353,7 +353,33 @@ class WakePcActivity : AppCompatActivity() {
             setPadding(10, 20, 10, 8)
         })
         if (devices.isEmpty()) list.addView(TextView(this).apply { text = "Nog geen apparaten geregistreerd."; setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim)); textSize = 14f })
-        devices.forEach { device ->
+        // Group display by person only; preserve each device ID and its own access controls.
+        // Empty names must not merge unrelated unregistered devices.
+        val personGroups = devices.groupBy { device ->
+            device.personName.trim().takeIf { it.isNotEmpty() }?.lowercase(java.util.Locale.ROOT)
+                ?: "unknown-device:${device.id}"
+        }
+        personGroups.values.forEach { personDevices ->
+            val groupName = personDevices.first().personName.ifBlank { "Naam nog niet ingevuld" }
+            val groupHeader = TextView(this).apply {
+                text = "$groupName (${personDevices.size} apparaat${if (personDevices.size == 1) "" else "en"})  ▾"
+                textSize = 17f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.amber))
+                setPadding(12, 16, 12, 12)
+            }
+            val groupDetails = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                visibility = View.GONE
+            }
+            groupHeader.setOnClickListener {
+                val expanded = groupDetails.visibility != View.VISIBLE
+                groupDetails.visibility = if (expanded) View.VISIBLE else View.GONE
+                groupHeader.text = "$groupName (${personDevices.size} apparaat${if (personDevices.size == 1) "" else "en"})  " + if (expanded) "▴" else "▾"
+            }
+            list.addView(groupHeader)
+            list.addView(groupDetails)
+            personDevices.forEach { device ->
             val personLabel = device.personName.ifBlank { "Naam nog niet ingevuld" }
             val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(16, 14, 16, 14) }
             val expandHeader = TextView(this).apply {
@@ -601,8 +627,9 @@ class WakePcActivity : AppCompatActivity() {
                 })
             }
             card.addView(details)
-            list.addView(card)
-            list.addView(View(this).apply { setBackgroundColor(ContextCompat.getColor(this@WakePcActivity, R.color.line)) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
+            groupDetails.addView(card)
+            groupDetails.addView(View(this).apply { setBackgroundColor(ContextCompat.getColor(this@WakePcActivity, R.color.line)) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
+            }
         }
         val scroll = android.widget.ScrollView(this).apply { isFillViewport = true; addView(list) }
         AlertDialog.Builder(this).setTitle("Verbonden apparaten").setView(scroll).setNegativeButton("Sluiten", null).show()
