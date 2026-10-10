@@ -1,0 +1,156 @@
+name: The One Main v992 Clean Install and Personal PIN (No Release)
+
+on:
+  push:
+    branches:
+      - feature/main-clean-install-devhub-dj-20261010
+
+permissions:
+  contents: read
+
+jobs:
+  tablet-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify license and registry pilot bridge
+        run: |
+          php -l the-one-remote-server/main-heartbeat-license-bridge.php
+          php -l the-one-remote-server/owner-remove-device.php
+          php -l the-one-remote-server/license-core.php
+          python3 tests/test_owner_device_removal.py
+          python3 - <<'PY'
+          from pathlib import Path
+          manifest=Path("app/src/main/AndroidManifest.xml").read_text()
+          src=Path("app/src/main/java/com/gmailorg/hub/MainInstallationPin.kt").read_text()
+          home=Path("app/src/main/java/com/gmailorg/hub/HomeActivity.kt").read_text()
+          assert 'android:allowBackup="false"' in manifest
+          assert 'android:dataExtractionRules="@xml/main_no_backup_rules"' in manifest
+          assert 'TEMPORARY_PIN = "1306"' in src
+          assert "mustChoosePersonalPin(this)" in home
+          assert "showPersonalPinSetup()" in home
+          assert "noBackupFilesDir" in src
+          print("PASS: no restore, forced new PIN, noBackup personal credential")
+          PY
+          php tests/main-heartbeat-license-bridge.php
+          php tests/main-approval-heartbeat-integration.php
+          python3 tests/test_main_live_bridge_patch.py
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+      - name: Restore fixed Main signing key
+        shell: bash
+        env:
+          FIXED_KEYSTORE: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$FIXED_KEYSTORE" ]; then
+            echo "::error::Fixed Main signing secret is missing."
+            exit 1
+          fi
+          mkdir -p ~/.android
+          printf '%s' "$FIXED_KEYSTORE" | base64 --decode > ~/.android/debug.keystore
+          chmod 600 ~/.android/debug.keystore
+          keytool -list -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey >/dev/null
+      - name: Validate YouTube key and restore TMDB configuration
+        shell: bash
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          TMDB_SECRET: ${{ secrets.TMDB_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$YOUTUBE_API_KEY" ]; then
+            echo "::error::YouTube API key is missing; build stopped."
+            exit 1
+          fi
+          tmdb_key="$TMDB_SECRET"
+          if [ -z "$tmdb_key" ]; then
+            tmdb_key="$(sed -n 's/^TMDB_API_KEY[[:space:]]*=[[:space:]]*//p' gradle.properties | head -n 1 | tr -d '\\r')"
+          fi
+          if [ -z "$tmdb_key" ]; then
+            echo "::error::TMDB key missing from secret and existing configuration."
+            exit 1
+          fi
+          echo "::add-mask::$tmdb_key"
+          echo "::add-mask::$YOUTUBE_API_KEY"
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' --connect-timeout 15 --max-time 30 "https://api.themoviedb.org/3/configuration?api_key=$tmdb_key")"
+          if [ "$status" != "200" ]; then
+            echo "::error::TMDB key validation failed (HTTP $status)."
+            exit 1
+          fi
+          echo "ORG_GRADLE_PROJECT_TMDB_API_KEY=$tmdb_key" >> "$GITHUB_ENV"
+          echo "ORG_GRADLE_PROJECT_YOUTUBE_API_KEY=$YOUTUBE_API_KEY" >> "$GITHUB_ENV"
+      - name: Package clean Main without personal Media Player credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/assets
+          # Private user credentials are intentionally NEVER copied from a
+          # prior release into an APK for a new installation.
+          printf '{"server":"","username":"","password":""}\n' > app/src/main/assets/theone_media_source.json
+          python3 - <<'PY'
+          import json,pathlib
+          p=pathlib.Path("app/src/main/assets/theone_media_source.json")
+          cfg=json.loads(p.read_text())
+          assert cfg == {"server":"","username":"","password":""}
+          print("PASS: clean Main APK contains no personal Media Player source")
+          PY
+      - name: Add verified offline supermarket map
+        run: python3 .github/scripts/supermarket-snapshot.py
+      - name: Build Main test APK version 992
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon --no-build-cache -PappVersionCode=992
+      - name: Verify private account data absent from the finished APK
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,zipfile
+          apk='app/build/outputs/apk/debug/app-debug.apk'
+          with zipfile.ZipFile(apk) as z:
+              source=json.loads(z.read('assets/theone_media_source.json'))
+          assert source == {'server':'','username':'','password':''}, 'Personal media credentials leaked into Main APK'
+          print('PASS: built Main v992 has no private Media Player account credentials')
+          PY
+      - name: Verify package, upgrade version and signing certificate against v984
+        shell: bash
+        run: |
+          set -euo pipefail
+          OLD=/tmp/main-v984.apk
+          NEW=app/build/outputs/apk/debug/app-debug.apk
+          curl -fLsS --max-time 120 \
+            "https://github.com/Rubenvaggelen/apps/releases/download/main-v984/app-debug.apk" -o "$OLD"
+          test -s "$OLD" && test -s "$NEW"
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          AAPT="$BUILD_TOOLS/aapt"
+          test -x "$APKSIGNER" && test -x "$AAPT"
+          old_badging="$("$AAPT" dump badging "$OLD" | head -n 1)"
+          new_badging="$("$AAPT" dump badging "$NEW" | head -n 1)"
+          echo "$old_badging" | grep -q "name='com.gmailorg.hub'"
+          echo "$new_badging" | grep -q "name='com.gmailorg.hub'"
+          old_version="$(printf '%s\n' "$old_badging" | sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p")"
+          new_version="$(printf '%s\n' "$new_badging" | sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p")"
+          if [ -z "$old_version" ] || [ "$new_version" != "992" ] || [ "$old_version" -ge "$new_version" ]; then
+            echo "::error::Version does not upgrade installed Main; packaging blocked"
+            exit 1
+          fi
+          get_cert() {
+            "$APKSIGNER" verify --print-certs "$1" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1 | tr -d ':' | tr '[:upper:]' '[:lower:]'
+          }
+          old_cert="$(get_cert "$OLD")"
+          new_cert="$(get_cert "$NEW")"
+          if [ -z "$old_cert" ] || [ -z "$new_cert" ] || [ "$old_cert" != "$new_cert" ]; then
+            echo "::error::New Main signing certificate differs from v984. No APK will be uploaded."
+            exit 1
+          fi
+          echo "PASS: Main package unchanged; upgrade $old_version -> $new_version; same signing certificate"
+      - name: Upload verified tablet APK (not a release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: the-one-main-v992-clean-install-test
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
+          if-no-files-found: error

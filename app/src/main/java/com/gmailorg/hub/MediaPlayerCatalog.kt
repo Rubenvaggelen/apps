@@ -15,8 +15,18 @@ object MediaPlayerCatalog {
         val status=MainDeviceRegistry.refreshAccess(context,MainDeviceRegistry.ACCESS_MEDIA_PLAYER)
         if(!status.allowed)throw AccessRequired(status.pending)
     }
-    private fun source(context: Context): JSONObject =
-        context.assets.open("theone_media_source.json").bufferedReader().use { JSONObject(it.readText()) }
+    private fun source(context: Context): JSONObject {
+        val config = context.assets.open("theone_media_source.json")
+            .bufferedReader().use { JSONObject(it.readText()) }
+        // New installations must never inherit the owner's private IPTV
+        // server, username or password from a previously published APK.
+        check(config.optString("server").isNotBlank() &&
+              config.optString("username").isNotBlank() &&
+              config.optString("password").isNotBlank()) {
+            "Mediaplayer-bron is nog niet op dit apparaat ingesteld."
+        }
+        return config
+    }
     private fun enc(value: String)=URLEncoder.encode(value,"UTF-8")
     private fun read(context: Context, action: String, extra: String=""): String {
         authorize(context)

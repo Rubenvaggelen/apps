@@ -1,0 +1,36 @@
+name: Validate Dev Hub Independent DJ Download
+on:
+  push:
+    branches: [feature/main-clean-install-devhub-dj-20261010]
+    paths:
+      - 'devhub/builds.php'
+      - 'devhub/public/index.php'
+      - '.github/workflows/validate-devhub-dj-20261010.yml'
+permissions:
+  contents: read
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate PHP and live download scripts
+        run: |
+          set -euo pipefail
+          php -l devhub/builds.php
+          php -l devhub/public/index.php
+          python3 - <<'PY'
+          from pathlib import Path
+          a=Path('devhub/builds.php').read_text()
+          b=Path('devhub/public/index.php').read_text()
+          assert 'The One DJ • aparte APK' in a
+          assert a.count('id="djDownload"') == 1
+          assert 'id="djDownload" href="https://github.com/Rubenvaggelen/apps/releases/download/dj-v1049/thedj-debug.apk"' in b
+          assert 'new RegExp(\'^\'+prefix+\'[0-9]+$\')' in a
+          for file,source in (('builds',a),('index',b)):
+              head=source.index('<script>')+len('<script>')
+              tail=source.index('</script>',head)
+              Path('/tmp/'+file+'-devhub.js').write_text(source[head:tail].replace('<?php echo json_encode($csrf,JSON_UNESCAPED_SLASHES);?>', '"test-csrf"'))
+          print('PASS independent DJ download link and PHP templates')
+          PY
+          node --check /tmp/builds-devhub.js
+          node --check /tmp/index-devhub.js

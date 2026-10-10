@@ -54,7 +54,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:hint="Bijv. Vianenstraat 31, Amsterdam"
+            android:hint="Bijv. Dam 1, Amsterdam"
             android:textColorHint="@color/text_dim"
             android:textColor="@color/text_main"
             android:background="@color/surface"
