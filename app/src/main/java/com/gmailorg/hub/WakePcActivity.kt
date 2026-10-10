@@ -608,7 +608,7 @@ class WakePcActivity : AppCompatActivity() {
 
                 // Device removal is irreversible: require exact selection and a second
                 // confirmation. The paired owner's server credential is mandatory.
-                if (MainLicenseClient.ownerIsPaired(this)) {
+                if (device.deviceRole == "main" && MainLicenseClient.ownerIsPaired(this)) {
                     details.addView(android.widget.Button(this).apply {
                         text = "Apparaat verwijderen (ook rechten en licentie)"
                         setOnClickListener {
