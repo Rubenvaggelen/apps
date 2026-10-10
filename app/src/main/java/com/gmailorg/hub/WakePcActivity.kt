@@ -329,21 +329,33 @@ class WakePcActivity : AppCompatActivity() {
         devices.forEach { device ->
             val personLabel = device.personName.ifBlank { "Naam nog niet ingevuld" }
             val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(16, 14, 16, 14) }
-            card.addView(TextView(this).apply {
+            val expandHeader = TextView(this).apply {
                 text = (if (device.online) "●  " else "○  ") + personLabel + (if (device.owner) "  •  The One" else "")
                 textSize = 17f
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
                 setTextColor(ContextCompat.getColor(this@WakePcActivity, if (device.online) R.color.amber else R.color.text_main))
-            })
-            card.addView(TextView(this).apply { text = device.name; textSize = 12f; setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim)) })
+            }
+            card.addView(expandHeader)
+            val details = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                visibility = View.GONE
+            }
+            expandHeader.text = expandHeader.text.toString() + "  ▾"
+            expandHeader.setPadding(0, 8, 0, 10)
+            expandHeader.setOnClickListener {
+                val open = details.visibility != View.VISIBLE
+                details.visibility = if (open) View.VISIBLE else View.GONE
+                expandHeader.text = expandHeader.text.toString().dropLast(1) + if (open) "▴" else "▾"
+            }
+            details.addView(TextView(this).apply { text = device.name; textSize = 12f; setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim)) })
             val state = TextView(this).apply {
                 text = managedDeviceStateText(device)
                 textSize = 12f
                 setTextColor(ContextCompat.getColor(this@WakePcActivity, if (device.blocked) android.R.color.holo_red_light else R.color.text_dim))
             }
-            card.addView(state)
+            details.addView(state)
             if (device.owner) {
-                card.addView(TextView(this).apply {
+                details.addView(TextView(this).apply {
                     text = "The One • beheerder • alle mediarechten actief • kan niet worden geblokkeerd"
                     textSize = 12f
                     setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.amber))
@@ -488,7 +500,7 @@ class WakePcActivity : AppCompatActivity() {
                     }
 
                     section.addView(buttons)
-                    card.addView(section)
+                    details.addView(section)
                 }
 
                 addAccessControl(
@@ -540,7 +552,7 @@ class WakePcActivity : AppCompatActivity() {
                     device.pendingFileDownloads
                 )
 
-                card.addView(android.widget.Button(this).apply {
+                details.addView(android.widget.Button(this).apply {
                     text = if (device.blocked) "Deblokkeren" else "Blokkeren"
                     setOnClickListener {
                         isEnabled = false
@@ -560,6 +572,7 @@ class WakePcActivity : AppCompatActivity() {
                     }
                 })
             }
+            card.addView(details)
             list.addView(card)
             list.addView(View(this).apply { setBackgroundColor(ContextCompat.getColor(this@WakePcActivity, R.color.line)) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
         }
