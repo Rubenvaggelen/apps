@@ -8,6 +8,7 @@ on:
       - 'the-one-remote-server/main-heartbeat-license-bridge.php'
       - 'app/src/main/java/com/gmailorg/hub/MainDeviceRegistry.kt'
       - 'tests/main-heartbeat-license-bridge.php'
+      - 'tests/main-approval-heartbeat-integration.php'
       - 'scripts/prepare-main-license-live-bridge.py'
       - 'tests/test_main_live_bridge_patch.py'
       - 'devhub/studio-licenses.php'
@@ -39,10 +40,12 @@ jobs:
           php -l tests/main-license-lifecycle.php
           php -l the-one-remote-server/main-heartbeat-license-bridge.php
           php -l tests/main-heartbeat-license-bridge.php
+          php -l tests/main-approval-heartbeat-integration.php
       - name: Existing update vs clean reinstall
         run: |
           php tests/main-license-lifecycle.php
           php tests/main-heartbeat-license-bridge.php
+          php tests/main-approval-heartbeat-integration.php
           python3 tests/test_main_live_bridge_patch.py
   android-main-compile:
     name: Compile The One Main license screen (no APK release)
