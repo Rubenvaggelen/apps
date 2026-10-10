@@ -1,0 +1,83 @@
+name: Verify The One License Changes
+
+on:
+  pull_request:
+    paths:
+      - 'the-one-remote-server/license-core.php'
+      - 'the-one-remote-server/licenses.php'
+      - 'the-one-remote-server/main-heartbeat-license-bridge.php'
+      - 'app/src/main/java/com/gmailorg/hub/MainDeviceRegistry.kt'
+      - 'tests/main-heartbeat-license-bridge.php'
+      - 'tests/main-approval-heartbeat-integration.php'
+      - 'scripts/prepare-main-license-live-bridge.py'
+      - 'tests/test_main_live_bridge_patch.py'
+      - '.github/workflows/build-main.yml'
+      - 'devhub/studio-licenses.php'
+      - 'app/src/main/java/com/gmailorg/hub/MainLicenseClient.kt'
+      - 'app/src/main/java/com/gmailorg/hub/AccessRequestNotificationWorker.kt'
+      - 'app/src/main/java/com/gmailorg/hub/NotifStore.kt'
+      - 'app/src/main/java/com/gmailorg/hub/NotificationsActivity.kt'
+      - 'app/src/main/java/com/gmailorg/hub/WakePcActivity.kt'
+      - 'app/src/test/java/com/gmailorg/hub/AccessRequestDismissalTest.kt'
+      - 'app/src/main/java/com/gmailorg/hub/HomeActivity.kt'
+      - 'tests/main-license-lifecycle.php'
+      - '.github/workflows/verify-license-changes.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  php-license-lifecycle:
+    name: PHP syntax and full install lifecycle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP syntax
+        run: |
+          php -l the-one-remote-server/license-core.php
+          php -l the-one-remote-server/licenses.php
+          php -l devhub/studio-licenses.php
+          php -l tests/main-license-lifecycle.php
+          php -l the-one-remote-server/main-heartbeat-license-bridge.php
+          php -l tests/main-heartbeat-license-bridge.php
+          php -l tests/main-approval-heartbeat-integration.php
+      - name: Existing update vs clean reinstall
+        run: |
+          php tests/main-license-lifecycle.php
+          php tests/main-heartbeat-license-bridge.php
+          php tests/main-approval-heartbeat-integration.php
+          python3 tests/test_main_live_bridge_patch.py
+          python3 - <<'PY'
+          from pathlib import Path
+          w = Path('.github/workflows/build-main.yml').read_text()
+          assert 'Verify APK signer matches installed Main v984' in w
+          assert w.index('Verify APK signer matches installed Main v984') < w.index('Release Main only')
+          assert 'OLD_CERT' in w and 'NEW_CERT' in w
+          print('Main APK signer gate present before release')
+          PY
+  android-main-compile:
+    name: Compile The One Main license screen (no APK release)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: ''
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+      - name: Prepare ephemeral debug signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android"
+          keytool -genkeypair -keystore "$HOME/.android/debug.keystore" -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 2 -dname 'CN=Local CI,O=The One Test,C=NL' >/dev/null 2>&1
+      - name: Prepare existing offline supermarket test snapshot
+        run: python3 .github/scripts/supermarket-snapshot.py
+      - name: Compile Main and tests only
+        run: gradle :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon --no-build-cache -PappVersionCode=9999

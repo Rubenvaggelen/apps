@@ -16,8 +16,6 @@ object NotifStore {
     private const val PREFS = "notif_hub_store"
     private const val KEY_ITEMS = "items"
     private const val MAX_ITEMS = 300
-    private const val KEY_DISMISSED_ACCESS = "dismissed_access_keys"
-    private val dismissedAccess = mutableSetOf<String>()
     private const val KEY_DISMISSED = "dismissed_notification_versions"
     private var dismissals = NotificationDismissals()
 
@@ -29,7 +27,6 @@ object NotifStore {
     fun init(context: Context) {
         if (prefs != null) return
         prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        dismissedAccess.addAll(prefs?.getStringSet(KEY_DISMISSED_ACCESS, emptySet()).orEmpty())
         val saved = runCatching {
             val json = JSONObject(prefs?.getString(KEY_DISMISSED, "{}") ?: "{}")
             json.keys().asSequence().associateWith { json.getString(it) }
@@ -43,7 +40,6 @@ object NotifStore {
 
     @Synchronized
     fun addOrUpdate(item: NotifItem) {
-        if (item.actionType == "access_request" && item.key in dismissedAccess) return
         if (item.actionType.isBlank() && dismissals.shouldSuppress(item)) return
         items.removeAll { it.key == item.key }
         items.add(item)
@@ -72,9 +68,12 @@ object NotifStore {
             // Android confirms the source notification ended. A later new session is allowed.
             dismissals.sourceRemoved(key)
         }
-        val dismissed = items.filter { it.key == key && it.actionType == "access_request" }
-        dismissedAccess.addAll(dismissed.map { it.key })
-        val changed = items.removeAll { it.key == key && (force || !it.persistent || it.actionType == "access_request") }
+        // No local operation may dismiss an unresolved access/license request.
+        // Only an authoritative server status sync removes it using removeWhere().
+        val changed = items.removeAll {
+            it.key == key && it.actionType != "access_request" &&
+                it.actionType != "license_request" && (force || !it.persistent)
+        }
         if (changed) {
             persist()
             notifyListeners()
@@ -98,8 +97,9 @@ object NotifStore {
     @Synchronized
     fun clearAll() {
         items.filter { !it.persistent && it.actionType.isBlank() }.forEach { dismissals.remember(it) }
-        dismissedAccess.addAll(items.filter { it.actionType == "access_request" }.map { it.key })
-        val changed = items.removeAll { !it.persistent || it.actionType == "access_request" }
+        val changed = items.removeAll {
+            !it.persistent && it.actionType != "access_request" && it.actionType != "license_request"
+        }
         if (changed) {
             persist()
             notifyListeners()
@@ -141,7 +141,7 @@ object NotifStore {
         dismissals.snapshot().forEach { (key, signature) -> hidden.put(key, signature) }
         prefs?.edit()?.putString(KEY_ITEMS, arr.toString())
             ?.putString(KEY_DISMISSED, hidden.toString())
-            ?.putStringSet(KEY_DISMISSED_ACCESS, dismissedAccess.toSet())?.apply()
+            ?.apply()
     }
 
     private fun load() {

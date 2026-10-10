@@ -110,6 +110,7 @@ class WakePcActivity : AppCompatActivity() {
         val sleepButton = findViewById<View>(R.id.sleepPcButton)
         val remoteButton = findViewById<View>(R.id.remotePcButton)
         val manageDevicesButton = findViewById<View>(R.id.manageDevicesButton)
+        val musicStudioAccessButton = findViewById<View>(R.id.musicStudioAccessButton)
 
         findViewById<View>(R.id.backButton).setOnClickListener { finish() }
 
@@ -117,6 +118,7 @@ class WakePcActivity : AppCompatActivity() {
         sleepButton.isEnabled = false
         remoteButton.isEnabled = false
         manageDevicesButton.isEnabled = false
+        musicStudioAccessButton.isEnabled = false
         status.setTextColor(ContextCompat.getColor(this, R.color.text_dim))
         status.text = "Eigenaarsrechten controleren…"
 
@@ -138,6 +140,7 @@ class WakePcActivity : AppCompatActivity() {
                 sleepButton.isEnabled = true
                 remoteButton.isEnabled = true
                 manageDevicesButton.isEnabled = true
+                musicStudioAccessButton.isEnabled = true
                 status.text = "Klaar"
                 if (intent.getBooleanExtra("open_access_management", false)) {
                     intent.removeExtra("open_access_management")
@@ -178,6 +181,15 @@ class WakePcActivity : AppCompatActivity() {
         manageDevicesButton.setOnClickListener {
             openDeviceManager(manageDevicesButton)
         }
+        // Alleen de eigenaar ziet deze toegang. De server vereist daarnaast
+        // een echte Dev Hub-beheerderssessie; een apparaat-ID is niet voldoende.
+        musicStudioAccessButton.setOnClickListener {
+            val portal = android.net.Uri.parse("https://dev.rubenvanaggelen.com/studio-licenses.php")
+            androidx.browser.customtabs.CustomTabsIntent.Builder()
+                .setShowTitle(true)
+                .build()
+                .launchUrl(this, portal)
+        }
     }
 
     private fun openDeviceManager(trigger: View) {
@@ -187,6 +199,10 @@ class WakePcActivity : AppCompatActivity() {
             val devices = if (owner) runCatching {
                 MainDeviceRegistry.listDevices(this, "")
             }.getOrNull() else null
+            val licenseRequests = if (owner && MainLicenseClient.ownerIsPaired(this)) {
+                runCatching { MainLicenseClient.pendingOwnerApprovals(this) }.getOrNull()
+            } else emptyList()
+
 
             runOnUiThread {
                 trigger.isEnabled = true
@@ -208,13 +224,107 @@ class WakePcActivity : AppCompatActivity() {
                 }
 
                 activeDeviceAdminPin = ""
-                showManagedDevices(devices)
+                showManagedDevices(devices, licenseRequests)
             }
         }.start()
     }
 
-    private fun showManagedDevices(devices: List<MainRegisteredDevice>) {
+    private fun showManagedDevices(
+        devices: List<MainRegisteredDevice>,
+        licenseRequests: List<MainPendingLicenseRequest>?
+    ) {
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(18, 8, 18, 8) }
+
+        list.addView(TextView(this).apply {
+            text = "Nieuwe Main-aanmeldingen — wachten op goedkeuring"
+            textSize = 17f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.amber))
+            setPadding(10, 14, 10, 10)
+        })
+
+        if (!MainLicenseClient.ownerIsPaired(this)) {
+            list.addView(TextView(this).apply {
+                text = "Eenmalig koppelen met de beveiligde Dev Hub is nodig om licentieaanvragen veilig in Main Meldingen te ontvangen en hier goed te keuren."
+                textSize = 12f
+                setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
+            })
+            list.addView(android.widget.Button(this).apply {
+                text = "Koppel licentiemeldingen"
+                setOnClickListener { showOwnerPairingDialog() }
+            })
+        } else if (licenseRequests == null) {
+            list.addView(TextView(this).apply {
+                text = "Licentieserver niet bereikbaar. Bestaande meldingen blijven bewaard; probeer later opnieuw."
+                textSize = 12f
+                setTextColor(ContextCompat.getColor(this@WakePcActivity, android.R.color.holo_red_light))
+            })
+        } else if (licenseRequests.isEmpty()) {
+            list.addView(TextView(this).apply {
+                text = "Geen nieuwe aanmeldingen die op jouw goedkeuring wachten."
+                textSize = 12f
+                setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
+            })
+        } else {
+            licenseRequests.sortedWith(
+                compareByDescending<MainPendingLicenseRequest> {
+                    it.id == intent.getStringExtra("focus_license_request_id")
+                }.thenBy { it.createdAt }
+            ).forEach { pending ->
+                val entry = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(14, 12, 14, 12)
+                }
+                entry.addView(TextView(this).apply {
+                    text = pending.person.ifBlank { "Onbekende gebruiker" } +
+                        " • Aanmelding wacht op toestemming"
+                    textSize = 15f
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_main))
+                })
+                entry.addView(TextView(this).apply {
+                    text = "Apparaat-ID: " + pending.deviceId + "\nAangevraagd: " + pending.createdAt
+                    textSize = 12f
+                    setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
+                })
+                entry.addView(android.widget.Button(this).apply {
+                    text = "Aanmelding goedkeuren"
+                    setOnClickListener {
+                        val action = this
+                        action.isEnabled = false
+                        Thread {
+                            val approved = runCatching {
+                                MainLicenseClient.approveOwnerRequest(this@WakePcActivity, pending.id)
+                            }
+                            runOnUiThread {
+                                if (approved.getOrNull() == true) {
+                                    AccessRequestNotifications.resolveLicense(this@WakePcActivity, pending.id)
+                                    Toast.makeText(this@WakePcActivity,
+                                        "Aanmelding goedgekeurd. De gebruiker kan nu activeren.",
+                                        Toast.LENGTH_LONG).show()
+                                    AccessRequestNotificationWorker.checkNow(this@WakePcActivity)
+                                    list.removeView(entry)
+                                } else {
+                                    action.isEnabled = true
+                                    Toast.makeText(this@WakePcActivity,
+                                        "Goedkeuren mislukt. De aanvraag blijft in je meldingen staan.",
+                                        Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }.start()
+                    }
+                })
+                list.addView(entry)
+            }
+        }
+
+        list.addView(TextView(this).apply {
+            text = "Geregistreerde apparaten en rechten"
+            textSize = 17f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.amber))
+            setPadding(10, 20, 10, 8)
+        })
         if (devices.isEmpty()) list.addView(TextView(this).apply { text = "Nog geen apparaten geregistreerd."; setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim)); textSize = 14f })
         devices.forEach { device ->
             val personLabel = device.personName.ifBlank { "Naam nog niet ingevuld" }
@@ -455,6 +565,48 @@ class WakePcActivity : AppCompatActivity() {
         }
         val scroll = android.widget.ScrollView(this).apply { isFillViewport = true; addView(list) }
         AlertDialog.Builder(this).setTitle("Verbonden apparaten").setView(scroll).setNegativeButton("Sluiten", null).show()
+    }
+
+    private fun showOwnerPairingDialog() {
+        val input = EditText(this).apply {
+            hint = "OWNER-... code uit beveiligde Dev Hub"
+            isSingleLine = true
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+            setPadding(24, 14, 24, 14)
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Main-meldingen koppelen")
+            .setMessage(
+                "Open in de beveiligde Dev Hub 'Licenties beheren' en maak " +
+                "daar een eenmalige eigenaar-koppelcode. Voer hem hier binnen 10 minuten in."
+            )
+            .setView(input)
+            .setNegativeButton("Annuleren", null)
+            .setPositiveButton("Koppelen", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val submit = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                submit.isEnabled = false
+                Thread {
+                    val paired = runCatching {
+                        MainLicenseClient.pairOwner(this, input.text.toString())
+                    }.getOrDefault(false)
+                    runOnUiThread {
+                        submit.isEnabled = true
+                        if (paired) {
+                            dialog.dismiss()
+                            Toast.makeText(this, "Main-aanmeldmeldingen gekoppeld.",
+                                Toast.LENGTH_LONG).show()
+                            AccessRequestNotificationWorker.checkNow(this)
+                        } else {
+                            input.error = "Koppelen mislukt: controleer de code en vervaldatum."
+                        }
+                    }
+                }.start()
+            }
+        }
+        dialog.show()
     }
 
     private fun managedDeviceStateText(device: MainRegisteredDevice): String {

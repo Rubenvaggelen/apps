@@ -33,13 +33,22 @@ class HomeActivity : AppCompatActivity() {
     private val mailUrl = "https://rubenvaggelen.github.io/Gmailorg/"
 
     private lateinit var adapter: HomeAdapter
+    private val pendingNotificationListener: () -> Unit = {
+        runOnUiThread { if (!isFinishing && !isDestroyed) refreshTiles() }
+    }
+
     private var blockedDialogShowing = false
+    private var mainLicenseDialogShowing = false
     private var personRegistrationDialogShowing = false
     private var personRegistrationLookupRunning = false
     private val accessRequestPoll = object : Runnable {
         override fun run() {
-            if (!isFinishing && !isDestroyed && MainDeviceRegistry.isLocallyOwner(this@HomeActivity)) {
-                AccessRequestNotificationWorker.checkNow(this@HomeActivity)
+            if (!isFinishing && !isDestroyed) {
+                if (MainDeviceRegistry.isLocallyOwner(this@HomeActivity)) {
+                    AccessRequestNotificationWorker.checkNow(this@HomeActivity)
+                }
+                // Always reschedule: on first launch the owner flag can be
+                // populated after the first poll by the remote heartbeat.
                 findViewById<RecyclerView>(R.id.homeGrid).postDelayed(this, 30_000L)
             }
         }
@@ -48,11 +57,15 @@ class HomeActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_home)
+        NotifStore.init(applicationContext)
+        NotifStore.subscribe(pendingNotificationListener)
         ShortcutStore.init(applicationContext)
         HiddenTilesStore.init(applicationContext)
         cleanUpMissingShortcuts()
 
         val grid = findViewById<RecyclerView>(R.id.homeGrid)
+        // No Main tiles become interactive until this installation is licensed.
+        grid.visibility = View.INVISIBLE
         grid.layoutManager = GridLayoutManager(this, 3)
         adapter = HomeAdapter(
             onTileClick = ::handleTileClick,
@@ -89,6 +102,11 @@ class HomeActivity : AppCompatActivity() {
         grid.post(accessRequestPoll)
     }
 
+    override fun onDestroy() {
+        NotifStore.unsubscribe(pendingNotificationListener)
+        super.onDestroy()
+    }
+
     override fun onPause() {
         findViewById<RecyclerView>(R.id.homeGrid).removeCallbacks(accessRequestPoll)
         super.onPause()
@@ -118,8 +136,14 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private fun refreshTiles() {
+        val waitingCount = if (MainDeviceRegistry.isLocallyOwner(this)) {
+            NotifStore.getAll().count {
+                it.actionType == "license_request" || it.actionType == "access_request"
+            }
+        } else 0
         val fixed = listOf(
-            HomeTile(id = "notifications", type = TileType.NOTIFICATIONS, label = "Meldingen"),
+            HomeTile(id = "notifications", type = TileType.NOTIFICATIONS,
+                label = if (waitingCount > 0) "Meldingen • $waitingCount" else "Meldingen"),
             HomeTile(id = "mail", type = TileType.MAIL, label = "Mail & Kalender"),
             HomeTile(id = "route", type = TileType.ROUTE, label = "Route"),
             HomeTile(id = "household", type = TileType.HOUSEHOLD, label = "Huishouden"),
@@ -288,38 +312,9 @@ class HomeActivity : AppCompatActivity() {
 
                 dialog.dismiss()
                 refreshTiles()
-
-                Thread {
-                    val blocked = runCatching {
-                        MainDeviceRegistry.heartbeat(this)
-                    }.getOrNull()
-
-                    var owner = MainDeviceRegistry.isLocallyOwner(this)
-                    if (isTheOne && !owner) {
-                        owner = MainDeviceRegistry.claimInitialOwner(this)
-                    }
-
-                    runOnUiThread {
-                        refreshTiles()
-                        if (isTheOne) {
-                            Toast.makeText(
-                                this,
-                                if (owner) {
-                                    "$personName is geregistreerd als The One • beheerder"
-                                } else {
-                                    "$personName is opgeslagen. Beheerderstatus wordt gecontroleerd zodra dit toestel daarvoor is geautoriseerd."
-                                },
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-
-                        if (blocked == true) {
-                            showBlockedDeviceDialog()
-                        } else {
-                            checkDeviceAccess()
-                        }
-                    }
-                }.start()
+                // Licensing must run before the first heartbeat, including
+                // a newly registered owner device.
+                checkDeviceAccess()
             }
         }
 
@@ -330,27 +325,122 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private fun checkDeviceAccess() {
-        if (MainDeviceRegistry.isLocallyBlocked(this)) {
-            showBlockedDeviceDialog()
-        }
-
+        // Check license BEFORE registration or owner-claiming. An unlicensed
+        // clean reinstall must not recreate the old Main device registration.
         Thread {
+            val license = MainLicenseClient.status(this)
+            if (!license.allowed) {
+                runOnUiThread {
+                    findViewById<RecyclerView>(R.id.homeGrid).visibility = View.INVISIBLE
+                    if (license.enabled) showMainLicenseDialog(license.mode)
+                }
+                return@Thread
+            }
             val blocked = runCatching { MainDeviceRegistry.heartbeat(this) }.getOrNull()
-                ?: return@Thread
-
             if (
+                blocked != true &&
                 !MainDeviceRegistry.isLocallyOwner(this) &&
                 MainDeviceRegistry.isOwnerEligible() &&
                 MainDeviceRegistry.isTheOneProfile(this)
             ) {
-                MainDeviceRegistry.claimInitialOwner(this)
+                runCatching { MainDeviceRegistry.claimInitialOwner(this) }
             }
-
             runOnUiThread {
+                findViewById<RecyclerView>(R.id.homeGrid).visibility = View.VISIBLE
                 refreshTiles()
-                if (blocked) showBlockedDeviceDialog()
+                if (blocked == true || MainDeviceRegistry.isLocallyBlocked(this)) {
+                    showBlockedDeviceDialog()
+                }
             }
         }.start()
+    }
+
+    private fun showMainLicenseDialog(reason: String) {
+        if (mainLicenseDialogShowing || isFinishing || isDestroyed) return
+        mainLicenseDialogShowing = true
+        val density = resources.displayMetrics.density
+        val pad = (18 * density).toInt()
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, 0)
+        }
+        val explanation = TextView(this).apply {
+            text = if (reason == "server_offline") {
+                "De licentieserver is momenteel niet bereikbaar. Een nieuwe installatie moet online worden geactiveerd. Bestaande geactiveerde apparaten behouden tijdelijk offline toegang."
+            } else {
+                "Deze nieuwe installatie van The One Main moet eerst door de beheerder worden goedgekeurd. Dit geldt ook na verwijderen en opnieuw installeren op een eerder gebruikt toestel."
+            }
+            setTextColor(ContextCompat.getColor(this@HomeActivity, R.color.text_main))
+        }
+        container.addView(explanation)
+        val codeInput = EditText(this).apply {
+            hint = "Activatiecode uit The One Main"
+            isSingleLine = true
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+            setPadding(pad / 2, pad, pad / 2, pad)
+        }
+        container.addView(codeInput)
+        val status = TextView(this).apply {
+            text = "Vraag een code aan bij de beheerder of vul je activatiecode in."
+            setTextColor(ContextCompat.getColor(this@HomeActivity, R.color.text_dim))
+        }
+        container.addView(status)
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("The One Main — activatie vereist")
+            .setView(container)
+            .setPositiveButton("Activeren", null)
+            .setNegativeButton("Toegang aanvragen", null)
+            .setNeutralButton("App sluiten") { _, _ -> finishAffinity() }
+            .setCancelable(false)
+            .create()
+
+        dialog.setOnShowListener {
+            val activate = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            val request = dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
+            fun setBusy(busy: Boolean) {
+                activate.isEnabled = !busy
+                request.isEnabled = !busy
+            }
+            activate.setOnClickListener {
+                val code = codeInput.text.toString().trim()
+                if (code.isBlank()) {
+                    status.text = "Vul eerst je activatiecode in."
+                    return@setOnClickListener
+                }
+                setBusy(true)
+                status.text = "Code controleren…"
+                Thread {
+                    val result = runCatching { MainLicenseClient.redeem(this, code) }
+                    runOnUiThread {
+                        setBusy(false)
+                        if (result.getOrNull()?.allowed == true) {
+                            dialog.dismiss()
+                            Toast.makeText(this, "The One Main is geactiveerd.", Toast.LENGTH_LONG).show()
+                            checkDeviceAccess()
+                        } else {
+                            status.text = "Code niet geldig of server tijdelijk onbereikbaar. Probeer opnieuw."
+                        }
+                    }
+                }.start()
+            }
+            request.setOnClickListener {
+                setBusy(true)
+                status.text = "Aanvraag versturen…"
+                Thread {
+                    val result = runCatching { MainLicenseClient.askForAccess(this) }
+                    runOnUiThread {
+                        setBusy(false)
+                        status.text = if (result.getOrNull()?.pending == true)
+                            "Aanvraag verzonden. De beheerder behandelt hem vanuit The One Main → Laptop → Licenties."
+                        else "Verbinding mislukt. Probeer later opnieuw."
+                    }
+                }.start()
+            }
+        }
+        dialog.setOnDismissListener { mainLicenseDialogShowing = false }
+        dialog.show()
     }
 
     private fun showBlockedDeviceDialog() {

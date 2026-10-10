@@ -35,11 +35,15 @@ class NotificationsActivity : AppCompatActivity() {
             emptyList(),
             onDismiss = { item -> NotifStore.removeByKey(item.key) },
             onOpen = { item ->
-                if (item.actionType == "access_request") {
+                if (item.actionType == "access_request" || item.actionType == "license_request") {
                     startActivity(
                         Intent(this, WakePcActivity::class.java).apply {
                             putExtra("open_access_management", true)
-                            putExtra("focus_device_id", item.actionValue)
+                            if (item.actionType == "license_request") {
+                                putExtra("focus_license_request_id", item.actionValue)
+                            } else {
+                                putExtra("focus_device_id", item.actionValue)
+                            }
                         }
                     )
                 }
@@ -55,7 +59,7 @@ class NotificationsActivity : AppCompatActivity() {
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
                 val position = viewHolder.adapterPosition
                 val item = currentFilteredItems().getOrNull(position) ?: return
-                if (item.persistent && item.actionType != "access_request") {
+                if (item.persistent || item.actionType == "access_request" || item.actionType == "license_request") {
                     adapter.updateItems(currentFilteredItems())
                     return
                 }

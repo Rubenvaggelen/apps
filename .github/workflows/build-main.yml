@@ -109,6 +109,30 @@ jobs:
               raise SystemExit("TMDB key missing from generated Main configuration; release blocked.")
           print("Existing TMDB key included in Main; value not displayed.")
           PY
+      - name: Verify APK signer matches installed Main v984
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASELINE="/tmp/the-one-main-v984.apk"
+          curl --fail --location --silent --show-error --max-time 120 \
+            "https://github.com/Rubenvaggelen/apps/releases/download/main-v984/app-debug.apk" -o "$BASELINE"
+          test -s "$BASELINE"
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          test -x "$APKSIGNER"
+          extract_cert() {
+            "$APKSIGNER" verify --print-certs "$1" |
+              sed -n 's/.*certificate SHA-256 digest: //p' |
+              head -1 | tr -d ':' | tr '[:upper:]' '[:lower:]'
+          }
+          OLD_CERT="$(extract_cert "$BASELINE")"
+          NEW_CERT="$(extract_cert app/build/outputs/apk/debug/app-debug.apk)"
+          if [ -z "$OLD_CERT" ] || [ -z "$NEW_CERT" ] || [ "$OLD_CERT" != "$NEW_CERT" ]; then
+            echo "::error::New Main signing certificate differs from v984; release blocked."
+            exit 1
+          fi
+          echo "Main signer matches v984; normal update signing check passed."
+
       - name: Release Main only
         uses: softprops/action-gh-release@v2
         with:

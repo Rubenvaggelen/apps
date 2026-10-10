@@ -146,6 +146,12 @@ object MainDeviceRegistry {
             .put("platform", "Android ${Build.VERSION.RELEASE}")
             .put("version", BuildConfig.VERSION_CODE.toString())
 
+        // Legacy devices keep the existing allowlist; new installs present an
+        // installation-bound credential for the server to validate.
+        MainLicenseClient.heartbeatCredential(context)?.let { (installation, token) ->
+            payload.put("installation_id", installation)
+            payload.put("license_token", token)
+        }
         val json = request("heartbeat", payload)
         val blocked = json.optBoolean("blocked", false)
         val owner = json.optBoolean("owner", false)
