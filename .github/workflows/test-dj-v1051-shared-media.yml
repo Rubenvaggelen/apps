@@ -42,7 +42,7 @@ jobs:
           assert 'new SharedMediaClient(this, installationLicense)' in dj
           assert 'installationLicense.approvedInstallationId()' in client
           assert 'installationLicense.approvedPersonName()' in client
-          assert 'installationLicense.approvedTokenForSharedMedia()' in client
+          assert 'installationLicense.sharedMediaLicenseOrRequest(name)' in client
           assert '.put("device_role","dj")' in client
           assert '.put("license_token",licenseToken)' in client
           assert 'new JSONObject().optString("person_name", "")' not in client
