@@ -101,8 +101,27 @@ public final class DjInstallationLicense {
     }
 
     /** Call from onCreate BEFORE constructing any DJ WebView or audio service. */
+    private boolean isExistingPreLicenseInstallation() {
+        try {
+            @SuppressWarnings("deprecation")
+            android.content.pm.PackageInfo packageInfo =
+                activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0);
+            // Existing DJ v1049 and older installations continue without a forced
+            // mass re-enrollment. Uninstall/reinstall resets firstInstallTime.
+            return packageInfo.firstInstallTime > 0L &&
+                packageInfo.firstInstallTime < 1791662400000L; // 2026-10-10T20:00Z
+        } catch (Exception ignored) {
+            return false; // Fail closed for unknown install metadata.
+        }
+    }
+
     public void begin(Runnable launchApprovedPlayer) {
         approvedAction=launchApprovedPlayer;
+        if (isExistingPreLicenseInstallation()) {
+            granted=true;
+            approvedAction.run();
+            return;
+        }
         render();
         check();
         pollTask=new Runnable(){
@@ -226,6 +245,7 @@ public final class DjInstallationLicense {
         });
     }
     public void revalidate(Runnable revoked){
+        if(isExistingPreLicenseInstallation())return; // Existing DJ upgrade stays intact.
         if(!granted||stopped)return;
         new Thread(()->{
             try{
