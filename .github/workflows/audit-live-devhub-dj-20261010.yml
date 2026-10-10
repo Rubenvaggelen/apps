@@ -1,0 +1,56 @@
+name: Audit Live Dev Hub DJ Pages
+on:
+  push:
+    branches: [feature/main-clean-install-devhub-dj-20261010]
+    paths: ['.github/workflows/audit-live-devhub-dj-20261010.yml']
+permissions:
+  contents: read
+jobs:
+  read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Compare protected live Dev Hub pages without modification
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$tmp"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$tmp/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$tmp/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$tmp/askpass"
+          chmod 600 "$tmp/key" "$tmp/known_hosts"
+          chmod 700 "$tmp/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$tmp/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$tmp/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          scpdo() {
+            scp -O -P "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=20 "$@"
+          }
+          for name in builds.php index.php; do
+            scpdo "$remote:dev.vanaggelen.com/$name" "$tmp/live-$name"
+            path="devhub/builds.php"
+            test "$name" = "index.php" && path="devhub/public/index.php"
+            git show HEAD:"$path" > "$tmp/new-$name"
+            git show origin/main:"$path" > "$tmp/base-$name"
+            php -l "$tmp/live-$name"
+            if cmp -s "$tmp/live-$name" "$tmp/base-$name"; then
+              echo "SAFE BASELINE MATCH for $name"
+            elif cmp -s "$tmp/live-$name" "$tmp/new-$name"; then
+              echo "ALREADY CURRENT $name"
+            else
+              echo "UNEXPECTED LIVE CONTENT in $name; deployment must not overwrite it blindly"
+              git diff --no-index --stat "$tmp/base-$name" "$tmp/live-$name" || true
+            fi
+          done
