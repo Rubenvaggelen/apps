@@ -76,11 +76,12 @@ def main():
     updated = patch(original)
     bridge = target.parent / "main-heartbeat-license-bridge.php"
     core = target.parent / "license-core.php"
+    if not args.apply:
+        print("DRY RUN OK: exact allowlists preserved; proposed Main grant guard matches; no files changed.")
+        print("Bridge present:", bridge.is_file(), "| License core present:", core.is_file())
+        return
     if not bridge.is_file() or not core.is_file():
         raise SystemExit("STOP: licensing bridge/core missing alongside live devices.php")
-    if not args.apply:
-        print("DRY RUN OK: exact allowlists preserved, new Main grant guard can be inserted; no files changed.")
-        return
     backup = target.with_name(target.name + ".before-main-license-bridge-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + ".bak")
     shutil.copy2(target, backup)
     fd, staging = tempfile.mkstemp(prefix=".devices-license-", dir=target.parent)
