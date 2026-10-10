@@ -69,7 +69,7 @@ jobs:
             --title "The One Main — v994" \
             --target "$GITHUB_SHA" \
             --notes "Main update voor alle apparaten: Parkeren gebruikt Dam 1, Amsterdam als voorbeeld; oude voorbeelden worden niet automatisch opgeslagen. Iedere Main-gebruiker kiest een persoonlijke PIN bij de eerste opening na de update: startcode 1306, daarna verplicht een eigen 4–8-cijferige PIN. Later opnieuw wijzigen via Instellingen. Bestaande Main-gegevens en toegekende rechten blijven bij normaal bijwerken behouden. Main-licentieaanvragen blijven zoals eerder ingericht." \
-            --verify-tag
+
           gh release view main-v994 --repo Rubenvaggelen/apps --json assets,isDraft,isPrerelease,url \
             --jq '{draft:.isDraft,prerelease:.isPrerelease,url:.url,assets:[.assets[].name]}'
           echo 'SUCCESS: Main v994 released for all Main update-checking installations'
