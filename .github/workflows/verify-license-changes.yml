@@ -11,6 +11,7 @@ on:
       - 'tests/main-approval-heartbeat-integration.php'
       - 'scripts/prepare-main-license-live-bridge.py'
       - 'tests/test_main_live_bridge_patch.py'
+      - '.github/workflows/build-main.yml'
       - 'devhub/studio-licenses.php'
       - 'app/src/main/java/com/gmailorg/hub/MainLicenseClient.kt'
       - 'app/src/main/java/com/gmailorg/hub/AccessRequestNotificationWorker.kt'
@@ -47,6 +48,14 @@ jobs:
           php tests/main-heartbeat-license-bridge.php
           php tests/main-approval-heartbeat-integration.php
           python3 tests/test_main_live_bridge_patch.py
+          python3 - <<'PY'
+          from pathlib import Path
+          w = Path('.github/workflows/build-main.yml').read_text()
+          assert 'Verify APK signer matches installed Main v984' in w
+          assert w.index('Verify APK signer matches installed Main v984') < w.index('Release Main only')
+          assert 'OLD_CERT' in w and 'NEW_CERT' in w
+          print('Main APK signer gate present before release')
+          PY
   android-main-compile:
     name: Compile The One Main license screen (no APK release)
     runs-on: ubuntu-latest
