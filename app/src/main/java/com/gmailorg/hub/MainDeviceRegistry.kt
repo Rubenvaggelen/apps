@@ -10,6 +10,7 @@ import java.util.UUID
 data class MainRegisteredDevice(
     val id: String,
     val name: String,
+    val registered: String,
     val personName: String,
     val platform: String,
     val version: String,
@@ -247,6 +248,7 @@ object MainDeviceRegistry {
                     MainRegisteredDevice(
                         id = item.optString("device_id"),
                         name = item.optString("name", "Apparaat"),
+                        registered = item.optString("registered", ""),
                         personName = item.optString("person_name", "").trim(),
                         platform = item.optString("platform", ""),
                         version = item.optString("version", ""),
