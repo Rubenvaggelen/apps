@@ -1,0 +1,153 @@
+name: Guarded Owner Device Removal Server Deployment
+on:
+  push:
+    branches: [feature/owner-remove-device-20261010]
+    paths: ['.github/workflows/deploy-owner-remove-device-20261010.yml']
+permissions:
+  contents: read
+concurrency:
+  group: owner-removal-live-20261010
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run isolated security and PHP tests
+        run: |
+          set -euo pipefail
+          php -l the-one-remote-server/license-core.php
+          php -l the-one-remote-server/main-heartbeat-license-bridge.php
+          php -l the-one-remote-server/owner-remove-device.php
+          python3 tests/test_owner_device_removal.py
+          php tests/main-heartbeat-license-bridge.php
+          php tests/main-approval-heartbeat-integration.php
+      - name: Backup and patch only verified live Main licensing files
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "$(printenv "$name")" || { echo "::error::Missing $name"; exit 1; }
+          done
+          tmp=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$tmp"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$tmp/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$tmp/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$tmp/askpass"
+          chmod 600 "$tmp/key" "$tmp/known_hosts"
+          chmod 700 "$tmp/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$tmp/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$tmp/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          sshdo() {
+            ssh -p "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=20 "$remote" "$@"
+          }
+          scpdo() {
+            scp -O -P "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=20 "$@"
+          }
+          dir="public_html/the-one-remote-api"
+          for name in devices.php license-core.php main-heartbeat-license-bridge.php; do
+            scpdo "$remote:$dir/$name" "$tmp/live-$name"
+          done
+          test ! -e "$tmp/live-owner-remove-device.php"
+          if sshdo 'test -e "$HOME/public_html/the-one-remote-api/owner-remove-device.php"'; then
+            echo "::error::Owner remove endpoint already exists; no overwrite"; exit 1
+          fi
+          git show a57f22ace8e99573f4bb16ea32112a787d58b92e:the-one-remote-server/license-core.php > "$tmp/before-core.php"
+          git show a57f22ace8e99573f4bb16ea32112a787d58b92e:the-one-remote-server/main-heartbeat-license-bridge.php > "$tmp/before-bridge.php"
+          cmp -s "$tmp/before-core.php" "$tmp/live-license-core.php" || { echo "::error::Unexpected live license core revision"; exit 1; }
+          cmp -s "$tmp/before-bridge.php" "$tmp/live-main-heartbeat-license-bridge.php" || { echo "::error::Unexpected live Main grant bridge revision"; exit 1; }
+          python3 - "$tmp/live-devices.php" "$tmp/patched-devices.php" <<'PY'
+          import importlib.util,pathlib,sys
+          spec=importlib.util.spec_from_file_location('retirement',pathlib.Path('scripts/prepare-main-retirement-live-guard.py').resolve())
+          mod=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(mod)
+          source=pathlib.Path(sys.argv[1]).read_text()
+          target=mod.patch(source)
+          if target.count(mod.MARKER)!=1 or target.count('one_license_main_device_retired(')!=1:
+              raise SystemExit('Refusing invalid live retired-device guard')
+          pathlib.Path(sys.argv[2]).write_text(target)
+          print('Verified exact additive live legacy Main guard; Car and allowlist unchanged')
+          PY
+          php -l "$tmp/patched-devices.php" >/dev/null
+          expected_devices=$(sha256sum "$tmp/live-devices.php" | cut -d' ' -f1)
+          expected_core=$(sha256sum "$tmp/live-license-core.php" | cut -d' ' -f1)
+          expected_bridge=$(sha256sum "$tmp/live-main-heartbeat-license-bridge.php" | cut -d' ' -f1)
+          stage=$(sshdo 'mktemp -d "$HOME/.one-owner-remove-stage.XXXXXXXX"')
+          scpdo "$tmp/patched-devices.php" "$remote:$stage/devices.php"
+          scpdo the-one-remote-server/license-core.php "$remote:$stage/license-core.php"
+          scpdo the-one-remote-server/main-heartbeat-license-bridge.php "$remote:$stage/main-heartbeat-license-bridge.php"
+          scpdo the-one-remote-server/owner-remove-device.php "$remote:$stage/owner-remove-device.php"
+          sshdo "bash -s -- '$stage' '$expected_devices' '$expected_core' '$expected_bridge'" <<'REMOTE'
+          set -Eeuo pipefail
+          stage="$1"
+          devices_sha="$2"
+          core_sha="$3"
+          bridge_sha="$4"
+          dir="$HOME/public_html/the-one-remote-api"
+          old_devices="$dir/devices.php"
+          old_core="$dir/license-core.php"
+          old_bridge="$dir/main-heartbeat-license-bridge.php"
+          new_endpoint="$dir/owner-remove-device.php"
+          [ "$(sha256sum "$old_devices" | cut -d' ' -f1)" = "$devices_sha" ] || { echo "ABORT: live registry code changed"; exit 1; }
+          [ "$(sha256sum "$old_core" | cut -d' ' -f1)" = "$core_sha" ] || { echo "ABORT: license core changed"; exit 1; }
+          [ "$(sha256sum "$old_bridge" | cut -d' ' -f1)" = "$bridge_sha" ] || { echo "ABORT: Main bridge changed"; exit 1; }
+          test ! -e "$new_endpoint" || { echo "ABORT: removal endpoint exists"; exit 1; }
+          for name in devices.php license-core.php main-heartbeat-license-bridge.php owner-remove-device.php; do
+            php -l "$stage/$name" >/dev/null
+          done
+          backup_dir="$HOME/.the-one-remote-backups"
+          mkdir -p "$backup_dir"
+          backup=$(mktemp -d "$backup_dir/owner-removal-20261010.XXXXXXXX")
+          cp -p "$old_devices" "$old_core" "$old_bridge" "$backup/"
+          rollback() {
+            echo "Rolling back ONLY PHP code from private backup"
+            cp -p "$backup/devices.php" "$old_devices"
+            cp -p "$backup/license-core.php" "$old_core"
+            cp -p "$backup/main-heartbeat-license-bridge.php" "$old_bridge"
+            rm -f "$new_endpoint"
+          }
+          trap rollback ERR
+          # Stage code atomically; original rights/data/owner files untouched.
+          for name in devices.php license-core.php main-heartbeat-license-bridge.php owner-remove-device.php; do
+            cp "$stage/$name" "$dir/$name.new-owner-remove"
+            chmod 644 "$dir/$name.new-owner-remove"
+          done
+          mv "$dir/license-core.php.new-owner-remove" "$old_core"
+          mv "$dir/main-heartbeat-license-bridge.php.new-owner-remove" "$old_bridge"
+          mv "$dir/devices.php.new-owner-remove" "$old_devices"
+          mv "$dir/owner-remove-device.php.new-owner-remove" "$new_endpoint"
+          for name in devices.php license-core.php main-heartbeat-license-bridge.php owner-remove-device.php; do
+            php -l "$dir/$name" >/dev/null
+          done
+          if ! curl -fsS --max-time 15 "https://rubenvanaggelen.com/the-one-remote-api/devices.php?action=health" |
+               php -r '$r=json_decode(stream_get_contents(STDIN),true); exit(($r["ok"]??false)===true?0:1);'; then
+            false
+          fi
+          trap - ERR
+          rm -rf "$stage"
+          echo "SUCCESS: safe owner-removal API, Main retirement guard and license revocation code deployed; Main/Car allowlists untouched"
+          REMOTE
+      - name: Confirm endpoint rejects unauthenticated requests without changing registry
+        run: |
+          set -euo pipefail
+          url="https://rubenvanaggelen.com/the-one-remote-api/owner-remove-device.php"
+          status=$(curl -sS -o /tmp/owner-remove-response.json -w '%{http_code}' --max-time 20 -H 'Content-Type: application/json' --data '{"device_id":"00000000-0000-4000-8000-000000000000","installation_id":"00000000-0000-4000-8000-000000000000","owner_token":"invalid","target_device_id":"11111111-1111-4111-8111-111111111111","expected_registered":"2026-01-01T00:00:00+00:00"}' "$url")
+          test "$status" = "403" || { echo "::error::Unauthenticated removal must be 403"; exit 1; }
+          python3 - <<'PY'
+          import json
+          with open('/tmp/owner-remove-response.json') as f: obj=json.load(f)
+          assert obj['ok'] is False
+          print('PASS: Live device deletion denies unauthenticated request')
+          PY
