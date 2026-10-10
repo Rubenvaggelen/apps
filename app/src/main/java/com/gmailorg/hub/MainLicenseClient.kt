@@ -155,6 +155,7 @@ object MainLicenseClient {
         return State(true, true, "code")
     }
 
+    @Synchronized
     fun askForAccess(context: Context): State {
         val json = request("request", payload(context))
         val requestId = json.optString("request_id", "")
