@@ -48,6 +48,22 @@ def patch(source: str) -> str:
         raise ValueError("License hook already exists: refuse double patch")
     if "'498714cd-2077-41c6-9a2a-4f352fc61e22' => true" not in source or "'b843ad19-7779-4d3c-ae64-ae8ccd5c2362' => true" not in source:
         raise ValueError("Car allowlist differs: refuse to patch")
+    # Verify exact legacy cohort size and Car allowlist before any future deployment.
+    def ids_in_array(variable: str) -> list[str]:
+        match = re.search(r"\\$" + re.escape(variable) + r"\\s*=\\s*\\[(.*?)\\];", source, re.S)
+        if not match:
+            raise ValueError(f"Missing {variable} allowlist")
+        return re.findall(r"'([0-9a-f-]{36})'\\s*=>\\s*true", match.group(1))
+    main_ids = ids_in_array("theOneApprovedLegacyMainIds")
+    car_ids = ids_in_array("theOneAllowedCarIds")
+    if len(main_ids) != 22 or len(set(main_ids)) != 22:
+        raise ValueError("Expected exactly 22 distinct legacy Main IDs")
+    expected_cars = {
+        "498714cd-2077-41c6-9a2a-4f352fc61e22",
+        "b843ad19-7779-4d3c-ae64-ae8ccd5c2362",
+    }
+    if len(car_ids) != 2 or set(car_ids) != expected_cars:
+        raise ValueError("Car allowlist no longer matches owner-approved devices")
     return source.replace(OLD, NEW, 1)
 
 def main():
