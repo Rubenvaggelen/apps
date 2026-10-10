@@ -30,6 +30,11 @@ object MainLicenseClient {
     private const val REQUEST_SECRET_FILE = "the-one-main-request-secret"
     private const val OWNER_TOKEN_FILE = "the-one-main-owner-pairing-token"
     private const val OFFLINE_GRACE_MS = 24L * 60L * 60L * 1000L
+    // All previously authorized Main installations predate the protected pilot.
+    // Only installs first created on/after the pilot date enter pre-enforcement
+    // owner approval. This prevents a fleet-wide prompt for legacy updates.
+    // This is pilot UX gating, not a substitute for server enforcement.
+    private const val PILOT_NEW_INSTALL_CUTOFF_MS = 1791590400000L // 2026-10-10 00:00 UTC
 
     data class State(
         val enabled: Boolean,
@@ -181,6 +186,14 @@ object MainLicenseClient {
 
     private fun ownerToken(context: Context): String =
         runCatching { File(context.noBackupFilesDir, OWNER_TOKEN_FILE).readText().trim() }.getOrDefault("")
+
+    fun needsApprovalBeforeEnforcement(context: Context): Boolean {
+        val installedAt = firstInstalledAt(context)
+        if (installedAt <= 0L || installedAt < PILOT_NEW_INSTALL_CUTOFF_MS) return false
+        // An owner paired to Dev Hub is already a distinct authenticated role.
+        if (MainDeviceRegistry.isLocallyOwner(context) && ownerIsPaired(context)) return false
+        return heartbeatCredential(context) == null
+    }
 
     fun ownerIsPaired(context: Context): Boolean =
         ownerToken(context).matches(Regex("^[a-f0-9]{64}$"))
