@@ -64,19 +64,13 @@ jobs:
               echo "::error::GitHub NS secret invalid format; no changes"
               exit 1
             fi
-            printf '%s' "$NS_KEY_SECRET" | sshdo 'bash -s' <<'PROVISION'
-          set -euo pipefail
-          dir="$HOME/the-one-remote-data"
-          install -d -m 700 "$dir"
-          if [ -f "$dir/ns-subscription.key" ]; then
-            echo "PROVISION IGNORED: private key already exists"
-            exit 0
-          fi
-          umask 077
-          cat > "$dir/ns-subscription.key"
-          chmod 600 "$dir/ns-subscription.key"
-          echo "PRIVATE NS KEY PROVISIONED"
-          PROVISION
+            # Supply the key ONLY over SSH stdin; never as a command argument or in logs.
+            # Do not overwrite a verified existing private key.
+            if sshdo 'test -f "$HOME/the-one-remote-data/ns-subscription.key"'; then
+              echo "Existing private NS key preserved"
+            else
+              printf '%s' "$NS_KEY_SECRET" | sshdo 'umask 077; install -d -m 700 "$HOME/the-one-remote-data"; cat > "$HOME/the-one-remote-data/ns-subscription.key"; chmod 600 "$HOME/the-one-remote-data/ns-subscription.key"; echo "PRIVATE NS KEY PROVISIONED"'
+            fi
           fi
           sshdo 'bash -s' <<'REQUIRE'
           set -euo pipefail
