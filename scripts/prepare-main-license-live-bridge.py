@@ -91,7 +91,7 @@ def main():
             stream.write(updated)
             stream.flush()
             os.fsync(stream.fileno())
-        lint = subprocess.run(["php", "-l", staging], capture_output=True, text=True)
+        lint = subprocess.run(["php", "-l", staging], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if lint.returncode != 0:
             raise RuntimeError("PHP syntax check failed: original live file untouched; " + lint.stderr.strip())
         os.replace(staging, target)
