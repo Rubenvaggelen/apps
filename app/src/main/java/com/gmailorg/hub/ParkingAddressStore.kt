@@ -36,15 +36,13 @@ object ParkingAddressStore {
         migrateSnackcidentIfNeeded()
     }
 
-    // Eénmalige migratie: het adres dat eerder hardcoded stond (Snackcident)
-    // komt nu als eerste, gewone item in de lijst te staan.
+    // Oude versies voegden bij de eerste start een voorbeeldadres toe.
+    // Voeg nooit meer demonstratieadressen toe aan iemands echte parkeerlocaties.
+    // Bestaande, zelf opgeslagen adressen worden bewust niet aangepast.
     private fun migrateSnackcidentIfNeeded() {
-        val migrated = prefs?.getBoolean("migrated_snackcident", false) ?: true
-        if (migrated) return
-        if (items.none { it.address.equals("Vianenstraat 31, Amsterdam", ignoreCase = true) }) {
-            add("Vianenstraat 31, Amsterdam")
+        if (prefs?.getBoolean("migrated_snackcident", false) == false) {
+            prefs?.edit()?.putBoolean("migrated_snackcident", true)?.apply()
         }
-        prefs?.edit()?.putBoolean("migrated_snackcident", true)?.apply()
     }
 
     fun getAll(): List<ParkingAddress> = items.toList()
