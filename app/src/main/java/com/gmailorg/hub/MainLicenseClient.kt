@@ -50,6 +50,13 @@ object MainLicenseClient {
     private fun readToken(context: Context): String =
         runCatching { File(context.noBackupFilesDir, TOKEN_FILE).readText().trim() }.getOrDefault("")
 
+    /** Used by the Main registry heartbeat; never transmit the token in logs or URLs. */
+    fun heartbeatCredential(context: Context): Pair<String, String>? {
+        val token = readToken(context)
+        if (!Regex("^[a-fA-F0-9]{64}$").matches(token)) return null
+        return installationId(context) to token
+    }
+
     private fun storeToken(context: Context, token: String) {
         require(Regex("^[a-fA-F0-9]{64}$").matches(token))
         File(context.noBackupFilesDir, TOKEN_FILE).writeText(token)
