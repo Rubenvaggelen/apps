@@ -1,0 +1,112 @@
+name: Retire Verified Old Tablet 2026-10-10
+on:
+  push:
+    branches: [feature/studio-license-management-20261009]
+    paths: ['.github/workflows/retire-old-tablet-20261010.yml']
+permissions:
+  contents: read
+concurrency:
+  group: one-time-tablet-registry-cleanup-20261010
+  cancel-in-progress: false
+jobs:
+  retire-verified-old-tablet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Backup and remove only verified stale Tablet registry entry
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$work/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$work/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$work/askpass"
+          chmod 600 "$work/key" "$work/known_hosts"
+          chmod 700 "$work/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$work/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$work/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          ssh -p "$DEPLOY_PORT" -i "$work/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$work/known_hosts" -o ConnectTimeout=20 "$DEPLOY_USER@$DEPLOY_HOST" 'php' <<'PHP'
+          <?php
+          declare(strict_types=1);
+          error_reporting(E_ALL);
+          $home = getenv('HOME');
+          $path = $home . '/the-one-remote-data/main-devices.json';
+          $ownerFile = $home . '/the-one-remote-data/main-device-owner.json';
+          $apiFile = $home . '/public_html/the-one-remote-api/devices.php';
+          $oldId = 'd5b8657d-b38d-464b-b96e-68399b23bc3f';
+          $newId = 'cf80ed1b-c837-42a5-b26e-24e2bab31c20';
+          $abort = static function(string $reason): never {
+              fwrite(STDERR, "ABORT: ".$reason."\n");
+              exit(1);
+          };
+          foreach ([$path,$ownerFile,$apiFile] as $p) {
+              if (!is_file($p)) $abort('Missing required verification file');
+          }
+          $raw = file_get_contents($path);
+          if ($raw === false) $abort('Cannot read registry');
+          $state = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+          $items = $state['devices'] ?? null;
+          if (!is_array($items) || !isset($items[$oldId],$items[$newId])) $abort('Expected both Tablet records');
+          $old = $items[$oldId];
+          $fresh = $items[$newId];
+          if (!is_array($old) || !is_array($fresh)) $abort('Invalid Tablet records');
+          $tablets = array_filter($items, static fn($d): bool =>
+              is_array($d) && strcasecmp(trim((string)($d['person_name']??'')), 'Tablet')===0);
+          if (count($tablets)!==2) $abort('Tablet cohort differs from audited count');
+          foreach ([$old,$fresh] as $d) {
+              if (strcasecmp(trim((string)($d['person_name']??'')), 'Tablet')!==0) $abort('Tablet identity mismatch');
+              if (($d['device_role']??'main')!=='main') $abort('Not an exclusively Main device');
+          }
+          if (($old['registered']??'')!=='2026-10-10T18:56:57+00:00' ||
+              ($fresh['registered']??'')!=='2026-10-10T19:12:07+00:00') $abort('Registration timestamps changed');
+          $enabled = static function(array $d): array {
+              $result=[];
+              foreach (($d['access_rights']??[]) as $name=>$allowed) if ($allowed===true) $result[]=(string)$name;
+              sort($result);
+              return $result;
+          };
+          $prior=['mixes','shared','favorites','downloads','download_files'];
+          sort($prior);
+          if ($enabled($old)!==$prior || $enabled($fresh)!==[] ||
+              ($old['music_rights']??false)!==false ||
+              ($fresh['music_rights']??false)!==false) $abort('Permissions differ from owner-confirmed audit');
+          if ((int)($old['last_seen']??0) >= (int)($fresh['last_seen']??0)) $abort('Last-seen order unexpectedly changed');
+          $ownerText=(string)file_get_contents($ownerFile);
+          $apiText=(string)file_get_contents($apiFile);
+          if (str_contains($ownerText,$oldId) || str_contains($apiText,$oldId)) $abort('Old ID may be owner or permanently allowlisted');
+          $backupDir=$home.'/.the-one-remote-backups';
+          if (!is_dir($backupDir) && !mkdir($backupDir,0700,true)) $abort('Cannot make private backup directory');
+          $backup=$backupDir.'/tablet-old-registry-20261010-'.bin2hex(random_bytes(6)).'.json';
+          if (!copy($path,$backup) || hash_file('sha256',$backup)!==hash('sha256',$raw)) $abort('Backup failed integrity check');
+          chmod($backup,0600);
+          unset($state['devices'][$oldId]);
+          $encoded=json_encode($state, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
+          $tmp=$path.'.old-tablet-cleanup-'.bin2hex(random_bytes(6));
+          if (file_put_contents($tmp,$encoded,LOCK_EX)===false) $abort('Temporary file write failed');
+          chmod($tmp,0600);
+          $reRead=json_decode((string)file_get_contents($tmp),true,512,JSON_THROW_ON_ERROR);
+          if (isset($reRead['devices'][$oldId]) || $reRead['devices'][$newId]!==$fresh ||
+              count($reRead['devices'])!==count($items)-1) $abort('Staged registry verification failed');
+          if (hash_file('sha256',$path)!==hash('sha256',$raw)) $abort('Registry changed during cleanup; backup retained');
+          if (!rename($tmp,$path)) $abort('Atomic switch failed; backup retained');
+          $after=json_decode((string)file_get_contents($path),true,512,JSON_THROW_ON_ERROR);
+          if (isset($after['devices'][$oldId]) || ($after['devices'][$newId]??null)!==$fresh) {
+              // Restore only if no concurrent change occurred after our write.
+              if (hash_file('sha256',$path)===hash('sha256',$encoded)) copy($backup,$path);
+              $abort('Post-write check failed; backup retained');
+          }
+          echo "CLEANUP_SUCCESS old Tablet registry and rights removed; new Tablet unchanged; original private backup retained; others unchanged.\n";
+          PHP
+      - name: Verify registry public health
+        run: |
+          curl -fsS --max-time 20 "https://rubenvanaggelen.com/the-one-remote-api/devices.php?action=health" |
+            python3 -c 'import json,sys;x=json.load(sys.stdin);assert x.get("ok") is True and x.get("service")=="The One Main Device Registry"'
