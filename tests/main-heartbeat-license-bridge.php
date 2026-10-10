@@ -18,7 +18,7 @@ one_license_locked(static function(array &$state, callable $dirty) use($device,$
     ];
     $dirty();
 });
-check_bridge(!one_license_main_heartbeat_granted($device, $install, $token), 'Grant must stay disabled before cutover');
+check_bridge(one_license_main_heartbeat_granted($device, $install, $token), 'Valid active grant must authorize during pilot before cutover');
 one_license_locked(static function(array &$state, callable $dirty) use($device,$install,$token): void {
     $state['main_enforced'] = true;
     $dirty();
