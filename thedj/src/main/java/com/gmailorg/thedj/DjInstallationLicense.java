@@ -65,6 +65,18 @@ public final class DjInstallationLicense {
         write(INSTALL_ID,generated); // Abort if it cannot be persisted. Never use transient IDs.
         return generated;
     }
+    /** Name entered during the ONE DJ license registration, reused by Shared Media.
+     * Android keeps Main and DJ data in separate app sandboxes, so we only reuse
+     * a name already supplied to DJ; never guess a Main account identity. */
+    String approvedPersonName() {
+        return read(PERSON);
+    }
+
+    /** Installation ID is permanent for upgrades and gone after reinstall. */
+    String approvedInstallationId() throws Exception {
+        return id();
+    }
+
     private JSONObject base() throws Exception {
         return new JSONObject()
             .put("app","dj")
