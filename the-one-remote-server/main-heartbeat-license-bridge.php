@@ -15,6 +15,7 @@ function one_license_main_heartbeat_granted(string $deviceId, string $installati
     }
     try {
         return (bool)one_license_locked(static function(array &$state, callable $dirty) use ($deviceId, $installationId, $token): bool {
+            if (isset($state['retired_devices'][$deviceId])) return false;
             // During the pilot, a genuinely issued active grant is already
             // sufficient proof for a NEW Main installation. The enforcement
             // switch controls default license policy, not grant validation.
@@ -25,5 +26,18 @@ function one_license_main_heartbeat_granted(string $deviceId, string $installati
         // Fail closed without leaking license tokens into logs.
         error_log('The One Main registry license validation unavailable');
         return false;
+    }
+}
+
+/** Removed Main device IDs are denied even if they were in the old allowlist. */
+function one_license_main_device_retired(string $deviceId): bool {
+    try {
+        return (bool)one_license_locked(static function(array &$state, callable $dirty) use ($deviceId): bool {
+            return isset($state['retired_devices'][$deviceId]);
+        });
+    } catch (Throwable $error) {
+        // On a licensing store outage, fail closed for the device-identity check.
+        error_log('The One Main retired-device status unavailable');
+        return true;
     }
 }
