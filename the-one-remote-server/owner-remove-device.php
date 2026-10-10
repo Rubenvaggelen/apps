@@ -70,6 +70,13 @@ try {
             throw new RuntimeException('Registry backup verification failed');
         }
         chmod($registryBackup, 0600);
+        $licensesPath = one_license_path();
+        $licenseBackup = $backupDir . '/license-before-remove-' . gmdate('YmdTHis') . '-' . bin2hex(random_bytes(5)) . '.json';
+        if (!is_file($licensesPath) || !copy($licensesPath, $licenseBackup) ||
+            !hash_equals((string)hash_file('sha256', $licensesPath), (string)hash_file('sha256', $licenseBackup))) {
+            throw new RuntimeException('Private license backup verification failed');
+        }
+        chmod($licenseBackup, 0600);
         // First revoke grants, queue entries, and grandfathering. Only then delete
         // the registry entry, to fail closed if the second write fails.
         $revokedCount = one_license_locked(static function(array &$state, callable $dirty) use ($ownerDevice, $ownerInstall, $ownerToken, $targetId): int {
