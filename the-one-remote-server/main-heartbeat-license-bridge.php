@@ -15,8 +15,10 @@ function one_license_main_heartbeat_granted(string $deviceId, string $installati
     }
     try {
         return (bool)one_license_locked(static function(array &$state, callable $dirty) use ($deviceId, $installationId, $token): bool {
-            // Nothing is implicitly approved while the migration is incomplete.
-            if (empty($state['main_enforced'])) return false;
+            // During the pilot, a genuinely issued active grant is already
+            // sufficient proof for a NEW Main installation. The enforcement
+            // switch controls default license policy, not grant validation.
+            // Never authorize by device id or approval flag alone.
             return one_license_find_grant($state, 'main', $deviceId, $token, strtolower($installationId)) !== null;
         });
     } catch (Throwable $e) {
