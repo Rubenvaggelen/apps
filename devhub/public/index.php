@@ -26,13 +26,13 @@ $csrf = $_SESSION['csrf'];
   <button class="project active" data-project="app"><span class="ico">📱</span><span><strong>The One</strong><br><small style="color:var(--muted)">app/</small></span></button>
   <button class="project" data-project="carradio"><span class="ico">🚗</span><span><strong>The One Car</strong><br><small style="color:var(--muted)">carradio/</small></span></button>
   <div class="download-panel">
-    <div class="download-title">Laatste downloads</div>
+    <div class="download-title">The One Family • losse APK’s, inclusief DJ</div>
     <div class="download-version" id="releaseVersion">Release laden…</div>
     <a class="download-link" id="appDownload" aria-disabled="true">↓ The One APK</a>
     <a class="download-link" id="carDownload" aria-disabled="true">↓ The One Car APK</a>
     <a class="download-link" id="mediaDownload" href="https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2316/The-One-Media-Player-v2316.apk">↓ The One Media Player APK</a>
     <a class="download-link" id="tvDownload" href="https://github.com/Rubenvaggelen/apps/releases/download/media-player-tv-latest/The-One-Media-Player-TV.apk">↓ Media Player Android TV APK</a>
-    <a class="download-link" id="djDownload" aria-disabled="true">↓ The One DJ APK</a>
+    <a class="download-link" id="djDownload" href="https://github.com/Rubenvaggelen/apps/releases/download/dj-v1049/thedj-debug.apk">↓ The One DJ APK • apart (v1049)</a>
     <a class="download-link" id="runDownload" aria-disabled="true">↓ The One Run APK</a>
     <a class="download-link" id="windowsDownload" aria-disabled="true">↓ The One Window</a>
     <a class="download-link" id="djWindowsDownload" aria-disabled="true">↓ The One DJ Windows</a>
@@ -57,9 +57,9 @@ async function loadStatus(){try{const j=await api('status');$('#branch').textCon
 async function loadBuildStatus(){const pill=$('#buildPill');try{const r=await fetch('https://api.github.com/repos/Rubenvaggelen/apps/actions/workflows/build-apk.yml/runs?branch=main&per_page=1',{headers:{Accept:'application/vnd.github+json'},cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);const j=await r.json();const run=j.workflow_runs&&j.workflow_runs[0];if(!run){pill.textContent='Geen builds';pill.className='build-pill';return{busy:false,success:false}}const busy=run.status==='queued'||run.status==='in_progress';if(busy){pill.textContent='Build bezig • #'+run.run_number;pill.className='build-pill busy'}else if(run.conclusion==='success'){pill.textContent='Build geslaagd • v'+run.run_number;pill.className='build-pill success'}else{pill.textContent='Build '+(run.conclusion||'mislukt')+' • #'+run.run_number;pill.className='build-pill fail'}return{busy,success:run.conclusion==='success',number:run.run_number}}catch(e){pill.textContent='Buildstatus onbekend';pill.className='build-pill';return null}}
 async function loadLatestRelease(){
  const version=$('#releaseVersion'),note=$('#releaseNote'),app=$('#appDownload'),car=$('#carDownload'),dj=$('#djDownload'),run=$('#runDownload'),win=$('#windowsDownload'),djWin=$('#djWindowsDownload');
- for(const el of [app,car,dj,run,win,djWin]){el.removeAttribute('href');el.setAttribute('aria-disabled','true')}
+ for(const el of [app,car,run,win,djWin]){el.removeAttribute('href');el.setAttribute('aria-disabled','true')} // DJ retains its tested fallback when GitHub is temporarily unavailable.
  try{
-  const r=await fetch('https://api.github.com/repos/Rubenvaggelen/apps/releases?per_page=60',{headers:{Accept:'application/vnd.github+json'},cache:'no-store'});
+  const r=await fetch('https://api.github.com/repos/Rubenvaggelen/apps/releases?per_page=100',{headers:{Accept:'application/vnd.github+json'},cache:'no-store'});
   if(!r.ok)throw new Error('HTTP '+r.status);
   const releases=await r.json();
   const pick=(prefix,asset)=>{for(const rel of releases){const tag=String(rel.tag_name||'');if(!tag.startsWith(prefix))continue;const a=(rel.assets||[]).find(x=>x.name===asset);if(a)return{tag,url:a.browser_download_url}}return null};
