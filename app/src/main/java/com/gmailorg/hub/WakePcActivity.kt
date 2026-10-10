@@ -340,12 +340,13 @@ class WakePcActivity : AppCompatActivity() {
                 orientation = LinearLayout.VERTICAL
                 visibility = View.GONE
             }
-            expandHeader.text = expandHeader.text.toString() + "  ▾"
+            val collapsedTitle = expandHeader.text.toString()
+            expandHeader.text = "$collapsedTitle  ▾"
             expandHeader.setPadding(0, 8, 0, 10)
             expandHeader.setOnClickListener {
                 val open = details.visibility != View.VISIBLE
                 details.visibility = if (open) View.VISIBLE else View.GONE
-                expandHeader.text = expandHeader.text.toString().dropLast(1) + if (open) "▴" else "▾"
+                expandHeader.text = "$collapsedTitle  " + if (open) "▴" else "▾"
             }
             details.addView(TextView(this).apply { text = device.name; textSize = 12f; setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim)) })
             val state = TextView(this).apply {
