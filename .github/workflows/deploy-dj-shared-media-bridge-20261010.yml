@@ -1,0 +1,122 @@
+name: Deploy Authenticated DJ Shared Media Bridge
+on:
+  push:
+    branches: [feature/dj-shared-media-identity-io-fix-20261010]
+    paths: ['.github/workflows/deploy-dj-shared-media-bridge-20261010.yml']
+permissions:
+  contents: read
+concurrency:
+  group: dj-shared-media-bridge-20261010
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test DJ-only server authorization
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l the-one-remote-server/dj-heartbeat-license-bridge.php
+          php tests/test-dj-shared-media-bridge.php
+          php tests/dj-music-install-approval.php
+          php tests/main-heartbeat-license-bridge.php
+      - name: Patch exactly live DJ device-role guards; save rollback snapshot
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$tmp"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$tmp/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$tmp/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$tmp/askpass"
+          chmod 600 "$tmp/key" "$tmp/known_hosts"
+          chmod 700 "$tmp/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$tmp/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$tmp/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          sshdo() {
+            ssh -p "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" "$remote" "$@"
+          }
+          scpdo() {
+            scp -O -P "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" "$@"
+          }
+          if sshdo 'test -e "$HOME/public_html/the-one-remote-api/dj-heartbeat-license-bridge.php"'; then
+            echo "::error::DJ bridge exists already; no overwrite"; exit 1
+          fi
+          scpdo "$remote:public_html/the-one-remote-api/devices.php" "$tmp/live-devices.php"
+          expected_sha=$(sha256sum "$tmp/live-devices.php" | cut -d' ' -f1)
+          python3 scripts/patch-live-dj-registry-20261010.py "$tmp/live-devices.php" "$tmp/patched-devices.php"
+          php -l "$tmp/patched-devices.php" >/dev/null
+          stage=$(sshdo 'mktemp -d "$HOME/.one-dj-media-stage.XXXXXXXX"')
+          scpdo "$tmp/patched-devices.php" "$remote:$stage/devices.php"
+          scpdo the-one-remote-server/dj-heartbeat-license-bridge.php "$remote:$stage/dj-heartbeat-license-bridge.php"
+          sshdo "bash -s -- '$stage' '$expected_sha'" <<'REMOTE'
+          set -Eeuo pipefail
+          stage="$1"
+          expected_sha="$2"
+          dir="$HOME/public_html/the-one-remote-api"
+          current="$dir/devices.php"
+          newbridge="$dir/dj-heartbeat-license-bridge.php"
+          test "$(sha256sum "$current" | cut -d' ' -f1)" = "$expected_sha" ||
+            { echo "ABORT: live registry changed while patching"; exit 1; }
+          test ! -e "$newbridge" || { echo "ABORT: DJ bridge exists"; exit 1; }
+          php -l "$stage/devices.php" >/dev/null
+          php -l "$stage/dj-heartbeat-license-bridge.php" >/dev/null
+          backup_root="$HOME/.the-one-remote-backups"
+          mkdir -p "$backup_root"
+          backup=$(mktemp -d "$backup_root/dj-shared-media-before-20261010.XXXXXXXX")
+          cp -p "$current" "$backup/devices.php"
+          rollback() {
+            cp -p "$backup/devices.php" "$current"
+            rm -f "$newbridge"
+            echo "DJ bridge rollback: original Main/Car registry restored"
+          }
+          trap rollback ERR
+          cp "$stage/devices.php" "$dir/devices.php.next-dj"
+          cp "$stage/dj-heartbeat-license-bridge.php" "$newbridge.next-dj"
+          chmod 644 "$dir/devices.php.next-dj" "$newbridge.next-dj"
+          mv "$newbridge.next-dj" "$newbridge"
+          mv "$dir/devices.php.next-dj" "$current"
+          php -l "$current" >/dev/null
+          php -l "$newbridge" >/dev/null
+          grep -q 'THE_ONE_DJ_LICENSED_REGISTRY_BRIDGE_20261010' "$current"
+          grep -q 'THE_ONE_OWNER_RETIRED_GUARD_20261010' "$current"
+          grep -q 'THE_ONE_MAIN_ALLOWLIST_CLEANUP_20261010' "$current"
+          trap - ERR
+          rm -rf "$stage"
+          echo 'SUCCESS: only signed DJ registry role enabled; Main, Car and Windows untouched'
+          REMOTE
+      - name: Confirm DJ without license is refused and music API remains healthy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,urllib.request,urllib.error
+          root='https://rubenvanaggelen.com/the-one-remote-api/'
+          payload={'device_id':'dj-unauthorized-bridge-test','device_role':'dj',
+                   'person_name':'DJ Test','name':'The One DJ Test','platform':'Android 15',
+                   'installation_id':'12345678-1234-4234-8234-123456789abc','license_token':''}
+          req=urllib.request.Request(root+'devices.php?action=heartbeat',json.dumps(payload).encode(),
+              {'Content-Type':'application/json'},method='POST')
+          try:
+              with urllib.request.urlopen(req,timeout=20) as response:
+                  raise AssertionError('Unlicensed DJ heartbeat was accepted: HTTP '+str(response.status))
+          except urllib.error.HTTPError as error:
+              assert error.code==403, 'DJ heartbeat expected HTTP 403'
+              denial=json.loads(error.read())
+              assert denial.get('activation_required') is True
+          with urllib.request.urlopen(root+'music.php?action=health',timeout=20) as response:
+              health=json.load(response)
+              assert health['ok'] is True
+          print('PASS: unlicensed DJ excluded; music cache operational; registry unchanged for denied request')
+          PY
