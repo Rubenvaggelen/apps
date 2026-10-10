@@ -14,6 +14,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Verify license and registry pilot bridge
+        run: |
+          php -l the-one-remote-server/main-heartbeat-license-bridge.php
+          php tests/main-heartbeat-license-bridge.php
+          php tests/main-approval-heartbeat-integration.php
+          python3 tests/test_main_live_bridge_patch.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
