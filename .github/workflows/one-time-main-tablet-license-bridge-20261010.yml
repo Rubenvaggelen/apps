@@ -1,0 +1,158 @@
+name: One-time Main Tablet License Bridge 2026-10-10
+on:
+  push:
+    branches: [feature/studio-license-management-20261009]
+    paths:
+      - '.github/workflows/one-time-main-tablet-license-bridge-20261010.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: one-time-main-tablet-license-live-20261010
+  cancel-in-progress: false
+
+jobs:
+  tablet-license-bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify grant validation and exact live patch fixture
+        run: |
+          set -euo pipefail
+          php -l the-one-remote-server/license-core.php
+          php -l the-one-remote-server/main-heartbeat-license-bridge.php
+          php tests/main-heartbeat-license-bridge.php
+          php tests/main-approval-heartbeat-integration.php
+          python3 tests/test_main_live_bridge_patch.py
+
+      - name: Deploy ONLY verified Main license guard with backup and rollback
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "$(printenv "$name")" || { echo "::error::Required deploy secret $name is missing"; exit 1; }
+          done
+          work=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$work/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$work/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$work/askpass"
+          chmod 600 "$work/key" "$work/known_hosts"
+          chmod 700 "$work/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$work/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$work/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          sshdo() {
+            ssh -p "$DEPLOY_PORT" -i "$work/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$work/known_hosts" -o ConnectTimeout=20 "$remote" "$@"
+          }
+          scpdo() {
+            scp -O -P "$DEPLOY_PORT" -i "$work/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$work/known_hosts" -o ConnectTimeout=20 "$@"
+          }
+
+          # Read live state first; never overwrite an unknown file.
+          scpdo "$remote:public_html/the-one-remote-api/devices.php" "$work/live-devices.php"
+          scpdo "$remote:public_html/the-one-remote-api/license-core.php" "$work/live-license-core.php"
+          if ! cmp -s "$work/live-license-core.php" the-one-remote-server/license-core.php; then
+            echo "::error::Live license core differs from reviewed source. No deployment."
+            exit 1
+          fi
+
+          if sshdo 'test -f "$HOME/public_html/the-one-remote-api/main-heartbeat-license-bridge.php"'; then
+            scpdo "$remote:public_html/the-one-remote-api/main-heartbeat-license-bridge.php" "$work/live-bridge.php"
+            if ! cmp -s "$work/live-bridge.php" the-one-remote-server/main-heartbeat-license-bridge.php; then
+              echo "::error::Unexpected existing live bridge version. No deployment."
+              exit 1
+            fi
+          fi
+
+          mkdir "$work/patch"
+          cp "$work/live-devices.php" "$work/patch/devices.php"
+          cp the-one-remote-server/license-core.php "$work/patch/license-core.php"
+          cp the-one-remote-server/main-heartbeat-license-bridge.php "$work/patch/main-heartbeat-license-bridge.php"
+          python3 scripts/prepare-main-license-live-bridge.py "$work/patch/devices.php"
+          python3 scripts/prepare-main-license-live-bridge.py "$work/patch/devices.php" --apply
+          php -l "$work/patch/devices.php"
+          php -l "$work/patch/main-heartbeat-license-bridge.php"
+          original_hash=$(sha256sum "$work/live-devices.php" | cut -d' ' -f1)
+
+          stage=$(sshdo 'mktemp -d "$HOME/.one-main-license-stage.XXXXXXXX"')
+          scpdo "$work/patch/devices.php" "$remote:$stage/devices.php"
+          scpdo "$work/patch/main-heartbeat-license-bridge.php" "$remote:$stage/main-heartbeat-license-bridge.php"
+          scpdo "$work/patch/license-core.php" "$remote:$stage/license-core.php"
+
+          sshdo "bash -s -- '$stage' '$original_hash'" <<'REMOTE'
+          set -Eeuo pipefail
+          stage="$1"
+          expected="$2"
+          dir="$HOME/public_html/the-one-remote-api"
+          devices="$dir/devices.php"
+          bridge="$dir/main-heartbeat-license-bridge.php"
+          core="$dir/license-core.php"
+          [ -f "$devices" ] && [ -f "$core" ]
+          actual=$(sha256sum "$devices" | cut -d' ' -f1)
+          [ "$actual" = "$expected" ] || { echo "ABORT: live devices.php changed since verification"; exit 1; }
+          cmp -s "$core" "$stage/license-core.php" || { echo "ABORT: live license-core changed"; exit 1; }
+          if [ -f "$bridge" ]; then
+            cmp -s "$bridge" "$stage/main-heartbeat-license-bridge.php" || { echo "ABORT: live bridge changed"; exit 1; }
+          fi
+          php -l "$stage/devices.php" >/dev/null
+          php -l "$stage/main-heartbeat-license-bridge.php" >/dev/null
+          # Preserve the original file and bridge in a persistent private backup.
+          mkdir -p "$HOME/.the-one-remote-backups"
+          backup=$(mktemp -d "$HOME/.the-one-remote-backups/tablet-license-20261010.XXXXXXXX")
+          cp -p "$devices" "$backup/devices.php"
+          had_bridge=no
+          if [ -f "$bridge" ]; then
+            cp -p "$bridge" "$backup/main-heartbeat-license-bridge.php"
+            had_bridge=yes
+          fi
+          rollback() {
+            echo "ROLLBACK triggered; restoring the original registry and bridge."
+            cp -p "$backup/devices.php" "$devices"
+            if [ "$had_bridge" = yes ]; then
+              cp -p "$backup/main-heartbeat-license-bridge.php" "$bridge"
+            else
+              rm -f "$bridge"
+            fi
+          }
+          trap 'rollback' ERR
+          if [ "$had_bridge" = no ]; then
+            cp "$stage/main-heartbeat-license-bridge.php" "$bridge.new"
+            chmod 644 "$bridge.new"
+            mv "$bridge.new" "$bridge"
+          fi
+          cp "$stage/devices.php" "$devices.new"
+          chmod --reference="$devices" "$devices.new"
+          mv "$devices.new" "$devices"
+          php -l "$devices" >/dev/null
+          php -l "$bridge" >/dev/null
+          for attempt in 1 2 3; do
+            if curl -fsS --max-time 20 "https://rubenvanaggelen.com/the-one-remote-api/devices.php?action=health" |
+                php -r '$x=json_decode(stream_get_contents(STDIN),true);exit(($x["ok"]??false)===true && ($x["service"]??"")==="The One Main Device Registry" ? 0 : 1);'; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Health endpoint failed; rolling back"
+              false
+            fi
+            sleep 2
+          done
+          trap - ERR
+          rm -rf "$stage"
+          echo "LIVE LICENSE GUARD UPDATED. Original backups retained; Main and Car allowlists unchanged."
+          REMOTE
+
+          curl -fsS --max-time 20 "https://rubenvanaggelen.com/the-one-remote-api/devices.php?action=health" |
+            python3 -c 'import json,sys;x=json.load(sys.stdin);assert x.get("ok") is True and x.get("service")=="The One Main Device Registry"'
