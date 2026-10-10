@@ -356,7 +356,23 @@ class HomeActivity : AppCompatActivity() {
                 }
                 return@Thread
             }
-            val blocked = runCatching { MainDeviceRegistry.heartbeat(this) }.getOrNull()
+            // A licensed installation must be registered in device management too.
+            // Do not silently enter Main when the registry cannot accept its heartbeat.
+            val heartbeat = runCatching { MainDeviceRegistry.heartbeat(this) }
+            if (heartbeat.isFailure) {
+                runOnUiThread {
+                    findViewById<RecyclerView>(R.id.homeGrid).visibility = View.INVISIBLE
+                    androidx.appcompat.app.AlertDialog.Builder(this)
+                        .setTitle("Apparaatregistratie niet voltooid")
+                        .setMessage("De licentie is gecontroleerd, maar dit apparaat staat nog niet in Apparaten beheren. Controleer je internetverbinding en probeer opnieuw. Je gegevens blijven behouden.")
+                        .setPositiveButton("Opnieuw proberen") { _, _ -> checkDeviceAccess() }
+                        .setNegativeButton("App sluiten") { _, _ -> finishAffinity() }
+                        .setCancelable(false)
+                        .show()
+                }
+                return@Thread
+            }
+            val blocked = heartbeat.getOrThrow()
             if (
                 blocked != true &&
                 !MainDeviceRegistry.isLocallyOwner(this) &&
