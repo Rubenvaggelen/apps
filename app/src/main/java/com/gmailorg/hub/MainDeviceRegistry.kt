@@ -59,6 +59,8 @@ data class MainPendingAccessRequest(
 )
 
 
+class MainRegistryException(val statusCode: Int, val activationRequired: Boolean, message: String) : IllegalStateException(message)
+
 object MainDeviceRegistry {
     const val ACCESS_MEDIA_PLAYER = "media_player"
     const val ACCESS_MIXES = "mixes"
@@ -461,7 +463,7 @@ object MainDeviceRegistry {
 
         val json = runCatching { JSONObject(raw) }.getOrElse { JSONObject() }
         if (code !in 200..299 || !json.optBoolean("ok", false)) {
-            throw IllegalStateException(json.optString("error", "Serverfout $code"))
+            throw MainRegistryException(code, json.optBoolean("activation_required", false), json.optString("error", "Serverfout $code"))
         }
         return json
     }
