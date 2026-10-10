@@ -205,33 +205,97 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun tryUnlock() {
-        if (pinInput.text.toString() == PIN_CODE) {
-            activeAdminPin = pinInput.text.toString()
+        val input = pinInput.text.toString()
+        if (MainInstallationPin.mustChoosePersonalPin(this)) {
+            pinErrorText.visibility = View.VISIBLE
+            pinErrorText.text = "Kies eerst een persoonlijke PIN bij het openen van Main."
+            pinInput.text.clear()
+            return
+        }
+        if (MainInstallationPin.verify(this, input)) {
+            // This local settings PIN is NOT the backend owner password.
+            // Owner operations retain their separate server-side authentication.
+            activeAdminPin = if (MainDeviceRegistry.isLocallyOwner(this) ||
+                MainDeviceRegistry.isOwnerEligible()) PIN_CODE else ""
             pinErrorText.visibility = View.GONE
             lockSection.visibility = View.GONE
             unlockedSection.visibility = View.VISIBLE
+            pinInput.text.clear()
             refreshParkingList()
             refreshHiddenTiles()
-
-            Thread {
-                var owner = runCatching {
-                    MainDeviceRegistry.ownerStatus(this, activeAdminPin)
-                }.getOrDefault(false)
-
-                if (!owner && MainDeviceRegistry.isOwnerEligible()) {
-                    owner = runCatching {
-                        MainDeviceRegistry.claimOwner(this, activeAdminPin)
+            addPersonalPinChangeButton()
+            if (activeAdminPin.isNotEmpty()) {
+                Thread {
+                    var owner = runCatching {
+                        MainDeviceRegistry.ownerStatus(this, activeAdminPin)
                     }.getOrDefault(false)
-                }
-
-                runOnUiThread {
-                    if (!owner) setupOwnerRecoverySection()
-                }
-            }.start()
+                    if (!owner && MainDeviceRegistry.isOwnerEligible()) {
+                        owner = runCatching {
+                            MainDeviceRegistry.claimOwner(this, activeAdminPin)
+                        }.getOrDefault(false)
+                    }
+                    runOnUiThread { if (!owner) setupOwnerRecoverySection() }
+                }.start()
+            }
         } else {
             pinErrorText.visibility = View.VISIBLE
+            pinErrorText.text = "PIN onjuist"
             pinInput.text.clear()
         }
+    }
+
+    private var changePinButtonAdded = false
+
+    private fun addPersonalPinChangeButton() {
+        if (changePinButtonAdded) return
+        changePinButtonAdded = true
+        val change = android.widget.Button(this).apply {
+            text = "Persoonlijke PIN wijzigen"
+            setOnClickListener { showChangePinDialog() }
+        }
+        settingsContent.addView(change, 0)
+    }
+
+    private fun showChangePinDialog() {
+        val pad = (18 * resources.displayMetrics.density).toInt()
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, 0)
+        }
+        fun field(hintText: String): EditText = EditText(this).apply {
+            hint = hintText
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            isSingleLine = true
+            content.addView(this)
+        }
+        val oldPin = field("Huidige PIN")
+        val newPin = field("Nieuwe PIN (4–8 cijfers)")
+        val confirmation = field("Nieuwe PIN herhalen")
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Persoonlijke PIN wijzigen")
+            .setView(content)
+            .setNegativeButton("Annuleren", null)
+            .setPositiveButton("Wijzigen", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val result = runCatching {
+                    MainInstallationPin.changePersonalPin(
+                        this, oldPin.text.toString(), newPin.text.toString(), confirmation.text.toString()
+                    )
+                }
+                result.onSuccess {
+                    dialog.dismiss()
+                    Toast.makeText(this, "Je persoonlijke PIN is gewijzigd.", Toast.LENGTH_LONG).show()
+                }.onFailure {
+                    newPin.error = it.message ?: "PIN wijzigen mislukt"
+                    newPin.text.clear()
+                    confirmation.text.clear()
+                }
+            }
+        }
+        dialog.show()
     }
 
     private fun setupOwnerRecoverySection() {
