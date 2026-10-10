@@ -1,0 +1,18 @@
+name: Audit Live Family License Policy
+on:
+  push:
+    branches: [feature/studio-license-management-20261009]
+    paths: ['.github/workflows/audit-live-family-license-policy.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query non-sensitive live license feature flags
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 -H 'Content-Type: application/json' --data '{}' \
+            'https://rubenvanaggelen.com/the-one-remote-api/licenses.php?action=policy' \
+            | python3 -c 'import json,sys; x=json.load(sys.stdin); print("LIVE_POLICY", json.dumps({k:x.get(k) for k in ("main","studio")},sort_keys=True))'
