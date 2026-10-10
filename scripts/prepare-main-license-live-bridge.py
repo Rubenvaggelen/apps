@@ -8,6 +8,7 @@ import argparse
 import pathlib
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import os
@@ -73,6 +74,9 @@ def main():
             stream.write(updated)
             stream.flush()
             os.fsync(stream.fileno())
+        lint = subprocess.run(["php", "-l", staging], capture_output=True, text=True)
+        if lint.returncode != 0:
+            raise RuntimeError("PHP syntax check failed: original live file untouched; " + lint.stderr.strip())
         os.replace(staging, target)
     finally:
         if os.path.exists(staging):
