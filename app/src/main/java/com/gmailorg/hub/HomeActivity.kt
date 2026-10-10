@@ -360,13 +360,33 @@ class HomeActivity : AppCompatActivity() {
             // Do not silently enter Main when the registry cannot accept its heartbeat.
             val heartbeat = runCatching { MainDeviceRegistry.heartbeat(this) }
             if (heartbeat.isFailure) {
-                val registrationError = heartbeat.exceptionOrNull()?.message.orEmpty().take(160)
+                val failure = heartbeat.exceptionOrNull()
+                val registrationError = failure?.message.orEmpty().take(160)
+                val approvalRequired = (failure as? MainRegistryException)?.activationRequired == true
 
+                // The registry may require owner approval even when the
+                // license pilot is not globally enforced yet.
+                if (approvalRequired && MainLicenseClient.heartbeatCredential(this) == null &&
+                    !MainDeviceRegistry.isLocallyOwner(this)) {
+                    val requested = runCatching { MainLicenseClient.askForAccess(this) }
+                    if (requested.isSuccess) {
+                        runOnUiThread {
+                            findViewById<RecyclerView>(R.id.homeGrid).visibility = View.INVISIBLE
+                            showMainLicenseDialog("pilot_owner_approval")
+                        }
+                        return@Thread
+                    }
+                }
+
+                val explanation = if (approvalRequired && MainLicenseClient.heartbeatCredential(this) != null) {
+                    "De licentie is aanwezig, maar de apparatenserver accepteert deze nog niet. " +
+                        "De serverkoppeling moet worden bijgewerkt. "
+                } else "De licentie is gecontroleerd, maar de apparaatregistratie is mislukt. "
                 runOnUiThread {
                     findViewById<RecyclerView>(R.id.homeGrid).visibility = View.INVISIBLE
                     androidx.appcompat.app.AlertDialog.Builder(this)
                         .setTitle("Apparaatregistratie niet voltooid")
-                        .setMessage("De licentie is gecontroleerd, maar de apparaatregistratie is mislukt. " + registrationError + " Je gegevens blijven behouden.")
+                        .setMessage(explanation + registrationError + " Je gegevens blijven behouden.")
                         .setPositiveButton("Opnieuw proberen") { _, _ -> checkDeviceAccess() }
                         .setNegativeButton("App sluiten") { _, _ -> finishAffinity() }
                         .setCancelable(false)
