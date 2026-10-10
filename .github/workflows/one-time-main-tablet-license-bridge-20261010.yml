@@ -69,12 +69,16 @@ jobs:
             exit 1
           fi
 
+          git show 5566e18b0e00131ab691798e5c598fde0b86b888:the-one-remote-server/main-heartbeat-license-bridge.php > "$work/old-reviewed-bridge.php"
+          existing_bridge_hash=absent
           if sshdo 'test -f "$HOME/public_html/the-one-remote-api/main-heartbeat-license-bridge.php"'; then
             scpdo "$remote:public_html/the-one-remote-api/main-heartbeat-license-bridge.php" "$work/live-bridge.php"
-            if ! cmp -s "$work/live-bridge.php" the-one-remote-server/main-heartbeat-license-bridge.php; then
-              echo "::error::Unexpected existing live bridge version. No deployment."
+            if ! cmp -s "$work/live-bridge.php" "$work/old-reviewed-bridge.php" &&
+               ! cmp -s "$work/live-bridge.php" the-one-remote-server/main-heartbeat-license-bridge.php; then
+              echo "::error::Live bridge is neither the exact old reviewed version nor the new one. No deployment."
               exit 1
             fi
+            existing_bridge_hash=$(sha256sum "$work/live-bridge.php" | cut -d' ' -f1)
           fi
 
           mkdir "$work/patch"
@@ -92,10 +96,11 @@ jobs:
           scpdo "$work/patch/main-heartbeat-license-bridge.php" "$remote:$stage/main-heartbeat-license-bridge.php"
           scpdo "$work/patch/license-core.php" "$remote:$stage/license-core.php"
 
-          sshdo "bash -s -- '$stage' '$original_hash'" <<'REMOTE'
+          sshdo "bash -s -- '$stage' '$original_hash' '$existing_bridge_hash'" <<'REMOTE'
           set -Eeuo pipefail
           stage="$1"
           expected="$2"
+          expected_bridge="$3"
           dir="$HOME/public_html/the-one-remote-api"
           devices="$dir/devices.php"
           bridge="$dir/main-heartbeat-license-bridge.php"
@@ -104,8 +109,12 @@ jobs:
           actual=$(sha256sum "$devices" | cut -d' ' -f1)
           [ "$actual" = "$expected" ] || { echo "ABORT: live devices.php changed since verification"; exit 1; }
           cmp -s "$core" "$stage/license-core.php" || { echo "ABORT: live license-core changed"; exit 1; }
-          if [ -f "$bridge" ]; then
-            cmp -s "$bridge" "$stage/main-heartbeat-license-bridge.php" || { echo "ABORT: live bridge changed"; exit 1; }
+          if [ "$expected_bridge" = absent ]; then
+            [ ! -f "$bridge" ] || { echo "ABORT: a bridge appeared since verification"; exit 1; }
+          else
+            [ -f "$bridge" ] || { echo "ABORT: live bridge disappeared"; exit 1; }
+            actual_bridge=$(sha256sum "$bridge" | cut -d' ' -f1)
+            [ "$actual_bridge" = "$expected_bridge" ] || { echo "ABORT: live bridge changed since verification"; exit 1; }
           fi
           php -l "$stage/devices.php" >/dev/null
           php -l "$stage/main-heartbeat-license-bridge.php" >/dev/null
@@ -128,7 +137,7 @@ jobs:
             fi
           }
           trap 'rollback' ERR
-          if [ "$had_bridge" = no ]; then
+          if [ "$had_bridge" = no ] || ! cmp -s "$bridge" "$stage/main-heartbeat-license-bridge.php"; then
             cp "$stage/main-heartbeat-license-bridge.php" "$bridge.new"
             chmod 644 "$bridge.new"
             mv "$bridge.new" "$bridge"
