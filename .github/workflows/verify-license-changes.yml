@@ -8,6 +8,8 @@ on:
       - 'the-one-remote-server/main-heartbeat-license-bridge.php'
       - 'app/src/main/java/com/gmailorg/hub/MainDeviceRegistry.kt'
       - 'tests/main-heartbeat-license-bridge.php'
+      - 'scripts/prepare-main-license-live-bridge.py'
+      - 'tests/test_main_live_bridge_patch.py'
       - 'devhub/studio-licenses.php'
       - 'app/src/main/java/com/gmailorg/hub/MainLicenseClient.kt'
       - 'app/src/main/java/com/gmailorg/hub/AccessRequestNotificationWorker.kt'
@@ -41,6 +43,7 @@ jobs:
         run: |
           php tests/main-license-lifecycle.php
           php tests/main-heartbeat-license-bridge.php
+          python3 tests/test_main_live_bridge_patch.py
   android-main-compile:
     name: Compile The One Main license screen (no APK release)
     runs-on: ubuntu-latest
