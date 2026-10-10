@@ -1,0 +1,117 @@
+name: Deploy Private Family NS Proxy
+on:
+  push:
+    branches: [feature/family-ns-proxy-20261010]
+    paths: ['.github/workflows/deploy-private-family-ns-proxy.yml']
+permissions:
+  contents: read
+concurrency:
+  group: deploy-private-family-ns-proxy
+  cancel-in-progress: false
+jobs:
+  guarded-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify PHP syntax
+        run: php -l the-one-remote-server/ns-reisinformatie-proxy.php
+      - name: Install only validated NS proxy and private key, if provisioned
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          NS_KEY_SECRET: ${{ secrets.THE_ONE_NS_API_KEY }}
+        run: |
+          set -euo pipefail
+          for key in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "$(printenv "$key")" || { echo "::error::Missing deployment auth $key"; exit 1; }
+          done
+          stage=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$stage"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$stage/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$stage/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$stage/askpass"
+          chmod 600 "$stage/key" "$stage/known_hosts"
+          chmod 700 "$stage/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$stage/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$stage/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          sshdo() {
+            ssh -p "$DEPLOY_PORT" -i "$stage/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$stage/known_hosts" -o ConnectTimeout=20 "$remote" "$@"
+          }
+          scpdo() {
+            scp -O -P "$DEPLOY_PORT" -i "$stage/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$stage/known_hosts" -o ConnectTimeout=20 "$@"
+          }
+          sshdo 'bash -s' <<'CHECK'
+          set -euo pipefail
+          test -f "$HOME/public_html/the-one-remote-api/devices.php"
+          test -f "$HOME/public_html/the-one-remote-api/license-core.php"
+          php -v | head -n 1
+          if test -f "$HOME/the-one-remote-data/ns-subscription.key"; then
+            php -r '$k=trim((string)file_get_contents(getenv("HOME")."/the-one-remote-data/ns-subscription.key")); if(!preg_match("/^[a-f0-9]{32}$/iD",$k)) exit(1); echo "PRIVATE NS KEY PRESENT\n";'
+          else
+            echo "PRIVATE NS KEY NOT YET PRESENT"
+          fi
+          CHECK
+          if [ -n "$NS_KEY_SECRET" ]; then
+            if ! [[ "$NS_KEY_SECRET" =~ ^[a-fA-F0-9]{32}$ ]]; then
+              echo "::error::GitHub NS secret invalid format; no changes"
+              exit 1
+            fi
+            printf '%s' "$NS_KEY_SECRET" | sshdo 'bash -s' <<'PROVISION'
+          set -euo pipefail
+          dir="$HOME/the-one-remote-data"
+          install -d -m 700 "$dir"
+          if [ -f "$dir/ns-subscription.key" ]; then
+            echo "PROVISION IGNORED: private key already exists"
+            exit 0
+          fi
+          umask 077
+          cat > "$dir/ns-subscription.key"
+          chmod 600 "$dir/ns-subscription.key"
+          echo "PRIVATE NS KEY PROVISIONED"
+          PROVISION
+          fi
+          sshdo 'bash -s' <<'REQUIRE'
+          set -euo pipefail
+          php -r '$p=getenv("HOME")."/the-one-remote-data/ns-subscription.key"; if(!is_file($p) || !preg_match("/^[a-f0-9]{32}$/iD",trim((string)file_get_contents($p)))) {fwrite(STDERR,"NS key must be provisioned privately before deployment\n");exit(1);} echo "NS private key verified (value hidden)\n";'
+          REQUIRE
+          remote_dir="$HOME/public_html/the-one-remote-api"
+          scpdo the-one-remote-server/ns-reisinformatie-proxy.php "$remote:public_html/the-one-remote-api/.ns-proxy-stage-20261010.php"
+          sshdo 'bash -s' <<'INSTALL'
+          set -Eeuo pipefail
+          dir="$HOME/public_html/the-one-remote-api"
+          stage="$dir/.ns-proxy-stage-20261010.php"
+          live="$dir/ns-reisinformatie-proxy.php"
+          test -f "$stage"
+          php -l "$stage" >/dev/null
+          backup_dir="$HOME/.the-one-remote-backups"
+          mkdir -p "$backup_dir"
+          if [ -e "$live" ]; then
+            cp -p "$live" "$backup_dir/ns-proxy-before-20261010-$(date -u +%Y%m%dT%H%M%S).php"
+          fi
+          chmod 644 "$stage"
+          mv -f "$stage" "$live"
+          php -l "$live" >/dev/null
+          echo "NS PROXY SERVER DEPLOYED with previous version backed up"
+          INSTALL
+      - name: Test proxy origin and NS stations on live domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://rubenvanaggelen.com/the-one-remote-api/ns-reisinformatie-proxy.php"
+          status=$(curl -sS -o /tmp/ns-result.json -w '%{http_code}' --max-time 25 -H 'Origin: https://rubenvanaggelen.github.io' "$base?resource=stations")
+          python3 - "$status" <<'PY'
+          import json,sys
+          status=int(sys.argv[1])
+          with open('/tmp/ns-result.json') as fd: data=json.load(fd)
+          if status!=200 or not isinstance(data.get('payload'),list) or len(data['payload'])<100:
+              raise SystemExit('NS live stations not working; do NOT publish Gmailorg yet (HTTP '+str(status)+')')
+          print('NS stations live OK, count:',len(data['payload']))
+          PY
