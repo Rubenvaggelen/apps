@@ -9,7 +9,7 @@ on:
       - 'the-one-remote-server/licenses.php'
       - 'the-one-remote-server/license-core.php'
       - 'tests/dj-music-install-approval.php'
-      - '.github/workflows/test-dj-license-20261010.yml'
+      - '.github/workflows/test-dj-v1051-shared-media.yml'
 permissions:
   contents: read
 jobs:
