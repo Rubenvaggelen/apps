@@ -72,6 +72,11 @@ public final class DjInstallationLicense {
         return read(PERSON);
     }
 
+    /** Access token is private to this DJ installation and never exposed to WebView. */
+    String approvedTokenForSharedMedia() {
+        return read(TOKEN);
+    }
+
     /** Installation ID is permanent for upgrades and gone after reinstall. */
     String approvedInstallationId() throws Exception {
         return id();
