@@ -338,10 +338,21 @@ class HomeActivity : AppCompatActivity() {
         // clean reinstall must not recreate the old Main device registration.
         Thread {
             val license = MainLicenseClient.status(this)
-            if (!license.allowed) {
+            val pilotApprovalRequired = MainLicenseClient.needsApprovalBeforeEnforcement(this)
+            if (!license.allowed || pilotApprovalRequired) {
+                // New Main installations request owner approval even during the
+                // pilot, while the production enforcement switch remains OFF.
+                // Owner and pre-pilot installations do not enter this path.
+                if (pilotApprovalRequired) {
+                    runCatching { MainLicenseClient.askForAccess(this) }
+                }
                 runOnUiThread {
                     findViewById<RecyclerView>(R.id.homeGrid).visibility = View.INVISIBLE
-                    if (license.enabled) showMainLicenseDialog(license.mode)
+                    if (pilotApprovalRequired) {
+                        showMainLicenseDialog("pilot_owner_approval")
+                    } else if (license.enabled) {
+                        showMainLicenseDialog(license.mode)
+                    }
                 }
                 return@Thread
             }
@@ -367,6 +378,7 @@ class HomeActivity : AppCompatActivity() {
     private fun showMainLicenseDialog(reason: String) {
         if (mainLicenseDialogShowing || isFinishing || isDestroyed) return
         mainLicenseDialogShowing = true
+        val pilot = reason == "pilot_owner_approval"
         val density = resources.displayMetrics.density
         val pad = (18 * density).toInt()
         val container = LinearLayout(this).apply {
@@ -374,7 +386,9 @@ class HomeActivity : AppCompatActivity() {
             setPadding(pad, pad, pad, 0)
         }
         val explanation = TextView(this).apply {
-            text = if (reason == "server_offline") {
+            text = if (pilot) {
+                "Dit apparaat is nieuw en wacht op goedkeuring van de eigenaar van The One. De aanmelding is automatisch aangevraagd. Je kunt hier controleren of de eigenaar je toegang heeft gegeven."
+            } else if (reason == "server_offline") {
                 "De licentieserver is momenteel niet bereikbaar. Een nieuwe installatie moet online worden geactiveerd. Bestaande geactiveerde apparaten behouden tijdelijk offline toegang."
             } else {
                 "Deze nieuwe installatie van The One Main moet eerst door de beheerder worden goedgekeurd. Dit geldt ook na verwijderen en opnieuw installeren op een eerder gebruikt toestel."
@@ -389,9 +403,9 @@ class HomeActivity : AppCompatActivity() {
                 android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
             setPadding(pad / 2, pad, pad / 2, pad)
         }
-        container.addView(codeInput)
+        if (!pilot) container.addView(codeInput)
         val status = TextView(this).apply {
-            text = "Vraag een code aan bij de beheerder of vul je activatiecode in."
+            text = if (pilot) "Wacht op toestemming. De eigenaar ziet de aanvraag in Main → Meldingen." else "Vraag een code aan bij de beheerder of vul je activatiecode in."
             setTextColor(ContextCompat.getColor(this@HomeActivity, R.color.text_dim))
         }
         container.addView(status)
@@ -399,8 +413,8 @@ class HomeActivity : AppCompatActivity() {
         val dialog = AlertDialog.Builder(this)
             .setTitle("The One Main — activatie vereist")
             .setView(container)
-            .setPositiveButton("Activeren", null)
-            .setNegativeButton("Toegang aanvragen", null)
+            .setPositiveButton(if (pilot) "Goedkeuring controleren" else "Activeren", null)
+            .setNegativeButton(if (pilot) "Opnieuw aanvragen" else "Toegang aanvragen", null)
             .setNeutralButton("App sluiten") { _, _ -> finishAffinity() }
             .setCancelable(false)
             .create()
@@ -413,6 +427,24 @@ class HomeActivity : AppCompatActivity() {
                 request.isEnabled = !busy
             }
             activate.setOnClickListener {
+                if (pilot) {
+                    setBusy(true)
+                    status.text = "Goedkeuring controleren…"
+                    Thread {
+                        val state = MainLicenseClient.status(this)
+                        val stillPending = MainLicenseClient.needsApprovalBeforeEnforcement(this)
+                        runOnUiThread {
+                            setBusy(false)
+                            if (state.allowed && !stillPending) {
+                                dialog.dismiss()
+                                checkDeviceAccess()
+                            } else {
+                                status.text = "Nog niet goedgekeurd. De aanvraag blijft bij de eigenaar staan."
+                            }
+                        }
+                    }.start()
+                    return@setOnClickListener
+                }
                 val code = codeInput.text.toString().trim()
                 if (code.isBlank()) {
                     status.text = "Vul eerst je activatiecode in."
@@ -442,7 +474,7 @@ class HomeActivity : AppCompatActivity() {
                     runOnUiThread {
                         setBusy(false)
                         status.text = if (result.getOrNull()?.pending == true)
-                            "Aanvraag verzonden. De beheerder behandelt hem vanuit The One Main → Laptop → Licenties."
+                            "Aanvraag verzonden. De eigenaar kan hem zien in Main → Meldingen."
                         else "Verbinding mislukt. Probeer later opnieuw."
                     }
                 }.start()
