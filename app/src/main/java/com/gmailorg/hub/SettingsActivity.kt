@@ -205,31 +205,43 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun tryUnlock() {
-        if (pinInput.text.toString() == PIN_CODE) {
-            activeAdminPin = pinInput.text.toString()
+        val input = pinInput.text.toString()
+        val fresh = MainInstallationPin.isFreshInstallation(this)
+        if (fresh && MainInstallationPin.mustChoosePersonalPin(this)) {
+            pinErrorText.visibility = View.VISIBLE
+            pinErrorText.text = "Kies eerst je eigen PIN via het verplichte startscherm."
+            pinInput.text.clear()
+            return
+        }
+        val correct = if (fresh) MainInstallationPin.verify(this, input)
+                      else input == PIN_CODE
+        if (correct) {
+            // The owner/server master PIN is strictly separate from each
+            // installation's personal PIN.
+            activeAdminPin = if (fresh) "" else input
             pinErrorText.visibility = View.GONE
             lockSection.visibility = View.GONE
             unlockedSection.visibility = View.VISIBLE
             refreshParkingList()
             refreshHiddenTiles()
-
-            Thread {
-                var owner = runCatching {
-                    MainDeviceRegistry.ownerStatus(this, activeAdminPin)
-                }.getOrDefault(false)
-
-                if (!owner && MainDeviceRegistry.isOwnerEligible()) {
-                    owner = runCatching {
-                        MainDeviceRegistry.claimOwner(this, activeAdminPin)
+            if (!fresh) {
+                Thread {
+                    var owner = runCatching {
+                        MainDeviceRegistry.ownerStatus(this, activeAdminPin)
                     }.getOrDefault(false)
-                }
-
-                runOnUiThread {
-                    if (!owner) setupOwnerRecoverySection()
-                }
-            }.start()
+                    if (!owner && MainDeviceRegistry.isOwnerEligible()) {
+                        owner = runCatching {
+                            MainDeviceRegistry.claimOwner(this, activeAdminPin)
+                        }.getOrDefault(false)
+                    }
+                    runOnUiThread {
+                        if (!owner) setupOwnerRecoverySection()
+                    }
+                }.start()
+            }
         } else {
             pinErrorText.visibility = View.VISIBLE
+            pinErrorText.text = "PIN onjuist"
             pinInput.text.clear()
         }
     }
