@@ -34,6 +34,11 @@ try {
     $rootOwnerId = trim((string)($ownerRecord['device_id'] ?? ''));
     if ($rootOwnerId === '' || !hash_equals($rootOwnerId, $ownerDevice)) removal_answer(403, 'Eigenaar vereist');
     if (hash_equals($rootOwnerId, $targetId)) removal_answer(409, 'Eigenaar kan niet worden verwijderd');
+    // Authenticate before even revealing if the selected device exists.
+    $authenticated = one_license_locked(static function(array &$state, callable $dirty) use ($ownerDevice, $ownerInstall, $ownerToken): bool {
+        return one_license_owner_authenticated($state, $ownerDevice, $ownerInstall, $ownerToken);
+    });
+    if (!$authenticated) removal_answer(403, 'Beveiligde eigenaarkoppeling ontbreekt');
 
     // Serialize all owner-requested removals, retaining a private rollback image.
     $lockPath = $dataDir . '/main-device-removal.lock';
@@ -54,12 +59,6 @@ try {
         if (($target['device_role'] ?? 'main') !== 'main') {
             removal_answer(409, 'Verwijderen is voorlopig alleen voor Main-apparaten beschikbaar');
         }
-
-        // Verify robust installation-bound owner token before touching either store.
-        $authenticated = one_license_locked(static function(array &$state, callable $dirty) use ($ownerDevice, $ownerInstall, $ownerToken): bool {
-            return one_license_owner_authenticated($state, $ownerDevice, $ownerInstall, $ownerToken);
-        });
-        if (!$authenticated) removal_answer(403, 'Beveiligde eigenaarkoppeling ontbreekt');
 
         $backupDir = $home . '/.the-one-remote-backups';
         if (!is_dir($backupDir) && !mkdir($backupDir, 0700, true) && !is_dir($backupDir)) {
