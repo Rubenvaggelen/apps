@@ -37,10 +37,21 @@ public class MainActivity extends Activity {
     private boolean playbackActive;
     private boolean evaluating;
     private long evaluationStarted;
+    private DjInstallationLicense installationLicense;
+    private boolean djApproved;
 
-    @SuppressLint("SetJavaScriptEnabled")
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // No DJ WebView, files or playback services exist until Main owner approval.
+        installationLicense = new DjInstallationLicense(this);
+        installationLicense.begin(() -> {
+            djApproved = true;
+            initializeApprovedDj(savedInstanceState);
+        });
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private void initializeApprovedDj(Bundle savedInstanceState) {
         setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
@@ -193,7 +204,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
-        web.saveState(outState);
+        if (web != null) web.saveState(outState);
     }
 
     private void setBackgroundPlaybackActive(boolean active) {
@@ -220,6 +231,24 @@ public class MainActivity extends Activity {
     }
     @Override protected void onResume(){
         super.onResume();
+        if (installationLicense != null && djApproved) {
+            installationLicense.revalidate(() -> {
+                djApproved = false;
+                if (web != null) {
+                    web.loadUrl("about:blank");
+                    web.destroy();
+                    web = null;
+                }
+                playbackActive = false;
+                stopService(new Intent(this,DjPlaybackService.class));
+                new AlertDialog.Builder(this)
+                    .setTitle("DJ-toegang ingetrokken")
+                    .setMessage("Deze installatie heeft geen geldige DJ-licentie meer. Meld het apparaat opnieuw aan bij The One Main.")
+                    .setCancelable(false)
+                    .setPositiveButton("Sluiten",(d,w)->finish())
+                    .show();
+            });
+        }
         if(web!=null){web.onResume();web.resumeTimers();}
         if(updater!=null)updater.onResume();
     }
@@ -228,11 +257,12 @@ public class MainActivity extends Activity {
         super.onPause();
     }
     @Override protected void onStop(){
-        DjPlaybackService.background(true);
+        if(djApproved) DjPlaybackService.background(true);
         // DJ's timers and audio are intentionally not paused when WhatsApp opens.
         super.onStop();
     }
     @Override protected void onDestroy() {
+        if (installationLicense != null) installationLicense.close();
         if(updater!=null)updater.close();
         DjPlaybackService.detach(this);
         stopService(new Intent(this,DjPlaybackService.class));
