@@ -50,10 +50,10 @@ def patch(source: str) -> str:
         raise ValueError("Car allowlist differs: refuse to patch")
     # Verify exact legacy cohort size and Car allowlist before any future deployment.
     def ids_in_array(variable: str) -> list[str]:
-        match = re.search(r"\\$" + re.escape(variable) + r"\\s*=\\s*\\[(.*?)\\];", source, re.S)
+        match = re.search(r"\$" + re.escape(variable) + r"\s*=\s*\[(.*?)\];", source, re.S)
         if not match:
             raise ValueError(f"Missing {variable} allowlist")
-        return re.findall(r"'([0-9a-f-]{36})'\\s*=>\\s*true", match.group(1))
+        return re.findall(r"'([0-9a-f-]{36})'\s*=>\s*true", match.group(1))
     main_ids = ids_in_array("theOneApprovedLegacyMainIds")
     car_ids = ids_in_array("theOneAllowedCarIds")
     if len(main_ids) != 22 or len(set(main_ids)) != 22:
