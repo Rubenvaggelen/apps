@@ -312,6 +312,15 @@ class HomeActivity : AppCompatActivity() {
 
                 dialog.dismiss()
                 refreshTiles()
+                // Registration on a fresh non-owner installation must submit
+                // an owner-approval request even while Main enforcement is OFF.
+                // Existing installations with an existing person profile do not
+                // enter this flow, avoiding a request storm from legacy updates.
+                if (!isTheOne && !MainDeviceRegistry.isLocallyOwner(this)) {
+                    Thread {
+                        runCatching { MainLicenseClient.askForAccess(this) }
+                    }.start()
+                }
                 // Licensing must run before the first heartbeat, including
                 // a newly registered owner device.
                 checkDeviceAccess()
