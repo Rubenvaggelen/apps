@@ -65,8 +65,10 @@ final class SharedMediaClient {
                 try { reason=new JSONObject(raw).optString("error",""); }
                 catch(Exception ignored){}
                 // Never log credentials, request payload, URL query or tokens.
-                throw new AccessError("Shared Media " + file + "/" + action +
-                    " gaf HTTP " + code + (reason.isEmpty()?"":" ("+reason+")"));
+                String explanation="Shared Media " + file + "/" + action +
+                    " gaf HTTP " + code + (reason.isEmpty()?"":" ("+reason+")");
+                if(code==401 || code==403 || code==409)throw new AccessError(explanation);
+                throw new IOException(explanation);
             }
             return new JSONObject(raw);
         } finally { c.disconnect(); }
@@ -110,9 +112,10 @@ final class SharedMediaClient {
             askName();
             throw new AccessError("DJ heeft nog geen geregistreerde gebruikersnaam. Vul die één keer in bij de DJ-aanmelding.");
         }
-        String licenseToken=installationLicense.approvedTokenForSharedMedia();
+        String licenseToken=installationLicense.sharedMediaLicenseOrRequest(name);
         if(!licenseToken.matches("[a-fA-F0-9]{64}")){
-            throw new AccessError("DJ-licentie ontbreekt voor Shared Media. Vraag eerst een DJ-installatielicentie aan via Main.");
+            throw new AccessError("Eenmalige DJ-installatieaanvraag staat klaar in Main. " +
+                "Keur deze goed via Laptop → Apparaten beheren en open Shared Media daarna opnieuw.");
         }
         JSONObject heartbeat=post("devices.php","heartbeat",new JSONObject()
             .put("device_id",deviceId)
