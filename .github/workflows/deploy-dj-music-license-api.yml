@@ -1,0 +1,122 @@
+name: Deploy DJ Music Licensing API Safely
+on:
+  push:
+    branches: [feature/dj-music-install-license-20261010]
+    paths: ['.github/workflows/deploy-dj-music-license-api.yml']
+permissions:
+  contents: read
+concurrency:
+  group: one-time-dj-music-license-api-20261010
+  cancel-in-progress: false
+jobs:
+  guarded-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Test approval behavior and existing Main license integration
+        run: |
+          set -euo pipefail
+          php -l the-one-remote-server/license-core.php
+          php -l the-one-remote-server/licenses.php
+          php tests/dj-music-install-approval.php
+          php tests/main-approval-heartbeat-integration.php
+          php tests/main-heartbeat-license-bridge.php
+      - name: Compare, backup and install only license core and endpoint
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$tmp"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$tmp/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$tmp/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$tmp/askpass"
+          chmod 600 "$tmp/key" "$tmp/known_hosts"
+          chmod 700 "$tmp/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$tmp/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$tmp/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          sshdo() {
+            ssh -p "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" "$remote" "$@"
+          }
+          scpdo() {
+            scp -O -P "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" "$@"
+          }
+          for name in license-core.php licenses.php; do
+            scpdo "$remote:public_html/the-one-remote-api/$name" "$tmp/live-$name"
+            git show b1c43eb792e71afd37fa6ce036ec6de42826508a:"the-one-remote-server/$name" > "$tmp/baseline-$name"
+            cmp -s "$tmp/live-$name" "$tmp/baseline-$name" || {
+              echo "::error::Refuse to overwrite changed live $name"
+              exit 1
+            }
+            php -l "the-one-remote-server/$name" >/dev/null
+          done
+          core_sha=$(sha256sum "$tmp/live-license-core.php" | cut -d' ' -f1)
+          endpoint_sha=$(sha256sum "$tmp/live-licenses.php" | cut -d' ' -f1)
+          stage=$(sshdo 'mktemp -d "$HOME/.one-dj-license-stage.XXXXXXXX"')
+          scpdo the-one-remote-server/license-core.php "$remote:$stage/license-core.php"
+          scpdo the-one-remote-server/licenses.php "$remote:$stage/licenses.php"
+          sshdo "bash -s -- '$stage' '$core_sha' '$endpoint_sha'" <<'REMOTE'
+          set -Eeuo pipefail
+          stage="$1"
+          core_sha="$2"
+          endpoint_sha="$3"
+          live="$HOME/public_html/the-one-remote-api"
+          test "$(sha256sum "$live/license-core.php" | cut -d' ' -f1)" = "$core_sha" || exit 1
+          test "$(sha256sum "$live/licenses.php" | cut -d' ' -f1)" = "$endpoint_sha" || exit 1
+          php -l "$stage/license-core.php" >/dev/null
+          php -l "$stage/licenses.php" >/dev/null
+          backupdir="$HOME/.the-one-remote-backups"
+          mkdir -p "$backupdir"
+          backup=$(mktemp -d "$backupdir/dj-music-license-20261010.XXXXXXXX")
+          cp -p "$live/license-core.php" "$live/licenses.php" "$backup/"
+          rollback() {
+            cp -p "$backup/license-core.php" "$live/license-core.php"
+            cp -p "$backup/licenses.php" "$live/licenses.php"
+            echo "Rolled back license PHP code from private backup"
+          }
+          trap rollback ERR
+          for name in license-core.php licenses.php; do
+            cp "$stage/$name" "$live/$name.dj-next"
+            chmod 644 "$live/$name.dj-next"
+          done
+          mv "$live/license-core.php.dj-next" "$live/license-core.php"
+          mv "$live/licenses.php.dj-next" "$live/licenses.php"
+          php -l "$live/license-core.php" >/dev/null
+          php -l "$live/licenses.php" >/dev/null
+          # Existing private registry, grants, owner pairing and Main/Car rights UNCHANGED.
+          curl -fsS --max-time 20 -H 'Content-Type: application/json' --data '{}' \
+            'https://rubenvanaggelen.com/the-one-remote-api/licenses.php?action=policy' |
+            php -r '$p=json_decode(stream_get_contents(STDIN),true); if(($p["ok"]??false)!==true || ($p["dj"]["required"]??false)!==true || ($p["music"]["required"]??false)!==true)exit(1);'
+          trap - ERR
+          rm -rf "$stage"
+          echo 'SERVER SUCCESS: DJ/Music approval API deployed; pre-existing grants untouched'
+          REMOTE
+      - name: Read-only verify DJ Music deny-by-default and unchanged Main policy
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,urllib.request
+          base='https://rubenvanaggelen.com/the-one-remote-api/licenses.php?action='
+          def post(action,payload):
+              req=urllib.request.Request(base+action,json.dumps(payload).encode(),{'Content-Type':'application/json'},method='POST')
+              with urllib.request.urlopen(req,timeout=20) as response:
+                  return json.load(response)
+          policy=post('policy',{})
+          assert policy['dj']['required'] and policy['music']['required']
+          assert not policy['main']['required'] and not policy['studio']['required']
+          for app in ('dj','music'):
+              state=post('status',{'app':app,'device_id':'unused-dj-audit-device-20261010','installation_id':'12345678-1234-4234-8234-123456789abc','token':''})
+              assert state['enabled'] is True and state['allowed'] is False, state
+          print('PASS: no unapproved DJ/Music installation can open, Main/Studio original policy retained')
+          PY
