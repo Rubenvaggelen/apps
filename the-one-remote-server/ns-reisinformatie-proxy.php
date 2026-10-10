@@ -43,6 +43,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
     exit;
 }
 
+function ns_json_valid(string $json): bool {
+    json_decode($json);
+    return json_last_error() === JSON_ERROR_NONE;
+}
+
 function ns_fail(int $status, string $error): never {
     http_response_code($status);
     echo json_encode(['error' => $error], JSON_UNESCAPED_SLASHES);
@@ -127,7 +132,7 @@ $cachePath = $cacheDir . '/' . hash('sha256', $resource . $queryString) . '.json
 $ttl = $resource === 'stations' ? 24 * 60 * 60 : 45;
 if (is_file($cachePath) && (int)filemtime($cachePath) >= $now - $ttl) {
     $cached = @file_get_contents($cachePath);
-    if ($cached !== false && json_validate($cached)) {
+    if ($cached !== false && ns_json_valid($cached)) {
         echo $cached;
         exit;
     }
@@ -152,7 +157,7 @@ $json = curl_exec($handle);
 $status = (int)curl_getinfo($handle, CURLINFO_HTTP_CODE);
 curl_close($handle);
 unset($key);
-if (!is_string($json) || $status !== 200 || !json_validate($json)) {
+if (!is_string($json) || $status !== 200 || !ns_json_valid($json)) {
     ns_fail(502, 'ns_upstream_unavailable');
 }
 $tmp = $cachePath . '.' . bin2hex(random_bytes(5));
