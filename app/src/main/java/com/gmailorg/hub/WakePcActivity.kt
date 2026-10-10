@@ -127,12 +127,39 @@ class WakePcActivity : AppCompatActivity() {
             val owner = MainDeviceRegistry.isLocallyOwner(this)
             runOnUiThread {
                 if (!owner) {
-                    Toast.makeText(
-                        this,
-                        "Alleen het eigenaarstoestel mag laptops beheren.",
-                        Toast.LENGTH_LONG
-                    ).show()
-                    finish()
+                    // No administrative controls for non-owners. Allow an
+                    // explicit, non-privileged registration test instead.
+                    AlertDialog.Builder(this)
+                        .setTitle("Aanmelding bij beheerder")
+                        .setMessage("Dit apparaat heeft geen beheerrechten. Wil je een aanmeldverzoek naar de eigenaar van The One sturen?")
+                        .setPositiveButton("Aanmelding aanvragen", null)
+                        .setNegativeButton("Sluiten") { _, _ -> finish() }
+                        .setCancelable(false)
+                        .create()
+                        .also { dialog ->
+                            dialog.setOnShowListener {
+                                val send = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                                send.setOnClickListener {
+                                    send.isEnabled = false
+                                    Thread {
+                                        val submitted = runCatching {
+                                            MainLicenseClient.askForAccess(this)
+                                        }
+                                        runOnUiThread {
+                                            if (submitted.getOrNull()?.pending == true) {
+                                                Toast.makeText(this, "Aanmelding verzonden. Wacht op goedkeuring in Main.", Toast.LENGTH_LONG).show()
+                                                dialog.dismiss()
+                                                finish()
+                                            } else {
+                                                send.isEnabled = true
+                                                Toast.makeText(this, "Aanmelding mislukt. Controleer de internetverbinding en probeer opnieuw.", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    }.start()
+                                }
+                            }
+                            dialog.show()
+                        }
                     return@runOnUiThread
                 }
 
