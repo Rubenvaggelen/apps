@@ -12,11 +12,15 @@ function check_bridge(bool $ok, string $message): void {
 }
 check_bridge(!one_license_main_heartbeat_granted($device, $install, $token), 'No grant denied');
 one_license_locked(static function(array &$state, callable $dirty) use($device,$install,$token): void {
-    $state['main_enforced'] = true;
     $state['grants']['test'] = [
         'app'=>'main', 'device'=>$device, 'status'=>'active',
         'installation_id'=>$install, 'token_hash'=>one_license_hash($token)
     ];
+    $dirty();
+});
+check_bridge(!one_license_main_heartbeat_granted($device, $install, $token), 'Grant must stay disabled before cutover');
+one_license_locked(static function(array &$state, callable $dirty) use($device,$install,$token): void {
+    $state['main_enforced'] = true;
     $dirty();
 });
 check_bridge(one_license_main_heartbeat_granted($device, $install, $token), 'Approved grant accepted');
