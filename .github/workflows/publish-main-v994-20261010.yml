@@ -1,0 +1,74 @@
+name: Publish The One Main v994 for All Devices
+on:
+  push:
+    branches: [feature/main-v994-parking-pin-family-20261010]
+    paths: ['.github/workflows/publish-main-v994-20261010.yml']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: one-time-release-main-v994-20261010
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require audited CI and unchanged APK sources
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          original='b40e9b66480e1fb47333a83647f6426369b14760'
+          test "$(gh api repos/Rubenvaggelen/apps/actions/runs/38083629686 --jq .conclusion)" = success
+          test "$(gh api repos/Rubenvaggelen/apps/actions/runs/38083629686 --jq .head_sha)" = "$original"
+          git diff --exit-code "$original" HEAD -- app/ the-one-remote-server/ build.gradle gradle.properties settings.gradle \
+            .github/workflows/build-main-v994-parking-pin.yml
+          if gh release view main-v994 --repo Rubenvaggelen/apps >/dev/null 2>&1; then
+            echo "::error::Main v994 release exists; refuse overwrite"
+            exit 1
+          fi
+          echo 'PASS: signed artifact approved by CI and matching current app sources'
+      - name: Download CI-verified v994 APK
+        uses: actions/download-artifact@v4
+        with:
+          name: the-one-main-v994-parking-pin-test
+          run-id: 38083629686
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: staging
+      - name: Verify Android version, package, signer, and backup policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=staging/app-debug.apk
+          test -s "$apk"
+          test "$(unzip -Z1 "$apk" | grep -c '^classes.*dex$')" -ge 1
+          tools_dir="$(find "$ANDROID_SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          badging="$("$tools_dir/aapt" dump badging "$apk" | head -1)"
+          echo "$badging" | grep -q "name='com.gmailorg.hub'"
+          echo "$badging" | grep -q "versionCode='994'"
+          "$tools_dir/apksigner" verify "$apk"
+          curl -fLsS --max-time 120 https://github.com/Rubenvaggelen/apps/releases/download/main-v984/app-debug.apk -o /tmp/main-v984.apk
+          old_cert="$("$tools_dir/apksigner" verify --print-certs /tmp/main-v984.apk | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
+          new_cert="$("$tools_dir/apksigner" verify --print-certs "$apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
+          test -n "$old_cert" && test "$old_cert" = "$new_cert"
+          test "$(git grep -o 'android:allowBackup="false"' -- app/src/main/AndroidManifest.xml | wc -l)" -eq 1
+          echo 'PASS: versionCode 994, package/signing correct, backup disabled'
+      - name: Publish Main v994 to public auto-update channel
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create main-v994 staging/app-debug.apk \
+            --repo Rubenvaggelen/apps \
+            --title "The One Main — v994" \
+            --target "$GITHUB_SHA" \
+            --notes "Main update voor alle apparaten: Parkeren gebruikt Dam 1, Amsterdam als voorbeeld; oude voorbeelden worden niet automatisch opgeslagen. Iedere Main-gebruiker kiest een persoonlijke PIN bij de eerste opening na de update: startcode 1306, daarna verplicht een eigen 4–8-cijferige PIN. Later opnieuw wijzigen via Instellingen. Bestaande Main-gegevens en toegekende rechten blijven bij normaal bijwerken behouden. Main-licentieaanvragen blijven zoals eerder ingericht."
+          gh release view main-v994 --repo Rubenvaggelen/apps --json assets,isDraft,isPrerelease,url \
+            --jq '{draft:.isDraft,prerelease:.isPrerelease,url:.url,assets:[.assets[].name]}'
+          echo 'SUCCESS: Main v994 released for all Main update-checking installations'
