@@ -1,7 +1,10 @@
-name: The One Main v985 Tablet Test (No Release)
+name: The One Main v989 Tablet Test (No Release)
 
 on:
   workflow_dispatch: {}
+  push:
+    branches:
+      - feature/studio-license-management-20261009
 
 permissions:
   contents: read
@@ -67,8 +70,8 @@ jobs:
           PY
       - name: Add verified offline supermarket map
         run: python3 .github/scripts/supermarket-snapshot.py
-      - name: Build tablet APK version 985
-        run: gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon --no-build-cache -PappVersionCode=985
+      - name: Build tablet APK version 989
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon --no-build-cache -PappVersionCode=989
       - name: Verify package, upgrade version and signing certificate against v984
         shell: bash
         run: |
@@ -88,7 +91,7 @@ jobs:
           echo "$new_badging" | grep -q "name='com.gmailorg.hub'"
           old_version="$(printf '%s\n' "$old_badging" | sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p")"
           new_version="$(printf '%s\n' "$new_badging" | sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p")"
-          if [ -z "$old_version" ] || [ "$new_version" != "985" ] || [ "$old_version" -ge "$new_version" ]; then
+          if [ -z "$old_version" ] || [ "$new_version" != "989" ] || [ "$old_version" -ge "$new_version" ]; then
             echo "::error::Version does not upgrade installed Main; packaging blocked"
             exit 1
           fi
@@ -105,7 +108,7 @@ jobs:
       - name: Upload verified tablet APK (not a release)
         uses: actions/upload-artifact@v4
         with:
-          name: the-one-main-v985-tablet-test
+          name: the-one-main-v989-tablet-test
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
           if-no-files-found: error
