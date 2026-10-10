@@ -1,0 +1,81 @@
+name: Publish DJ v1050 Standalone Owner Licensing
+on:
+  push:
+    branches: [feature/dj-music-install-license-20261010]
+    paths: ['.github/workflows/publish-dj-v1050-license.yml']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: one-time-release-dj-v1050-license
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify DJ test success and wait for Main v995 owner UI
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ci='a4279bc160974a1f519fb7c677fcfe1b104d71ab'
+          test "$(gh api repos/Rubenvaggelen/apps/actions/runs/38086142113 --jq .conclusion)" = success
+          test "$(gh api repos/Rubenvaggelen/apps/actions/runs/38086142113 --jq .head_sha)" = "$ci"
+          git diff --exit-code "$ci" HEAD -- thedj/ windows/the-one-dj/ build.gradle gradle.properties settings.gradle
+          main_ready=0
+          for n in $(seq 1 72); do
+            if gh release view main-v995 --repo Rubenvaggelen/apps --json assets,isDraft \
+              --jq 'select(.isDraft == false and any(.assets[]; .name == "app-debug.apk")) | true' | grep -q true; then
+              main_ready=1; break
+            fi
+            sleep 10
+          done
+          test "$main_ready" = 1 || { echo "::error::Main v995 owner approval screen is not released yet"; exit 1; }
+          test -z "$(gh release view dj-v1050 --repo Rubenvaggelen/apps --json id --jq .id 2>/dev/null || true)" || {
+            echo "::error::DJ v1050 release already exists"; exit 1
+          }
+          python3 - <<'PY'
+          import json,urllib.request
+          url='https://rubenvanaggelen.com/the-one-remote-api/licenses.php?action=policy'
+          req=urllib.request.Request(url,b'{}',{'Content-Type':'application/json'},method='POST')
+          with urllib.request.urlopen(req,timeout=15) as r: p=json.load(r)
+          assert p['dj']['required'] is True and p['music']['required'] is True
+          print('PASS central DJ licensing live, Main can approve new installs')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: the-one-dj-v1050-license-test
+          run-id: 38086142113
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: staging
+      - name: Verify DJ upgrade version and signing against v1049
+        shell: bash
+        run: |
+          set -euo pipefail
+          new=staging/thedj-debug.apk
+          test -s "$new"
+          tools_dir="$(find "$ANDROID_SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$tools_dir/aapt" dump badging "$new" | head -1 | grep -q "name='com.gmailorg.thedj'.*versionCode='1050'"
+          "$tools_dir/apksigner" verify "$new"
+          curl -fLsS --max-time 120 "https://github.com/Rubenvaggelen/apps/releases/download/dj-v1049/thedj-debug.apk" -o /tmp/dj-old.apk
+          old_cert="$("$tools_dir/apksigner" verify --print-certs /tmp/dj-old.apk | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
+          new_cert="$("$tools_dir/apksigner" verify --print-certs "$new" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
+          test -n "$old_cert" && test "$old_cert" = "$new_cert"
+          echo "PASS: DJ v1050 signature compatible with v1049"
+      - name: Publish independent DJ APK
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create dj-v1050 staging/thedj-debug.apk --repo Rubenvaggelen/apps \
+            --title "The One DJ — v1050" --target "$GITHUB_SHA" \
+            --notes "Zelfstandige DJ Android-app met per-nieuwe-installatie licentiecontrole. Elke DJ-installatie vanaf de licentie-invoerdatum vraagt een aparte eigenaarstoestemming via The One Main v995 → Laptop → Apparaten beheren; geen DJ-audio of speler tot goedkeuring. Een bestaande oudere DJ-installatie blijft bij een normale update werken. Verwijderen en opnieuw installeren vereist nieuwe goedkeuring. Music blijft apart."
+          gh release view dj-v1050 --repo Rubenvaggelen/apps --json assets,isDraft,isPrerelease,url \
+            --jq '{draft:.isDraft,prerelease:.isPrerelease,url:.url,assets:[.assets[].name]}'
+          echo "SUCCESS: DJ v1050 independent release published"
