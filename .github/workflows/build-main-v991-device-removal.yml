@@ -18,6 +18,7 @@ jobs:
           php -l the-one-remote-server/main-heartbeat-license-bridge.php
           php -l the-one-remote-server/owner-remove-device.php
           php -l the-one-remote-server/license-core.php
+          python3 tests/test_owner_device_removal.py
           php tests/main-heartbeat-license-bridge.php
           php tests/main-approval-heartbeat-integration.php
           python3 tests/test_main_live_bridge_patch.py
