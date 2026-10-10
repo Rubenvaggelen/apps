@@ -39,6 +39,7 @@ class HomeActivity : AppCompatActivity() {
 
     private var blockedDialogShowing = false
     private var mainLicenseDialogShowing = false
+    private var personalPinDialogShowing = false
     private var personRegistrationDialogShowing = false
     private var personRegistrationLookupRunning = false
     private val accessRequestPoll = object : Runnable {
@@ -404,13 +405,81 @@ class HomeActivity : AppCompatActivity() {
                 runCatching { MainDeviceRegistry.claimInitialOwner(this) }
             }
             runOnUiThread {
-                findViewById<RecyclerView>(R.id.homeGrid).visibility = View.VISIBLE
-                refreshTiles()
                 if (blocked == true || MainDeviceRegistry.isLocallyBlocked(this)) {
+                    findViewById<RecyclerView>(R.id.homeGrid).visibility = View.INVISIBLE
                     showBlockedDeviceDialog()
+                } else if (MainInstallationPin.mustChoosePersonalPin(this)) {
+                    // No Main tiles are interactive until EACH owner-approved installation has a personal PIN.
+                    findViewById<RecyclerView>(R.id.homeGrid).visibility = View.INVISIBLE
+                    showPersonalPinSetup()
+                } else {
+                    findViewById<RecyclerView>(R.id.homeGrid).visibility = View.VISIBLE
+                    refreshTiles()
                 }
             }
         }.start()
+    }
+
+    private fun showPersonalPinSetup() {
+        if (personalPinDialogShowing || isFinishing || isDestroyed) return
+        if (!MainInstallationPin.mustChoosePersonalPin(this)) return
+        personalPinDialogShowing = true
+        val pad = (18 * resources.displayMetrics.density).toInt()
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, 0)
+        }
+        content.addView(TextView(this).apply {
+            text = "Dit apparaat behoudt zijn bestaande Main-gegevens. " +
+                "Gebruik eenmalig de startcode 1306 en kies nu je eigen PIN. " +
+                "De standaardcode geeft geen toegang tot de app of instellingen."
+        })
+        fun pinField(hintText: String): EditText {
+            return EditText(this).apply {
+                hint = hintText
+                inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                    android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+                isSingleLine = true
+                content.addView(this)
+            }
+        }
+        val first = pinField("Tijdelijke PIN (1306)")
+        val second = pinField("Nieuwe PIN (4–8 cijfers)")
+        val third = pinField("Nieuwe PIN herhalen")
+        val status = TextView(this).apply {
+            setTextColor(ContextCompat.getColor(this@HomeActivity, android.R.color.holo_red_light))
+        }
+        content.addView(status)
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Maak jouw eigen PIN")
+            .setView(content)
+            .setPositiveButton("PIN instellen", null)
+            .setNegativeButton("App sluiten") { _, _ -> finishAffinity() }
+            .setCancelable(false)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val result = runCatching {
+                    MainInstallationPin.createPersonalPin(this,
+                        first.text.toString(), second.text.toString(), third.text.toString())
+                }
+                result.onSuccess {
+                    first.text.clear()
+                    second.text.clear()
+                    third.text.clear()
+                    dialog.dismiss()
+                    findViewById<RecyclerView>(R.id.homeGrid).visibility = View.VISIBLE
+                    refreshTiles()
+                    Toast.makeText(this, "Je persoonlijke PIN is ingesteld.", Toast.LENGTH_LONG).show()
+                }.onFailure {
+                    status.text = it.message ?: "PIN instellen mislukt"
+                    second.text.clear()
+                    third.text.clear()
+                }
+            }
+        }
+        dialog.setOnDismissListener { personalPinDialogShowing = false }
+        dialog.show()
     }
 
     private fun showMainLicenseDialog(reason: String) {
