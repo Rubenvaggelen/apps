@@ -606,6 +606,53 @@ class WakePcActivity : AppCompatActivity() {
                     device.pendingFileDownloads
                 )
 
+                // Device removal is irreversible: require exact selection and a second
+                // confirmation. The paired owner's server credential is mandatory.
+                if (device.deviceRole == "main" && MainLicenseClient.ownerIsPaired(this)) {
+                    details.addView(android.widget.Button(this).apply {
+                        text = "Apparaat verwijderen (ook rechten en licentie)"
+                        setOnClickListener {
+                            val clicked = this
+                            AlertDialog.Builder(this@WakePcActivity)
+                                .setTitle("Apparaat definitief verwijderen?")
+                                .setMessage(
+                                    "Naam: $personLabel\\n" +
+                                    "Apparaat: ${device.name}\\n" +
+                                    "ID: ${device.id}\\n\\n" +
+                                    "Alle toegangsrechten, licenties en openstaande aanvragen " +
+                                    "van dit apparaat worden ingetrokken. " +
+                                    "Dit apparaat moet zich daarna opnieuw aanmelden."
+                                )
+                                .setNegativeButton("Annuleren", null)
+                                .setPositiveButton("Definitief verwijderen") { _, _ ->
+                                    clicked.isEnabled = false
+                                    Thread {
+                                        val result = runCatching {
+                                            MainLicenseClient.removeOwnerDevice(
+                                                this@WakePcActivity, device.id, device.registered
+                                            )
+                                        }
+                                        runOnUiThread {
+                                            result.onSuccess {
+                                                groupDetails.removeView(card)
+                                                Toast.makeText(this@WakePcActivity,
+                                                    "Apparaat verwijderd; rechten en licentie ingetrokken.",
+                                                    Toast.LENGTH_LONG).show()
+                                                AccessRequestNotificationWorker.checkNow(this@WakePcActivity)
+                                            }.onFailure {
+                                                clicked.isEnabled = true
+                                                Toast.makeText(this@WakePcActivity,
+                                                    "Verwijderen mislukt: " + (it.message ?: "onbekende fout"),
+                                                    Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    }.start()
+                                }
+                                .show()
+                        }
+                    })
+                }
+
                 details.addView(android.widget.Button(this).apply {
                     text = if (device.blocked) "Deblokkeren" else "Blokkeren"
                     setOnClickListener {

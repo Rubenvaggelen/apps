@@ -231,6 +231,45 @@ object MainLicenseClient {
         }
     }
 
+    /** Deletes one exact Main installation after server-side paired-owner verification. */
+    fun removeOwnerDevice(context: Context, targetDeviceId: String, registeredAt: String) {
+        require(MainDeviceRegistry.isLocallyOwner(context) && ownerIsPaired(context)) {
+            "Beveiligde eigenaarkoppeling vereist"
+        }
+        require(targetDeviceId.isNotBlank() && registeredAt.isNotBlank()) {
+            "Apparaat-ID of registratiedatum ontbreekt"
+        }
+        val payload = payload(context)
+            .put("owner_token", ownerToken(context))
+            .put("target_device_id", targetDeviceId)
+            .put("expected_registered", registeredAt)
+        val url = URL("https://rubenvanaggelen.com/the-one-remote-api/owner-remove-device.php")
+        val connection = (url.openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 6000
+            readTimeout = 12000
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            setRequestProperty("Accept", "application/json")
+            instanceFollowRedirects = false
+            doOutput = true
+        }
+        try {
+            connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+            val status = connection.responseCode
+            val response = (if (status in 200..299) connection.inputStream else connection.errorStream)
+                ?.bufferedReader()?.use { it.readText() }.orEmpty()
+            val result = runCatching { JSONObject(response) }.getOrDefault(JSONObject())
+            if (status !in 200..299 || !result.optBoolean("ok", false)) {
+                throw IllegalStateException(result.optString("message", "Verwijderen mislukt ($status)"))
+            }
+            require(result.optString("removed_device_id") == targetDeviceId) {
+                "Server heeft verwijderen niet bevestigd"
+            }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     fun approveOwnerRequest(context: Context, requestId: String): Boolean {
         if (!MainDeviceRegistry.isLocallyOwner(context) || !ownerIsPaired(context)) return false
         val json = request("owner_approve", payload(context)

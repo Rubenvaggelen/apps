@@ -153,6 +153,11 @@ function one_license_initialize_main(array &$state, string $registryFile): array
 }
 
 function one_license_main_status(array &$state, string $device, string $token, string $installationId, int $firstInstalledMs): array {
+    // Owner-retired identifiers can never regain access via pilot bypass,
+    // old grandfathered device IDs, or an already-issued token.
+    if (isset($state['retired_devices'][$device])) {
+        return ['enabled' => true, 'allowed' => false, 'mode' => 'device_removed'];
+    }
     if (!$state['main_enforced']) return ['enabled' => false, 'allowed' => true, 'mode' => 'not_enabled'];
     if ($token !== '') {
         $grant = one_license_find_grant($state, 'main', $device, $token, $installationId);
@@ -211,6 +216,9 @@ function one_license_create_code(array &$state, string $app, string $label, int 
 }
 
 function one_license_request(array &$state, string $app, string $device, string $person, string $installationId): array {
+    if (isset($state['retired_devices'][$device])) {
+        return ['allowed' => false, 'status' => 'device_removed'];
+    }
     if (!in_array($app, ['main', 'studio'], true)) throw new InvalidArgumentException('Unknown application');
     foreach ($state['requests'] as $id => $req) {
         if (($req['app'] ?? '') === $app && ($req['device'] ?? '') === $device &&
