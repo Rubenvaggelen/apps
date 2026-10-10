@@ -1,0 +1,84 @@
+name: DJ v1050 Owner License Test APK
+on:
+  push:
+    branches: [feature/dj-music-install-license-20261010]
+    paths:
+      - 'thedj/**'
+      - 'the-one-remote-server/licenses.php'
+      - 'the-one-remote-server/license-core.php'
+      - 'tests/dj-music-install-approval.php'
+      - '.github/workflows/test-dj-license-20261010.yml'
+permissions:
+  contents: read
+jobs:
+  dj-license-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify server approval and fresh reinstall isolation
+        run: |
+          set -euo pipefail
+          php -l the-one-remote-server/license-core.php
+          php -l the-one-remote-server/licenses.php
+          php tests/dj-music-install-approval.php
+          php tests/main-approval-heartbeat-integration.php
+          python3 - <<'PY'
+          from pathlib import Path
+          source=Path("thedj/src/main/java/com/gmailorg/thedj/MainActivity.java").read_text()
+          gate=Path("thedj/src/main/java/com/gmailorg/thedj/DjInstallationLicense.java").read_text()
+          manifest=Path("thedj/src/main/AndroidManifest.xml").read_text()
+          assert source.index("installationLicense.begin(")<source.index("initializeApprovedDj(")
+          assert 'android:allowBackup="false"' in manifest
+          assert 'getNoBackupFilesDir' in gate
+          assert '"dj"' in gate and 'request_secret' in gate
+          print("PASS standalone DJ install-bound gating")
+          PY
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+      - name: Restore existing DJ APK signing certificate
+        shell: bash
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$DEBUG_KEYSTORE_BASE64"
+          mkdir -p ~/.android
+          printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
+          chmod 600 ~/.android/debug.keystore
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: DJ regression tests
+        run: |
+          node windows/the-one-dj/tests/smart-selection.cjs
+          node windows/the-one-dj/tests/background-playback.cjs
+      - name: Compile DJ v1050 without releasing
+        run: gradle :thedj:testDebugUnitTest :thedj:assembleDebug --no-daemon --no-build-cache -PappVersionCode=1050
+      - name: Verify upgrade package identity and original signing certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fLsS --max-time 120 https://github.com/Rubenvaggelen/apps/releases/download/dj-v1049/thedj-debug.apk -o /tmp/dj-v1049.apk
+          new=thedj/build/outputs/apk/debug/thedj-debug.apk
+          test -s "$new"
+          sdk="$(find "$ANDROID_SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          aapt="$sdk/aapt"
+          signer="$sdk/apksigner"
+          "$aapt" dump badging "$new" | head -1 | grep -q "name='com.gmailorg.thedj'.*versionCode='1050'"
+          oldcert="$("$signer" verify --print-certs /tmp/dj-v1049.apk | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
+          newcert="$("$signer" verify --print-certs "$new" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
+          test -n "$oldcert" && test "$oldcert" = "$newcert"
+          echo 'PASS: DJ 1050 can upgrade v1049 with same signing certificate'
+      - name: Store test DJ APK independently of Main
+        uses: actions/upload-artifact@v4
+        with:
+          name: the-one-dj-v1050-license-test
+          path: thedj/build/outputs/apk/debug/thedj-debug.apk
+          if-no-files-found: error
+          retention-days: 7
