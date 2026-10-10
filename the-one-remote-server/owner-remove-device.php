@@ -78,7 +78,7 @@ try {
                 throw new RuntimeException('Owner token expired');
             }
             $revoked = 0;
-            foreach (($state['grants'] ?? []) as &$grant) {
+            foreach ($state['grants'] as &$grant) {
                 if (($grant['device'] ?? '') !== $targetId) continue;
                 if (($grant['status'] ?? '') !== 'revoked') {
                     $grant['status'] = 'revoked';
@@ -87,7 +87,7 @@ try {
                 }
             }
             unset($grant);
-            foreach (($state['requests'] ?? []) as &$req) {
+            foreach ($state['requests'] as &$req) {
                 if (($req['device'] ?? '') !== $targetId) continue;
                 if (in_array(($req['status'] ?? ''), ['pending', 'approved'], true)) {
                     $req['status'] = 'revoked';
