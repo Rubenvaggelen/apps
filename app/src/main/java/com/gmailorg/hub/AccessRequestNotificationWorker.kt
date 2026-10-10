@@ -169,7 +169,11 @@ object AccessRequestNotifications {
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
                 val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                     .setSmallIcon(R.mipmap.ic_launcher)
-                    .setContentTitle("The One Main: nieuwe aanmelding van $who")
+                    .setContentTitle("The One " + when (request.app) {
+                        "dj" -> "DJ"
+                        "music" -> "Music"
+                        else -> "Main"
+                    } + ": nieuwe aanmelding van $who")
                     .setContentText("Wacht op jouw goedkeuring in Apparaten beheren.")
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
                     .setOngoing(true)
