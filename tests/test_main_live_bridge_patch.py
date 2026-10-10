@@ -4,7 +4,7 @@ module_path = Path(__file__).resolve().parents[1] / "scripts/prepare-main-licens
 spec = importlib.util.spec_from_file_location("main_bridge_patch", module_path)
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
-main_ids = "\\n".join("    '00000000-0000-4000-8000-%012d' => true," % i for i in range(22))
+main_ids = "\n".join("    '00000000-0000-4000-8000-%012d' => true," % i for i in range(22))
 fixture = f"""<?php
 $theOneApprovedLegacyMainIds = [
 {main_ids}
