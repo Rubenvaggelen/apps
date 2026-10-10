@@ -15,7 +15,7 @@
         android:layout_weight="1"
         android:textColor="@color/text_main"
         android:textSize="16sp"
-        android:text="Vianenstraat 31, Amsterdam" />
+        android:text="Dam 1, Amsterdam" />
 
     <ImageButton
         android:id="@+id/addressDeleteButton"
