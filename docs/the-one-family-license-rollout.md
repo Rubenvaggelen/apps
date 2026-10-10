@@ -56,3 +56,14 @@ Bij niet-bereikbare server blijven de bestaande Main-meldingen bewaard en worden
 
 **Uitrolstatus:** alleen ontwikkeltak. Zowel `license-core.php`, `licenses.php`, de afgeschermde `studio-licenses.php` als de nieuwe Main APK moeten gezamenlijk gecontroleerd en uitgebracht worden. Niet simpelweg de GitHub-serverversie deployen: de huidige live `devices.php` bevat Car- en Main-allowlists uit eerdere handmatige cleanupacties die niet onbedoeld overschreven mogen worden.
 
+
+
+## Aanvullende gecontroleerde Main-heartbeatkoppeling (10 oktober 2026)
+
+- De **live** `devices.php` heeft handmatig vastgelegde allowlists voor precies 22 Main-ID's en Car Ruben/Leon. GitHub `the-one-remote-server/devices.php` heeft die live wijzigingen **niet**: dit bestand nooit integraal over productie kopiëren.
+- Nieuwe Android Main-code kan `installation_id` en `license_token` via POST meesturen in de heartbeat. De aparte `main-heartbeat-license-bridge.php` staat een nieuwe Main-installatie alleen toe wanneer `main_enforced=true` en een actieve, aan apparaat en installatie gekoppelde grant klopt.
+- Script `scripts/prepare-main-license-live-bridge.py` is **standaard dry-run**, weigert bij afwijkende live allowlist/Car-regels en voert vóór eventuele vervanging PHP-lint uit. Een daadwerkelijke wijziging vereist afzonderlijke uitrolgoedkeuring, een bestaande live backup en `--apply`. De PHP-bridge moet dan naast `license-core.php` staan.
+- De nieuwe CI-integrationtests dekken aanvraag → eigenaar-goedkeuring → eenmalige claim → heartbeat en intrekking. Ze bewijzen nog **niet** dat het complete toestel-/servertraject live werkt.
+- **Let op bestaand risico:** de tijdelijke vaste Main-ID-allowlist vertrouwt voor legacy-ID's nog op alleen `device_id`, ook bij een mogelijk nieuwe installatie met hetzelfde ID. Daarom zijn de nieuwe installatiecontrole en de uitrol naar bestaande toestellen nog geen cryptografisch afdwingbare garantie tegen herinstallatie of gekloonde clients. Geen algemene handhaving activeren totdat voor bestaande installaties een veilige overgang is ontworpen en getest.
+- Het openen van de OWNER-koppelpagina is niet hetzelfde als live activering. Pas een nieuwe Main-APK (correct ondertekend, versie hoger dan huidige) op een afgeschermd testtoestel toe nadat compatibiliteit en integratie zijn bewezen.
+- Vereiste handmatige preflight: live serverpad en documentroot bevestigen; productie-backups en herstelpad controleren; op staging/dry-run de echte live `devices.php` matchen; rechten en eigenaar-authenticatie testen; bestaande update en volledige uninstall/reinstall simuleren.
