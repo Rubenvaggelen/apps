@@ -29,7 +29,7 @@ jobs:
           for file,source in (('builds',a),('index',b)):
               head=source.index('<script>')+len('<script>')
               tail=source.index('</script>',head)
-              Path('/tmp/'+file+'-devhub.js').write_text(source[head:tail])
+              Path('/tmp/'+file+'-devhub.js').write_text(source[head:tail].replace('<?php echo json_encode($csrf,JSON_UNESCAPED_SLASHES);?>', '"test-csrf"'))
           print('PASS independent DJ download link and PHP templates')
           PY
           node --check /tmp/builds-devhub.js
