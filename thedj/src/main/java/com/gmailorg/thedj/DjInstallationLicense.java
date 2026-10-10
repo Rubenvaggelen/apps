@@ -77,6 +77,48 @@ public final class DjInstallationLicense {
         return read(TOKEN);
     }
 
+    /**
+     * Legacy DJ installations predate the license screen. Only when Shared Media
+     * is opened, enroll them using the name already known to DJ. Owner approval
+     * is still mandatory; never create a grant from an access-right flag.
+     * A pending request can be claimed on the next Shared Media open.
+     */
+    synchronized String sharedMediaLicenseOrRequest(String knownPersonName) throws Exception {
+        String active=read(TOKEN);
+        if(active.matches("[a-fA-F0-9]{64}"))return active;
+        String person=read(PERSON).trim();
+        if(person.isEmpty())person=knownPersonName.trim();
+        if(person.isEmpty())return "";
+        if(person.length()>90)throw new Exception("DJ gebruikersnaam is te lang");
+        if(read(PERSON).isEmpty())write(PERSON,person);
+        String previous=read(REQUEST);
+        if(!previous.isEmpty()) {
+            JSONObject saved=new JSONObject(previous);
+            JSONObject claim=post("claim",base()
+                .put("request_id",saved.optString("id"))
+                .put("request_secret",saved.optString("secret")));
+            if(claim.optBoolean("allowed",false)) {
+                String issued=claim.optJSONObject("credential").optString("token","");
+                if(!issued.matches("[a-fA-F0-9]{64}"))throw new Exception("Ongeldige DJ-toegang");
+                write(TOKEN,issued);
+                file(REQUEST).delete();
+                return issued;
+            }
+            // Keep the private request-secret and wait; never create duplicates.
+            return "";
+        }
+        JSONObject request=post("request",base().put("person",person));
+        String requestId=request.optString("request_id","");
+        String requestSecret=request.optString("request_secret","");
+        if(!requestId.matches("[a-f0-9]{24}") ||
+           !requestSecret.matches("[a-f0-9]{64}")) {
+            throw new Exception("DJ-aanvraag bestaat al, maar de bevestiging ontbreekt");
+        }
+        write(REQUEST,new JSONObject().put("id",requestId)
+            .put("secret",requestSecret).toString());
+        return "";
+    }
+
     /** Installation ID is permanent for upgrades and gone after reinstall. */
     String approvedInstallationId() throws Exception {
         return id();
