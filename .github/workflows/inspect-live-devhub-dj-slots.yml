@@ -1,0 +1,61 @@
+name: Inspect Live Dev Hub DJ Slots
+on:
+  push:
+    branches: [feature/main-clean-install-devhub-dj-20261010]
+    paths: ['.github/workflows/inspect-live-devhub-dj-slots.yml']
+permissions:
+  contents: read
+jobs:
+  read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Compare protected live Dev Hub pages without modification
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$tmp"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$tmp/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$tmp/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$tmp/askpass"
+          chmod 600 "$tmp/key" "$tmp/known_hosts"
+          chmod 700 "$tmp/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$tmp/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$tmp/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          scpdo() {
+            scp -O -P "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=20 "$@"
+          }
+          for name in builds.php index.php; do
+            scpdo "$remote:dev.vanaggelen.com/$name" "$tmp/live-$name"
+          done
+          python3 - "$tmp/live-builds.php" "$tmp/live-index.php" <<'PY'
+          import re,sys
+          from pathlib import Path
+          for file in sys.argv[1:]:
+              s=Path(file).read_text()
+              print("LIVE",Path(file).name,"lines",len(s.splitlines()),"djDownloadIDs",s.count('id="djDownload"'),"djTags",s.count("dj-v"),"runTags",s.count("run-v"))
+              headings=re.findall(r'<h[123][^>]*>(.*?)</h[123]>',s,re.S|re.I)
+              titles=[re.sub(r'<[^>]+>',' ',x).strip() for x in headings]
+              print("HEADINGS",titles[:40])
+              for i,line in enumerate(s.splitlines(),1):
+                  if any(term in line for term in ['id="djDownload"','The One DJ APK','id="runDownload"','id="appDownload"','id="carDownload"']):
+                      print("MATCH",i,
+                            "dj",('dj' in line.lower()),
+                            "href",('href=' in line),
+                            "disabled",('disabled' in line),
+                            "line_length",len(line))
+              print("DOM", "cards",s.count('class="card"'),"sidebar_download",s.count('download-panel'))
+          PY
