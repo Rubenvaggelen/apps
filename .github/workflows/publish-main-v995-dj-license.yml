@@ -1,0 +1,84 @@
+name: Publish The One Main v995 License Approvals
+on:
+  push:
+    branches: [feature/dj-music-install-license-20261010]
+    paths: ['.github/workflows/publish-main-v995-dj-license.yml']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: one-time-release-main-v995-dj-20261010
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require audited CI and unchanged APK sources
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          original='ce610817538f880db0492a11323de865c45bcb8f'
+
+          ready=0
+          for attempt in $(seq 1 60); do
+            result="$(gh api repos/Rubenvaggelen/apps/actions/runs/38086340794 --jq .conclusion)"
+            if [ "$result" = success ]; then ready=1; break; fi
+            if [ "$result" = failure ] || [ "$result" = cancelled ]; then
+              echo "::error::Main v995 signed test build failed"; exit 1
+            fi
+            sleep 10
+          done
+          test "$ready" -eq 1 || { echo "::error::Timed out waiting on Main v995 CI"; exit 1; }
+          test "$(gh api repos/Rubenvaggelen/apps/actions/runs/38086340794 --jq .head_sha)" = "$original"
+          git diff --exit-code "$original" HEAD -- app/ build.gradle gradle.properties settings.gradle \
+            .github/workflows/test-main-v995-dj-music-20261010.yml
+          if gh release view main-v995 --repo Rubenvaggelen/apps >/dev/null 2>&1; then
+            echo "::error::Main v995 release exists; refuse overwrite"
+            exit 1
+          fi
+          echo 'PASS: signed artifact approved by CI and matching current app sources'
+      - name: Download CI-verified v995 APK
+        uses: actions/download-artifact@v4
+        with:
+          name: the-one-main-v995-license-approvals-test
+          run-id: 38086340794
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: staging
+      - name: Verify Android version, package, signer, and backup policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=staging/app-debug.apk
+          test -s "$apk"
+          test "$(unzip -Z1 "$apk" | grep -c '^classes.*dex$')" -ge 1
+          tools_dir="$(find "$ANDROID_SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          badging="$("$tools_dir/aapt" dump badging "$apk" | head -1)"
+          echo "$badging" | grep -q "name='com.gmailorg.hub'"
+          echo "$badging" | grep -q "versionCode='995'"
+          "$tools_dir/apksigner" verify "$apk"
+          curl -fLsS --max-time 120 https://github.com/Rubenvaggelen/apps/releases/download/main-v984/app-debug.apk -o /tmp/main-v984.apk
+          old_cert="$("$tools_dir/apksigner" verify --print-certs /tmp/main-v984.apk | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
+          new_cert="$("$tools_dir/apksigner" verify --print-certs "$apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
+          test -n "$old_cert" && test "$old_cert" = "$new_cert"
+          test "$(git grep -o 'android:allowBackup="false"' -- app/src/main/AndroidManifest.xml | wc -l)" -eq 1
+          echo 'PASS: versionCode 995, package/signing correct, backup disabled'
+      - name: Publish Main v995 to public auto-update channel
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create main-v995 staging/app-debug.apk \
+            --repo Rubenvaggelen/apps \
+            --title "The One Main — v995" \
+            --target "$GITHUB_SHA" \
+            --notes "The One Main v995 toont nieuwe DJ- en Music-installaties apart bij Laptop > Apparaten beheren en in de blijvende goedkeuringsmeldingen. Iedere nieuwe DJ-installatie blijft vergrendeld tot jij deze goedkeurt. De persoonlijke PIN 1306-migratie, Parkeren en alle bestaande Main-gegevens en rechten blijven behouden. Music wordt pas via een eigen client ingeschakeld."
+          gh release view main-v995 --repo Rubenvaggelen/apps --json assets,isDraft,isPrerelease,url \
+            --jq '{draft:.isDraft,prerelease:.isPrerelease,url:.url,assets:[.assets[].name]}'
+          echo 'SUCCESS: Main v995 released for all Main update-checking installations'

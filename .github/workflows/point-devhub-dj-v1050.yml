@@ -1,0 +1,88 @@
+name: Update Dev Hub DJ APK to v1050
+on:
+  push:
+    branches: [feature/dj-music-install-license-20261010]
+    paths: ['.github/workflows/point-devhub-dj-v1050.yml']
+permissions:
+  contents: read
+concurrency:
+  group: one-time-devhub-dj-v1050
+  cancel-in-progress: false
+jobs:
+  guarded-link-update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify public DJ v1050 asset exists
+        run: |
+          set -euo pipefail
+          curl -fLsSI --max-time 30 https://github.com/Rubenvaggelen/apps/releases/download/dj-v1050/thedj-debug.apk >/dev/null
+      - name: Privately back up and update only the existing DJ links
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$tmp"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$tmp/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$tmp/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$tmp/askpass"
+          chmod 600 "$tmp/key" "$tmp/known_hosts"
+          chmod 700 "$tmp/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$tmp/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$tmp/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          sshdo() {
+            ssh -p "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" "$remote" "$@"
+          }
+          scpdo() {
+            scp -O -P "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" "$@"
+          }
+          for name in builds.php index.php; do
+            scpdo "$remote:dev.vanaggelen.com/$name" "$tmp/live-$name"
+            python3 scripts/bump-live-dj-devhub-v1050.py "$tmp/live-$name" "$tmp/new-$name"
+            php -l "$tmp/new-$name" >/dev/null
+          done
+          before_builds=$(sha256sum "$tmp/live-builds.php" | cut -d' ' -f1)
+          before_index=$(sha256sum "$tmp/live-index.php" | cut -d' ' -f1)
+          stage=$(sshdo 'mktemp -d "$HOME/.devhub-dj-v1050.XXXXXXXX"')
+          scpdo "$tmp/new-builds.php" "$remote:$stage/builds.php"
+          scpdo "$tmp/new-index.php" "$remote:$stage/index.php"
+          sshdo "bash -s -- '$stage' '$before_builds' '$before_index'" <<'REMOTE'
+          set -Eeuo pipefail
+          stage="$1"
+          expected_builds="$2"
+          expected_index="$3"
+          dir="$HOME/dev.vanaggelen.com"
+          test "$(sha256sum "$dir/builds.php" | cut -d' ' -f1)" = "$expected_builds" || exit 1
+          test "$(sha256sum "$dir/index.php" | cut -d' ' -f1)" = "$expected_index" || exit 1
+          php -l "$stage/builds.php" >/dev/null
+          php -l "$stage/index.php" >/dev/null
+          backups="$HOME/.the-one-remote-backups"
+          mkdir -p "$backups"
+          backup=$(mktemp -d "$backups/devhub-dj-v1050.XXXXXXXX")
+          cp -p "$dir/builds.php" "$dir/index.php" "$backup/"
+          rollback() {
+            cp -p "$backup/builds.php" "$dir/builds.php"
+            cp -p "$backup/index.php" "$dir/index.php"
+          }
+          trap rollback ERR
+          for name in builds.php index.php; do
+            cp "$stage/$name" "$dir/$name.next-dj"
+            chmod --reference="$dir/$name" "$dir/$name.next-dj"
+            mv "$dir/$name.next-dj" "$dir/$name"
+            php -l "$dir/$name" >/dev/null
+            grep -q 'dj-v1050/thedj-debug.apk' "$dir/$name"
+          done
+          trap - ERR
+          rm -rf "$stage"
+          echo 'DEVHUB SUCCESS: The One DJ v1050 shown without touching other app links'
+          REMOTE

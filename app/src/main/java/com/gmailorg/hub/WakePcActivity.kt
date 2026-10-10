@@ -263,7 +263,7 @@ class WakePcActivity : AppCompatActivity() {
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(18, 8, 18, 8) }
 
         list.addView(TextView(this).apply {
-            text = "Nieuwe Main-aanmeldingen — wachten op goedkeuring"
+            text = "Nieuwe Family-installaties — wachten op goedkeuring"
             textSize = 17f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.amber))
@@ -303,8 +303,13 @@ class WakePcActivity : AppCompatActivity() {
                     setPadding(14, 12, 14, 12)
                 }
                 entry.addView(TextView(this).apply {
-                    text = pending.person.ifBlank { "Onbekende gebruiker" } +
-                        " • Aanmelding wacht op toestemming"
+                    val appName = when (pending.app) {
+                        "dj" -> "The One DJ"
+                        "music" -> "The One Music"
+                        else -> "The One Main"
+                    }
+                    text = "$appName • " + pending.person.ifBlank { "Onbekende gebruiker" } +
+                        " • wacht op goedkeuring"
                     textSize = 15f
                     setTypeface(typeface, android.graphics.Typeface.BOLD)
                     setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_main))

@@ -1,0 +1,49 @@
+name: Audit Live DJ Licensing Compatibility
+on:
+  push:
+    branches: [feature/dj-music-install-license-20261010]
+    paths: ['.github/workflows/audit-live-dj-license-20261010.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Read-only baseline check for licensing server
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          temp=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$temp"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$temp/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$temp/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$temp/askpass"
+          chmod 600 "$temp/key" "$temp/known_hosts"
+          chmod 700 "$temp/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$temp/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$temp/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          for name in license-core.php licenses.php; do
+            scp -O -P "$DEPLOY_PORT" -i "$temp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$temp/known_hosts" "$DEPLOY_USER@$DEPLOY_HOST:public_html/the-one-remote-api/$name" "$temp/live-$name"
+            git show b1c43eb792e71afd37fa6ce036ec6de42826508a:"the-one-remote-server/$name" > "$temp/baseline-$name"
+            if cmp -s "$temp/live-$name" "$temp/baseline-$name"; then
+              echo "EXACT: $name live matches Main-v994-reviewed baseline"
+            else
+              echo "::error::LIVE DIVERGENCE: $name does not match approved baseline; no writes"
+              exit 1
+            fi
+          done
+          php -l "$temp/live-license-core.php"
+          php -l "$temp/live-licenses.php"
+          echo "PASSED: live DJ license baseline matches reviewed repository, no server changes"

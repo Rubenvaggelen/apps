@@ -21,7 +21,9 @@ try {
         if ($action === 'policy') {
             return [
                 'main' => ['required' => (bool)$state['main_enforced']],
-                'studio' => ['required' => (bool)$state['studio_enforced']]
+                'studio' => ['required' => (bool)$state['studio_enforced']],
+                'dj' => ['required' => true],
+                'music' => ['required' => true]
             ];
         }
         // Owner credentials are paired once from a cPanel-authenticated session,
@@ -58,7 +60,7 @@ try {
             return $result;
         }
         $app = strtolower(trim((string)($body['app'] ?? '')));
-        if (!in_array($app, ['main', 'studio'], true)) throw new InvalidArgumentException('Unknown app');
+        if (!in_array($app, ['main', 'studio', 'dj', 'music'], true)) throw new InvalidArgumentException('Unknown app');
         $device = one_license_device((string)($body['device_id'] ?? ''));
         $installationId = one_license_installation_id((string)($body['installation_id'] ?? ''));
         $firstInstalledMs = (int)($body['first_installed_ms'] ?? 0);
@@ -69,11 +71,13 @@ try {
                 if (isset($value['credential'])) $dirty();
                 return $value;
             }
-            if (!$state['studio_enforced']) return ['enabled' => false, 'allowed' => false, 'mode' => 'not_configured'];
+            if ($app === 'studio' && !$state['studio_enforced']) return ['enabled' => false, 'allowed' => false, 'mode' => 'not_configured'];
+            if (isset($state['retired_devices'][$device])) return ['enabled' => true, 'allowed' => false, 'mode' => 'device_removed'];
             $grant = ($token !== '') ? one_license_find_grant($state, $app, $device, $token, $installationId) : null;
             return ['enabled' => true, 'allowed' => $grant !== null, 'mode' => $grant !== null ? 'active' : 'activation_required'];
         }
         if ($action === 'redeem') {
+            if (in_array($app, ['dj', 'music'], true)) return ['allowed' => false, 'error' => 'owner_approval_required'];
             if (($app === 'main' && !$state['main_enforced']) || ($app === 'studio' && !$state['studio_enforced'])) {
                 return ['allowed' => false, 'error' => 'licensing_not_ready'];
             }

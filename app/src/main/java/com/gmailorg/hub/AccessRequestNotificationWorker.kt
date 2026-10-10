@@ -117,6 +117,11 @@ object AccessRequestNotifications {
         requests.forEach { request ->
             val who = request.person.ifBlank { "Onbekende gebruiker" }
             val key = "theone-license|" + request.id
+            val appName = when (request.app) {
+                "dj" -> "The One DJ"
+                "music" -> "The One Music"
+                else -> "The One Main"
+            }
             val created = runCatching {
                 java.time.Instant.parse(request.createdAt).toEpochMilli()
             }.getOrDefault(System.currentTimeMillis())
@@ -124,9 +129,9 @@ object AccessRequestNotifications {
             NotifStore.addOrUpdate(NotifItem(
                 key = key,
                 packageName = "the.one.license.requests",
-                appLabel = "The One Main",
-                title = "Nieuwe aanmelding: $who",
-                text = "$who wil The One Main gebruiken. Goedkeuren via Laptop → Apparaten beheren.",
+                appLabel = appName,
+                title = "Nieuwe $appName-aanmelding: $who",
+                text = "$who vraagt een nieuwe $appName-installatie aan. Goedkeuren via Laptop → Apparaten beheren.",
                 postTime = created,
                 hasReplyAction = false,
                 persistent = true,
@@ -164,7 +169,11 @@ object AccessRequestNotifications {
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
                 val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                     .setSmallIcon(R.mipmap.ic_launcher)
-                    .setContentTitle("The One Main: nieuwe aanmelding van $who")
+                    .setContentTitle("The One " + when (request.app) {
+                        "dj" -> "DJ"
+                        "music" -> "Music"
+                        else -> "Main"
+                    } + ": nieuwe aanmelding van $who")
                     .setContentText("Wacht op jouw goedkeuring in Apparaten beheren.")
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
                     .setOngoing(true)
