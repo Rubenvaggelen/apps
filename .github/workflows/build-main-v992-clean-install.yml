@@ -84,28 +84,36 @@ jobs:
           fi
           echo "ORG_GRADLE_PROJECT_TMDB_API_KEY=$tmdb_key" >> "$GITHUB_ENV"
           echo "ORG_GRADLE_PROJECT_YOUTUBE_API_KEY=$YOUTUBE_API_KEY" >> "$GITHUB_ENV"
-      - name: Restore verified Media Player source
+      - name: Package clean Main without personal Media Player credentials
         shell: bash
         run: |
           set -euo pipefail
-          curl -fLsS --max-time 120 \
-            "https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2316/The-One-Media-Player-v2316.apk" -o /tmp/theone-media-source.apk
-          echo "2de34daf9ef65ed045a8c49bd337bd9283841a12d2c3047784f40c76e48c6cb8  /tmp/theone-media-source.apk" | sha256sum --check --status
+          mkdir -p app/src/main/assets
+          # Private user credentials are intentionally NEVER copied from a
+          # prior release into an APK for a new installation.
+          printf '{"server":"","username":"","password":""}\n' > app/src/main/assets/theone_media_source.json
           python3 - <<'PY'
-          import zipfile,json,pathlib
-          with zipfile.ZipFile("/tmp/theone-media-source.apk") as apk:
-              config=json.loads(apk.read("assets/private_xtream.json"))
-          if not all(isinstance(config.get(key),str) and config[key].strip() for key in ("server","username","password")):
-              raise SystemExit("Media Player configuration unavailable")
-          target=pathlib.Path("app/src/main/assets/theone_media_source.json")
-          target.parent.mkdir(parents=True,exist_ok=True)
-          target.write_text(json.dumps(config))
-          print("Media Player source restored")
+          import json,pathlib
+          p=pathlib.Path("app/src/main/assets/theone_media_source.json")
+          cfg=json.loads(p.read_text())
+          assert cfg == {"server":"","username":"","password":""}
+          print("PASS: clean Main APK contains no personal Media Player source")
           PY
       - name: Add verified offline supermarket map
         run: python3 .github/scripts/supermarket-snapshot.py
       - name: Build Main test APK version 992
         run: gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon --no-build-cache -PappVersionCode=992
+      - name: Verify private account data absent from the finished APK
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,zipfile
+          apk='app/build/outputs/apk/debug/app-debug.apk'
+          with zipfile.ZipFile(apk) as z:
+              source=json.loads(z.read('assets/theone_media_source.json'))
+          assert source == {'server':'','username':'','password':''}, 'Personal media credentials leaked into Main APK'
+          print('PASS: built Main v992 has no private Media Player account credentials')
+          PY
       - name: Verify package, upgrade version and signing certificate against v984
         shell: bash
         run: |
