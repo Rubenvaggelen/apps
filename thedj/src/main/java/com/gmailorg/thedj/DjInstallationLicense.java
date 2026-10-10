@@ -58,11 +58,11 @@ public final class DjInstallationLicense {
         java.nio.file.Files.write(staged.toPath(),value.getBytes(StandardCharsets.UTF_8));
         if (!staged.renameTo(target)) throw new Exception("Kan licentie niet veilig bewaren");
     }
-    private String id() {
+    private String id() throws Exception {
         String current=read(INSTALL_ID);
         try { UUID.fromString(current); return current; } catch (Exception ignored) {}
         String generated=UUID.randomUUID().toString();
-        try { write(INSTALL_ID,generated); } catch (Exception ignored) {}
+        write(INSTALL_ID,generated); // Abort if it cannot be persisted. Never use transient IDs.
         return generated;
     }
     private JSONObject base() throws Exception {
