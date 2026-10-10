@@ -35,20 +35,33 @@ jobs:
           printf '%s' "$FIXED_KEYSTORE" | base64 --decode > ~/.android/debug.keystore
           chmod 600 ~/.android/debug.keystore
           keytool -list -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey >/dev/null
-      - name: Validate required external API keys
+      - name: Validate YouTube key and restore TMDB configuration
         shell: bash
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          TMDB_SECRET: ${{ secrets.TMDB_API_KEY }}
         run: |
           set -euo pipefail
-          if [ -z "$YOUTUBE_API_KEY" ] || [ -z "$TMDB_API_KEY" ]; then
-            echo "::error::Required API secret missing; tablet build stopped."
+          if [ -z "$YOUTUBE_API_KEY" ]; then
+            echo "::error::YouTube API key is missing; build stopped."
             exit 1
           fi
-          echo "::add-mask::$TMDB_API_KEY"
+          tmdb_key="$TMDB_SECRET"
+          if [ -z "$tmdb_key" ]; then
+            tmdb_key="$(sed -n 's/^TMDB_API_KEY[[:space:]]*=[[:space:]]*//p' gradle.properties | head -n 1 | tr -d '\\r')"
+          fi
+          if [ -z "$tmdb_key" ]; then
+            echo "::error::TMDB key missing from secret and existing configuration."
+            exit 1
+          fi
+          echo "::add-mask::$tmdb_key"
           echo "::add-mask::$YOUTUBE_API_KEY"
-          echo "ORG_GRADLE_PROJECT_TMDB_API_KEY=$TMDB_API_KEY" >> "$GITHUB_ENV"
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' --connect-timeout 15 --max-time 30 "https://api.themoviedb.org/3/configuration?api_key=$tmdb_key")"
+          if [ "$status" != "200" ]; then
+            echo "::error::TMDB key validation failed (HTTP $status)."
+            exit 1
+          fi
+          echo "ORG_GRADLE_PROJECT_TMDB_API_KEY=$tmdb_key" >> "$GITHUB_ENV"
           echo "ORG_GRADLE_PROJECT_YOUTUBE_API_KEY=$YOUTUBE_API_KEY" >> "$GITHUB_ENV"
       - name: Restore verified Media Player source
         shell: bash
