@@ -1,0 +1,91 @@
+name: Deploy DJ Download to Existing Live Dev Hub
+on:
+  push:
+    branches: [feature/main-clean-install-devhub-dj-20261010]
+    paths: ['.github/workflows/deploy-live-devhub-dj-20261010.yml']
+permissions:
+  contents: read
+concurrency:
+  group: live-devhub-dj-additive-20261010
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply additive patch to protected live Dev Hub pages with private backup
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$work/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$work/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$work/askpass"
+          chmod 600 "$work/key" "$work/known_hosts"
+          chmod 700 "$work/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$work/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$work/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          sshdo() {
+            ssh -p "$DEPLOY_PORT" -i "$work/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$work/known_hosts" -o ConnectTimeout=20 "$remote" "$@"
+          }
+          scpdo() {
+            scp -O -P "$DEPLOY_PORT" -i "$work/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$work/known_hosts" -o ConnectTimeout=20 "$@"
+          }
+          root="dev.vanaggelen.com"
+          for name in builds.php index.php; do
+            scpdo "$remote:$root/$name" "$work/live-$name"
+            role=builds
+            test "$name" = index.php && role=index
+            python3 scripts/patch-live-devhub-dj-20261010.py "$role" "$work/live-$name" "$work/new-$name"
+            php -l "$work/new-$name" >/dev/null
+          done
+          base_sha=$(sha256sum "$work/live-builds.php" | cut -d' ' -f1)
+          index_sha=$(sha256sum "$work/live-index.php" | cut -d' ' -f1)
+          stage=$(sshdo 'mktemp -d "$HOME/.one-devhub-dj-stage.XXXXXXXX"')
+          scpdo "$work/new-builds.php" "$remote:$stage/builds.php"
+          scpdo "$work/new-index.php" "$remote:$stage/index.php"
+          sshdo "bash -s -- '$stage' '$base_sha' '$index_sha'" <<'REMOTE'
+          set -Eeuo pipefail
+          stage="$1"
+          base_sha="$2"
+          index_sha="$3"
+          root="$HOME/dev.vanaggelen.com"
+          old_builds="$root/builds.php"
+          old_index="$root/index.php"
+          [ "$(sha256sum "$old_builds" | cut -d' ' -f1)" = "$base_sha" ] || { echo "ABORT: live builds changed during audit"; exit 1; }
+          [ "$(sha256sum "$old_index" | cut -d' ' -f1)" = "$index_sha" ] || { echo "ABORT: live index changed during audit"; exit 1; }
+          test -f "$root/.htaccess" || echo "Protected auth is handled by hosting; auth files unchanged"
+          php -l "$stage/builds.php" >/dev/null
+          php -l "$stage/index.php" >/dev/null
+          backup_dir="$HOME/.the-one-remote-backups"
+          mkdir -p "$backup_dir"
+          backup=$(mktemp -d "$backup_dir/devhub-dj-before-20261010.XXXXXXXX")
+          cp -p "$old_builds" "$old_index" "$backup/"
+          rollback() {
+            echo "Rollback Dev Hub PHP pages from private backup"
+            cp -p "$backup/builds.php" "$old_builds"
+            cp -p "$backup/index.php" "$old_index"
+          }
+          trap rollback ERR
+          for name in builds.php index.php; do
+            cp "$stage/$name" "$root/$name.dj-update"
+            chmod --reference="$root/$name" "$root/$name.dj-update"
+            mv "$root/$name.dj-update" "$root/$name"
+            php -l "$root/$name" >/dev/null
+            test "$(grep -c THE_ONE_DJ_DEVHUB_LINK_20261010 "$root/$name")" -eq 1
+          done
+          trap - ERR
+          rm -rf "$stage"
+          echo "SUCCESS: DJ download added to existing Dev Hub builds and homepage, unrelated live functionality preserved"
+          REMOTE
