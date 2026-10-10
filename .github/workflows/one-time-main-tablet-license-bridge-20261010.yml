@@ -87,6 +87,21 @@ jobs:
           cp "$work/live-devices.php" "$work/patch/devices.php"
           cp the-one-remote-server/license-core.php "$work/patch/license-core.php"
           cp the-one-remote-server/main-heartbeat-license-bridge.php "$work/patch/main-heartbeat-license-bridge.php"
+          python3 - "$work/patch/devices.php" <<'PY'
+          import sys, pathlib, re
+          source = pathlib.Path(sys.argv[1]).read_text()
+          marker = 'THE_ONE_MAIN_ALLOWLIST_CLEANUP_20261010'
+          needle = 'The One Main activation needs owner approval'
+          print('SAFE DIAGNOSTICS: marker_count=', source.count(marker),
+                'error_count=', source.count(needle),
+                'bridge_call_count=', source.count('one_license_main_heartbeat_granted'))
+          pos = source.find(needle)
+          if pos >= 0:
+              section = source[max(0,pos-700):pos+220]
+              section = re.sub(r'[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,}', '<ID>', section)
+              section = re.sub(r'[A-Za-z0-9+/=]{48,}', '<TOKEN>', section)
+              print('SANITIZED REJECTION BRANCH:\n', section)
+          PY
           python3 scripts/prepare-main-license-live-bridge.py "$work/patch/devices.php"
           python3 scripts/prepare-main-license-live-bridge.py "$work/patch/devices.php" --apply
           php -l "$work/patch/devices.php"
