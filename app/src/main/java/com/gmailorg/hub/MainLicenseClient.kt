@@ -15,6 +15,7 @@ import java.util.UUID
  */
 data class MainPendingLicenseRequest(
     val id: String,
+    val app: String,
     val person: String,
     val deviceId: String,
     val installationId: String,
@@ -222,6 +223,7 @@ object MainLicenseClient {
                 val entry = items.optJSONObject(i) ?: continue
                 add(MainPendingLicenseRequest(
                     id = entry.optString("id", ""),
+                    app = entry.optString("app", "main"),
                     person = entry.optString("person", ""),
                     deviceId = entry.optString("device", ""),
                     installationId = entry.optString("installation_id", ""),
