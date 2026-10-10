@@ -1,0 +1,52 @@
+name: Inspect Tablet device records 2026-10-10
+on:
+  push:
+    branches: [feature/studio-license-management-20261009]
+    paths: ['.github/workflows/inspect-tablet-records-20261010.yml']
+permissions:
+  contents: read
+jobs:
+  read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Inspect only Tablet device metadata
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          temp=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$temp"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$temp/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$temp/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$temp/askpass"
+          chmod 600 "$temp/key" "$temp/known_hosts"
+          chmod 700 "$temp/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$temp/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$temp/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          ssh -p "$DEPLOY_PORT" -i "$temp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$temp/known_hosts" "$DEPLOY_USER@$DEPLOY_HOST" 'php' <<'PHP'
+          <?php
+          $path = getenv('HOME') . '/the-one-remote-data/main-devices.json';
+          $obj = json_decode(file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+          $found = [];
+          foreach (($obj['devices'] ?? []) as $id => $row) {
+            $person = trim((string)($row['person_name'] ?? ''));
+            if (strcasecmp($person, 'Tablet') !== 0) continue;
+            $enabled = [];
+            foreach (($row['access_rights'] ?? []) as $scope => $value) {
+              if ($value === true) $enabled[]=$scope;
+            }
+            $found[] = ['device_id'=>$id, 'registered'=>$row['registered']??null,
+              'last_seen'=>$row['last_seen']??null, 'rights'=>$enabled,
+              'music_rights'=>$row['music_rights']??false,
+              'blocked'=>$row['blocked']??false];
+          }
+          echo json_encode(['tablet_records'=>$found,'count'=>count($found)], JSON_THROW_ON_ERROR)."\n";
+          PHP
