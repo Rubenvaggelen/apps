@@ -216,6 +216,7 @@ function one_license_create_code(array &$state, string $app, string $label, int 
 }
 
 function one_license_request(array &$state, string $app, string $device, string $person, string $installationId): array {
+    if (!in_array($app, ['main', 'studio', 'car', 'run', 'dj'], true)) throw new InvalidArgumentException('Unknown application');
     if (isset($state['retired_devices'][$device])) {
         return ['allowed' => false, 'status' => 'device_removed'];
     }
@@ -302,9 +303,9 @@ function one_license_owner_authenticated(array $state, string $device, string $i
 function one_license_owner_pending(array $state): array {
     $result = [];
     foreach ($state['requests'] as $req) {
-        if (($req['app'] ?? '') !== 'main' || ($req['status'] ?? '') !== 'pending') continue;
+        if (!in_array(($req['app'] ?? ''), ['main', 'car', 'run', 'dj'], true) || ($req['status'] ?? '') !== 'pending') continue;
         $result[] = [
-            'id' => (string)$req['id'], 'device' => (string)$req['device'],
+            'id' => (string)$req['id'], 'app' => (string)$req['app'], 'device' => (string)$req['device'],
             'person' => (string)$req['person'], 'installation_id' => (string)$req['installation_id'],
             'created_at' => (string)$req['created_at'], 'status' => 'pending'
         ];
