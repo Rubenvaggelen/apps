@@ -1,0 +1,55 @@
+name: Audit DJ Shared Media Main Bridge
+on:
+  push:
+    branches: [feature/dj-shared-media-identity-io-fix-20261010]
+    paths: ['.github/workflows/audit-live-dj-bridge-20261010.yml']
+permissions:
+  contents: read
+jobs:
+  readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read only live device registry bridge guards
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$tmp"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$tmp/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$tmp/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$tmp/askpass"
+          chmod 600 "$tmp/key" "$tmp/known_hosts"
+          chmod 700 "$tmp/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$tmp/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$tmp/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          scp -O -P "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" "$DEPLOY_USER@$DEPLOY_HOST:public_html/the-one-remote-api/devices.php" "$tmp/live-devices.php"
+          python3 - "$tmp/live-devices.php" <<'PY'
+          from pathlib import Path
+          import sys
+          s=Path(sys.argv[1]).read_text()
+          lines=s.splitlines()
+          print('LIVE_PHP_LINES',len(lines))
+          for i,line in enumerate(lines):
+              if any(term in line for term in ['one_license_main_device_retired(', 'one_license_main_heartbeat_granted(', '$theOneCarRequest', '$theOneWindowsRequest', 'device_role', "if ($action === 'heartbeat')"]):
+                  # Only code control-flow markers; do not print private allowlists or credentials.
+                  print('BRIDGE_CHECK',i+1,line.strip()[:170])
+          import re
+          for index in range(186,258):
+              if index-1 >= len(lines): break
+              line=lines[index-1]
+              line=re.sub(r'[a-f0-9]{64}', 'HASH_REDACTED', line, flags=re.I)
+              line=re.sub(r'[0-9a-f]{8}-[0-9a-f-]{27}', 'UUID_REDACTED', line, flags=re.I)
+              print('GUARD_LINE',index,line[:185])
+          print('HAS_DJ_ROLE',"['main', 'car', 'windows', 'dj']" in s)
+          print('HAS_DJ_LICENSE_CHECK', "one_license_find_grant($state, 'dj'" in s)
+          PY

@@ -20,7 +20,6 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 /** Android transport for the desktop engine's Shared Media routes. Secrets stay native. */
 final class SharedMediaClient {
@@ -28,6 +27,7 @@ final class SharedMediaClient {
     private final Activity activity;
     private final SharedPreferences prefs;
     private final String deviceId;
+    private final DjInstallationLicense installationLicense;
     private String token="";
     private long expires=0;
     private boolean nameDialog=false;
@@ -35,12 +35,21 @@ final class SharedMediaClient {
         AccessError(String message){super(message);}
     }
 
-    SharedMediaClient(Activity activity) {
+    SharedMediaClient(Activity activity, DjInstallationLicense installationLicense) {
         this.activity=activity;
+        this.installationLicense=installationLicense;
         prefs=activity.getSharedPreferences("dj_shared_media",Context.MODE_PRIVATE);
-        String id=prefs.getString("device_id","");
-        if(id.isEmpty()) { id=UUID.randomUUID().toString();prefs.edit().putString("device_id",id).apply(); }
+        // Use the SAME verified DJ identity for Shared Media. A separate random
+        // Shared Media ID was the cause of duplicate registration and Main-license
+        // rejection. Never auto-import someone else's saved Main identity.
+        String id;
+        try { id=installationLicense.approvedInstallationId(); }
+        catch(Exception e) { throw new IllegalStateException("DJ installatie-ID kon niet worden geopend",e); }
         deviceId=id;
+        String alreadyRegisteredName=installationLicense.approvedPersonName().trim();
+        if(!alreadyRegisteredName.isEmpty()) {
+            prefs.edit().putString("person_name",alreadyRegisteredName).apply();
+        }
     }
     private JSONObject post(String file,String action,JSONObject body) throws Exception {
         HttpURLConnection c=connect(ROOT+file+"?action="+action);
@@ -51,7 +60,16 @@ final class SharedMediaClient {
             int code=c.getResponseCode();
             InputStream in=code<400?c.getInputStream():c.getErrorStream();
             String raw=read(in);
-            if(code<200||code>=300) throw new IOException("Shared Media-server reageert met "+code);
+            if(code<200||code>=300) {
+                String reason="";
+                try { reason=new JSONObject(raw).optString("error",""); }
+                catch(Exception ignored){}
+                // Never log credentials, request payload, URL query or tokens.
+                String explanation="Shared Media " + file + "/" + action +
+                    " gaf HTTP " + code + (reason.isEmpty()?"":" ("+reason+")");
+                if(code==401 || code==403 || code==409)throw new AccessError(explanation);
+                throw new IOException(explanation);
+            }
             return new JSONObject(raw);
         } finally { c.disconnect(); }
     }
@@ -88,10 +106,23 @@ final class SharedMediaClient {
         });
     }
     private synchronized void authorize() throws Exception {
-        String name=prefs.getString("person_name","");
-        if(name.isEmpty()){askName();throw new IOException("Vul eerst je naam in en open Shared Media opnieuw.");}
+        String name=installationLicense.approvedPersonName().trim();
+        if(name.isEmpty())name=prefs.getString("person_name","").trim();
+        if(name.isEmpty()){
+            askName();
+            throw new AccessError("DJ heeft nog geen geregistreerde gebruikersnaam. Vul die één keer in bij de DJ-aanmelding.");
+        }
+        String licenseToken=installationLicense.sharedMediaLicenseOrRequest(name);
+        if(!licenseToken.matches("[a-fA-F0-9]{64}")){
+            throw new AccessError("Eenmalige DJ-installatieaanvraag staat klaar in Main. " +
+                "Keur deze goed via Laptop → Apparaten beheren en open Shared Media daarna opnieuw.");
+        }
         JSONObject heartbeat=post("devices.php","heartbeat",new JSONObject()
-            .put("device_id",deviceId).put("name","The One DJ • "+Build.MODEL)
+            .put("device_id",deviceId)
+            .put("device_role","dj")
+            .put("installation_id",installationLicense.approvedInstallationId())
+            .put("license_token",licenseToken)
+            .put("name","The One DJ • "+Build.MODEL)
             .put("person_name",name).put("platform","Android "+Build.VERSION.RELEASE)
             .put("version",activity.getPackageManager().getPackageInfo(activity.getPackageName(),0).versionName));
         if(heartbeat.optBoolean("blocked"))throw new AccessError("Dit DJ-apparaat is geblokkeerd in Main.");
@@ -247,7 +278,9 @@ final class SharedMediaClient {
             String message=e instanceof AccessError?e.getMessage()
                 :e instanceof java.net.SocketTimeoutException?"Shared Media-verbinding duurde te lang. Probeer opnieuw."
                 :e instanceof java.net.UnknownHostException?"Shared Media-server kon niet worden gevonden. Controleer internet."
-                :"Android kon Shared Media niet bereiken ("+e.getClass().getSimpleName()+"). Probeer opnieuw.";
+                :e instanceof IOException && e.getMessage()!=null
+                    ?e.getMessage()
+                    :"Android kon Shared Media niet bereiken ("+e.getClass().getSimpleName()+"). Probeer opnieuw.";
             JSONObject error=new JSONObject();
             try{error.put("error",message);}catch(Exception ignored){}
             return json(e instanceof AccessError?403:503,error.toString());
