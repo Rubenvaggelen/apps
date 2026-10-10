@@ -124,7 +124,7 @@ $djDownload = $djTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releases/do
       <?php else: ?>
         <div class="big" id="releaseVersion"><?=htmlspecialchars($latestTag)?></div>
         <p class="<?= $buildReady?'ok':'warn' ?>" id="releaseState"><?= $buildReady?'✓ Deze release hoort bij de nieuwste commit':'● Nieuwere commit/build aanwezig; dit is de laatste afgeronde release' ?></p>
-        <div class="download-row"><a class="btn ok" id="appDownload" href="<?=htmlspecialchars($appDownload)?>">⬇ The One APK</a><a class="btn ok" id="carDownload" href="<?=htmlspecialchars($carDownload)?>">⬇ The One Car APK</a><a class="btn ok" href="<?=htmlspecialchars($mediaDownload)?>">⬇ The One Media Player APK</a><a class="btn ok" href="<?=htmlspecialchars($tvDownload)?>">⬇ Media Player Android TV APK</a><a class="btn ok" id="djDownload" href="<?=htmlspecialchars($djDownload)?>">⬇ The One DJ APK</a><a class="btn ok" href="https://github.com/Rubenvaggelen/apps/releases/download/dj-windows-v234/The-One-DJ-Windows.zip">⬇ The One DJ Windows</a></div>
+        <div class="download-row"><a class="btn ok" id="appDownload" href="<?=htmlspecialchars($appDownload)?>">⬇ The One APK</a><a class="btn ok" id="carDownload" href="<?=htmlspecialchars($carDownload)?>">⬇ The One Car APK</a><a class="btn ok" href="<?=htmlspecialchars($mediaDownload)?>">⬇ The One Media Player APK</a><a class="btn ok" href="<?=htmlspecialchars($tvDownload)?>">⬇ Media Player Android TV APK</a><a class="btn ok" href="https://github.com/Rubenvaggelen/apps/releases/download/dj-windows-v234/The-One-DJ-Windows.zip">⬇ The One DJ Windows</a></div>
       <?php endif; ?>
     </div>
 
@@ -136,10 +136,19 @@ $djDownload = $djTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releases/do
 
 
     <div class="card">
+      <h2>The One DJ • aparte APK</h2>
+      <p class="muted">Zelfstandige DJ-app met eigen download en updates; verandert Main niet.</p>
+      <div class="download-row">
+        <a class="btn ok" id="djDownload"
+           href="<?=htmlspecialchars($djDownload ?: 'https://github.com/Rubenvaggelen/apps/releases/download/dj-v1049/thedj-debug.apk')?>">⬇ The One DJ APK<?= $djTag !== '' ? ' • '.htmlspecialchars($djTag) : ' • dj-v1049' ?></a>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>The One Run</h2>
-      <div class="big">Build 1008</div>
+      <div class="big">Zelfstandig releasekanaal</div>
       <p class="muted">Zelfstandige Android-app • opgeslagen werkende versie.</p>
-      <div class="download-row"><a class="btn ok" href="https://github.com/Rubenvaggelen/apps/releases/download/run-v1008/runcoach-debug.apk">⬇ The One Run APK</a></div>
+      <div class="download-row"><a class="btn ok" id="runDownload" href="https://github.com/Rubenvaggelen/apps/releases/download/run-v1012/runcoach-debug.apk">⬇ The One Run APK</a></div>
     </div>
 
     <div class="card wide">
@@ -158,25 +167,41 @@ function setBuildButton(busy){const btn=document.getElementById('buildBtn');btn.
 async function loadLive(){polls++;try{const r=await fetch(apiUrl+'&t='+Date.now(),{cache:'no-store',headers:{Accept:'application/vnd.github+json'}});if(!r.ok)throw new Error('HTTP '+r.status);const j=await r.json();const run=j.workflow_runs&&j.workflow_runs[0];if(!run){setLive('','Geen builds','Er zijn nog geen GitHub Actions-runs gevonden.',null);setBuildButton(false);return}const busy=run.status==='queued'||run.status==='in_progress';setBuildButton(busy);if(busy){wasBusy=true;setLive('busy',run.status==='queued'?'In wachtrij':'Bezig met bouwen','The One en The One Car worden nu gebouwd.',run);if(polls<25)setTimeout(loadLive,20000);return}if(run.conclusion==='success'){setLive('ok','Geslaagd','Build '+run.run_number+' is succesvol afgerond.',run);const version='v'+run.run_number;const release=document.getElementById('releaseVersion');if(release)release.textContent=version;const state=document.getElementById('releaseState');if(state){state.textContent='✓ Laatste GitHub-build is afgerond';state.className='ok'}if(wasBusy)setTimeout(()=>location.reload(),2500)}else{setLive('bad','Mislukt',run.conclusion==='cancelled'?'De build is geannuleerd.':'De laatste build is niet geslaagd: '+(run.conclusion||'onbekend')+'.',run)}}catch(e){setLive('bad','Status niet beschikbaar','GitHub Actions kon nu niet worden uitgelezen. Gebruik de knop naar GitHub Actions voor details.',null);setBuildButton(false)}}
 document.getElementById('buildForm').addEventListener('submit',e=>{const btn=document.getElementById('buildBtn');if(btn.disabled){e.preventDefault();return}btn.disabled=true;btn.textContent='Build starten…'});
 async function loadDownloads(){
-  try{
-    const response=await fetch('https://api.github.com/repos/Rubenvaggelen/apps/releases?per_page=100&t='+Date.now(),{cache:'no-store',headers:{Accept:'application/vnd.github+json'}});
-    if(!response.ok)return;
-    const releases=await response.json();
-    for(const [prefix,assetName,id] of [['main-v','app-debug.apk','appDownload'],['car-v','carradio-debug.apk','carDownload'],['dj-v','thedj-debug.apk','djDownload']]){
-      const candidates=releases.filter(r=>!r.draft&&!r.prerelease&&new RegExp('^'+prefix+'[0-9]+
-</body>
-</html>
-).test(r.tag_name||''))
-        .sort((a,b)=>Number(b.tag_name.slice(prefix.length))-Number(a.tag_name.slice(prefix.length)));
-      for(const release of candidates){
-        const asset=(release.assets||[]).find(a=>a.name===assetName);
-        if(!asset)continue;
-        const link=document.getElementById(id);if(link){link.href=asset.browser_download_url;link.textContent='⬇ '+(prefix==='main-v'?'The One Main':prefix==='car-v'?'The One Car':'The One DJ')+' • '+release.tag_name;}
-        if(prefix==='main-v'){document.getElementById('releaseVersion').textContent=release.tag_name;document.getElementById('releaseState').textContent='Main, Car en DJ hebben ieder hun eigen update.';}
+  try {
+    const response = await fetch('https://api.github.com/repos/Rubenvaggelen/apps/releases?per_page=100&t='+Date.now(),{
+      cache:'no-store', headers:{Accept:'application/vnd.github+json'}
+    });
+    if (!response.ok) return;
+    const releases = await response.json();
+    if (!Array.isArray(releases)) return;
+    for (const [prefix,assetName,id] of [
+      ['main-v','app-debug.apk','appDownload'],
+      ['car-v','carradio-debug.apk','carDownload'],
+      ['dj-v','thedj-debug.apk','djDownload'],
+      ['run-v','runcoach-debug.apk','runDownload']
+    ]) {
+      const candidates = releases.filter(item =>
+        !item.draft && !item.prerelease &&
+        new RegExp('^'+prefix+'[0-9]+$').test(String(item.tag_name||''))
+      ).sort((a,b) => Number(b.tag_name.slice(prefix.length)) - Number(a.tag_name.slice(prefix.length)));
+      for (const release of candidates) {
+        const asset = (release.assets||[]).find(item => item.name === assetName);
+        if (!asset) continue;
+        const link = document.getElementById(id);
+        if (link) {
+          link.href = asset.browser_download_url;
+          link.textContent = '⬇ '+(prefix==='main-v'?'The One Main':prefix==='car-v'?'The One Car':prefix==='dj-v'?'The One DJ':'The One Run')+' APK • '+release.tag_name;
+        }
+        if (prefix === 'main-v') {
+          const label = document.getElementById('releaseVersion');
+          if (label) label.textContent = release.tag_name;
+        }
         break;
       }
     }
-  }catch(e){/* Keep independent server-rendered download links on connection failure. */}
+  } catch (error) {
+    // Keep independently working server-rendered DJ and other download links.
+  }
 }
 loadLive().finally(loadDownloads);
 </script>
