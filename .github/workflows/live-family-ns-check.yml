@@ -1,0 +1,33 @@
+name: Validate Live Family NS Requests
+on:
+  push:
+    branches: [feature/family-ns-proxy-20261010]
+    paths: ['.github/workflows/live-family-ns-check.yml']
+permissions:
+  contents: read
+jobs:
+  test-live:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check stations, trips and invalid-origin behavior
+        run: |
+          set -euo pipefail
+          base='https://rubenvanaggelen.com/the-one-remote-api/ns-reisinformatie-proxy.php'
+          curl -fsS --max-time 30 -H 'Origin: https://rubenvanaggelen.github.io' "$base?resource=stations" >/tmp/stations.json
+          python3 - <<'PY'
+          import json
+          s=json.load(open('/tmp/stations.json'))
+          stations=s.get('payload',[])
+          assert isinstance(stations,list) and len(stations)>100
+          print('PASS stations count',len(stations))
+          PY
+          curl -fsS --max-time 30 -H 'Origin: https://rubenvanaggelen.github.io' "$base?resource=trips&fromStation=ASD&toStation=UT&dateTime=2026-10-11T12%3A00%3A00Z" >/tmp/trips.json
+          python3 - <<'PY'
+          import json
+          t=json.load(open('/tmp/trips.json'))
+          assert isinstance(t.get('trips'),list), 'NS trips payload missing'
+          print('PASS trips array count',len(t['trips']))
+          PY
+          code=$(curl -sS -o /tmp/denied.json -w '%{http_code}' --max-time 20 -H 'Origin: https://untrusted.example' "$base?resource=stations")
+          test "$code" = 403
+          echo 'PASS invalid origin denied'
