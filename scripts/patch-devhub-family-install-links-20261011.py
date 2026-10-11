@@ -17,9 +17,12 @@ pat=r'(<a\b[^>]*\bid="mediaDownload"[^>]*\bhref=")[^"]*(")'
 index,n=re.subn(pat,lambda m:m.group(1)+media+m.group(2),index)
 if n!=1:raise SystemExit('REFUSE: live index mediaDownload anchor missing or duplicated')
 if 'family-installaties.php' not in index:
-    needle='<div class="download-title">Laatste downloads</div>'
-    if index.count(needle)!=1:raise SystemExit('REFUSE: live index download section changed')
-    index=index.replace(needle,needle+'\n     <a class="download-link" href="family-installaties.php">▦ Alle The One Family-installaties ↗</a>')
+    # Live page may have customized download heading; anchor to the existing
+    # verified mediaDownload link without rebuilding the live dashboard.
+    anchors=list(re.finditer(r'<a\\b[^>]*\\bid="mediaDownload"',index))
+    if len(anchors)!=1:raise SystemExit('REFUSE: live index media download link changed')
+    at=anchors[0].start()
+    index=index[:at]+'<a class="download-link" href="family-installaties.php">▦ Alle The One Family-installaties ↗</a>\\n     '+index[at:]
 index=index.replace('Media Player v2316 en Android TV','Media Player v2400 en Android TV')
 pat2=r"(\$mediaDownload\s*=\s*')[^']*(';)"
 builds,n=re.subn(pat2,lambda m:m.group(1)+media+m.group(2),builds)
