@@ -17,7 +17,8 @@ header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: no-referrer');
 
 $allowedOrigins = [
-    'https://rubenvanaggelen.github.io',
+    'https://rubenvaggelen.github.io', // Actual Gmailorg site
+    'https://rubenvanaggelen.github.io', // Legacy origin
     'https://rubenvanaggelen.com',
     'https://www.rubenvanaggelen.com',
 ];
