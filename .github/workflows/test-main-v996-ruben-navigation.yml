@@ -81,7 +81,7 @@ jobs:
           assert 'stick.stickName.equals("Ruben music", ignoreCase = true)' in source
           assert '("Shared Media • " + remoteStickDisplayName(it))' in source
           assert 'val oldHubLabel = "Shared Media • " + stick.deviceName + " • " + stick.stickName' in source
-          assert 'stick.deviceId' in client and 'stick.stickId' in client
+          assert 'deviceId = deviceId' in client and 'stickId = stickId' in client
           assert '?action=catalog&include_inactive=1' in client
           assert 'showRemoteStickDialog(sticks)' in source
           print('PASS: Main bypasses one-source Hub picker to Ruben, preserves IDs, source aliases and multisource selection')
