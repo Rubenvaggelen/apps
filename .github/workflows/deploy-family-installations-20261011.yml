@@ -2,7 +2,7 @@ name: Deploy Family Installations Catalog and Media Player v2400 to Dev Hub
 on:
   push:
     branches: [feature/devhub-family-installations-catalog-20261011]
-    paths: ['.github/workflows/deploy-family-installations-20261011.yml']
+    paths: ['.github/workflows/deploy-family-installations-20261011.yml', 'scripts/patch-devhub-family-install-links-20261011.py']
 permissions:
   contents: read
 concurrency:
