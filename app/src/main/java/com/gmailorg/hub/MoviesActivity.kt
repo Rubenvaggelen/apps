@@ -477,7 +477,13 @@ class MoviesActivity : AppCompatActivity() {
             val deviceName = parts.getOrNull(1).orEmpty()
             val stickName = parts.drop(2).joinToString(" • ")
 
+            // A single Hub library is presented as "Ruben music" in DJ and
+            // Main. Resolve the display alias against real device/stick IDs,
+            // including after Main restarts or the player loses in-memory state.
             val stick = sticks.firstOrNull {
+                ("Shared Media • " + remoteStickDisplayName(it))
+                    .equals(source, ignoreCase = true)
+            } ?: sticks.firstOrNull {
                 it.deviceName.equals(deviceName, ignoreCase = true) &&
                     it.stickName.equals(stickName, ignoreCase = true)
             } ?: sticks.firstOrNull {
@@ -1153,6 +1159,11 @@ class MoviesActivity : AppCompatActivity() {
                             .setMessage("Nog geen gesynchroniseerde USB-muziek gevonden.")
                             .setPositiveButton("OK", null)
                             .show()
+                    } else if (sticks.size == 1 && sticks[0].files.any { it.cached }) {
+                        // DJ shows the sole Shared Media source directly. Main should
+                        // behave the same: skip the redundant Hub/source-picker level.
+                        // The selected device and stick IDs remain the real server IDs.
+                        showRemoteFolderDialog(sticks[0])
                     } else {
                         showRemoteStickDialog(sticks)
                     }
@@ -1180,7 +1191,8 @@ class MoviesActivity : AppCompatActivity() {
 
     private fun remoteStickDisplayName(stick: RemoteUsbMusicClient.RemoteStick): String {
         val isPrimaryRubenMusic =
-            stick.deviceName.equals("Surface", ignoreCase = true) &&
+            (stick.deviceName.equals("Surface", ignoreCase = true) ||
+                stick.deviceName.equals("THEONE-HUB", ignoreCase = true)) &&
                 stick.stickName.equals("Ruben music", ignoreCase = true)
         val isRubenFallback =
             stick.deviceName.equals("Ruben", ignoreCase = true) &&
@@ -3466,8 +3478,10 @@ class MoviesActivity : AppCompatActivity() {
         val exactSource =
             "Shared Media • " + remoteStickDisplayName(stick)
         val legacySource = "Shared Media • " + stick.deviceName
+        val oldHubLabel = "Shared Media • " + stick.deviceName + " • " + stick.stickName
         if (!source.equals(exactSource, ignoreCase = true) &&
-            !source.equals(legacySource, ignoreCase = true)
+            !source.equals(legacySource, ignoreCase = true) &&
+            !source.equals(oldHubLabel, ignoreCase = true)
         ) {
             return false
         }
