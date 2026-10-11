@@ -27,16 +27,17 @@ $csrf = $_SESSION['csrf'];
   <button class="project" data-project="carradio"><span class="ico">🚗</span><span><strong>The One Car</strong><br><small style="color:var(--muted)">carradio/</small></span></button>
   <div class="download-panel">
     <div class="download-title">Laatste downloads</div>
+     <a class="download-link" href="family-installaties.php">▦ Alle The One Family-installaties ↗</a>
     <div class="download-version" id="releaseVersion">Release laden…</div>
     <a class="download-link" id="appDownload" aria-disabled="true">↓ The One APK</a>
     <a class="download-link" id="carDownload" aria-disabled="true">↓ The One Car APK</a>
-    <a class="download-link" id="mediaDownload" href="https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2316/The-One-Media-Player-v2316.apk">↓ The One Media Player APK</a>
+    <a class="download-link" id="mediaDownload" href="https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2400/The-One-Media-Player-v2400.apk">↓ The One Media Player APK</a>
     <a class="download-link" id="tvDownload" href="https://github.com/Rubenvaggelen/apps/releases/download/media-player-tv-latest/The-One-Media-Player-TV.apk">↓ Media Player Android TV APK</a>
     <a class="download-link" id="djDownload" aria-disabled="true">↓ The One DJ APK</a>
     <a class="download-link" id="runDownload" aria-disabled="true">↓ The One Run APK</a>
     <a class="download-link" id="windowsDownload" aria-disabled="true">↓ The One Window</a>
     <a class="download-link" id="djWindowsDownload" aria-disabled="true">↓ The One DJ Windows</a>
-    <div class="download-note" id="releaseNote">The One/Car volgen de nieuwste release. Media Player v2316 en Android TV staan als aparte APK's klaar.</div>
+    <div class="download-note" id="releaseNote">The One/Car volgen de nieuwste release. Media Player v2400 en Android TV hebben eigen APK's. Bekijk alle installatiebronnen.</div>
   </div>
   <div class="sidebar-footer"><div class="git-state"><span class="dot" id="gitDot"></span><span id="branch">main</span></div><div id="repoStatus" style="margin-top:7px">Git status laden…</div></div>
 </aside>
