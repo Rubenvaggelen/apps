@@ -72,7 +72,7 @@ $buildReady = $latestTag !== '' && $tagCommit === $head;
 $recentTags = array_slice($tags, 0, 8);
 $appDownload = $latestTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releases/download/' . rawurlencode($latestTag) . '/app-debug.apk' : '';
 $carDownload = $carTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releases/download/' . rawurlencode($carTag) . '/carradio-debug.apk' : '';
-$mediaDownload = 'https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2316/The-One-Media-Player-v2316.apk';
+$mediaDownload = 'https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2400/The-One-Media-Player-v2400.apk';
 $tvDownload = 'https://github.com/Rubenvaggelen/apps/releases/download/media-player-tv-latest/The-One-Media-Player-TV.apk';
 $djDownload = $djTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releases/download/' . rawurlencode($djTag) . '/thedj-debug.apk' : '';
 ?>
@@ -118,13 +118,13 @@ $djDownload = $djTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releases/do
     </div>
 
     <div class="card">
-      <h2>Laatste afgeronde release</h2>
+      <h2>Laatste afgeronde release</h2><p><a class="btn" href="family-installaties.php">▦ Alle apps, APK’s en Windows-installaties ↗</a></p>
       <?php if($latestTag===''): ?>
         <div class="big warn" id="releaseVersion">Nog geen build-tag gevonden</div>
       <?php else: ?>
         <div class="big" id="releaseVersion"><?=htmlspecialchars($latestTag)?></div>
         <p class="<?= $buildReady?'ok':'warn' ?>" id="releaseState"><?= $buildReady?'✓ Deze release hoort bij de nieuwste commit':'● Nieuwere commit/build aanwezig; dit is de laatste afgeronde release' ?></p>
-        <div class="download-row"><a class="btn ok" id="appDownload" href="<?=htmlspecialchars($appDownload)?>">⬇ The One APK</a><a class="btn ok" id="carDownload" href="<?=htmlspecialchars($carDownload)?>">⬇ The One Car APK</a><a class="btn ok" href="<?=htmlspecialchars($mediaDownload)?>">⬇ The One Media Player APK</a><a class="btn ok" href="<?=htmlspecialchars($tvDownload)?>">⬇ Media Player Android TV APK</a><a class="btn ok" id="djDownload" href="<?=htmlspecialchars($djDownload)?>">⬇ The One DJ APK</a><a class="btn ok" href="https://github.com/Rubenvaggelen/apps/releases/download/dj-windows-v234/The-One-DJ-Windows.zip">⬇ The One DJ Windows</a></div>
+        <div class="download-row"><a class="btn ok" id="appDownload" href="<?=htmlspecialchars($appDownload)?>">⬇ The One APK</a><a class="btn ok" id="carDownload" href="<?=htmlspecialchars($carDownload)?>">⬇ The One Car APK</a><a class="btn ok" href="<?=htmlspecialchars($mediaDownload)?>">⬇ The One Media Player APK</a><a class="btn ok" href="<?=htmlspecialchars($tvDownload)?>">⬇ Media Player Android TV APK</a><a class="btn ok" id="djDownload" href="<?=htmlspecialchars($djDownload)?>">⬇ The One DJ APK</a><a class="btn ok" href="https://github.com/Rubenvaggelen/apps/releases/download/dj-windows-v240/The-One-DJ-Windows.zip">⬇ The One DJ Windows</a></div>
       <?php endif; ?>
     </div>
 
@@ -137,9 +137,9 @@ $djDownload = $djTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releases/do
 
     <div class="card">
       <h2>The One Run</h2>
-      <div class="big">Build 1008</div>
+      <div class="big">Build 1012</div>
       <p class="muted">Zelfstandige Android-app • opgeslagen werkende versie.</p>
-      <div class="download-row"><a class="btn ok" href="https://github.com/Rubenvaggelen/apps/releases/download/run-v1008/runcoach-debug.apk">⬇ The One Run APK</a></div>
+      <div class="download-row"><a class="btn ok" href="https://github.com/Rubenvaggelen/apps/releases/download/run-v1012/runcoach-debug.apk">⬇ The One Run APK</a></div>
     </div>
 
     <div class="card wide">
