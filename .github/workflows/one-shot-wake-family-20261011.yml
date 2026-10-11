@@ -1,0 +1,47 @@
+name: One-Time Wake The One Family
+on:
+  push:
+    branches: [feature/dj-shared-media-identity-io-fix-20261010]
+    paths: [.github/workflows/one-shot-wake-family-20261011.yml]
+permissions:
+  contents: read
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - name: Send bounded WOL magic packets to Surface Ruben and Hub
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import re,socket,time
+          from pathlib import Path
+          p=Path("app/src/main/java/com/gmailorg/hub/WakePcActivity.kt").read_text()
+          def grab(pattern,label):
+              m=re.search(pattern,p,re.S|re.I)
+              if not m: raise SystemExit('Cannot verify '+label+' from current Main wake configuration')
+              return m.group(1)
+          ip=grab(r'HOME_PUBLIC_IPV4\s*=\s*"([0-9.]+)"','public wake endpoint')
+          port=int(grab(r'HOME_PUBLIC_PORT\s*=\s*(\d+)','wake port'))
+          if port!=40009 or len(ip.split('.'))!=4:
+              raise SystemExit('Unexpected WOL target; refuse')
+          targets=[
+              ('Surface',grab(r'WakeTarget\(\s*id\s*=\s*"surface".*?mac\s*=\s*"([A-Fa-f0-9:-]+)"','Surface MAC')),
+              ('Ruben',grab(r'LAPTOP_WIFI_MAC\s*=\s*"([A-Fa-f0-9:-]+)"','Ruben MAC')),
+              ('THEONE-HUB',grab(r'WakeTarget\(\s*id\s*=\s*"hub".*?mac\s*=\s*"([A-Fa-f0-9:-]+)"','Hub MAC')),
+          ]
+          sock=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+          sock.settimeout(3)
+          for name,raw in targets:
+              mac=bytes.fromhex(raw.replace('-','').replace(':',''))
+              if len(mac)!=6: raise SystemExit('Invalid WOL MAC format')
+              packet=b'\xff'*6+mac*16
+              for _ in range(4):
+                  count=sock.sendto(packet,(ip,port))
+                  if count!=len(packet): raise SystemExit('Incomplete WOL transmission')
+                  time.sleep(.2)
+              print('WOL SENT:',name, '(4 packets)')
+          sock.close()
+          print('NOTE: UDP send does NOT prove host woke; remote status must be checked afterward')
+          PY
