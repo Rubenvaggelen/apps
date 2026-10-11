@@ -56,7 +56,7 @@ public class MainActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         updater=new DjUpdater(this,()->playbackActive);
-        final SharedMediaClient sharedMedia = new SharedMediaClient(this);
+        final SharedMediaClient sharedMedia = new SharedMediaClient(this, installationLicense);
         audioDecoder=new NativeAudioDecoder(this);
         final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
             .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
