@@ -1,0 +1,116 @@
+name: Repair NS CORS for Actual Gmailorg GitHub Pages Origin
+on:
+  push:
+    branches: [fix/ns-cors-github-pages-20261011]
+    paths: [.github/workflows/deploy-ns-cors-fix-20261011.yml]
+permissions:
+  contents: read
+concurrency:
+  group: protected-ns-cors-fix-20261011
+  cancel-in-progress: false
+jobs:
+  guarded-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect PHP syntax and only approved origin correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l the-one-remote-server/ns-reisinformatie-proxy.php
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('the-one-remote-server/ns-reisinformatie-proxy.php').read_text()
+          assert s.count("'https://rubenvaggelen.github.io'")==1
+          assert s.count("'https://rubenvanaggelen.github.io'")==1
+          assert "Ocp-Apim-Subscription-Key: ' . $key" in s
+          assert "ns-subscription.key" in s
+          assert "rate_limit" in s and "origin_not_allowed" in s
+          assert "https://gateway.apiportal.ns.nl" in s
+          print("PASS: targeted CORS correction keeps secret server-only and rate limits enabled")
+          PY
+      - name: Back up exact live PHP and deploy only the NS proxy
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$tmp"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$tmp/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$tmp/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$tmp/askpass"
+          chmod 600 "$tmp/key" "$tmp/known_hosts"
+          chmod 700 "$tmp/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$tmp/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$tmp/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          sshdo() {
+            ssh -p "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=20 "$remote" "$@"
+          }
+          scpdo() {
+            scp -O -P "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=20 "$@"
+          }
+          dest="public_html/the-one-remote-api/ns-reisinformatie-proxy.php"
+          scpdo "$remote:$dest" "$tmp/live.php"
+          test "$(git hash-object "$tmp/live.php")" = 'f3961b29a5990dd51eba2e29d61e399c153207d5' || {
+            echo "::error::Live NS proxy has changed unexpectedly; refuse overwrite"
+            exit 1
+          }
+          scpdo the-one-remote-server/ns-reisinformatie-proxy.php "$remote:public_html/the-one-remote-api/.ns-proxy-cors-stage-20261011.php"
+          sshdo 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          live="$HOME/public_html/the-one-remote-api/ns-reisinformatie-proxy.php"
+          stage="$HOME/public_html/the-one-remote-api/.ns-proxy-cors-stage-20261011.php"
+          test -f "$live" && test -f "$stage"
+          test "$(git hash-object "$live")" = 'f3961b29a5990dd51eba2e29d61e399c153207d5' || {
+            echo "ABORT: server NS proxy changed during deployment"; exit 1
+          }
+          php -l "$stage" >/dev/null
+          backup_dir="$HOME/.the-one-remote-backups"
+          mkdir -p "$backup_dir"
+          backup="$backup_dir/ns-cors-before-20261011-$(date -u +%Y%m%dT%H%M%S).php"
+          cp -p "$live" "$backup"
+          test -s "$backup"
+          rollback() {
+            cp -p "$backup" "$live"
+            echo 'ROLLBACK: NS proxy restored from private backup'
+          }
+          trap rollback ERR
+          chmod 644 "$stage"
+          mv "$stage" "$live"
+          php -l "$live" >/dev/null
+          root='https://rubenvanaggelen.com/the-one-remote-api/ns-reisinformatie-proxy.php'
+          status=$(curl -sS --max-time 25 -D /tmp/ns-cors-headers -o /tmp/ns-cors-stations -w '%{http_code}' \
+            -H 'Origin: https://rubenvaggelen.github.io' "$root?resource=stations")
+          test "$status" = 200
+          grep -iq '^Access-Control-Allow-Origin: https://rubenvaggelen.github.io' /tmp/ns-cors-headers
+          php -r '$s=json_decode(file_get_contents("/tmp/ns-cors-stations"),true); exit(is_array($s["payload"]??null)&&count($s["payload"])>100?0:1);'
+          denial=$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' \
+            -H 'Origin: https://unauthorized.example' "$root?resource=stations")
+          test "$denial" = 403
+          trap - ERR
+          echo 'SERVER SUCCESS: Browser origin now allowed, >100 NS stations, unauthorized origin rejected'
+          REMOTE
+      - name: Independently confirm actual GitHub Pages browser origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://rubenvanaggelen.com/the-one-remote-api/ns-reisinformatie-proxy.php?resource=stations'
+          curl -fsS --max-time 25 -H 'Origin: https://rubenvaggelen.github.io' \
+            -D /tmp/browser-headers "$url" -o /tmp/browser-response
+          grep -iq '^Access-Control-Allow-Origin: https://rubenvaggelen.github.io' /tmp/browser-headers
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/browser-response'))
+          assert len(d['payload'])>100
+          print('SUCCESS: REAL MAIL & KALENDER BROWSER ORIGIN WORKS; stations:',len(d['payload']))
+          PY
