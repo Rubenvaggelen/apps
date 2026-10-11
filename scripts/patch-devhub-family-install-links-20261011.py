@@ -28,9 +28,10 @@ pat2=r"(\$mediaDownload\s*=\s*')[^']*(';)"
 builds,n=re.subn(pat2,lambda m:m.group(1)+media+m.group(2),builds)
 if n!=1:raise SystemExit('REFUSE: live builds $mediaDownload assignment missing or duplicated')
 if 'family-installaties.php' not in builds:
-    needle='<h2>Laatste afgeronde release</h2>'
-    if builds.count(needle)!=1:raise SystemExit('REFUSE: live builds page release section changed')
-    builds=builds.replace(needle,needle+'<p><a class="btn" href="family-installaties.php">▦ Alle apps en Windows-installaties ↗</a></p>')
+    anchors=list(re.finditer(r'<a\b[^>]*\bid="appDownload"',builds))
+    if len(anchors)!=1:raise SystemExit('REFUSE: live builds app download link changed')
+    at=anchors[0].start()
+    builds=builds[:at]+'<a class="btn" href="family-installaties.php">▦ Alle apps en Windows-installaties ↗</a>\n '+builds[at:]
 # Upgrade known stale side links only, never rewrite newer or independently managed URLs.
 builds=builds.replace('dj-windows-v234/The-One-DJ-Windows.zip','dj-windows-v240/The-One-DJ-Windows.zip')
 builds=builds.replace('run-v1008/runcoach-debug.apk','run-v1012/runcoach-debug.apk')
