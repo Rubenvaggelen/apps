@@ -42,7 +42,6 @@ class ScreenControlActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        MenuButtonHelper.attach(this)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(ContextCompat.getColor(this@ScreenControlActivity, R.color.bg))
@@ -70,6 +69,7 @@ class ScreenControlActivity : AppCompatActivity() {
         body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(ScrollView(this).apply { addView(body) }, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
+        MenuButtonHelper.attach(this)
 
         Thread {
             val authenticated = runCatching {
