@@ -279,4 +279,41 @@ object MainLicenseClient {
             .put("request_id", requestId))
         return json.optBoolean("approved", false)
     }
+
+    /** Short-lived one-use ticket for the screen agent; owner's pairing token stays on HTTPS. */
+    fun screenTicket(context: Context, target: String, command: String): String {
+        check(MainDeviceRegistry.isLocallyOwner(context) && ownerIsPaired(context)) {
+            "Beveiligde eigenaarskoppeling ontbreekt"
+        }
+        require(target in setOf("ruben", "surface", "hub"))
+        require(command in setOf("ON", "OFF"))
+        val body = payload(context)
+            .put("owner_token", ownerToken(context))
+            .put("target", target)
+            .put("command", command)
+        val connection = (URL("https://rubenvanaggelen.com/the-one-remote-api/screen-control.php?action=issue")
+            .openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 5000
+            readTimeout = 5000
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            instanceFollowRedirects = false
+            doOutput = true
+        }
+        try {
+            connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            val code = connection.responseCode
+            val raw = (if (code in 200..299) connection.inputStream else connection.errorStream)
+                ?.bufferedReader()?.use { it.readText() }.orEmpty()
+            val answer = runCatching { JSONObject(raw) }.getOrDefault(JSONObject())
+            if (code !in 200..299 || !answer.optBoolean("ok", false)) {
+                throw IllegalStateException("Schermbediening niet beschikbaar (HTTP $code)")
+            }
+            val ticket = answer.optString("ticket", "")
+            require(ticket.matches(Regex("^[0-9a-f]{64}$"))) { "Ongeldig schermticket" }
+            return ticket
+        } finally {
+            connection.disconnect()
+        }
+    }
 }
