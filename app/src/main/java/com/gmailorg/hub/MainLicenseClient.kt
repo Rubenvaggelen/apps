@@ -316,4 +316,37 @@ object MainLicenseClient {
             connection.disconnect()
         }
     }
+
+    /** Owner-authenticated status of a previously issued screen command. */
+    fun screenCommandStatus(context: Context, target: String, ticket: String): String {
+        require(target in setOf("ruben", "surface", "hub"))
+        require(ticket.matches(Regex("^[0-9a-f]{64}$")))
+        check(MainDeviceRegistry.isLocallyOwner(context) && ownerIsPaired(context))
+        val body = payload(context)
+            .put("owner_token", ownerToken(context))
+            .put("target", target)
+            .put("ticket", ticket)
+        val connection = (URL("https://rubenvanaggelen.com/the-one-remote-api/screen-control.php?action=status")
+            .openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 5000
+            readTimeout = 5000
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            instanceFollowRedirects = false
+            doOutput = true
+        }
+        try {
+            connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            val code = connection.responseCode
+            val raw = (if (code in 200..299) connection.inputStream else connection.errorStream)
+                ?.bufferedReader()?.use { it.readText() }.orEmpty()
+            val answer = runCatching { JSONObject(raw) }.getOrDefault(JSONObject())
+            if (code !in 200..299 || !answer.optBoolean("ok", false)) {
+                throw IllegalStateException("Schermstatus niet beschikbaar (HTTP $code)")
+            }
+            return answer.optString("status", "unknown")
+        } finally {
+            connection.disconnect()
+        }
+    }
 }
