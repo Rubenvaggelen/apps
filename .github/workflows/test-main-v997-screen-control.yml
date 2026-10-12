@@ -3,7 +3,7 @@ name: The One Main v997 Screen Control (No Release)
 on:
   push:
     branches:
-      - feature/main-v997-open-ruben-like-dj-20261011
+      - feature/main-v997-screen-control-20261011
 
 permissions:
   contents: read
