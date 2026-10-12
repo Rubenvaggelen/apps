@@ -1,0 +1,110 @@
+name: Deploy Family Installations Catalog and Media Player v2400 to Dev Hub
+on:
+  push:
+    branches: [feature/devhub-family-installations-catalog-20261011]
+    paths: ['.github/workflows/deploy-family-installations-20261011.yml', 'scripts/patch-devhub-family-install-links-20261011.py']
+permissions:
+  contents: read
+concurrency:
+  group: one-time-family-installations-20261011
+  cancel-in-progress: false
+jobs:
+  guarded-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate new installer catalogue and exact published Media Player
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l devhub/public/family-installaties.php
+          python3 -m py_compile scripts/patch-devhub-family-install-links-20261011.py
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('devhub/public/family-installaties.php').read_text()
+          assert 'media-player-v2400' in s and 'run-v1012' in s
+          assert 'main-v996' in s and 'dj-v1050' in s and 'car-v944' in s
+          assert 'The One Music Studio Portable' in s and "The One Music Studio Setup" in s
+          assert "'pending'" in s and "'available'" in s
+          assert 'noindex,nofollow' in s and 'ENT_QUOTES' in s
+          assert 'license_token' not in s and 'IPTV' not in s
+          print('PASS: verified installer inventory contains independent sources and no exposed secrets')
+          PY
+          curl -fLsSI --max-time 45 https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2400/The-One-Media-Player-v2400.apk >/dev/null
+          echo 'PASS: Media Player v2400 actual APK exists'
+      - name: Guarded deployment against current live Dev Hub files
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$tmp"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$tmp/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$tmp/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$tmp/askpass"
+          chmod 600 "$tmp/key" "$tmp/known_hosts"
+          chmod 700 "$tmp/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$tmp/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$tmp/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          sshdo() { ssh -p "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=20 "$remote" "$@"; }
+          scpdo() { scp -O -P "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=20 "$@"; }
+          for file in index.php builds.php; do
+            scpdo "$remote:dev.vanaggelen.com/$file" "$tmp/live-$file"
+          done
+          python3 scripts/patch-devhub-family-install-links-20261011.py "$tmp/live-index.php" "$tmp/live-builds.php" "$tmp/out"
+          php -l "$tmp/out/index.php" >/dev/null
+          php -l "$tmp/out/builds.php" >/dev/null
+          expected_index="$(sha256sum "$tmp/live-index.php" | cut -d' ' -f1)"
+          expected_builds="$(sha256sum "$tmp/live-builds.php" | cut -d' ' -f1)"
+          stage="$(sshdo 'mktemp -d "$HOME/.devhub-family-staging.XXXXXXXX"')"
+          scpdo "$tmp/out/index.php" "$remote:$stage/index.php"
+          scpdo "$tmp/out/builds.php" "$remote:$stage/builds.php"
+          scpdo devhub/public/family-installaties.php "$remote:$stage/family-installaties.php"
+          sshdo "bash -s -- '$stage' '$expected_index' '$expected_builds'" <<'REMOTE'
+          set -Eeuo pipefail
+          stage="$1"; expected_index="$2"; expected_builds="$3"
+          dir="$HOME/dev.vanaggelen.com"
+          test -d "$dir" && test -f "$dir/index.php" && test -f "$dir/builds.php"
+          test ! -e "$dir/family-installaties.php" || { echo 'ABORT: catalog already exists; refuse overwrite'; exit 1; }
+          test "$(sha256sum "$dir/index.php" | cut -d' ' -f1)" = "$expected_index" || { echo 'ABORT: live index changed during patch'; exit 1; }
+          test "$(sha256sum "$dir/builds.php" | cut -d' ' -f1)" = "$expected_builds" || { echo 'ABORT: live builds changed during patch'; exit 1; }
+          for file in index.php builds.php family-installaties.php; do php -l "$stage/$file" >/dev/null; done
+          backups="$HOME/.the-one-remote-backups"
+          mkdir -p "$backups"
+          backup="$(mktemp -d "$backups/devhub-family-20261011.XXXXXXXX")"
+          cp -p "$dir/index.php" "$dir/builds.php" "$backup/"
+          test -s "$backup/index.php" && test -s "$backup/builds.php"
+          rollback() {
+            cp -p "$backup/index.php" "$dir/index.php"
+            cp -p "$backup/builds.php" "$dir/builds.php"
+            rm -f "$dir/family-installaties.php"
+            echo 'ROLLBACK: previous Dev Hub restored'
+          }
+          trap rollback ERR
+          for file in index.php builds.php; do
+            cp "$stage/$file" "$dir/$file.next-family"
+            chmod --reference="$dir/$file" "$dir/$file.next-family"
+            mv "$dir/$file.next-family" "$dir/$file"
+          done
+          cp "$stage/family-installaties.php" "$dir/family-installaties.php"
+          chmod --reference="$dir/index.php" "$dir/family-installaties.php"
+          for file in index.php builds.php family-installaties.php; do php -l "$dir/$file" >/dev/null; done
+          grep -q 'media-player-v2400/The-One-Media-Player-v2400.apk' "$dir/index.php"
+          grep -q 'media-player-v2400/The-One-Media-Player-v2400.apk' "$dir/builds.php"
+          grep -q 'family-installaties.php' "$dir/index.php"
+          grep -q 'family-installaties.php' "$dir/builds.php"
+          grep -q 'The One Music Studio Portable' "$dir/family-installaties.php"
+          trap - ERR
+          rm -rf "$stage"
+          echo 'DEVHUB SUCCESS: family catalogue deployed and Media Player v2400 linked in both pages'
+          echo 'No existing license, app, service, secret or source data was modified'
+          REMOTE
