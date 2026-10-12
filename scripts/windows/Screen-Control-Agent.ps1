@@ -33,12 +33,45 @@ try {
             $writer.AutoFlush = $true
             if ($remote -notlike '192.168.178.*') { $writer.WriteLine('ERR AUTH'); continue }
             $line = $reader.ReadLine()
-            if (-not $line -or $line.Length -gt 80 -or $line -cnotmatch '^(ON|OFF) ([0-9a-f]{64})$') {
+            if (-not $line -or $line.Length -gt 80) {
                 $writer.WriteLine('ERR REQUEST')
                 continue
             }
-            $command = $Matches[1]
-            $ticket = $Matches[2]
+            $match = [regex]::Match($line, '^(ON|OFF) ([0-9a-f]{64})
+            $postBody = @{ target=$Device; command=$command; ticket=$ticket } | ConvertTo-Json -Compress
+            try {
+                $result = Invoke-RestMethod -Uri 'https://rubenvanaggelen.com/the-one-remote-api/screen-control.php?action=redeem' -Method Post -ContentType 'application/json' -Body $postBody -TimeoutSec 5 -ErrorAction Stop
+                if ($result.ok -ne $true -or $result.accepted -ne $true) {
+                    $writer.WriteLine('ERR AUTH')
+                    continue
+                }
+            } catch {
+                $writer.WriteLine('ERR AUTH')
+                continue
+            }
+            try {
+                $output = & $screenScript -Action $(if ($command -eq 'ON') { 'On' } else { 'Off' }) 2>&1 | Out-String
+                if ($output -match 'COMMAND_ACCEPTED') { $writer.WriteLine("OK DISPLAY_$command") }
+                else { $writer.WriteLine('ERR DISPLAY') }
+            } catch {
+                $writer.WriteLine('ERR DISPLAY')
+            }
+        } catch {
+            # Device stays alive; do not log secrets, pending tickets or owner credentials.
+        } finally {
+            if ($client) { $client.Close() }
+        }
+    }
+} finally {
+    $listener.Stop()
+}
+, [System.Text.RegularExpressions.RegexOptions]::CultureInvariant)
+            if (-not $match.Success) {
+                $writer.WriteLine('ERR REQUEST')
+                continue
+            }
+            $command = $match.Groups[1].Value
+            $ticket = $match.Groups[2].Value
             $postBody = @{ target=$Device; command=$command; ticket=$ticket } | ConvertTo-Json -Compress
             try {
                 $result = Invoke-RestMethod -Uri 'https://rubenvanaggelen.com/the-one-remote-api/screen-control.php?action=redeem' -Method Post -ContentType 'application/json' -Body $postBody -TimeoutSec 5 -ErrorAction Stop
