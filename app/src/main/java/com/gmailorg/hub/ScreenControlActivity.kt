@@ -117,7 +117,7 @@ class ScreenControlActivity : AppCompatActivity() {
                 Socket().use { socket ->
                     socket.connect(InetSocketAddress(target.host, port), 2800)
                     socket.soTimeout = 5500
-                    socket.getOutputStream().write("$action $ticket\\n".toByteArray(Charsets.UTF_8))
+                    socket.getOutputStream().write(("$action $ticket" + 10.toChar()).toByteArray(Charsets.UTF_8))
                     socket.getOutputStream().flush()
                     socket.getInputStream().bufferedReader(Charsets.UTF_8).readLine().orEmpty()
                 }
