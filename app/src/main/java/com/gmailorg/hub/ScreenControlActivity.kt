@@ -11,7 +11,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 
-/** Owner-only screen power controls. These NEVER sleep or shut down Windows. */
+/** Owner-only screen controls. On Modern Standby, black mode keeps remote agents active. */
 class ScreenControlActivity : AppCompatActivity() {
     private data class Target(val id: String, val title: String, val host: String, val screens: Int)
     private val targets = listOf(
@@ -62,7 +62,7 @@ class ScreenControlActivity : AppCompatActivity() {
             runOnUiThread {
                 permitted = authenticated
                 info.text = if (authenticated) {
-                    "Alleen schermen aan/uit. Je computers, DJ en Shared Media blijven draaien. Werkt via je thuisnetwerk."
+                    "Ruben: scherm aan/uit. Surface en Hub: veilige donkerstand aan de oplader, zonder slaapstand. Het beeld wordt zwart, maar is niet fysiek uit. Alleen voor eigenaar."
                 } else "Geen geverifieerde eigenaarstoegang. Schermbediening is geblokkeerd."
                 if (authenticated) targets.forEach(::addTarget)
             }
@@ -82,7 +82,7 @@ class ScreenControlActivity : AppCompatActivity() {
             setTextColor(ContextCompat.getColor(this@ScreenControlActivity, R.color.amber))
         })
         val state = TextView(this).apply {
-            text = "Tik op Aan of Uit."
+            text = if (target.id == "ruben") "Tik op Aan of Uit." else "Donkerstand vereist netstroom. Windows en de remote verbinding blijven actief."
             textSize = 12f
             setTextColor(ContextCompat.getColor(this@ScreenControlActivity, R.color.text_main))
         }
@@ -93,7 +93,7 @@ class ScreenControlActivity : AppCompatActivity() {
             setOnClickListener { operate(target, "ON", state, controls) }
         }
         val off = Button(this).apply {
-            text = "Scherm UIT"
+            text = if (target.id == "ruben") "Scherm UIT" else "Scherm DONKER"
             setOnClickListener { operate(target, "OFF", state, controls) }
         }
         controls.addView(on, LinearLayout.LayoutParams(0, dp(52), 1f))
@@ -123,8 +123,12 @@ class ScreenControlActivity : AppCompatActivity() {
             runOnUiThread {
                 for (i in 0 until controls.childCount) controls.getChildAt(i).isEnabled = true
                 state.text = when (result.getOrNull()) {
-                    "done" -> "${if (action == "ON") "Aan" else "Uit"}-commando uitgevoerd door Windows. Fysieke schermstatus niet uitleesbaar."
-                    "failed" -> "Windows heeft de opdracht ontvangen, maar uitvoeren is mislukt."
+                    "done" -> when {
+                        target.id != "ruben" && action == "OFF" -> "Donkerstand ingeschakeld. Het beeld is zwart; het scherm is niet fysiek uit. De remote verbinding blijft actief."
+                        target.id != "ruben" && action == "ON" -> "Donkerstand opgeheven. Windows accepteerde Scherm AAN."
+                        else -> "${if (action == "ON") "Aan" else "Uit"}-commando uitgevoerd door Windows. Fysieke schermstatus niet uitleesbaar."
+                    }
+                    "failed" -> if (target.id != "ruben" && action == "OFF") "Donkerstand niet gestart. Controleer of de oplader is aangesloten en Windows wakker is." else "Windows heeft de opdracht ontvangen, maar uitvoeren is mislukt."
                     "pending", "executing" -> "Opdracht wacht nog op Windows. Controleer of ${target.title} actief is."
                     else -> "Opdracht mislukt: ${result.exceptionOrNull()?.message ?: "server niet bereikbaar"}"
                 }
