@@ -99,7 +99,7 @@ jobs:
           set -euo pipefail
           umask 077
           mkdir -p protected-deliverable
-          openssl rand 32 > /tmp/cinema-artifact-key
+          openssl rand -hex 32 > /tmp/cinema-artifact-key
           openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/cinema-artifact-key -in deliverable/The-One-Cinema-Google-TV-v1.0.0.apk -out protected-deliverable/The-One-Cinema-Google-TV-v1.0.0.apk.enc
           openssl pkeyutl -encrypt -pubin -inkey owner-artifact-public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in /tmp/cinema-artifact-key -out protected-deliverable/key.enc
           cp deliverable/SHA256SUMS.txt protected-deliverable/SHA256SUMS.txt
