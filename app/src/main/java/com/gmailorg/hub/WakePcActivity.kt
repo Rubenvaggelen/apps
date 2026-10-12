@@ -111,6 +111,7 @@ class WakePcActivity : AppCompatActivity() {
         val remoteButton = findViewById<View>(R.id.remotePcButton)
         val manageDevicesButton = findViewById<View>(R.id.manageDevicesButton)
         val musicStudioAccessButton = findViewById<View>(R.id.musicStudioAccessButton)
+        val screenControlButton = findViewById<View>(R.id.screenControlButton)
 
         findViewById<View>(R.id.backButton).setOnClickListener { finish() }
 
@@ -119,6 +120,7 @@ class WakePcActivity : AppCompatActivity() {
         remoteButton.isEnabled = false
         manageDevicesButton.isEnabled = false
         musicStudioAccessButton.isEnabled = false
+        screenControlButton.isEnabled = false
         status.setTextColor(ContextCompat.getColor(this, R.color.text_dim))
         status.text = "Eigenaarsrechten controleren…"
 
@@ -168,6 +170,7 @@ class WakePcActivity : AppCompatActivity() {
                 remoteButton.isEnabled = true
                 manageDevicesButton.isEnabled = true
                 musicStudioAccessButton.isEnabled = true
+                screenControlButton.isEnabled = true
                 status.text = "Klaar"
                 if (intent.getBooleanExtra("open_access_management", false)) {
                     intent.removeExtra("open_access_management")
@@ -203,6 +206,10 @@ class WakePcActivity : AppCompatActivity() {
 
         remoteButton.setOnClickListener {
             openRemoteControl()
+        }
+
+        screenControlButton.setOnClickListener {
+            startActivity(Intent(this, ScreenControlActivity::class.java))
         }
 
         manageDevicesButton.setOnClickListener {
