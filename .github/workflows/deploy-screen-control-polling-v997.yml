@@ -1,0 +1,103 @@
+name: Deploy Screen Control Polling v997 (guarded)
+on:
+  push:
+    branches: [feature/main-v997-screen-control-20261011]
+    paths: ['.github/workflows/deploy-screen-control-polling-v997.yml']
+permissions:
+  contents: read
+concurrency:
+  group: screen-control-endpoint-deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: PHP syntax and security invariants
+        run: |
+          set -euo pipefail
+          php -l the-one-remote-server/screen-control.php
+          php -l the-one-remote-server/screen-agent-hashes.php
+          grep -q 'one_license_owner_authenticated' the-one-remote-server/screen-control.php
+          grep -q 'hash_equals' the-one-remote-server/screen-control.php
+          grep -q "'poll'" the-one-remote-server/screen-control.php
+      - name: Backup verified old endpoint and deploy new polling feature only
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -Eeuo pipefail
+          for n in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "$(printenv "$n")" || { echo "::error::Missing $n"; exit 1; }
+          done
+          tmp=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$tmp"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$tmp/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$tmp/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$tmp/askpass"
+          chmod 600 "$tmp/key" "$tmp/known_hosts"
+          chmod 700 "$tmp/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$tmp/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$tmp/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          sshdo() { ssh -p "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" "$remote" "$@"; }
+          scpdo() { scp -O -P "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" "$@"; }
+          dir='public_html/the-one-remote-api'
+          scpdo "$remote:$dir/screen-control.php" "$tmp/live-original.php"
+          git show 'f704ccf48e64b39c6ecfbe6f095ff617c62e65b7:the-one-remote-server/screen-control.php' > "$tmp/expected-original.php"
+          cmp "$tmp/live-original.php" "$tmp/expected-original.php" ||
+            { echo "::error::Unexpected live screen endpoint; refuse to overwrite"; exit 1; }
+          sshdo 'test ! -e "$HOME/public_html/the-one-remote-api/screen-agent-hashes.php"' ||
+            { echo "::error::Screen agent hashes file already exists"; exit 1; }
+          stage=$(sshdo 'mktemp -d "$HOME/.screen-polling-stage.XXXXXXXX"')
+          scpdo the-one-remote-server/screen-control.php "$remote:$stage/screen-control.php"
+          scpdo the-one-remote-server/screen-agent-hashes.php "$remote:$stage/screen-agent-hashes.php"
+          original_hash=$(sha256sum "$tmp/live-original.php" | cut -d' ' -f1)
+          sshdo "bash -s -- '$stage' '$original_hash'" <<'REMOTE'
+          set -Eeuo pipefail
+          stage="$1"
+          expected_hash="$2"
+          root="$HOME/public_html/the-one-remote-api"
+          old="$root/screen-control.php"
+          hashes="$root/screen-agent-hashes.php"
+          test "$(sha256sum "$old" | cut -d' ' -f1)" = "$expected_hash"
+          test ! -e "$hashes"
+          php -l "$stage/screen-control.php" >/dev/null
+          php -l "$stage/screen-agent-hashes.php" >/dev/null
+          backupdir="$HOME/.the-one-remote-backups"
+          mkdir -p "$backupdir"
+          cp -p "$old" "$backupdir/screen-control-pre-poll-$(date -u +%Y%m%dT%H%M%SZ).php"
+          rollback() {
+            cp "$stage/old-control.php" "$old"
+            rm -f "$hashes"
+          }
+          cp -p "$old" "$stage/old-control.php"
+          trap rollback ERR
+          install -m 0644 "$stage/screen-agent-hashes.php" "$hashes"
+          install -m 0644 "$stage/screen-control.php" "$old.tmp-poll"
+          mv "$old.tmp-poll" "$old"
+          php -l "$old" >/dev/null
+          cmp "$old" "$stage/screen-control.php"
+          cmp "$hashes" "$stage/screen-agent-hashes.php"
+          trap - ERR
+          rm -rf "$stage"
+          echo 'PASS: only screen-control.php updated, screen-agent-hashes.php created'
+          REMOTE
+      - name: Verify live endpoint refuses unauthenticated actions
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint='https://rubenvanaggelen.com/the-one-remote-api/screen-control.php'
+          for action in issue poll redeem; do
+            status=$(curl -sS --max-time 15 -o /tmp/screen-response -w '%{http_code}' -X POST -H 'Content-Type: application/json' --data '{"target":"hub","command":"ON","agent_key":"invalid","owner_token":"invalid","device_id":"00000000-0000-4000-8000-000000000000","installation_id":"00000000-0000-4000-8000-000000000000"}' "$endpoint?action=$action")
+            test "$status" = 403 || { echo "::error::Authorization bypass on $action: $status"; exit 1; }
+          done
+          echo 'PASS: owner issue and private agent polling require authentication'
