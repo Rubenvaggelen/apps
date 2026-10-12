@@ -1,9 +1,9 @@
-name: The One Main v997 Screen Control (No Release)
+name: The One Main v998 Safe Dark Owner Test (No Release)
 
 on:
   push:
     branches:
-      - feature/main-v997-screen-control-20261011
+      - feature/main-v998-safe-dark-owner-20261012
 
 permissions:
   contents: read
@@ -184,8 +184,8 @@ jobs:
           PY
       - name: Add verified offline supermarket map
         run: python3 .github/scripts/supermarket-snapshot.py
-      - name: Build Main APK version 997 with direct Shared Media navigation
-        run: gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon --no-build-cache -PappVersionCode=997
+      - name: Build Main APK version 998 with direct Shared Media navigation
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon --no-build-cache -PappVersionCode=998
       - name: Verify package, upgrade version and signing certificate against v984
         shell: bash
         run: |
@@ -205,7 +205,7 @@ jobs:
           echo "$new_badging" | grep -q "name='com.gmailorg.hub'"
           old_version="$(printf '%s\n' "$old_badging" | sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p")"
           new_version="$(printf '%s\n' "$new_badging" | sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p")"
-          if [ -z "$old_version" ] || [ "$new_version" != "997" ] || [ "$old_version" -ge "$new_version" ]; then
+          if [ -z "$old_version" ] || [ "$new_version" != "998" ] || [ "$old_version" -ge "$new_version" ]; then
             echo "::error::Version does not upgrade installed Main; packaging blocked"
             exit 1
           fi
@@ -219,10 +219,10 @@ jobs:
             exit 1
           fi
           echo "PASS: Main package unchanged; upgrade $old_version -> $new_version; same signing certificate"
-      - name: Upload signed Main v997 Shared Media test APK (not a release)
+      - name: Upload signed Main v998 Shared Media test APK (not a release)
         uses: actions/upload-artifact@v4
         with:
-          name: the-one-main-v997-screen-control-test
+          name: the-one-main-v998-screen-control-test
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
           if-no-files-found: error
