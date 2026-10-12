@@ -1,0 +1,48 @@
+name: Restrict Main v997 To Owner Test Only
+on:
+  push:
+    branches: [feature/main-v997-screen-control-20261011]
+    paths: ['.github/workflows/restrict-main-v997-owner-only.yml']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: main-v997-owner-only-restrict
+  cancel-in-progress: false
+jobs:
+  restrict:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify signed test artifact survives independently
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api repos/Rubenvaggelen/apps/actions/runs/38212353163 --jq '.conclusion' | grep -qx 'success'
+          gh api repos/Rubenvaggelen/apps/actions/runs/38212353163/artifacts --jq '[.artifacts[] | select(.name=="the-one-main-v997-screen-control-test" and .expired==false)] | length' | grep -qx '1'
+          gh release view main-v997 --repo Rubenvaggelen/apps --json tagName,isDraft,assets --jq '{tag:.tagName,draft:.isDraft,assets:[.assets[].name]}' > /tmp/owner-release-before.json
+          python3 - <<'PY'
+          import json
+          release=json.load(open('/tmp/owner-release-before.json'))
+          assert release['tag']=='main-v997'
+          assert release['assets']==['app-debug.apk']
+          print('PASS: signed Main v997 APK remains available as a private-to-GitHub artifact')
+          PY
+      - name: Hide public Main v997 automatic update
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release edit main-v997 --repo Rubenvaggelen/apps --draft; then
+            echo 'Main v997 converted to draft: no longer listed to public app updater'
+          else
+            echo 'GitHub does not support moving this release to draft: delete ONLY the public release'
+            gh release delete main-v997 --repo Rubenvaggelen/apps --yes
+          fi
+          # Check PUBLIC unauthenticated API, same discovery mechanism as installed Main clients.
+          response=$(curl -fLsS --retry 3 --max-time 25 -H 'Accept: application/vnd.github+json' 'https://api.github.com/repos/Rubenvaggelen/apps/releases?per_page=40')
+          printf '%s' "$response" | python3 -c "import json,sys; data=json.load(sys.stdin); assert all(row.get('tag_name')!='main-v997' for row in data), 'Main v997 still in public updater'; print('PASS: Main v997 no longer appears on general Main release feed')"
+          echo 'Retained test artifact for separate owner-only installation; previous Main v996 left untouched'
