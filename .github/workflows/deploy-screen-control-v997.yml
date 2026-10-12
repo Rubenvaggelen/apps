@@ -1,0 +1,82 @@
+name: Deploy Screen Control Endpoint (guarded)
+on:
+  push:
+    branches: [feature/main-v997-screen-control-20261011]
+    paths: ['.github/workflows/deploy-screen-control-v997.yml']
+permissions:
+  contents: read
+concurrency:
+  group: screen-control-endpoint-deploy
+  cancel-in-progress: false
+jobs:
+  guarded-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate new endpoint
+        run: |
+          set -euo pipefail
+          php -l the-one-remote-server/screen-control.php
+          php -l the-one-remote-server/license-core.php
+          grep -q "one_license_owner_authenticated" the-one-remote-server/screen-control.php
+          grep -q 'screen_answer(403' the-one-remote-server/screen-control.php
+      - name: Guard live server and create-only upload
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -Eeuo pipefail
+          for n in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "$(printenv "$n")" || { echo "::error::Missing $n"; exit 1; }
+          done
+          tmp=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$tmp"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$tmp/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$tmp/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$tmp/askpass"
+          chmod 600 "$tmp/key" "$tmp/known_hosts"
+          chmod 700 "$tmp/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$tmp/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$tmp/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          sshdo() { ssh -p "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" "$remote" "$@"; }
+          scpdo() { scp -O -P "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" "$@"; }
+          # Never replace the existing licenses.php, license-core.php or devices.php.
+          sshdo 'test -f "$HOME/public_html/the-one-remote-api/licenses.php" && test -f "$HOME/public_html/the-one-remote-api/license-core.php" && test ! -e "$HOME/public_html/the-one-remote-api/screen-control.php"' ||
+            { echo "::error::Live server changed or endpoint already exists. Refusing overwrite."; exit 1; }
+          stage=$(sshdo 'mktemp -d "$HOME/.screen-agent-stage.XXXXXXXX"')
+          scpdo the-one-remote-server/screen-control.php "$remote:$stage/screen-control.php"
+          sshdo "bash -s -- '$stage'" <<'REMOTE'
+          set -Eeuo pipefail
+          stage="$1"
+          dir="$HOME/public_html/the-one-remote-api"
+          test -f "$dir/license-core.php"
+          test ! -e "$dir/screen-control.php"
+          php -l "$stage/screen-control.php" >/dev/null
+          grep -q 'function one_license_owner_authenticated' "$dir/license-core.php"
+          install -m 0644 "$stage/screen-control.php" "$dir/screen-control.php.tmp-v997"
+          mv -n "$dir/screen-control.php.tmp-v997" "$dir/screen-control.php"
+          test -f "$dir/screen-control.php"
+          cmp "$dir/screen-control.php" "$stage/screen-control.php"
+          php -l "$dir/screen-control.php" >/dev/null
+          rm -rf "$stage"
+          echo 'Screen endpoint safely installed; existing APIs unchanged'
+          REMOTE
+      - name: Check live authorization denial
+        run: |
+          set -euo pipefail
+          url='https://rubenvanaggelen.com/the-one-remote-api/screen-control.php'
+          get_status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$url")
+          test "$get_status" = 405
+          issue_status=$(curl -sS -o /tmp/screen-error.json -w '%{http_code}' --max-time 15 -H 'Content-Type: application/json' -d '{"target":"hub","command":"ON","device_id":"00000000-0000-4000-8000-000000000000","installation_id":"00000000-0000-4000-8000-000000000000","owner_token":"invalid"}' "$url?action=issue")
+          test "$issue_status" = 403
+          redeem_status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 -H 'Content-Type: application/json' -d '{"target":"hub","command":"ON","ticket":"0000000000000000000000000000000000000000000000000000000000000000"}' "$url?action=redeem")
+          test "$redeem_status" = 403
+          echo 'PASS: endpoint rejects anonymous issue/redeem, existing server untouched'
