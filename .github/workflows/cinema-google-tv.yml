@@ -65,6 +65,11 @@ jobs:
           mkdir -p deliverable
           cp "$APK" deliverable/The-One-Cinema-Google-TV-v1.0.0.apk
           sha256sum deliverable/The-One-Cinema-Google-TV-v1.0.0.apk > deliverable/SHA256SUMS.txt
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
       - name: Test remote navigation on Android TV emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
