@@ -49,6 +49,18 @@ jobs:
           p.write_text(json.dumps({'relay_url':'https://rubenvanaggelen.com/the-one-remote-api/cinema.php','relay_token':token}))
           PY
           rm /tmp/cinema-source.apk
+      - name: Verify native playback test fixture
+        run: |
+          python3 - <<'PY_FIXTURE'
+          import pathlib,base64,hashlib
+          root=pathlib.Path('cinema-tv')
+          data=base64.b64decode((root/'tests/test-clip.mp4.base64').read_text(),validate=False)
+          digest=hashlib.sha1(b'blob '+str(len(data)).encode()+b'\x00'+data).hexdigest()
+          assert digest=='5f9ae34ede49119e518895d59deccba6f242ade0', 'Fixture integrity mismatch'
+          p=root/'app/src/debug/assets/test-clip.mp4'
+          p.parent.mkdir(parents=True,exist_ok=True)
+          p.write_bytes(data)
+          PY_FIXTURE
       - name: Build and unit test independent TV APK
         working-directory: cinema-tv
         run: gradle :app:testDebugUnitTest :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
