@@ -12,10 +12,35 @@ $received=$_SERVER['HTTP_X_CINEMA_TOKEN']??'';
 if(!is_string($received)||!hash_equals($expected,$received))fail(403,'Geen toegang');
 $action=$_GET['action']??'stream';
 if($action==='health'){header('Content-Type: application/json');echo json_encode(['ok'=>true,'service'=>'The One Cinema Relay']);exit;}
+function apiData(array $config,string $action,string $extra=''): array {
+    $url=rtrim((string)$config['server'],'/').'/player_api.php?username='.rawurlencode((string)$config['username']).'&password='.rawurlencode((string)$config['password']).'&action='.$action.$extra;
+    $ch=curl_init($url);curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_FOLLOWLOCATION=>true,CURLOPT_CONNECTTIMEOUT=>15,CURLOPT_TIMEOUT=>65,CURLOPT_PROTOCOLS=>CURLPROTO_HTTP|CURLPROTO_HTTPS,CURLOPT_REDIR_PROTOCOLS=>CURLPROTO_HTTP|CURLPROTO_HTTPS]);
+    $raw=curl_exec($ch);$status=curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);
+    if($status!==200||!is_string($raw))fail(502,'Catalogus niet bereikbaar');
+    $data=json_decode($raw,true);unset($raw);if(!is_array($data))fail(502,'Catalogus niet beschikbaar');return $data;
+}
+if($action==='catalog'){
+    ini_set('memory_limit','512M');$kind=$_GET['type']??'movies';if(!in_array($kind,['movies','series'],true))fail(400,'Ongeldige catalogus');
+    $cache=dirname($configPath).'/catalog-'.$kind.'.json';header('Content-Type: application/json');
+    if(is_file($cache)&&filemtime($cache)>time()-3600){readfile($cache);exit;}
+    $data=apiData($config,$kind==='series'?'get_series':'get_vod_streams');$out=[];
+    $allowed=['stream_id','series_id','name','container_extension','stream_icon','cover','category_id','is_adult','added','last_modified'];
+    foreach($data as$row){if(!is_array($row))continue;$safe=[];foreach($allowed as$key)if(isset($row[$key])&&(is_string($row[$key])||is_numeric($row[$key])))$safe[$key]=$row[$key];$out[]=$safe;}
+    unset($data);$json=json_encode($out,JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);$tmp=$cache.'.tmp.'.getmypid();
+    if(file_put_contents($tmp,$json,LOCK_EX)!==false){chmod($tmp,0600);rename($tmp,$cache);}echo $json;exit;
+}
+if($action==='episodes'){
+    ini_set('memory_limit','256M');$series=filter_var($_GET['id']??'',FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);if(!$series)fail(400,'Ongeldige serie');
+    $data=apiData($config,'get_series_info','&series_id='.$series);$out=['episodes'=>[]];
+    foreach(($data['episodes']??[])as$season=>$list){if(!is_array($list))continue;$safe=[];foreach($list as$row){if(!is_array($row))continue;$episode=[];foreach(['id','title','episode_num','container_extension']as$key)if(isset($row[$key])&&(is_string($row[$key])||is_numeric($row[$key])))$episode[$key]=$row[$key];$safe[]=$episode;}$out['episodes'][(string)$season]=$safe;}
+    $out['episodes']=(object)$out['episodes'];header('Content-Type: application/json');echo json_encode($out,JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);exit;
+}
+
 $id=filter_var($_GET['id']??'',FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
 $ext=(string)($_GET['ext']??'mp4');
 if(!$id||!preg_match('/^[a-zA-Z0-9]{1,8}$/D',$ext)||!in_array($action,['probe','stream'],true))fail(400,'Ongeldige film');
-$url=rtrim((string)$config['server'],'/').'/movie/'.rawurlencode((string)$config['username']).'/'.rawurlencode((string)$config['password']).'/'.$id.'.'.$ext;
+$kind=$_GET['type']??'movies';if(!in_array($kind,['movies','series'],true))fail(400,'Ongeldig mediatype');
+$url=rtrim((string)$config['server'],'/').'/'.($kind==='series'?'series':'movie').'/'.rawurlencode((string)$config['username']).'/'.rawurlencode((string)$config['password']).'/'.$id.'.'.$ext;
 $ch=curl_init($url);if($ch===false)fail(502,'Videobron niet bereikbaar');
 $range=$action==='probe'?'bytes=0-4095':($_SERVER['HTTP_RANGE']??'');
 $headers=[];if($range!==''){if(!preg_match('/^bytes=\d*-\d*$/D',$range))fail(400,'Ongeldig bereik');$headers[]='Range: '.$range;}
