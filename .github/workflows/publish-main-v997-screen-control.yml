@@ -2,7 +2,7 @@ name: Publish The One Main v997 Screen Control
 on:
   push:
     branches: [feature/main-v997-screen-control-20261011]
-    paths: ['.github/workflows/publish-main-v997-ruben-navigation.yml']
+    paths: ['.github/workflows/publish-main-v997-screen-control.yml']
 permissions:
   contents: write
   actions: read
