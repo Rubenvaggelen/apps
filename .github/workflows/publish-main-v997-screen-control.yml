@@ -1,0 +1,85 @@
+name: Publish The One Main v997 Screen Control
+on:
+  push:
+    branches: [feature/main-v997-screen-control-20261011]
+    paths: ['.github/workflows/publish-main-v997-ruben-navigation.yml']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: one-time-release-main-v997-screen-control-20261012
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require signed v997 CI, unchanged Main sources and approved security checks
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          original='6b4aba48a39cfac9304e2e67395d513f2a457807'
+
+          ready=0
+          for attempt in $(seq 1 60); do
+            result="$(gh api repos/Rubenvaggelen/apps/actions/runs/38212353163 --jq .conclusion)"
+            if [ "$result" = success ]; then ready=1; break; fi
+            if [ "$result" = failure ] || [ "$result" = cancelled ]; then
+              echo "::error::Main v997 signed screen-control test build failed"; exit 1
+            fi
+            sleep 10
+          done
+          test "$ready" -eq 1 || { echo "::error::Timed out waiting on Main v997 CI"; exit 1; }
+          test "$(gh api repos/Rubenvaggelen/apps/actions/runs/38212353163 --jq .head_sha)" = "$original"
+          git diff --exit-code "$original" HEAD -- app/ build.gradle gradle.properties settings.gradle \
+            .github/workflows/test-main-v997-screen-control.yml \
+            the-one-remote-server/screen-control.php scripts/windows/Screen-Control-Agent-v3.ps1
+          if gh release view main-v997 --repo Rubenvaggelen/apps >/dev/null 2>&1; then
+            echo "::error::Main v997 release exists; refuse overwrite"
+            exit 1
+          fi
+          echo 'PASS: signed artifact approved by CI and matching current app sources'
+      - name: Download CI-verified v997 APK
+        uses: actions/download-artifact@v4
+        with:
+          name: the-one-main-v997-screen-control-test
+          run-id: 38212353163
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: staging
+      - name: Verify Android version, package, signer, and backup policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=staging/app-debug.apk
+          test -s "$apk"
+          test "$(unzip -Z1 "$apk" | grep -c '^classes.*dex$')" -ge 1
+          tools_dir="$(find "$ANDROID_SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          badging="$("$tools_dir/aapt" dump badging "$apk" | head -1)"
+          echo "$badging" | grep -q "name='com.gmailorg.hub'"
+          echo "$badging" | grep -q "versionCode='997'"
+          "$tools_dir/apksigner" verify "$apk"
+          curl -fLsS --max-time 120 https://github.com/Rubenvaggelen/apps/releases/download/main-v984/app-debug.apk -o /tmp/main-v984.apk
+          old_cert="$("$tools_dir/apksigner" verify --print-certs /tmp/main-v984.apk | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
+          new_cert="$("$tools_dir/apksigner" verify --print-certs "$apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
+          test -n "$old_cert" && test "$old_cert" = "$new_cert"
+          test "$(git grep -o 'android:allowBackup="false"' -- app/src/main/AndroidManifest.xml | wc -l)" -eq 1
+          echo 'PASS: versionCode 997, package/signing correct, backup disabled'
+      - name: Publish Main v997 to public auto-update channel
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create main-v997 staging/app-debug.apk \
+            --repo Rubenvaggelen/apps \
+            --title "The One Main — v997" \
+            --target "$GITHUB_SHA" \
+            --notes "Main v997: Laptop > Schermen met aparte Aan/Uit-knoppen voor Ruben, Surface en The One Hub. Opdrachten via beveiligde Family-server en automatisch verbonden Windows-agents; geen extra pincode. Bestaande Main v996, licenties, Shared Media, persoonlijk PIN en DJ-functionaliteit blijven behouden. Installeer over de huidige Main. Fysieke schermwerking per apparaat nog door eigenaar te bevestigen."
+          gh release view main-v997 --repo Rubenvaggelen/apps --json assets,isDraft,isPrerelease,url \
+            --jq '{draft:.isDraft,prerelease:.isPrerelease,url:.url,assets:[.assets[].name]}'
+          echo 'SUCCESS: Main v997 released for all Main update-checking installations'
