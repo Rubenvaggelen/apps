@@ -10,8 +10,6 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import java.net.InetSocketAddress
-import java.net.Socket
 
 /** Owner-only screen power controls. These NEVER sleep or shut down Windows. */
 class ScreenControlActivity : AppCompatActivity() {
@@ -21,7 +19,6 @@ class ScreenControlActivity : AppCompatActivity() {
         Target("surface", "Surface", "192.168.178.154", 1),
         Target("hub", "The One Hub", "192.168.178.183", 1)
     )
-    private val port = 38492
     private lateinit var body: LinearLayout
     private lateinit var info: TextView
     private var permitted = false
@@ -108,29 +105,28 @@ class ScreenControlActivity : AppCompatActivity() {
     private fun operate(target: Target, action: String, state: TextView, controls: LinearLayout) {
         if (!permitted) return
         for (i in 0 until controls.childCount) controls.getChildAt(i).isEnabled = false
-        state.text = "Beveiligde opdracht naar ${target.title}…"
+        state.text = "Beveiligde opdracht naar ${target.title} verzenden…"
         Thread {
-            val response = runCatching {
-                // HTTPS owner authentication occurs before any local TCP connection.
-                // Only this one-use, 20-second ticket reaches the Windows device.
+            // Main only authenticates over HTTPS; Windows polls outbound so no open firewall port.
+            val result = runCatching {
                 val ticket = MainLicenseClient.screenTicket(this, target.id, action)
-                Socket().use { socket ->
-                    socket.connect(InetSocketAddress(target.host, port), 2800)
-                    socket.soTimeout = 5500
-                    socket.getOutputStream().write(("$action $ticket" + 10.toChar()).toByteArray(Charsets.UTF_8))
-                    socket.getOutputStream().flush()
-                    socket.getInputStream().bufferedReader(Charsets.UTF_8).readLine().orEmpty()
+                var latest = "pending"
+                for (attempt in 1..15) {
+                    Thread.sleep(1100)
+                    latest = runCatching {
+                        MainLicenseClient.screenCommandStatus(this, target.id, ticket)
+                    }.getOrDefault("pending")
+                    if (latest == "done" || latest == "failed") break
                 }
+                latest
             }
             runOnUiThread {
                 for (i in 0 until controls.childCount) controls.getChildAt(i).isEnabled = true
-                val value = response.getOrNull().orEmpty()
-                state.text = when {
-                    value == "OK DISPLAY_$action" ->
-                        "${if (action == "ON") "Aan" else "Uit"}-commando geaccepteerd; fysieke schermstatus niet uitleesbaar."
-                    value == "ERR AUTH" -> "Schermopdracht geweigerd door beveiliging."
-                    value == "ERR LOCKED" -> "Schermbediening tijdelijk vergrendeld."
-                    else -> "Opdracht niet uitgevoerd: ${response.exceptionOrNull()?.message ?: "apparaat niet bereikbaar"}. Controleer thuis-Wi-Fi."
+                state.text = when (result.getOrNull()) {
+                    "done" -> "${if (action == "ON") "Aan" else "Uit"}-commando uitgevoerd door Windows. Fysieke schermstatus niet uitleesbaar."
+                    "failed" -> "Windows heeft de opdracht ontvangen, maar uitvoeren is mislukt."
+                    "pending", "executing" -> "Opdracht wacht nog op Windows. Controleer of ${target.title} actief is."
+                    else -> "Opdracht mislukt: ${result.exceptionOrNull()?.message ?: "server niet bereikbaar"}"
                 }
             }
         }.start()
