@@ -17,6 +17,9 @@ jobs:
       - uses: actions/setup-java@v4
         with: {distribution: temurin, java-version: '17'}
       - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@v3
         with: {gradle-version: '8.7'}
       - name: Restore stable owner signing identity
@@ -35,14 +38,15 @@ jobs:
           curl -fLsS --max-time 120 'https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2400/The-One-Media-Player-v2400.apk' -o /tmp/cinema-source.apk
           echo 'a76dfa81c8670d1c044776fa1f10264eff958eca64339d6dd0d6f6ccedb3e04b  /tmp/cinema-source.apk' | sha256sum --check --status
           python3 - <<'PY'
-          import zipfile,json,pathlib
+          import zipfile,json,pathlib,hmac,hashlib
           with zipfile.ZipFile('/tmp/cinema-source.apk') as z:
               c=json.loads(z.read('assets/private_xtream.json'))
           if not all(isinstance(c.get(k),str) and c[k].strip() for k in ['server','username','password']):
               raise SystemExit('Media Player configuration unavailable')
-          p=pathlib.Path('cinema-tv/app/src/main/assets/private_xtream.json')
+          p=pathlib.Path('cinema-tv/app/src/main/assets/private_cinema.json')
           p.parent.mkdir(parents=True,exist_ok=True)
-          p.write_text(json.dumps({k:c[k] for k in ['server','username','password']}))
+          token=hmac.new(c['password'].encode(),b'the-one-cinema-relay-v1',hashlib.sha256).hexdigest()
+          p.write_text(json.dumps({'relay_url':'https://rubenvanaggelen.com/the-one-remote-api/cinema.php','relay_token':token}))
           PY
           rm /tmp/cinema-source.apk
       - name: Build and unit test independent TV APK
