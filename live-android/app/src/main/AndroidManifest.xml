@@ -1,0 +1,11 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+ <uses-permission android:name="android.permission.INTERNET" />
+ <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+ <uses-feature android:name="android.software.leanback" android:required="false" />
+ <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+ <application android:allowBackup="false" android:usesCleartextTraffic="true" android:label="The One TV" android:icon="@drawable/tv_logo" android:roundIcon="@drawable/tv_logo" android:banner="@drawable/tv_banner" android:theme="@style/CinemaTheme" android:supportsRtl="true">
+  <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="unspecified" android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize" android:banner="@drawable/tv_banner">
+   <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+  </activity>
+ </application>
+</manifest>
