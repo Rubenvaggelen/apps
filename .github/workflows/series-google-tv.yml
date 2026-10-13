@@ -127,8 +127,8 @@ jobs:
                   assert len(json.loads(gzip.decompress(z.read('assets/bootstrap-series.bin'))))==256
           PY_ASSETS
           mkdir -p deliverable
-          cp "$APK" deliverable/The-One-Series-Google-TV-v1.1.3.apk
-          sha256sum deliverable/The-One-Series-Google-TV-v1.1.3.apk > deliverable/SHA256SUMS.txt
+          cp "$APK" deliverable/The-One-Series-Google-TV-v1.1.4.apk
+          sha256sum deliverable/The-One-Series-Google-TV-v1.1.4.apk > deliverable/SHA256SUMS.txt
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -152,7 +152,7 @@ jobs:
           umask 077
           mkdir -p protected-deliverable
           openssl rand -hex 32 > /tmp/cinema-artifact-key
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/cinema-artifact-key -in deliverable/The-One-Series-Google-TV-v1.1.3.apk -out protected-deliverable/The-One-Series-Google-TV-v1.1.3.apk.enc
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/cinema-artifact-key -in deliverable/The-One-Series-Google-TV-v1.1.4.apk -out protected-deliverable/The-One-Series-Google-TV-v1.1.4.apk.enc
           openssl pkeyutl -encrypt -pubin -inkey owner-artifact-public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in /tmp/cinema-artifact-key -out protected-deliverable/key.enc
           cp deliverable/SHA256SUMS.txt protected-deliverable/SHA256SUMS.txt
           rm /tmp/cinema-artifact-key
@@ -160,7 +160,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: the-one-series-google-tv-v113
+          name: the-one-series-google-tv-v114
           path: series-google-tv/protected-deliverable/
           retention-days: 7
       - name: Save test reports
