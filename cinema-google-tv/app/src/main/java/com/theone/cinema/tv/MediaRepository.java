@@ -48,7 +48,7 @@ final class MediaRepository {
   posterUrls.put(key,result);return result;
  }
  void clearPosterCache(){posterUrls.evictAll();}
- private static boolean validIdentifier(String s){if(s.length()==0||s.length()>10||s.charAt(0)<\'1\'||s.charAt(0)>\'9\')return false;for(int i=1;i<s.length();i++)if(s.charAt(i)<\'0\'||s.charAt(i)>\'9\')return false;return true;}
+ private static boolean validIdentifier(String s){if(s.length()==0||s.length()>10||s.charAt(0)<'1'||s.charAt(0)>'9')return false;for(int i=1;i<s.length();i++)if(s.charAt(i)<'0'||s.charAt(i)>'9')return false;return true;}
  private static long number(JsonReader r)throws Exception{try{return Long.parseLong(r.nextString());}catch(NumberFormatException e){return 0;}}
  boolean partialSources(){return secondary!=null&&lastSuccessful<2;}
  Map<String,String> streamHeaders(){return Collections.singletonMap("X-Cinema-Token",token);}
