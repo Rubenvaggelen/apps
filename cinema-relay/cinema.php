@@ -32,11 +32,11 @@ if($action==='poster'){
     header('Content-Type: application/json');echo json_encode(['poster'=>$poster],JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE);exit;
 }
 if($action==='stats'){
-    $path=dirname($configPath).'/catalog-stats-v2.json';if(!is_file($path))fail(404,'Catalogus nog niet geladen');header('Content-Type: application/json');readfile($path);exit;
+    $path=dirname($configPath).'/catalog-stats-v3.json';if(!is_file($path))fail(404,'Catalogus nog niet geladen');header('Content-Type: application/json');readfile($path);exit;
 }
 if($action==='catalog'&&($_GET['type']??'movies')==='movies'){
     ini_set('memory_limit','768M');set_time_limit(240);
-    $cache=dirname($configPath).'/catalog-movies-v2.json';header('Content-Type: application/json');
+    $cache=dirname($configPath).'/catalog-movies-v3.json';header('Content-Type: application/json');
     if(is_file($cache)&&filemtime($cache)>time()-3600){readfile($cache);exit;}
     $sources=[$config];if(is_array($secondary))$sources[]=$secondary;
     $out=[];$stats=['sources_configured'=>count($sources),'sources_ok'=>0,'source_rows'=>[],'films'=>0,'xxx'=>0];
@@ -49,7 +49,7 @@ if($action==='catalog'&&($_GET['type']??'movies')==='movies'){
             if(!is_array($row))continue;$id=filter_var($row['stream_id']??0,FILTER_VALIDATE_INT,['options'=>['min_range'=>1,'max_range'=>999999999]]);if(!$id)continue;
             $safe=['stream_id'=>$id+$index*1000000000,'source_id'=>$index];
             foreach($allowed as$key)if(isset($row[$key])&&(is_string($row[$key])||is_numeric($row[$key])))$safe[$key]=$row[$key];
-            $safe['is_adult']=((int)($row['is_adult']??0)===1||isset($adults[(string)($row['category_id']??'')])||preg_match('/^\s*(?:xxx\b|18\s*\+)/iu',(string)($row['name']??'')))?1:0;
+            $safe['is_adult']=((int)($row['is_adult']??0)===1||isset($adults[(string)($row['category_id']??'')])||preg_match('/^\s*(?:\[xxx\]|xxx\s*\||18\s*\+)/iu',(string)($row['name']??'')))?1:0;
             $stats[$safe['is_adult']?'xxx':'films']++;$stats['source_rows'][(string)$index]++;$out[]=$safe;
         }
         unset($data);
@@ -57,7 +57,7 @@ if($action==='catalog'&&($_GET['type']??'movies')==='movies'){
     if($stats['sources_ok']===0)fail(502,'Geen filmbron bereikbaar');
     $json=json_encode($out,JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);$tmp=$cache.'.tmp.'.getmypid();
     if(file_put_contents($tmp,$json,LOCK_EX)!==false){chmod($tmp,0600);rename($tmp,$cache);if($stats['sources_ok']<count($sources))touch($cache,time()-3540);}
-    $sp=dirname($configPath).'/catalog-stats-v2.json';file_put_contents($sp,json_encode($stats),LOCK_EX);chmod($sp,0600);echo$json;exit;
+    $sp=dirname($configPath).'/catalog-stats-v3.json';file_put_contents($sp,json_encode($stats),LOCK_EX);chmod($sp,0600);echo$json;exit;
 }
 if($action==='catalog'){
     ini_set('memory_limit','512M');$kind=$_GET['type']??'movies';if(!in_array($kind,['movies','series'],true))fail(400,'Ongeldige catalogus');
