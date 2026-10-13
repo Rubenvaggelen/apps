@@ -11,6 +11,7 @@ final class MediaRepository {
  private android.util.AtomicFile cacheFile(String type){return new android.util.AtomicFile(new File(cacheDir,"series-v1.bin"));}
  private List<CatalogEntry> cached(String type){try(InputStream in=cacheFile(type).openRead()){return CatalogCodec.read(in,type);}catch(Exception ignored){return Collections.emptyList();}}
  private void save(String type,List<CatalogEntry> entries){android.util.AtomicFile file=cacheFile(type);FileOutputStream out=null;try{out=file.startWrite();CatalogCodec.write(out,entries);file.finishWrite(out);}catch(Exception ignored){if(out!=null)file.failWrite(out);}}
+ List<CatalogEntry> load(String type)throws Exception{List<CatalogEntry> result=new ArrayList<>();load(type,(entries,complete,successful)->{if(complete)result.addAll(entries);});return result;}
  void load(String type,ProgressiveCatalog.Listener listener)throws Exception{
   if(!type.equals("series"))throw new IOException("Series only");List<ProgressiveCatalog.Source> sources=new ArrayList<>();
   sources.add(preview->loadSource(server+"?action=catalog&type=series",false,preview));if(secondary!=null)sources.add(preview->loadSource(secondaryApi("get_series"),true,preview));
