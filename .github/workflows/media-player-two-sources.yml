@@ -165,7 +165,7 @@ jobs:
           PY
 
       - name: Build and test signed update
-        run: gradle -p media-player :app:testReleaseUnitTest :app:assembleRelease --no-daemon
+        run: gradle -p media-player :app:testDebugUnitTest :app:assembleRelease --no-daemon
 
       - name: Verify update identity and configuration
         run: |
