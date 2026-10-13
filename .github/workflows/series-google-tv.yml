@@ -46,6 +46,7 @@ jobs:
           p=pathlib.Path('series-google-tv/app/src/main/assets/private_cinema.json')
           p.parent.mkdir(parents=True,exist_ok=True)
           token=hmac.new(c['password'].encode(),b'the-one-cinema-relay-v1',hashlib.sha256).hexdigest()
+          (p.parent/'private_xtream_primary.json').write_text(json.dumps(c))
           p.write_text(json.dumps({'relay_url':'https://rubenvanaggelen.com/the-one-remote-api/cinema.php','relay_token':token}))
           PY
           keytool -importkeystore -srckeystore ~/.android/debug.keystore -srcstorepass android -srcalias androiddebugkey -destkeystore /tmp/cinema-signing.p12 -deststoretype PKCS12 -deststorepass changeit -destkeypass changeit -noprompt >/dev/null
@@ -59,6 +60,14 @@ jobs:
           PY_VERIFY
           rm /tmp/cinema-signing.p12 /tmp/cinema-private.pem /tmp/cinema-secondary.enc
           rm /tmp/cinema-source.apk
+      - name: Restore small verified starter catalog
+        run: |
+          python3 - <<'PY_START'
+          import pathlib,base64
+          root=pathlib.Path('series-google-tv')
+          data=base64.b64decode((root/'bootstrap/series.base64').read_text(),validate=True)
+          (root/'app/src/main/assets/bootstrap-series.json.gz').write_bytes(data)
+          PY_START
       - name: Restore approved Series logo
         run: |
           python3 - <<'PY_LOGO'
@@ -109,11 +118,11 @@ jobs:
           OWNER_SHA=$(sha256sum /tmp/cinema-owner.der | cut -d " " -f1)
           grep -i "certificate SHA-256 digest: $OWNER_SHA" /tmp/cinema-signature.txt
           "$BT/aapt" dump badging "$APK" > /tmp/cinema-badging.txt
-          grep "package: name='com.theone.series.tv' versionCode='112'" /tmp/cinema-badging.txt
+          grep "package: name='com.theone.series.tv' versionCode='113'" /tmp/cinema-badging.txt
           grep 'leanback-launchable-activity' /tmp/cinema-badging.txt
           mkdir -p deliverable
-          cp "$APK" deliverable/The-One-Series-Google-TV-v1.1.2.apk
-          sha256sum deliverable/The-One-Series-Google-TV-v1.1.2.apk > deliverable/SHA256SUMS.txt
+          cp "$APK" deliverable/The-One-Series-Google-TV-v1.1.3.apk
+          sha256sum deliverable/The-One-Series-Google-TV-v1.1.3.apk > deliverable/SHA256SUMS.txt
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -137,7 +146,7 @@ jobs:
           umask 077
           mkdir -p protected-deliverable
           openssl rand -hex 32 > /tmp/cinema-artifact-key
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/cinema-artifact-key -in deliverable/The-One-Series-Google-TV-v1.1.2.apk -out protected-deliverable/The-One-Series-Google-TV-v1.1.2.apk.enc
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/cinema-artifact-key -in deliverable/The-One-Series-Google-TV-v1.1.3.apk -out protected-deliverable/The-One-Series-Google-TV-v1.1.3.apk.enc
           openssl pkeyutl -encrypt -pubin -inkey owner-artifact-public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in /tmp/cinema-artifact-key -out protected-deliverable/key.enc
           cp deliverable/SHA256SUMS.txt protected-deliverable/SHA256SUMS.txt
           rm /tmp/cinema-artifact-key
@@ -145,7 +154,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: the-one-series-google-tv-v112
+          name: the-one-series-google-tv-v113
           path: series-google-tv/protected-deliverable/
           retention-days: 7
       - name: Save test reports
