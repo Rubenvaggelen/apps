@@ -74,7 +74,7 @@ public class MainActivity extends Activity {
  private void suspendBackground(){if(catalogRefreshActive||catalogTask!=null&&!catalogTask.isDone())restartCatalogType="series";++catalogGeneration;++languageGeneration;++loadGeneration;catalogRefreshActive=false;loading=false;if(catalogTask!=null)catalogTask.cancel(true);for(Runnable cancel:background.pause())networkCancelWorker.execute(cancel);}
  PlaybackPriority.Ticket registerBackgroundForTest(Runnable cancel)throws IOException{if(!testMode)throw new IllegalStateException();return background.register(cancel);}
  boolean isBackgroundPausedForTest(){return testMode&&background.isPaused();}
- private void stopPlayback(){if(player==null)return;storeProgress();cancelStall();if(progressTask!=null)handler.removeCallbacks(progressTask);playerView.setPlayer(null);player.release();player=null;playerView=null;playing=null;background.resume();
+ private void stopPlayback(){if(player==null)return;storeProgress();cancelStall();if(progressTask!=null)handler.removeCallbacks(progressTask);playerView.setPlayer(null);player.release();player=null;playerView=null;playing=null;background.resume();}
  private volatile boolean catalogWorkerBlockedForTest;
  CountDownLatch pauseCatalogWorkerForTest(){if(!testMode)throw new IllegalStateException();CountDownLatch release=new CountDownLatch(1);catalogWorker.execute(()->{catalogWorkerBlockedForTest=true;try{release.await(60,TimeUnit.SECONDS);}catch(InterruptedException ignored){Thread.currentThread().interrupt();}finally{catalogWorkerBlockedForTest=false;}});return release;}
  boolean isCatalogWorkerBlockedForTest(){return testMode&&catalogWorkerBlockedForTest;}
