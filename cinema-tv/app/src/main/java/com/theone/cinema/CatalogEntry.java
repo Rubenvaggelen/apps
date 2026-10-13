@@ -6,5 +6,9 @@ public final class CatalogEntry {
  public String key(){return type+":"+normalize(title);}
  public static String normalize(String s){return s.toLowerCase(Locale.ROOT).replaceAll("(?i)\\b(2160p|1080p|720p|4k|uhd|fhd|hd|hevc|x264|x265|h264|h265)\\b", "").replaceAll("[^\\p{L}\\p{N}]+"," ").trim();}
  public static int quality(String s){String x=s.toLowerCase(Locale.ROOT);if(x.matches(".*(2160|\\b4k\\b|\\buhd\\b).*"))return 2160;if(x.matches(".*(1080|\\bfhd\\b).*"))return 1080;if(x.matches(".*(720|\\bhd\\b).*"))return 720;return 0;}
+ public static boolean adultCategory(String name){return java.util.regex.Pattern.compile("(?:\\bxxx\\b|\\badult\\b|\\bporn(?:ography|o)?\\b|\\berotic(?:a)?\\b|18\\s*\\+|volwassen)",java.util.regex.Pattern.CASE_INSENSITIVE).matcher(name==null?"":name).find();}
+ public static boolean adultTitle(String name){return java.util.regex.Pattern.compile("^\\s*(?:xxx\\b|18\\s*\\+)",java.util.regex.Pattern.CASE_INSENSITIVE).matcher(name==null?"":name).find();}
+ public boolean isAdult(){return type.equals("xxx");}
  public boolean isEpisode(){return type.equals("episode");}
 }
+
