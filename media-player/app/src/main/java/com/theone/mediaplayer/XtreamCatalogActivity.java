@@ -97,7 +97,7 @@ public class XtreamCatalogActivity extends Activity {
         root.addView(top);
 
         TextView sub = text(
-                "Rechtstreeks uit jouw privé Xtream-bron.",
+                "Live TV, films en series uit jouw gekoppelde Xtream-bronnen.",
                 15,
                 MUTED,
                 false
@@ -188,7 +188,7 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private String categoryCacheKey() {
-        return "xtream_categories_" + mode;
+        return "xtream_categories_multisource_v1_" + mode;
     }
 
     private List<Category> loadCachedCategories() {
@@ -1462,6 +1462,7 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private String get(String urlValue) throws Exception {
+        if (urlValue.startsWith("theone-xtream://")) return config.fetchCatalog(urlValue);
         HttpURLConnection conn = null;
 
         try {
