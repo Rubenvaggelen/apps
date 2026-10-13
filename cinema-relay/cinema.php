@@ -22,6 +22,15 @@ function apiData(array $config,string $action,string $extra=''): array {
 }
 set_exception_handler(function(Throwable $error):void{fail(502,'Catalogus niet bereikbaar');});
 function adultCategory(string $name):bool{return (bool)preg_match('/(?:\bxxx\b|\badult\b|\bporn(?:ography|o)?\b|\berotic(?:a)?\b|18\s*\+|volwassen)/iu',$name);}
+if($action==='poster'){
+    $id=filter_var($_GET['id']??'',FILTER_VALIDATE_INT,['options'=>['min_range'=>1,'max_range'=>999999999]]);if(!$id)fail(400,'Ongeldige film');
+    $data=apiData($config,'get_vod_info','&vod_id='.$id);$poster='';
+    foreach([$data['info']??[],$data['movie_data']??[],$data]as$info){if(!is_array($info))continue;foreach(['movie_image','cover','cover_big','poster','stream_icon']as$key){$candidate=$info[$key]??'';if(!is_string($candidate)||$candidate===''||strtolower($candidate)==='null')continue;
+        if(str_starts_with($candidate,'//'))$candidate='http:'.$candidate;elseif(str_starts_with($candidate,'/'))$candidate=rtrim((string)$config['server'],'/').$candidate;
+        if(preg_match('/^https?:\/\//i',$candidate)){$poster=$candidate;break 2;}
+    }}
+    header('Content-Type: application/json');echo json_encode(['poster'=>$poster],JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE);exit;
+}
 if($action==='stats'){
     $path=dirname($configPath).'/catalog-stats-v2.json';if(!is_file($path))fail(404,'Catalogus nog niet geladen');header('Content-Type: application/json');readfile($path);exit;
 }
