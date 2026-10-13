@@ -32,15 +32,15 @@ if($action==='poster'){
     header('Content-Type: application/json');echo json_encode(['poster'=>$poster],JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE);exit;
 }
 if($action==='stats'){
-    $path=dirname($configPath).'/catalog-stats-v3.json';if(!is_file($path))fail(404,'Catalogus nog niet geladen');header('Content-Type: application/json');readfile($path);exit;
+    $path=dirname($configPath).'/catalog-stats-v4.json';if(!is_file($path))fail(404,'Catalogus nog niet geladen');header('Content-Type: application/json');readfile($path);exit;
 }
 if($action==='catalog'&&($_GET['type']??'movies')==='movies'){
     ini_set('memory_limit','768M');set_time_limit(240);
-    $cache=dirname($configPath).'/catalog-movies-v3.json';header('Content-Type: application/json');
+    $cache=dirname($configPath).'/catalog-movies-v4.json';header('Content-Type: application/json');
     if(is_file($cache)&&filemtime($cache)>time()-3600){readfile($cache);exit;}
     $sources=[$config];if(is_array($secondary))$sources[]=$secondary;
     $out=[];$stats=['sources_configured'=>count($sources),'sources_ok'=>0,'source_rows'=>[],'films'=>0,'xxx'=>0];
-    $allowed=['name','container_extension','stream_icon','category_id','added'];
+    $allowed=['name','container_extension','stream_icon','category_id','added','tmdb_id','tmdb'];
     foreach($sources as$index=>$source){
         try{$data=apiData($source,'get_vod_streams');}catch(Throwable $error){$stats['source_rows'][(string)$index]=0;continue;}
         $adults=[];try{foreach(apiData($source,'get_vod_categories')as$category)if(is_array($category)&&adultCategory((string)($category['category_name']??'')))$adults[(string)($category['category_id']??'')]=true;}catch(Throwable $error){}
