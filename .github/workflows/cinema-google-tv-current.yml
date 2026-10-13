@@ -117,7 +117,7 @@ jobs:
           OWNER_SHA=$(sha256sum /tmp/cinema-owner.der | cut -d " " -f1)
           grep -i "certificate SHA-256 digest: $OWNER_SHA" /tmp/cinema-signature.txt
           "$BT/aapt" dump badging "$APK" > /tmp/cinema-badging.txt
-          grep "package: name='com.theone.cinema.tv' versionCode='134'" /tmp/cinema-badging.txt
+          grep "package: name='com.theone.cinema.tv' versionCode='135'" /tmp/cinema-badging.txt
           grep 'leanback-launchable-activity' /tmp/cinema-badging.txt
           python3 - <<'PY_ASSETS'
           import zipfile,gzip,json
