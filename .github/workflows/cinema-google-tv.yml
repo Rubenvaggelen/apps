@@ -91,7 +91,10 @@ jobs:
           set -euo pipefail
           APK=app/build/outputs/apk/release/app-release.apk
           BT=$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -type d | sort -V | tail -1)
-          "$BT/apksigner" verify --verbose "$APK"
+          "$BT/apksigner" verify --verbose --print-certs "$APK" > /tmp/cinema-signature.txt
+          keytool -exportcert -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -file /tmp/cinema-owner.der >/dev/null
+          OWNER_SHA=$(sha256sum /tmp/cinema-owner.der | cut -d " " -f1)
+          grep -i "certificate SHA-256 digest: $OWNER_SHA" /tmp/cinema-signature.txt
           "$BT/aapt" dump badging "$APK" > /tmp/cinema-badging.txt
           grep "package: name='com.theone.cinema' versionCode='111'" /tmp/cinema-badging.txt
           grep 'leanback-launchable-activity' /tmp/cinema-badging.txt
