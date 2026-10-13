@@ -22,12 +22,12 @@ final class MediaRepository {
  private List<CatalogEntry> cached(String type){try(InputStream in=cacheFile(type).openRead()){return CatalogCodec.read(in,type);}catch(Exception ignored){return Collections.emptyList();}}
  private void save(String type,List<CatalogEntry> entries){android.util.AtomicFile file=cacheFile(type);FileOutputStream out=null;try{out=file.startWrite();CatalogCodec.write(out,entries);file.finishWrite(out);}catch(Exception ignored){if(out!=null)file.failWrite(out);}}
  void load(String type,ProgressiveCatalog.Listener listener)throws Exception {
-  List<java.util.concurrent.Callable<List<CatalogEntry>>> sources=new ArrayList<>();
-  sources.add(()->loadSource(type,server+"?action=catalog&type=movies",false,Collections.emptySet()));
-  if(secondary!=null)sources.add(()->{Set<String> adultIds;try{adultIds=adultCategories();}catch(Exception e){throw new IOException("Categories unavailable");}return loadSource(type,secondaryApi("get_vod_streams"),true,adultIds);});
-  ProgressiveCatalog.load(sources,cached(type),(entries,complete,successful)->{lastSuccessful=successful;listener.update(entries,complete,successful);if(successful>0)save(type,entries);});
+  List<ProgressiveCatalog.Source> sources=new ArrayList<>();
+  sources.add(preview->loadSource(type,server+"?action=catalog&type=movies",false,Collections.emptySet(),preview));
+  if(secondary!=null)sources.add(preview->{Set<String> adultIds;try{adultIds=adultCategories();}catch(Exception e){throw new IOException("Categories unavailable");}return loadSource(type,secondaryApi("get_vod_streams"),true,adultIds,preview);});
+  ProgressiveCatalog.loadStreaming(sources,cached(type),(entries,complete,successful)->{lastSuccessful=successful;listener.update(entries,complete,successful);if(successful>0)save(type,entries);});
  }
- private List<CatalogEntry> loadSource(String type,String url,boolean second,Set<String> adultIds)throws Exception {
+ private List<CatalogEntry> loadSource(String type,String url,boolean second,Set<String> adultIds,ProgressiveCatalog.Preview preview)throws Exception {
   HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(15000);c.setReadTimeout(45000);if(!second)c.setRequestProperty("X-Cinema-Token",token);List<CatalogEntry> list=new ArrayList<>();
   try{if(c.getResponseCode()!=200)throw new IOException("Catalog unavailable");try(JsonReader reader=new JsonReader(new InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8))){reader.beginArray();while(reader.hasNext()){
    if(Thread.currentThread().isInterrupted())throw new IOException("Cancelled");int id=0,adult=0;String title="",extension="mp4",poster="",category="",movieId="";long added=0;reader.beginObject();while(reader.hasNext()){
@@ -36,7 +36,7 @@ final class MediaRepository {
    boolean xxx=adult==1||adultIds.contains(category)||CatalogEntry.adultTitle(title);
    if(xxx!=type.equals("xxx"))continue;
    if(second){id+=1000000000;poster=PosterMetadata.resolve(poster,secondary.getString("server"));}
-   list.add(new CatalogEntry(id,title,extension,poster,category,xxx?"xxx":"movies",added,movieId));
+   list.add(new CatalogEntry(id,title,extension,poster,category,xxx?"xxx":"movies",added,movieId));if(list.size()==256)preview.accept(new ArrayList<>(list));
   }reader.endArray();}}finally{c.disconnect();}return list;
  }
  List<String> posters(CatalogEntry entry)throws Exception {
