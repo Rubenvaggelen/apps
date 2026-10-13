@@ -5,7 +5,7 @@ import android.util.JsonToken;
 import org.json.*;
 import java.io.*;import java.net.*;import java.nio.charset.StandardCharsets;import java.util.*;
 final class MediaRepository {
- private final String server,token;private JSONObject secondary;
+ private final String server,token;private JSONObject secondary;private volatile int lastSuccessful=2;
  MediaRepository(Context c)throws Exception{
   try(InputStream in=c.getAssets().open("private_cinema.json")){JSONObject x=new JSONObject(read(in));server=x.getString("relay_url");token=x.getString("relay_token");}
   if(!server.startsWith("https://rubenvanaggelen.com/")||token.isEmpty())throw new IOException("Source unavailable");
@@ -22,7 +22,7 @@ final class MediaRepository {
   List<CatalogEntry> list=new ArrayList<>();int successful=0;
   try{list.addAll(loadSource(type,server+"?action=catalog&type=movies",false,Collections.emptySet()));successful++;}catch(Exception ignored){}
   if(secondary!=null){Set<String> adultIds=Collections.emptySet();try{adultIds=adultCategories();}catch(Exception ignored){}try{list.addAll(loadSource(type,secondaryApi("get_vod_streams"),true,adultIds));successful++;}catch(Exception ignored){}}
-  if(successful==0)throw new IOException("Catalog unavailable");list.sort((a,b)->Long.compare(b.added,a.added));return list;
+  lastSuccessful=successful;if(successful==0)throw new IOException("Catalog unavailable");list.sort((a,b)->Long.compare(b.added,a.added));return list;
  }
  private List<CatalogEntry> loadSource(String type,String url,boolean second,Set<String> adultIds)throws Exception {
   HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(15000);c.setReadTimeout(90000);if(!second)c.setRequestProperty("X-Cinema-Token",token);List<CatalogEntry> list=new ArrayList<>();
@@ -37,6 +37,7 @@ final class MediaRepository {
   }reader.endArray();}}finally{c.disconnect();}return list;
  }
  private static long number(JsonReader r)throws Exception{try{return Long.parseLong(r.nextString());}catch(NumberFormatException e){return 0;}}
+ boolean partialSources(){return secondary!=null&&lastSuccessful<2;}
  Map<String,String> streamHeaders(){return Collections.singletonMap("X-Cinema-Token",token);}
  Map<String,String> headersForUri(String uri){return uri.startsWith(server+"?")?streamHeaders():Collections.emptyMap();}
  String stream(CatalogEntry x){
