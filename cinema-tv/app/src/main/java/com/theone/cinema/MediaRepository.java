@@ -5,7 +5,7 @@ import android.util.JsonToken;
 import org.json.*;
 import java.io.*;import java.net.*;import java.nio.charset.StandardCharsets;import java.util.*;
 final class MediaRepository {
- private final String server,token;private JSONObject secondary;private volatile int lastSuccessful=2;
+ private final String server,token;private JSONObject secondary;private volatile int lastSuccessful=2;private final android.util.LruCache<String,String> posterUrls=new android.util.LruCache<>(512);
  MediaRepository(Context c)throws Exception{
   try(InputStream in=c.getAssets().open("private_cinema.json")){JSONObject x=new JSONObject(read(in));server=x.getString("relay_url");token=x.getString("relay_token");}
   if(!server.startsWith("https://rubenvanaggelen.com/")||token.isEmpty())throw new IOException("Source unavailable");
@@ -28,7 +28,7 @@ final class MediaRepository {
   HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(15000);c.setReadTimeout(90000);if(!second)c.setRequestProperty("X-Cinema-Token",token);List<CatalogEntry> list=new ArrayList<>();
   try{if(c.getResponseCode()!=200)throw new IOException("Catalog unavailable");try(JsonReader reader=new JsonReader(new InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8))){reader.beginArray();while(reader.hasNext()){
    if(Thread.currentThread().isInterrupted())throw new IOException("Cancelled");int id=0,adult=0;String title="",extension="mp4",poster="",category="";long added=0;reader.beginObject();while(reader.hasNext()){
-    String key=reader.nextName();if(reader.peek()==JsonToken.NULL){reader.nextNull();continue;}switch(key){case "stream_id":id=(int)number(reader);break;case "name":title=reader.nextString();break;case "container_extension":extension=reader.nextString();break;case "stream_icon":poster=reader.nextString();break;case "category_id":category=reader.nextString();break;case "is_adult":adult=reader.peek()==JsonToken.BOOLEAN?(reader.nextBoolean()?1:0):(int)number(reader);break;case "added":added=number(reader);break;default:reader.skipValue();}}
+    String key=reader.nextName();if(reader.peek()==JsonToken.NULL){reader.nextNull();continue;}switch(key){case "stream_id":id=(int)number(reader);break;case "name":title=reader.nextString();break;case "container_extension":extension=reader.nextString();break;case "stream_icon":case "cover":case "movie_image":case "poster":String candidate=reader.nextString();if(poster.isEmpty()&&!candidate.isEmpty()&&!candidate.equalsIgnoreCase("null"))poster=candidate;break;case "category_id":category=reader.nextString();break;case "is_adult":adult=reader.peek()==JsonToken.BOOLEAN?(reader.nextBoolean()?1:0):(int)number(reader);break;case "added":added=number(reader);break;default:reader.skipValue();}}
    reader.endObject();if(id<=0||id>=1000000000||title.isEmpty())continue;
    boolean xxx=adult==1||adultIds.contains(category)||CatalogEntry.adultTitle(title);
    if(xxx!=type.equals("xxx"))continue;
@@ -36,6 +36,15 @@ final class MediaRepository {
    list.add(new CatalogEntry(id,title,extension,poster,category,xxx?"xxx":"movies",added));
   }reader.endArray();}}finally{c.disconnect();}return list;
  }
+ String poster(CatalogEntry entry)throws Exception {
+  String key=entry.type+":"+entry.id;String cached=posterUrls.get(key);if(cached!=null)return cached;
+  boolean second=entry.id>=1000000000;String url;
+  if(second){if(secondary==null)return "";url=secondaryApi("get_vod_info")+"&vod_id="+(entry.id-1000000000);}else url=server+"?action=poster&id="+entry.id;
+  HttpURLConnection connection=(HttpURLConnection)new URL(url).openConnection();connection.setConnectTimeout(7000);connection.setReadTimeout(15000);if(!second)connection.setRequestProperty("X-Cinema-Token",token);
+  String result="";try{if(connection.getResponseCode()==200){JSONObject data=new JSONObject(read(connection.getInputStream()));result=second?PosterMetadata.choose(data,secondary.getString("server")):PosterMetadata.resolve(data.optString("poster"),server);}}finally{connection.disconnect();}
+  posterUrls.put(key,result);return result;
+ }
+ void clearPosterCache(){posterUrls.evictAll();}
  private static long number(JsonReader r)throws Exception{try{return Long.parseLong(r.nextString());}catch(NumberFormatException e){return 0;}}
  boolean partialSources(){return secondary!=null&&lastSuccessful<2;}
  Map<String,String> streamHeaders(){return Collections.singletonMap("X-Cinema-Token",token);}

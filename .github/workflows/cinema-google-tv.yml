@@ -59,6 +59,17 @@ jobs:
           PY_VERIFY
           rm /tmp/cinema-signing.p12 /tmp/cinema-private.pem /tmp/cinema-secondary.enc
           rm /tmp/cinema-source.apk
+      - name: Restore approved Cinema logo
+        run: |
+          python3 - <<'PY_LOGO'
+          import pathlib,base64,hashlib
+          root=pathlib.Path('cinema-tv')
+          encoded=''.join(p.read_text() for p in sorted((root/'branding').glob('cinema-logo-*.base64')))
+          data=base64.b64decode(encoded,validate=True)
+          assert hashlib.sha256(data).hexdigest()=='99cdfac91335cd1abada5d896ab777b419e4861e4d38c7f79f9469c563ab0807'
+          out=root/'app/src/main/res/drawable/cinema_logo.webp'
+          out.write_bytes(data)
+          PY_LOGO
       - name: Verify native playback test fixture
         run: |
           python3 - <<'PY_FIXTURE'
@@ -82,11 +93,11 @@ jobs:
           BT=$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -type d | sort -V | tail -1)
           "$BT/apksigner" verify --verbose "$APK"
           "$BT/aapt" dump badging "$APK" > /tmp/cinema-badging.txt
-          grep "package: name='com.theone.cinema' versionCode='110'" /tmp/cinema-badging.txt
+          grep "package: name='com.theone.cinema' versionCode='111'" /tmp/cinema-badging.txt
           grep 'leanback-launchable-activity' /tmp/cinema-badging.txt
           mkdir -p deliverable
-          cp "$APK" deliverable/The-One-Cinema-Android-v1.1.0-proef.apk
-          sha256sum deliverable/The-One-Cinema-Android-v1.1.0-proef.apk > deliverable/SHA256SUMS.txt
+          cp "$APK" deliverable/The-One-Cinema-Android-v1.1.1-proef.apk
+          sha256sum deliverable/The-One-Cinema-Android-v1.1.1-proef.apk > deliverable/SHA256SUMS.txt
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -110,7 +121,7 @@ jobs:
           umask 077
           mkdir -p protected-deliverable
           openssl rand -hex 32 > /tmp/cinema-artifact-key
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/cinema-artifact-key -in deliverable/The-One-Cinema-Android-v1.1.0-proef.apk -out protected-deliverable/The-One-Cinema-Android-v1.1.0-proef.apk.enc
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/cinema-artifact-key -in deliverable/The-One-Cinema-Android-v1.1.1-proef.apk -out protected-deliverable/The-One-Cinema-Android-v1.1.1-proef.apk.enc
           openssl pkeyutl -encrypt -pubin -inkey owner-artifact-public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in /tmp/cinema-artifact-key -out protected-deliverable/key.enc
           cp deliverable/SHA256SUMS.txt protected-deliverable/SHA256SUMS.txt
           rm /tmp/cinema-artifact-key
@@ -118,7 +129,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: the-one-cinema-android-v110
+          name: the-one-cinema-android-v111
           path: cinema-tv/protected-deliverable/
           retention-days: 7
       - name: Save test reports
