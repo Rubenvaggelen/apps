@@ -2,6 +2,14 @@ package com.theone.series.tv;
 import org.junit.Test;import static org.junit.Assert.*;import java.util.*;import java.util.concurrent.*;import java.io.*;
 public class CatalogLoadingTest {
  private CatalogEntry entry(int id,String name,String type){return new CatalogEntry(id,name,"mp4","https://example.org/poster.jpg","7",type,123,"42");}
+ @Test public void streamingPreviewAppearsBeforeProviderFinishes()throws Exception{
+  CountDownLatch release=new CountDownLatch(1),previewReady=new CountDownLatch(1);ExecutorService worker=Executors.newSingleThreadExecutor();List<List<CatalogEntry>> snapshots=new CopyOnWriteArrayList<>();
+  Future<?> task=worker.submit(()->{try{ProgressiveCatalog.loadStreaming(Collections.singletonList(preview->{preview.accept(Collections.singletonList(entry(1,"EN - Serie","series")));if(!release.await(5,TimeUnit.SECONDS))throw new IOException();return Arrays.asList(entry(1,"EN - Serie","series"),entry(2,"EN - Other","series"));}),Collections.emptyList(),(items,done,success)->{snapshots.add(items);if(!done)previewReady.countDown();});}catch(Exception e){throw new RuntimeException(e);}});
+  try{assertTrue(previewReady.await(3,TimeUnit.SECONDS));assertFalse(task.isDone());assertEquals(1,snapshots.get(0).size());release.countDown();task.get(3,TimeUnit.SECONDS);assertEquals(2,snapshots.get(snapshots.size()-1).size());}finally{release.countDown();worker.shutdownNow();}
+ }
+ @Test public void previewCannotReplaceCompleteCachedSource()throws Exception{
+  List<CatalogEntry> cached=Arrays.asList(entry(1,"EN - Serie","series"),entry(2,"EN - Other","series"));List<List<CatalogEntry>> snapshots=new ArrayList<>();ProgressiveCatalog.loadStreaming(Collections.singletonList(preview->{preview.accept(Collections.singletonList(cached.get(0)));return cached;}),cached,(items,done,success)->snapshots.add(items));for(List<CatalogEntry> items:snapshots)assertEquals(2,items.size());
+ }
  @Test public void firstSourceAppearsBeforeSlowSourceCompletes()throws Exception {
   CountDownLatch release=new CountDownLatch(1),first=new CountDownLatch(1);ExecutorService worker=Executors.newSingleThreadExecutor();List<List<CatalogEntry>> snapshots=new CopyOnWriteArrayList<>();
   Future<?> task=worker.submit(()->{try{ProgressiveCatalog.load(Arrays.asList(()->Collections.singletonList(entry(1,"EN - Serie","series")),()->{if(!release.await(5,TimeUnit.SECONDS))throw new IOException();return Collections.singletonList(entry(1000000002,"NL - Serie","series"));}),Collections.emptyList(),(items,done,success)->{snapshots.add(items);if(!done)first.countDown();});}catch(Exception e){throw new RuntimeException(e);}});
