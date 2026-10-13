@@ -11,13 +11,59 @@ $expected=hash_hmac('sha256','the-one-cinema-relay-v1',(string)$config['password
 $received=$_SERVER['HTTP_X_CINEMA_TOKEN']??'';
 if(!is_string($received)||!hash_equals($expected,$received))fail(403,'Geen toegang');
 $action=$_GET['action']??'stream';
+$secondaryPath=dirname($configPath).'/secondary.json';
+$secondary=is_file($secondaryPath)?json_decode((string)file_get_contents($secondaryPath),true):null;
+if($action==='configure-secondary'){
+    if(($_SERVER['REQUEST_METHOD']??'')!=='POST')fail(405,'POST vereist');
+    $admin=hash_hmac('sha256','the-one-cinema-source-admin-v1',(string)$config['password']);
+    if(!hash_equals($admin,(string)($_SERVER['HTTP_X_CINEMA_ADMIN']??'')))fail(403,'Geen beheertoegang');
+    $raw=file_get_contents('php://input',false,null,0,4097);if(!is_string($raw)||strlen($raw)>4096)fail(400,'Ongeldige bron');
+    $candidate=json_decode($raw,true);
+    if(!is_array($candidate)||($candidate['server']??'')!=='http://cqqwnnig.bulidns.com')fail(400,'Ongeldige bron');
+    foreach(['username','password']as$key)if(!is_string($candidate[$key]??null)||$candidate[$key]===''||strlen($candidate[$key])>200)fail(400,'Ongeldige bron');
+    $safe=array_intersect_key($candidate,array_flip(['server','username','password']));
+    $tmp=$secondaryPath.'.tmp';if(file_put_contents($tmp,json_encode($safe),LOCK_EX)===false)fail(503,'Bron opslaan mislukt');chmod($tmp,0600);rename($tmp,$secondaryPath);
+    @unlink(dirname($configPath).'/catalog-movies-v2.json');@unlink(dirname($configPath).'/catalog-stats-v2.json');
+    header('Content-Type: application/json');echo json_encode(['configured'=>true]);exit;
+}
+
 if($action==='health'){header('Content-Type: application/json');echo json_encode(['ok'=>true,'service'=>'The One Cinema Relay']);exit;}
 function apiData(array $config,string $action,string $extra=''): array {
     $url=rtrim((string)$config['server'],'/').'/player_api.php?username='.rawurlencode((string)$config['username']).'&password='.rawurlencode((string)$config['password']).'&action='.$action.$extra;
     $ch=curl_init($url);curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_FOLLOWLOCATION=>true,CURLOPT_CONNECTTIMEOUT=>15,CURLOPT_TIMEOUT=>65,CURLOPT_PROTOCOLS=>CURLPROTO_HTTP|CURLPROTO_HTTPS,CURLOPT_REDIR_PROTOCOLS=>CURLPROTO_HTTP|CURLPROTO_HTTPS]);
     $raw=curl_exec($ch);$status=curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);
-    if($status!==200||!is_string($raw))fail(502,'Catalogus niet bereikbaar');
-    $data=json_decode($raw,true);unset($raw);if(!is_array($data))fail(502,'Catalogus niet beschikbaar');return $data;
+    if($status!==200||!is_string($raw))throw new RuntimeException('Catalog unavailable');
+    $data=json_decode($raw,true);unset($raw);if(!is_array($data))throw new RuntimeException('Catalog unavailable');return $data;
+}
+set_exception_handler(function(Throwable $error):void{fail(502,'Catalogus niet bereikbaar');});
+function adultCategory(string $name):bool{return (bool)preg_match('/(?:\bxxx\b|\badult\b|\bporn(?:ography|o)?\b|\berotic(?:a)?\b|18\s*\+|volwassen)/iu',$name);}
+if($action==='stats'){
+    $path=dirname($configPath).'/catalog-stats-v2.json';if(!is_file($path))fail(404,'Catalogus nog niet geladen');header('Content-Type: application/json');readfile($path);exit;
+}
+if($action==='catalog'&&($_GET['type']??'movies')==='movies'){
+    ini_set('memory_limit','768M');set_time_limit(240);
+    $cache=dirname($configPath).'/catalog-movies-v2.json';header('Content-Type: application/json');
+    if(is_file($cache)&&filemtime($cache)>time()-3600){readfile($cache);exit;}
+    $sources=[$config];if(is_array($secondary))$sources[]=$secondary;
+    $out=[];$stats=['sources_configured'=>count($sources),'sources_ok'=>0,'source_rows'=>[],'films'=>0,'xxx'=>0];
+    $allowed=['name','container_extension','stream_icon','category_id','added'];
+    foreach($sources as$index=>$source){
+        try{$data=apiData($source,'get_vod_streams');}catch(Throwable $error){$stats['source_rows'][(string)$index]=0;continue;}
+        $adults=[];try{foreach(apiData($source,'get_vod_categories')as$category)if(is_array($category)&&adultCategory((string)($category['category_name']??'')))$adults[(string)($category['category_id']??'')]=true;}catch(Throwable $error){}
+        $stats['sources_ok']++;$stats['source_rows'][(string)$index]=0;
+        foreach($data as$row){
+            if(!is_array($row))continue;$id=filter_var($row['stream_id']??0,FILTER_VALIDATE_INT,['options'=>['min_range'=>1,'max_range'=>999999999]]);if(!$id)continue;
+            $safe=['stream_id'=>$id+$index*1000000000,'source_id'=>$index];
+            foreach($allowed as$key)if(isset($row[$key])&&(is_string($row[$key])||is_numeric($row[$key])))$safe[$key]=$row[$key];
+            $safe['is_adult']=((int)($row['is_adult']??0)===1||isset($adults[(string)($row['category_id']??'')])||preg_match('/^\s*(?:xxx\b|18\s*\+)/iu',(string)($row['name']??'')))?1:0;
+            $stats[$safe['is_adult']?'xxx':'films']++;$stats['source_rows'][(string)$index]++;$out[]=$safe;
+        }
+        unset($data);
+    }
+    if($stats['sources_ok']===0)fail(502,'Geen filmbron bereikbaar');
+    $json=json_encode($out,JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);$tmp=$cache.'.tmp.'.getmypid();
+    if(file_put_contents($tmp,$json,LOCK_EX)!==false){chmod($tmp,0600);rename($tmp,$cache);if($stats['sources_ok']<count($sources))touch($cache,time()-3540);}
+    $sp=dirname($configPath).'/catalog-stats-v2.json';file_put_contents($sp,json_encode($stats),LOCK_EX);chmod($sp,0600);echo$json;exit;
 }
 if($action==='catalog'){
     ini_set('memory_limit','512M');$kind=$_GET['type']??'movies';if(!in_array($kind,['movies','series'],true))fail(400,'Ongeldige catalogus');
@@ -40,6 +86,7 @@ $id=filter_var($_GET['id']??'',FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]
 $ext=(string)($_GET['ext']??'mp4');
 if(!$id||!preg_match('/^[a-zA-Z0-9]{1,8}$/D',$ext)||!in_array($action,['probe','stream'],true))fail(400,'Ongeldige film');
 $kind=$_GET['type']??'movies';if(!in_array($kind,['movies','series'],true))fail(400,'Ongeldig mediatype');
+if($id>=1000000000){if($kind!=='movies'||!is_array($secondary))fail(404,'Filmbron ontbreekt');$id-=1000000000;$config=$secondary;}
 $url=rtrim((string)$config['server'],'/').'/'.($kind==='series'?'series':'movie').'/'.rawurlencode((string)$config['username']).'/'.rawurlencode((string)$config['password']).'/'.$id.'.'.$ext;
 $ch=curl_init($url);if($ch===false)fail(502,'Videobron niet bereikbaar');
 $range=$action==='probe'?'bytes=0-4095':($_SERVER['HTTP_RANGE']??'');
@@ -49,3 +96,4 @@ curl_setopt_array($ch,[CURLOPT_FOLLOWLOCATION=>true,CURLOPT_MAXREDIRS=>5,CURLOPT
 $result=curl_exec($ch);curl_close($ch);
 if($action==='probe'){$type=$finalHeaders['content-type']??'';$head=substr($bytes,0,128);$ok=$status>=200&&$status<300&&strlen($bytes)>32&&!str_starts_with(ltrim($head),'<')&&(str_starts_with($type,'video/')||str_contains($head,'ftyp')||str_contains($head,'moov')||ord($bytes[0])===0x47||substr($bytes,0,4)==="\x1a\x45\xdf\xa3");header('Content-Type: application/json');echo json_encode(['ok'=>$ok,'status'=>$status,'bytes'=>strlen($bytes)]);exit;}
 if(!$sent)fail(502,'Videobron niet bereikbaar');
+
