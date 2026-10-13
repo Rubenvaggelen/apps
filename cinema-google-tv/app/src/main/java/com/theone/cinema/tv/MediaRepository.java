@@ -17,7 +17,7 @@ final class MediaRepository {
  private static String read(InputStream in)throws Exception{ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[16384];int n;while((n=in.read(b))!=-1){out.write(b,0,n);if(out.size()>100*1024*1024)throw new IOException("Catalog exceeds limit");}return out.toString("UTF-8");}
  private String api(JSONObject source,String action)throws Exception{return source.getString("server")+"/player_api.php?username="+enc(source.getString("username"))+"&password="+enc(source.getString("password"))+"&action="+action;}
  private String secondaryApi(String action)throws Exception{return api(secondary,action);}
- private List<CatalogEntry> starter(String type){try(InputStream in=new java.util.zip.GZIPInputStream(context.getAssets().open("bootstrap-"+type+".json.gz"))){return BootstrapCatalog.read(in,type);}catch(Exception ignored){return Collections.emptyList();}}
+ private List<CatalogEntry> starter(String type){try(InputStream in=new java.util.zip.GZIPInputStream(context.getAssets().open("bootstrap-"+type+".bin"))){return BootstrapCatalog.read(in,type);}catch(Exception ignored){return Collections.emptyList();}}
  private List<CatalogEntry> initial(String type,ProgressiveCatalog.Listener listener){List<CatalogEntry> seed=starter(type);if(!seed.isEmpty())listener.update(seed,false,0);List<CatalogEntry> disk=cached(type);return disk.isEmpty()?seed:disk;}
  private Set<String> adultCategories(JSONObject source)throws Exception {
   Set<String> ids=new HashSet<>();HttpURLConnection c=(HttpURLConnection)new URL(api(source,"get_vod_categories")).openConnection();c.setConnectTimeout(8000);c.setReadTimeout(10000);

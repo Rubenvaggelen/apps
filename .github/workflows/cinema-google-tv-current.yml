@@ -66,7 +66,7 @@ jobs:
           import pathlib,base64
           root=pathlib.Path('cinema-google-tv')
           data=base64.b64decode((root/'bootstrap/movies.base64').read_text(),validate=True)
-          (root/'app/src/main/assets/bootstrap-movies.json.gz').write_bytes(data)
+          (root/'app/src/main/assets/bootstrap-movies.bin').write_bytes(data)
           PY_START
       - name: Restore approved Cinema logo
         run: |
@@ -119,6 +119,12 @@ jobs:
           "$BT/aapt" dump badging "$APK" > /tmp/cinema-badging.txt
           grep "package: name='com.theone.cinema.tv' versionCode='133'" /tmp/cinema-badging.txt
           grep 'leanback-launchable-activity' /tmp/cinema-badging.txt
+          python3 - <<'PY_ASSETS'
+          import zipfile,gzip,json
+          for variant in ['release','debug']:
+              with zipfile.ZipFile('app/build/outputs/apk/'+variant+'/app-'+variant+'.apk') as z:
+                  assert len(json.loads(gzip.decompress(z.read('assets/bootstrap-movies.bin'))))==256
+          PY_ASSETS
           mkdir -p deliverable
           cp "$APK" deliverable/The-One-Cinema-Google-TV-v1.3.3.apk
           sha256sum deliverable/The-One-Cinema-Google-TV-v1.3.3.apk > deliverable/SHA256SUMS.txt
