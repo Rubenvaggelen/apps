@@ -1,0 +1,12 @@
+package com.theone.series.tv;
+import org.json.*;import org.junit.Test;import static org.junit.Assert.*;
+public class PosterMetadataTest {
+ @Test public void picksCoverFromProviderInfo()throws Exception{assertEquals("https://example.test/cover.jpg",PosterMetadata.choose(new JSONObject("{\"info\":{\"movie_image\":\"https://example.test/cover.jpg\"}}"),"https://provider.test"));}
+ @Test public void missingPrimaryImageUsesMovieData()throws Exception{assertEquals("https://example.test/other.jpg",PosterMetadata.choose(new JSONObject("{\"info\":{\"movie_image\":\"null\"},\"movie_data\":{\"cover\":\"https://example.test/other.jpg\"}}"),"https://provider.test"));}
+ @Test public void relativePosterUsesCorrectProvider(){assertEquals("http://provider.test/images/a.jpg",PosterMetadata.resolve("/images/a.jpg","http://provider.test"));assertEquals("https://cdn.test/a.jpg",PosterMetadata.resolve("//cdn.test/a.jpg","https://provider.test"));}
+ @Test public void invalidPosterDoesNotBecomeNetworkRequest(){assertEquals("",PosterMetadata.resolve("javascript:bad","https://provider.test"));assertEquals("",PosterMetadata.resolve("null","https://provider.test"));}
+ @Test public void brokenPrimaryKeepsAlternativeCovers()throws Exception{java.util.List<String> urls=PosterMetadata.candidates(new JSONObject("{\"info\":{\"movie_image\":\"https://example.test/broken.jpg\",\"cover\":\"https://example.test/working.jpg\",\"cover_big\":\"https://example.test/working.jpg\"},\"movie_data\":{\"poster\":\"https://example.test/third.jpg\"}}"),"https://provider.test");assertEquals(3,urls.size());assertEquals("https://example.test/working.jpg",urls.get(1));assertEquals("https://example.test/third.jpg",urls.get(2));}
+ @Test public void imageArraysAndBackdropsRemainCandidates()throws Exception{assertEquals(3,PosterMetadata.candidates(new JSONObject("{\"info\":{\"movie_image\":[\"/a.jpg\",\"/b.jpg\"],\"backdrop_path\":[\"/c.jpg\"]}}"),"https://provider.test").size());}
+ @Test public void relativePathsResolveAgainstProvider(){assertEquals("https://provider.test/images/a.jpg",PosterMetadata.resolve("images/a.jpg","https://provider.test"));assertEquals("https://provider.test/images/a.jpg",PosterMetadata.resolve("//provider.test/images/a.jpg","https://provider.test"));}
+ @Test public void unavailableArtworkHasNoInventedPoster()throws Exception{assertTrue(PosterMetadata.candidates(new JSONObject("{\"info\":{\"movie_image\":null,\"cover\":\"null\"}}"),"https://provider.test").isEmpty());}
+}
