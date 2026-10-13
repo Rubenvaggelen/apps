@@ -15,7 +15,7 @@ import static org.junit.Assert.*;
   i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK);i.putExtra("cinema_test_mode",true);
   try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(i)) {
    assertTrue("Cinema launcher is visible",device.wait(Until.hasObject(By.textContains("THE ONE CINEMA")),10000));
-   UiObject2 search=device.findObject(By.clazz("android.widget.EditText"));assertNotNull("Search field exists",search);
+   AtomicBoolean cancelled=new AtomicBoolean(false);scenario.onActivity(a->{try{a.registerBackgroundForTest(()->cancelled.set(true));}catch(java.io.IOException e){throw new RuntimeException(e);}});UiObject2 search=device.findObject(By.clazz("android.widget.EditText"));assertNotNull("Search field exists",search);
    search.setText("testfilm 3");device.waitForIdle();
    assertTrue("Film search returns fixture",device.wait(Until.hasObject(By.text("Cinema testfilm 3")),5000));
    device.findObject(By.text("Cinema testfilm 3")).click();
@@ -23,8 +23,8 @@ import static org.junit.Assert.*;
    device.findObject(By.text("▶ Kijk")).click();
    AtomicBoolean playing=new AtomicBoolean(false);
    for(int n=0;n<40&&!playing.get();n++){scenario.onActivity(a->playing.set(a.isPlaybackReadyForTest()));Thread.sleep(250);}
-   assertTrue("Native player rendered a video frame and is playing",playing.get());
-   device.pressBack();device.waitForIdle();
+   assertTrue("Native player rendered a video frame and is playing",playing.get());assertTrue("Playback cancels background downloads",cancelled.get());scenario.onActivity(a->assertTrue(a.isBackgroundPausedForTest()));
+   device.pressBack();device.waitForIdle();scenario.onActivity(a->assertFalse(a.isBackgroundPausedForTest()));
    scenario.onActivity(a->a.findViewById(1003).performClick());
    assertTrue("Favorites start empty",device.wait(Until.hasObject(By.text("Geen titels gevonden.")),5000));
    scenario.onActivity(a->a.findViewById(1006).performClick());
