@@ -1,12 +1,12 @@
-name: Build and verify The One Cinema Google TV
+name: Build and verify The One Cinema Android release
 on:
   push:
-    branches: [feature/cinema-google-tv-20261012]
+    branches: [feature/cinema-android-preview-20261013]
     paths: [cinema-tv/**, .github/workflows/cinema-google-tv.yml]
 permissions:
   contents: read
 concurrency:
-  group: cinema-google-tv
+  group: cinema-android-preview
   cancel-in-progress: true
 jobs:
   build:
@@ -46,9 +46,40 @@ jobs:
           p=pathlib.Path('cinema-tv/app/src/main/assets/private_cinema.json')
           p.parent.mkdir(parents=True,exist_ok=True)
           token=hmac.new(c['password'].encode(),b'the-one-cinema-relay-v1',hashlib.sha256).hexdigest()
+          (p.parent/'private_xtream_primary.json').write_text(json.dumps(c))
           p.write_text(json.dumps({'relay_url':'https://rubenvanaggelen.com/the-one-remote-api/cinema.php','relay_token':token}))
           PY
+          keytool -importkeystore -srckeystore ~/.android/debug.keystore -srcstorepass android -srcalias androiddebugkey -destkeystore /tmp/cinema-signing.p12 -deststoretype PKCS12 -deststorepass changeit -destkeypass changeit -noprompt >/dev/null
+          openssl pkcs12 -in /tmp/cinema-signing.p12 -passin pass:changeit -nodes -nocerts -out /tmp/cinema-private.pem >/dev/null 2>&1
+          base64 -d cinema-tv/secondary-source.enc.b64 > /tmp/cinema-secondary.enc
+          openssl pkeyutl -decrypt -inkey /tmp/cinema-private.pem -in /tmp/cinema-secondary.enc -out cinema-tv/app/src/main/assets/private_xtream_secondary.json -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
+          python3 - <<'PY_VERIFY'
+          import json,pathlib
+          c=json.loads(pathlib.Path('cinema-tv/app/src/main/assets/private_xtream_secondary.json').read_text())
+          assert c['server']=='http://cqqwnnig.bulidns.com' and all(c.get(k) for k in ['username','password'])
+          PY_VERIFY
+          rm /tmp/cinema-signing.p12 /tmp/cinema-private.pem /tmp/cinema-secondary.enc
           rm /tmp/cinema-source.apk
+      - name: Restore verified phone starter catalog
+        run: |
+          python3 - <<'PY_START'
+          import pathlib,base64,gzip,json
+          root=pathlib.Path('cinema-tv')
+          data=base64.b64decode((root/'bootstrap/movies.base64').read_text(),validate=True)
+          assert len(json.loads(gzip.decompress(data)))==256
+          (root/'app/src/main/assets/bootstrap-movies.bin').write_bytes(data)
+          PY_START
+      - name: Restore approved Cinema logo
+        run: |
+          python3 - <<'PY_LOGO'
+          import pathlib,base64,hashlib
+          root=pathlib.Path('cinema-tv')
+          encoded=''.join(p.read_text() for p in sorted((root/'branding').glob('cinema-logo-*.base64')))
+          data=base64.b64decode(encoded,validate=True)
+          assert hashlib.sha256(data).hexdigest()=='99cdfac91335cd1abada5d896ab777b419e4861e4d38c7f79f9469c563ab0807'
+          out=root/'app/src/main/res/drawable/cinema_logo.webp'
+          out.write_bytes(data)
+          PY_LOGO
       - name: Verify native playback test fixture
         run: |
           python3 - <<'PY_FIXTURE'
@@ -64,31 +95,40 @@ jobs:
       - name: Build and unit test independent TV APK
         working-directory: cinema-tv
         run: gradle :app:testDebugUnitTest :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
-      - name: Verify Google TV package and signature
+      - name: Verify Android phone package and signature
         working-directory: cinema-tv
         run: |
           set -euo pipefail
           APK=app/build/outputs/apk/release/app-release.apk
           BT=$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -type d | sort -V | tail -1)
-          "$BT/apksigner" verify --verbose "$APK"
+          "$BT/apksigner" verify --verbose --print-certs "$APK" > /tmp/cinema-signature.txt
+          keytool -exportcert -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -file /tmp/cinema-owner.der >/dev/null
+          OWNER_SHA=$(sha256sum /tmp/cinema-owner.der | cut -d " " -f1)
+          grep -i "certificate SHA-256 digest: $OWNER_SHA" /tmp/cinema-signature.txt
           "$BT/aapt" dump badging "$APK" > /tmp/cinema-badging.txt
-          grep "package: name='com.theone.cinema.tv' versionCode='100'" /tmp/cinema-badging.txt
+          grep "package: name='com.theone.cinema' versionCode='136'" /tmp/cinema-badging.txt
           grep 'leanback-launchable-activity' /tmp/cinema-badging.txt
+          python3 - <<'PY_ASSETS'
+          import zipfile,gzip,json
+          for variant in ['release','debug']:
+              with zipfile.ZipFile('app/build/outputs/apk/'+variant+'/app-'+variant+'.apk') as z:
+                  assert len(json.loads(gzip.decompress(z.read('assets/bootstrap-movies.bin'))))==256
+          PY_ASSETS
           mkdir -p deliverable
-          cp "$APK" deliverable/The-One-Cinema-Google-TV-v1.0.0.apk
-          sha256sum deliverable/The-One-Cinema-Google-TV-v1.0.0.apk > deliverable/SHA256SUMS.txt
+          cp "$APK" deliverable/The-One-Cinema-Android-v1.3.6.apk
+          sha256sum deliverable/The-One-Cinema-Android-v1.3.6.apk > deliverable/SHA256SUMS.txt
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Test remote navigation on Android TV emulator
+      - name: Test phone navigation, isolated folder and native playback
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
-          target: android-tv
-          arch: x86
-          profile: tv_1080p
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: cd cinema-tv && gradle :app:connectedDebugAndroidTest --no-daemon
@@ -100,7 +140,7 @@ jobs:
           umask 077
           mkdir -p protected-deliverable
           openssl rand -hex 32 > /tmp/cinema-artifact-key
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/cinema-artifact-key -in deliverable/The-One-Cinema-Google-TV-v1.0.0.apk -out protected-deliverable/The-One-Cinema-Google-TV-v1.0.0.apk.enc
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/cinema-artifact-key -in deliverable/The-One-Cinema-Android-v1.3.6.apk -out protected-deliverable/The-One-Cinema-Android-v1.3.6.apk.enc
           openssl pkeyutl -encrypt -pubin -inkey owner-artifact-public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in /tmp/cinema-artifact-key -out protected-deliverable/key.enc
           cp deliverable/SHA256SUMS.txt protected-deliverable/SHA256SUMS.txt
           rm /tmp/cinema-artifact-key
@@ -108,14 +148,14 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: the-one-cinema-google-tv-v100
+          name: the-one-cinema-android-v136
           path: cinema-tv/protected-deliverable/
           retention-days: 7
       - name: Save test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cinema-google-tv-test-reports
+          name: cinema-android-test-reports
           path: |
             cinema-tv/app/build/reports/tests/
             cinema-tv/app/build/reports/androidTests/
