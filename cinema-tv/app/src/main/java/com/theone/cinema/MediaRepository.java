@@ -27,13 +27,13 @@ final class MediaRepository {
  private List<CatalogEntry> loadSource(String type,String url,boolean second,Set<String> adultIds)throws Exception {
   HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(15000);c.setReadTimeout(90000);if(!second)c.setRequestProperty("X-Cinema-Token",token);List<CatalogEntry> list=new ArrayList<>();
   try{if(c.getResponseCode()!=200)throw new IOException("Catalog unavailable");try(JsonReader reader=new JsonReader(new InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8))){reader.beginArray();while(reader.hasNext()){
-   if(Thread.currentThread().isInterrupted())throw new IOException("Cancelled");int id=0,adult=0;String title="",extension="mp4",poster="",category="";long added=0;reader.beginObject();while(reader.hasNext()){
-    String key=reader.nextName();if(reader.peek()==JsonToken.NULL){reader.nextNull();continue;}switch(key){case "stream_id":id=(int)number(reader);break;case "name":title=reader.nextString();break;case "container_extension":extension=reader.nextString();break;case "stream_icon":case "cover":case "movie_image":case "poster":String candidate=reader.nextString();if(poster.isEmpty()&&!candidate.isEmpty()&&!candidate.equalsIgnoreCase("null"))poster=candidate;break;case "category_id":category=reader.nextString();break;case "is_adult":adult=reader.peek()==JsonToken.BOOLEAN?(reader.nextBoolean()?1:0):(int)number(reader);break;case "added":added=number(reader);break;default:reader.skipValue();}}
+   if(Thread.currentThread().isInterrupted())throw new IOException("Cancelled");int id=0,adult=0;String title="",extension="mp4",poster="",category="",movieId="";long added=0;reader.beginObject();while(reader.hasNext()){
+    String key=reader.nextName();if(reader.peek()==JsonToken.NULL){reader.nextNull();continue;}switch(key){case "stream_id":id=(int)number(reader);break;case "name":title=reader.nextString();break;case "container_extension":extension=reader.nextString();break;case "stream_icon":case "cover":case "movie_image":case "poster":String candidate=reader.nextString();if(poster.isEmpty()&&!candidate.isEmpty()&&!candidate.equalsIgnoreCase("null"))poster=candidate;break;case "category_id":category=reader.nextString();break;case "is_adult":adult=reader.peek()==JsonToken.BOOLEAN?(reader.nextBoolean()?1:0):(int)number(reader);break;case "tmdb_id":case "tmdb":String identifier=reader.nextString();if(movieId.isEmpty()&&identifier.matches("[1-9][0-9]{0,9}"))movieId=identifier;break;case "added":added=number(reader);break;default:reader.skipValue();}}
    reader.endObject();if(id<=0||id>=1000000000||title.isEmpty())continue;
    boolean xxx=adult==1||adultIds.contains(category)||CatalogEntry.adultTitle(title);
    if(xxx!=type.equals("xxx"))continue;
    if(second){id+=1000000000;if(poster.startsWith("/"))poster=secondary.getString("server")+poster;}
-   list.add(new CatalogEntry(id,title,extension,poster,category,xxx?"xxx":"movies",added));
+   list.add(new CatalogEntry(id,title,extension,poster,category,xxx?"xxx":"movies",added,movieId));
   }reader.endArray();}}finally{c.disconnect();}return list;
  }
  String poster(CatalogEntry entry)throws Exception {
