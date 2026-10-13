@@ -109,7 +109,7 @@ jobs:
           OWNER_SHA=$(sha256sum /tmp/cinema-owner.der | cut -d " " -f1)
           grep -i "certificate SHA-256 digest: $OWNER_SHA" /tmp/cinema-signature.txt
           "$BT/aapt" dump badging "$APK" > /tmp/cinema-badging.txt
-          grep "package: name='com.theone.tv' versionCode='100'" /tmp/cinema-badging.txt
+          grep "package: name='com.theone.tv' versionCode='101'" /tmp/cinema-badging.txt
           grep 'leanback-launchable-activity' /tmp/cinema-badging.txt
           mkdir -p deliverable
           cp "$APK" deliverable/The-One-TV-Google-TV-v1.0.1.apk
