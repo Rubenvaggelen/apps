@@ -5,7 +5,7 @@ import android.util.JsonToken;
 import org.json.*;
 import java.io.*;import java.net.*;import java.nio.charset.StandardCharsets;import java.util.*;
 final class MediaRepository {
- private final String server,token;private JSONObject secondary;private volatile int lastSuccessful=2;private final android.util.LruCache<String,String> posterUrls=new android.util.LruCache<>(512);
+ private final String server,token;private JSONObject secondary;private volatile int lastSuccessful=2;private final android.util.LruCache<String,List<String>> posterUrls=new android.util.LruCache<>(512);
  MediaRepository(Context c)throws Exception{
   try(InputStream in=c.getAssets().open("private_cinema.json")){JSONObject x=new JSONObject(read(in));server=x.getString("relay_url");token=x.getString("relay_token");}
   if(!server.startsWith("https://rubenvanaggelen.com/")||token.isEmpty())throw new IOException("Source unavailable");
@@ -32,16 +32,16 @@ final class MediaRepository {
    reader.endObject();if(id<=0||id>=1000000000||title.isEmpty())continue;
    boolean xxx=adult==1||adultIds.contains(category)||CatalogEntry.adultTitle(title);
    if(xxx!=type.equals("xxx"))continue;
-   if(second){id+=1000000000;if(poster.startsWith("/"))poster=secondary.getString("server")+poster;}
+   if(second){id+=1000000000;poster=PosterMetadata.resolve(poster,secondary.getString("server"));}
    list.add(new CatalogEntry(id,title,extension,poster,category,xxx?"xxx":"movies",added,movieId));
   }reader.endArray();}}finally{c.disconnect();}return list;
  }
- String poster(CatalogEntry entry)throws Exception {
-  String key=entry.type+":"+entry.id;String cached=posterUrls.get(key);if(cached!=null)return cached;
+ List<String> posters(CatalogEntry entry)throws Exception {
+  String key=entry.type+":"+entry.id;List<String> cached=posterUrls.get(key);if(cached!=null)return cached;
   boolean second=entry.id>=1000000000;String url;
-  if(second){if(secondary==null)return "";url=secondaryApi("get_vod_info")+"&vod_id="+(entry.id-1000000000);}else url=server+"?action=poster&id="+entry.id;
+  if(second){if(secondary==null)return Collections.emptyList();url=secondaryApi("get_vod_info")+"&vod_id="+(entry.id-1000000000);}else url=server+"?action=poster&id="+entry.id;
   HttpURLConnection connection=(HttpURLConnection)new URL(url).openConnection();connection.setConnectTimeout(7000);connection.setReadTimeout(15000);if(!second)connection.setRequestProperty("X-Cinema-Token",token);
-  String result="";try{if(connection.getResponseCode()==200){JSONObject data=new JSONObject(read(connection.getInputStream()));result=second?PosterMetadata.choose(data,secondary.getString("server")):PosterMetadata.resolve(data.optString("poster"),server);}}finally{connection.disconnect();}
+  List<String> result=Collections.emptyList();try{if(connection.getResponseCode()==200){JSONObject data=new JSONObject(read(connection.getInputStream()));result=PosterMetadata.candidates(data,second?secondary.getString("server"):server);}}finally{connection.disconnect();}
   posterUrls.put(key,result);return result;
  }
  void clearPosterCache(){posterUrls.evictAll();}
