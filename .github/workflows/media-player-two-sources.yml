@@ -200,3 +200,5 @@ jobs:
         with:
           name: the-one-media-player-v2401-personal
           path: personal-out/
+
+# Routing fixture portability verified on Android compile classpath.
