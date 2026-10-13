@@ -1,5 +1,5 @@
 package com.theone.series;
-import org.json.*;import java.util.*;
+import org.json.*;import java.util.*;import java.util.regex.*;
 final class EpisodeCatalog {
  static List<CatalogEntry> parse(JSONObject data,CatalogEntry parent,String base,boolean second)throws Exception {
   List<CatalogEntry> out=new ArrayList<>();JSONObject seasons=data.optJSONObject("episodes");if(seasons==null)return out;
@@ -7,7 +7,8 @@ final class EpisodeCatalog {
    for(int i=0;i<list.length();i++){JSONObject row=list.optJSONObject(i);if(row==null)continue;long raw=row.optLong("id",0);if(raw<=0||raw>=1000000000L)continue;int number=row.optInt("episode_num",i+1);if(number<1)number=i+1;
     JSONObject info=row.optJSONObject("info");String poster=info==null?"":PosterMetadata.choose(info,base);if(poster.isEmpty())poster=parent.poster;
     String name=row.optString("title","").trim();if(name.isEmpty())name="Aflevering "+number;String title=String.format(Locale.ROOT,"S%02dE%02d · %s",season,number,name)+(parent.rank>0?" · "+parent.rank+"p":"");
-    String group=parent.key()+":"+season+":"+number;out.add(new CatalogEntry((int)raw+(second?1000000000:0),title,row.optString("container_extension","mp4"),poster,season+":"+number,"episode",parent.added,"",group,CatalogEntry.language(parent.title)));
+    Matcher label=Pattern.compile("(?i)S(\\d{1,3})[ ._-]*E(\\d{1,4})|(?<!\\d)(\\d{1,3})x(\\d{1,4})(?!\\d)").matcher(name);int actualSeason=season;if(label.find()){actualSeason=Integer.parseInt(label.group(1)!=null?label.group(1):label.group(3));number=Integer.parseInt(label.group(2)!=null?label.group(2):label.group(4));title=String.format(Locale.ROOT,"S%02dE%02d · %s",actualSeason,number,name)+(parent.rank>0?" · "+parent.rank+"p":"");}
+    String group=parent.key()+":"+actualSeason+":"+number;out.add(new CatalogEntry((int)raw+(second?1000000000:0),title,row.optString("container_extension","mp4"),poster,actualSeason+":"+number,"episode",parent.added,"",group,CatalogEntry.language(parent.title)));
    }
   }return out;
  }
