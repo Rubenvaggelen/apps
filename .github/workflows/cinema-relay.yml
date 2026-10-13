@@ -1,0 +1,84 @@
+name: Deploy private Cinema relay
+on:
+  push:
+    branches: [feature/cinema-relay-20261012]
+    paths: [cinema-relay/cinema.php, .github/workflows/cinema-relay.yml]
+permissions:
+  contents: read
+concurrency:
+  group: the-one-cinema-relay
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate relay
+        run: php -l cinema-relay/cinema.php
+      - name: Prepare existing Media Player source privately
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          curl -fLsS --max-time 120 'https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2400/The-One-Media-Player-v2400.apk' -o /tmp/cinema-player.apk
+          python3 - <<'PY'
+          import zipfile,json,pathlib
+          with zipfile.ZipFile('/tmp/cinema-player.apk') as z:
+              c=json.loads(z.read('assets/private_xtream.json'))
+          if not all(isinstance(c.get(k),str) and c[k].strip() for k in ['server','username','password']):
+              raise SystemExit('Missing source configuration')
+          pathlib.Path('/tmp/cinema-config.json').write_text(json.dumps({k:c[k] for k in ['server','username','password']}))
+          PY
+      - name: Deploy only Cinema files
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "${!name}" || { echo "Missing deployment configuration: $name"; exit 1; }
+          done
+          keydir=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$keydir"; rm -f /tmp/cinema-config.json /tmp/cinema-player.apk' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$keydir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$keydir/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$keydir/askpass"
+          chmod 600 "$keydir/key" "$keydir/known_hosts"
+          chmod 700 "$keydir/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$keydir/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$keydir/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          opts=(-i "$keydir/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$keydir/known_hosts" -o ConnectTimeout=20)
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'umask 077; mktemp -d "$HOME/.cinema-stage.XXXXXXXX"')
+          scp -O -P "$DEPLOY_PORT" "${opts[@]}" cinema-relay/cinema.php "$remote:$stage/cinema.php"
+          scp -O -P "$DEPLOY_PORT" "${opts[@]}" /tmp/cinema-config.json "$remote:$stage/config.json"
+          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "bash -s -- '$stage'" <<'REMOTE'
+          set -euo pipefail
+          stage="$1"
+          php -l "$stage/cinema.php" >/dev/null
+          private="$HOME/.the-one-cinema"
+          public="$HOME/public_html/the-one-remote-api"
+          mkdir -p "$private" "$public"
+          chmod 700 "$private"
+          if [ -f "$public/cinema.php" ]; then cp -p "$public/cinema.php" "$private/cinema-backup-$(date +%Y%m%d%H%M%S).php"; fi
+          cp "$stage/config.json" "$private/config.json.new"
+          chmod 600 "$private/config.json.new"
+          mv "$private/config.json.new" "$private/config.json"
+          cp "$stage/cinema.php" "$public/cinema.php.new"
+          chmod 644 "$public/cinema.php.new"
+          mv "$public/cinema.php.new" "$public/cinema.php"
+          rm -rf "$stage"
+          echo 'Cinema relay deployed'
+          REMOTE
+      - name: Verify access boundary
+        run: |
+          status=$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' 'https://rubenvanaggelen.com/the-one-remote-api/cinema.php?action=health')
+          test "$status" = 403
