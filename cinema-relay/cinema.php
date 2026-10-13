@@ -61,10 +61,10 @@ if($action==='catalog'&&($_GET['type']??'movies')==='movies'){
 }
 if($action==='catalog'){
     ini_set('memory_limit','512M');$kind=$_GET['type']??'movies';if(!in_array($kind,['movies','series'],true))fail(400,'Ongeldige catalogus');
-    $cache=dirname($configPath).'/catalog-'.$kind.'.json';header('Content-Type: application/json');
+    $cache=dirname($configPath).'/catalog-'.$kind.'-v2.json';header('Content-Type: application/json');
     if(is_file($cache)&&filemtime($cache)>time()-3600){readfile($cache);exit;}
     $data=apiData($config,$kind==='series'?'get_series':'get_vod_streams');$out=[];
-    $allowed=['stream_id','series_id','name','container_extension','stream_icon','cover','category_id','is_adult','added','last_modified'];
+    $allowed=['stream_id','series_id','name','container_extension','stream_icon','cover','category_id','is_adult','added','last_modified','tmdb','tmdb_id'];
     foreach($data as$row){if(!is_array($row))continue;$safe=[];foreach($allowed as$key)if(isset($row[$key])&&(is_string($row[$key])||is_numeric($row[$key])))$safe[$key]=$row[$key];$out[]=$safe;}
     unset($data);$json=json_encode($out,JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);$tmp=$cache.'.tmp.'.getmypid();
     if(file_put_contents($tmp,$json,LOCK_EX)!==false){chmod($tmp,0600);rename($tmp,$cache);}echo $json;exit;
