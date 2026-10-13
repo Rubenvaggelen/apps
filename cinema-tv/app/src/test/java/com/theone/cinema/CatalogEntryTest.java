@@ -8,4 +8,5 @@ public class CatalogEntryTest {
  @Test public void adultAndRegularFilmsNeverShareAKey(){CatalogEntry normal=new CatalogEntry(1,"Titel 1080p","mp4","","","movies",0);CatalogEntry adult=new CatalogEntry(2,"Titel 4K","mp4","","","xxx",0);assertNotEquals(normal.key(),adult.key());assertTrue(adult.isAdult());assertFalse(normal.isAdult());}
  @Test public void matchingFilmsFromBothSourcesShareOneTitle(){assertEquals(new CatalogEntry(7,"Titel 1080p","mp4","","","movies",0).key(),new CatalogEntry(1000000007,"Titel 4K","mkv","","","movies",0).key());}
  @Test public void adultCategoriesAreRecognizedWithoutMatchingOrdinaryTitles(){assertTrue(CatalogEntry.adultCategory("XXX"));assertTrue(CatalogEntry.adultCategory("18+"));assertFalse(CatalogEntry.adultCategory("Familiefilms"));assertFalse(CatalogEntry.adultTitle("Sex and the City"));}
+ @Test public void mainstreamXxxTitleIsNotAnAdultTag(){assertFalse(CatalogEntry.adultTitle("xXx: Return of Xander Cage (2017)"));assertTrue(CatalogEntry.adultTitle("[XXX] Fixture title"));}
 }
