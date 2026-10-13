@@ -109,11 +109,11 @@ jobs:
           OWNER_SHA=$(sha256sum /tmp/cinema-owner.der | cut -d " " -f1)
           grep -i "certificate SHA-256 digest: $OWNER_SHA" /tmp/cinema-signature.txt
           "$BT/aapt" dump badging "$APK" > /tmp/cinema-badging.txt
-          grep "package: name='com.theone.tv.phone' versionCode='102'" /tmp/cinema-badging.txt
+          grep "package: name='com.theone.tv.phone' versionCode='103'" /tmp/cinema-badging.txt
           grep 'launchable-activity' /tmp/cinema-badging.txt
           mkdir -p deliverable
-          cp "$APK" deliverable/The-One-TV-Android-v1.0.2.apk
-          sha256sum deliverable/The-One-TV-Android-v1.0.2.apk > deliverable/SHA256SUMS.txt
+          cp "$APK" deliverable/The-One-TV-Android-v1.0.3.apk
+          sha256sum deliverable/The-One-TV-Android-v1.0.3.apk > deliverable/SHA256SUMS.txt
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -137,7 +137,7 @@ jobs:
           umask 077
           mkdir -p protected-deliverable
           openssl rand -hex 32 > /tmp/cinema-artifact-key
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/cinema-artifact-key -in deliverable/The-One-TV-Android-v1.0.2.apk -out protected-deliverable/The-One-TV-Android-v1.0.2.apk.enc
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/cinema-artifact-key -in deliverable/The-One-TV-Android-v1.0.3.apk -out protected-deliverable/The-One-TV-Android-v1.0.3.apk.enc
           openssl pkeyutl -encrypt -pubin -inkey owner-artifact-public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in /tmp/cinema-artifact-key -out protected-deliverable/key.enc
           cp deliverable/SHA256SUMS.txt protected-deliverable/SHA256SUMS.txt
           rm /tmp/cinema-artifact-key
@@ -145,7 +145,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: the-one-live-android-v102
+          name: the-one-live-android-v103
           path: live-android/protected-deliverable/
           retention-days: 7
       - name: Save test reports
