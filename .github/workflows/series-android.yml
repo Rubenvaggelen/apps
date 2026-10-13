@@ -107,7 +107,7 @@ jobs:
           OWNER_SHA=$(sha256sum /tmp/cinema-owner.der | cut -d " " -f1)
           grep -i "certificate SHA-256 digest: $OWNER_SHA" /tmp/cinema-signature.txt
           "$BT/aapt" dump badging "$APK" > /tmp/cinema-badging.txt
-          grep "package: name='com.theone.series' versionCode='114'" /tmp/cinema-badging.txt
+          grep "package: name='com.theone.series' versionCode='115'" /tmp/cinema-badging.txt
           grep 'launchable-activity' /tmp/cinema-badging.txt
           python3 - <<'PY_ASSETS'
           import zipfile,gzip,json
