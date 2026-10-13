@@ -8,7 +8,8 @@ import org.junit.*;import org.junit.runner.RunWith;
 import java.util.concurrent.atomic.AtomicBoolean;
 import static org.junit.Assert.*;
 @RunWith(AndroidJUnit4.class) public class TvNavigationTest {
- @Test public void launcherSearchAndRemoteDetailsWork()throws Exception {
+ @Test public void relayTokenNeverGoesToSecondProvider()throws Exception{MediaRepository r=new MediaRepository(InstrumentationRegistry.getInstrumentation().getTargetContext());assertTrue(r.headersForUri("http://cqqwnnig.bulidns.com/movie/test").isEmpty());assertEquals(1,r.headersForUri("https://rubenvanaggelen.com/the-one-remote-api/cinema.php?action=stream").size());}
+ @Test public void phoneSearchPlaybackAndSeparateFolderWork()throws Exception {
   UiDevice device=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
   Intent i=new Intent(InstrumentationRegistry.getInstrumentation().getTargetContext(),MainActivity.class);
   i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK);i.putExtra("cinema_test_mode",true);
@@ -24,11 +25,15 @@ import static org.junit.Assert.*;
    for(int n=0;n<40&&!playing.get();n++){scenario.onActivity(a->playing.set(a.isPlaybackReadyForTest()));Thread.sleep(250);}
    assertTrue("Native player rendered a video frame and is playing",playing.get());
    device.pressBack();device.waitForIdle();
-   device.findObject(By.text("Mijn lijst")).click();
+   scenario.onActivity(a->a.findViewById(1003).performClick());
    assertTrue("Favorites start empty",device.wait(Until.hasObject(By.text("Geen titels gevonden.")),5000));
-   device.findObject(By.text("Films")).click();device.waitForIdle();
-   device.pressDPadDown();device.pressDPadDown();device.pressDPadDown();device.pressDPadRight();device.pressDPadCenter();
-   assertTrue("Remote opens film details",device.wait(Until.hasObject(By.text("▶ Kijk")),5000));
+   scenario.onActivity(a->a.findViewById(1006).performClick());
+   assertTrue("Separate folder has its fixture",device.wait(Until.hasObject(By.text("Afzonderlijke testtitel")),5000));
+   assertNull("Regular titles stay outside the separate folder",device.findObject(By.text("Cinema testfilm 1")));
+   scenario.onActivity(a->a.findViewById(1001).performClick());device.waitForIdle();
+   assertNull("Separate title stays outside Films",device.findObject(By.text("Afzonderlijke testtitel")));
+   device.findObject(By.text("Cinema testfilm 1")).click();
+   assertTrue("Touch opens film details",device.wait(Until.hasObject(By.text("▶ Kijk")),5000));
    device.pressBack();
   }
  }
