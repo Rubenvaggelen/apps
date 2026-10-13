@@ -68,6 +68,7 @@ jobs:
           data=base64.b64decode(encoded,validate=True)
           assert hashlib.sha256(data).hexdigest()=='a752c2df2c05dc6c242d91a2c48b08b59709a69d389495c3feef47ca7ce4b0c9'
           out=root/'app/src/main/res/drawable/tv_logo.webp'
+          out.parent.mkdir(parents=True,exist_ok=True)
           out.write_bytes(data)
           PY_LOGO
       - name: Restore approved TV launcher banner
