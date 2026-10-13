@@ -25,7 +25,7 @@ final class MediaRepository {
   List<java.util.concurrent.Callable<List<CatalogEntry>>> sources=new ArrayList<>();
   sources.add(()->loadSource(type,server+"?action=catalog&type=movies",false,Collections.emptySet()));
   if(secondary!=null)sources.add(()->{Set<String> adultIds;try{adultIds=adultCategories();}catch(Exception e){throw new IOException("Categories unavailable");}return loadSource(type,secondaryApi("get_vod_streams"),true,adultIds);});
-  ProgressiveCatalog.load(sources,cached(type),(entries,complete,successful)->{lastSuccessful=successful;listener.update(entries,complete,successful);if(complete&&successful>0)save(type,entries);});
+  ProgressiveCatalog.load(sources,cached(type),(entries,complete,successful)->{lastSuccessful=successful;listener.update(entries,complete,successful);if(successful>0)save(type,entries);});
  }
  private List<CatalogEntry> loadSource(String type,String url,boolean second,Set<String> adultIds)throws Exception {
   HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(15000);c.setReadTimeout(45000);if(!second)c.setRequestProperty("X-Cinema-Token",token);List<CatalogEntry> list=new ArrayList<>();
