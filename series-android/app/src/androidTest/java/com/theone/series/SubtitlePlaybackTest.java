@@ -21,10 +21,10 @@ import static org.junit.Assert.*;
    scenario.onActivity(a->a.findViewById(1045).performClick());
    UiDevice device=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
    assertTrue(device.wait(Until.hasObject(By.text("Uit")),3000));device.findObject(By.text("Uit")).click();
-   scenario.onActivity(a->assertTrue(player(a).getTrackSelectionParameters().disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)));
+   AtomicBoolean disabled=new AtomicBoolean(false);for(int n=0;n<30&&!disabled.get();n++){scenario.onActivity(a->disabled.set(player(a).getTrackSelectionParameters().disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)));Thread.sleep(100);}assertTrue("Subtitle selection is disabled after UI callback",disabled.get());
    scenario.onActivity(a->a.findViewById(1045).performClick());
    assertTrue(device.wait(Until.hasObject(By.text("Automatisch (Nederlands, daarna Engels)")),3000));device.findObject(By.text("Automatisch (Nederlands, daarna Engels)")).click();
-   scenario.onActivity(a->assertFalse(player(a).getTrackSelectionParameters().disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)));
+   for(int n=0;n<30&&disabled.get();n++){scenario.onActivity(a->disabled.set(player(a).getTrackSelectionParameters().disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)));Thread.sleep(100);}assertFalse("Automatic subtitle selection is enabled",disabled.get());
   }
  }
 }
