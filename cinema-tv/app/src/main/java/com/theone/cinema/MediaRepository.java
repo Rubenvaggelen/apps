@@ -5,13 +5,42 @@ import android.util.JsonToken;
 import org.json.*;
 import java.io.*;import java.net.*;import java.nio.charset.StandardCharsets;import java.util.*;
 final class MediaRepository {
- private final String server,token;
- MediaRepository(Context c)throws Exception{try(InputStream in=c.getAssets().open("private_cinema.json")){JSONObject x=new JSONObject(read(in));server=x.getString("relay_url");token=x.getString("relay_token");}if(!server.startsWith("https://rubenvanaggelen.com/")||token.isEmpty())throw new IOException("Source unavailable");}
+ private final String server,token;private JSONObject secondary;
+ MediaRepository(Context c)throws Exception{
+  try(InputStream in=c.getAssets().open("private_cinema.json")){JSONObject x=new JSONObject(read(in));server=x.getString("relay_url");token=x.getString("relay_token");}
+  if(!server.startsWith("https://rubenvanaggelen.com/")||token.isEmpty())throw new IOException("Source unavailable");
+  try(InputStream in=c.getAssets().open("private_xtream_secondary.json")){secondary=new JSONObject(read(in));}catch(Exception ignored){}
+ }
  private static String enc(String s){try{return URLEncoder.encode(s,"UTF-8").replace("+","%20");}catch(Exception e){throw new IllegalArgumentException();}}
- private String api(String action,String extra)throws Exception{String query=action.equals("get_series_info")?"action=episodes"+extra.replace("series_id", "id"):"action=catalog&type="+(action.equals("get_series")?"series":"movies");HttpURLConnection c=(HttpURLConnection)new URL(server+"?"+query).openConnection();c.setConnectTimeout(15000);c.setReadTimeout(60000);c.setRequestProperty("X-Cinema-Token",token);try{if(c.getResponseCode()!=200)throw new IOException("Catalog unavailable");return read(c.getInputStream());}finally{c.disconnect();}}
  private static String read(InputStream in)throws Exception{ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[16384];int n;while((n=in.read(b))!=-1){out.write(b,0,n);if(out.size()>100*1024*1024)throw new IOException("Catalog exceeds limit");}return out.toString("UTF-8");}
- List<CatalogEntry> load(String type)throws Exception{HttpURLConnection c=(HttpURLConnection)new URL(server+"?action=catalog&type="+type).openConnection();c.setConnectTimeout(15000);c.setReadTimeout(90000);c.setRequestProperty("X-Cinema-Token",token);List<CatalogEntry> list=new ArrayList<>();try{if(c.getResponseCode()!=200)throw new IOException("Catalog unavailable");try(JsonReader reader=new JsonReader(new InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8))){reader.beginArray();while(reader.hasNext()){if(Thread.currentThread().isInterrupted())throw new IOException("Cancelled");int id=0,adult=0;String title="",extension="mp4",poster="",category="";long added=0;reader.beginObject();while(reader.hasNext()){String key=reader.nextName();if(reader.peek()==JsonToken.NULL){reader.nextNull();continue;}switch(key){case "stream_id":case "series_id":id=(int)number(reader);break;case "name":title=reader.nextString();break;case "container_extension":extension=reader.nextString();break;case "stream_icon":case "cover":poster=reader.nextString();break;case "category_id":category=reader.nextString();break;case "is_adult":adult=(int)number(reader);break;case "added":case "last_modified":added=number(reader);break;default:reader.skipValue();}}reader.endObject();if(id>0&&adult!=1&&!title.isEmpty())list.add(new CatalogEntry(id,title,extension,poster,category,type,added));}reader.endArray();}}finally{c.disconnect();}list.sort((a,b)->Long.compare(b.added,a.added));return list;}
+ private String secondaryApi(String action)throws Exception{return secondary.getString("server")+"/player_api.php?username="+enc(secondary.getString("username"))+"&password="+enc(secondary.getString("password"))+"&action="+action;}
+ private Set<String> adultCategories()throws Exception {
+  Set<String> ids=new HashSet<>();HttpURLConnection c=(HttpURLConnection)new URL(secondaryApi("get_vod_categories")).openConnection();c.setConnectTimeout(15000);c.setReadTimeout(30000);
+  try{if(c.getResponseCode()!=200)return ids;JSONArray a=new JSONArray(read(c.getInputStream()));for(int i=0;i<a.length();i++){JSONObject row=a.optJSONObject(i);if(row!=null&&CatalogEntry.adultCategory(row.optString("category_name")))ids.add(row.optString("category_id"));}}finally{c.disconnect();}return ids;
+ }
+ List<CatalogEntry> load(String type)throws Exception {
+  List<CatalogEntry> list=new ArrayList<>();int successful=0;
+  try{list.addAll(loadSource(type,server+"?action=catalog&type=movies",false,Collections.emptySet()));successful++;}catch(Exception ignored){}
+  if(secondary!=null){Set<String> adultIds=Collections.emptySet();try{adultIds=adultCategories();}catch(Exception ignored){}try{list.addAll(loadSource(type,secondaryApi("get_vod_streams"),true,adultIds));successful++;}catch(Exception ignored){}}
+  if(successful==0)throw new IOException("Catalog unavailable");list.sort((a,b)->Long.compare(b.added,a.added));return list;
+ }
+ private List<CatalogEntry> loadSource(String type,String url,boolean second,Set<String> adultIds)throws Exception {
+  HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(15000);c.setReadTimeout(90000);if(!second)c.setRequestProperty("X-Cinema-Token",token);List<CatalogEntry> list=new ArrayList<>();
+  try{if(c.getResponseCode()!=200)throw new IOException("Catalog unavailable");try(JsonReader reader=new JsonReader(new InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8))){reader.beginArray();while(reader.hasNext()){
+   if(Thread.currentThread().isInterrupted())throw new IOException("Cancelled");int id=0,adult=0;String title="",extension="mp4",poster="",category="";long added=0;reader.beginObject();while(reader.hasNext()){
+    String key=reader.nextName();if(reader.peek()==JsonToken.NULL){reader.nextNull();continue;}switch(key){case "stream_id":id=(int)number(reader);break;case "name":title=reader.nextString();break;case "container_extension":extension=reader.nextString();break;case "stream_icon":poster=reader.nextString();break;case "category_id":category=reader.nextString();break;case "is_adult":adult=reader.peek()==JsonToken.BOOLEAN?(reader.nextBoolean()?1:0):(int)number(reader);break;case "added":added=number(reader);break;default:reader.skipValue();}}
+   reader.endObject();if(id<=0||id>=1000000000||title.isEmpty())continue;
+   boolean xxx=adult==1||adultIds.contains(category)||CatalogEntry.adultTitle(title);
+   if(xxx!=type.equals("xxx"))continue;
+   if(second){id+=1000000000;if(poster.startsWith("/"))poster=secondary.getString("server")+poster;}
+   list.add(new CatalogEntry(id,title,extension,poster,category,xxx?"xxx":"movies",added));
+  }reader.endArray();}}finally{c.disconnect();}return list;
+ }
  private static long number(JsonReader r)throws Exception{try{return Long.parseLong(r.nextString());}catch(NumberFormatException e){return 0;}}
  Map<String,String> streamHeaders(){return Collections.singletonMap("X-Cinema-Token",token);}
- String stream(CatalogEntry x){return server+"?action=stream&id="+x.id+"&ext="+x.extension+"&type=movies";}
+ Map<String,String> headersForUri(String uri){return uri.startsWith(server+"?")?streamHeaders():Collections.emptyMap();}
+ String stream(CatalogEntry x){
+  if(x.id>=1000000000&&secondary!=null){try{return secondary.getString("server")+"/movie/"+enc(secondary.getString("username"))+"/"+enc(secondary.getString("password"))+"/"+(x.id-1000000000)+"."+x.extension;}catch(Exception e){throw new IllegalStateException("Source unavailable");}}
+  return server+"?action=stream&id="+x.id+"&ext="+x.extension+"&type=movies";
+ }
 }
