@@ -11,22 +11,7 @@ $expected=hash_hmac('sha256','the-one-cinema-relay-v1',(string)$config['password
 $received=$_SERVER['HTTP_X_CINEMA_TOKEN']??'';
 if(!is_string($received)||!hash_equals($expected,$received))fail(403,'Geen toegang');
 $action=$_GET['action']??'stream';
-$secondaryPath=dirname($configPath).'/secondary.json';
-$secondary=is_file($secondaryPath)?json_decode((string)file_get_contents($secondaryPath),true):null;
-if($action==='configure-secondary'){
-    if(($_SERVER['REQUEST_METHOD']??'')!=='POST')fail(405,'POST vereist');
-    $admin=hash_hmac('sha256','the-one-cinema-source-admin-v1',(string)$config['password']);
-    if(!hash_equals($admin,(string)($_SERVER['HTTP_X_CINEMA_ADMIN']??'')))fail(403,'Geen beheertoegang');
-    $raw=file_get_contents('php://input',false,null,0,4097);if(!is_string($raw)||strlen($raw)>4096)fail(400,'Ongeldige bron');
-    $candidate=json_decode($raw,true);
-    if(!is_array($candidate)||($candidate['server']??'')!=='http://cqqwnnig.bulidns.com')fail(400,'Ongeldige bron');
-    foreach(['username','password']as$key)if(!is_string($candidate[$key]??null)||$candidate[$key]===''||strlen($candidate[$key])>200)fail(400,'Ongeldige bron');
-    $safe=array_intersect_key($candidate,array_flip(['server','username','password']));
-    $tmp=$secondaryPath.'.tmp';if(file_put_contents($tmp,json_encode($safe),LOCK_EX)===false)fail(503,'Bron opslaan mislukt');chmod($tmp,0600);rename($tmp,$secondaryPath);
-    @unlink(dirname($configPath).'/catalog-movies-v2.json');@unlink(dirname($configPath).'/catalog-stats-v2.json');
-    header('Content-Type: application/json');echo json_encode(['configured'=>true]);exit;
-}
-
+$secondary=null;
 if($action==='health'){header('Content-Type: application/json');echo json_encode(['ok'=>true,'service'=>'The One Cinema Relay']);exit;}
 function apiData(array $config,string $action,string $extra=''): array {
     $url=rtrim((string)$config['server'],'/').'/player_api.php?username='.rawurlencode((string)$config['username']).'&password='.rawurlencode((string)$config['password']).'&action='.$action.$extra;
