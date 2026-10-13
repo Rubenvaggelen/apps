@@ -46,4 +46,6 @@ import static org.junit.Assert.*;
   }
  }
 
+ @Test public void languagePreferenceIsSelectableAndPersisted()throws Exception{android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();context.getSharedPreferences("the_one_cinema",android.content.Context.MODE_PRIVATE).edit().putString("preferred_language","en").commit();Intent intent=new Intent(context,MainActivity.class);intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK);intent.putExtra("cinema_test_mode",true);UiDevice device=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(intent)){scenario.onActivity(a->a.findViewById(1007).performClick());assertTrue(device.wait(Until.hasObject(By.text("Engels · standaard")),5000));assertTrue(device.wait(Until.hasObject(By.text("Nederlands")),5000));device.findObject(By.text("Nederlands")).click();assertTrue(device.wait(Until.hasObject(By.text("Cinema testfilm 1 NL")),5000));assertEquals("nl",context.getSharedPreferences("the_one_cinema",android.content.Context.MODE_PRIVATE).getString("preferred_language",""));}finally{context.getSharedPreferences("the_one_cinema",android.content.Context.MODE_PRIVATE).edit().putString("preferred_language","en").commit();}}
+
 }

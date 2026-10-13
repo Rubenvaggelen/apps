@@ -19,4 +19,8 @@ public class CatalogEntryTest {
  @Test public void titleWordsAndYearArePreserved(){assertEquals("just go with it",CatalogEntry.normalize("Just Go with It"));assertEquals("it chapter two",CatalogEntry.normalize("It: Chapter Two"));assertNotEquals(CatalogEntry.normalize("EN - Film (2000)"),CatalogEntry.normalize("EN - Film (2026)"));}
  @Test public void adultMetadataDoesNotMergeWithRegularFilm(){CatalogEntry a=film(1,"EN - Film","123");CatalogEntry b=new CatalogEntry(2,"NL - Film","mp4","","","xxx",0,"123");assertNotEquals(a.key(),b.key());}
 
+ @Test public void regionalAndNamedLanguagesNormalize(){assertEquals("en",CatalogEntry.canonical("eng"));assertEquals("nl",CatalogEntry.canonical("Dutch"));assertEquals("fr",CatalogEntry.canonical("fr-FR"));assertEquals("de",CatalogEntry.canonical("deu"));assertEquals("Nederlands",CatalogEntry.languageName("nl"));}
+ @Test public void chosenLanguagePrecedesEnglishButEnglishIsDefault(){java.util.List<CatalogEntry> xs=new java.util.ArrayList<>(java.util.Arrays.asList(film(1,"EN - Film 4K",""),film(2,"NL - Film 720p","")));xs.sort(CatalogEntry.playbackOrder("nl"));assertEquals(2,xs.get(0).id);xs.sort(CatalogEntry.playbackOrder("en"));assertEquals(1,xs.get(0).id);}
+ @Test public void missingPreferredLanguageRetainsEnglishBackup(){java.util.List<CatalogEntry> xs=new java.util.ArrayList<>(java.util.Arrays.asList(film(1,"FR - Film 4K",""),film(2,"EN - Film 720p","")));xs.sort(CatalogEntry.playbackOrder("nl"));assertEquals(2,xs.get(0).id);}
+
 }
