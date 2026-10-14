@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.text.InputType
 import android.widget.EditText
 import android.widget.Toast
+import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebResourceRequest
 import android.webkit.WebViewClient
@@ -37,6 +38,8 @@ class MainActivity : Activity() {
             settings.allowFileAccess = true
             settings.allowFileAccessFromFileURLs = true
             settings.allowUniversalAccessFromFileURLs = true
+            // Support the cash register's explicit order confirmation on Android.
+            webChromeClient = WebChromeClient()
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     if (request.isForMainFrame && request.url.scheme == "rutuupdate" && request.url.host == "check") {
