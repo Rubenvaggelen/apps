@@ -15,6 +15,7 @@ final class MediaRepository {
   try(InputStream in=c.getAssets().open("private_xtream_primary.json")){primary=new JSONObject(read(in));}
   try(InputStream in=c.getAssets().open("private_xtream_secondary.json")){secondary=new JSONObject(read(in));}catch(Exception ignored){}
  }
+ void useLocalSourceForTest(String origin)throws Exception{if(!BuildConfig.DEBUG||!origin.startsWith("http://127.0.0.1:"))throw new IllegalStateException();primary=new JSONObject().put("server",origin).put("username","fixture").put("password","fixture");secondary=null;}
  private static String enc(String s){try{return URLEncoder.encode(s,"UTF-8").replace("+","%20");}catch(Exception e){throw new IllegalArgumentException();}}
  private static String read(InputStream in)throws Exception{ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[16384];int n;while((n=in.read(b))!=-1){out.write(b,0,n);if(out.size()>100*1024*1024)throw new IOException("Catalog exceeds limit");}return out.toString("UTF-8");}
  private String api(JSONObject source,String action)throws Exception{return source.getString("server")+"/player_api.php?username="+enc(source.getString("username"))+"&password="+enc(source.getString("password"))+"&action="+action;}
@@ -30,9 +31,21 @@ final class MediaRepository {
  private void save(String type,List<CatalogEntry> entries){android.util.AtomicFile file=cacheFile(type);FileOutputStream out=null;try{out=file.startWrite();CatalogCodec.write(out,entries);file.finishWrite(out);}catch(Exception ignored){if(out!=null)file.failWrite(out);}}
  void load(String type,ProgressiveCatalog.Listener listener)throws Exception {
   if(offlineTest){listener.update(starter(type),true,0);return;}List<ProgressiveCatalog.Source> sources=new ArrayList<>();
-  sources.add(preview->loadSource(type,api(primary,"get_vod_streams"),false,adultCategories(primary),preview));
-  if(secondary!=null)sources.add(preview->{Set<String> adultIds;try{adultIds=adultCategories(secondary);}catch(Exception e){throw new IOException("Categories unavailable");}return loadSource(type,secondaryApi("get_vod_streams"),true,adultIds,preview);});
+  sources.add(preview->loadProvider(type,primary,false,preview));
+  if(secondary!=null)sources.add(preview->loadProvider(type,secondary,true,preview));
   ProgressiveCatalog.loadStreaming(sources,initial(type,listener),(entries,complete,successful)->{lastSuccessful=successful;listener.update(entries,complete,successful);if(successful>0)save(type,entries);});
+ }
+ private List<CatalogEntry> loadProvider(String type,JSONObject source,boolean second,ProgressiveCatalog.Preview preview)throws Exception {
+  Set<String> adultIds=adultCategories(source);
+  String url=api(source,"get_vod_streams");
+  if(!type.equals("xxx")||adultIds.isEmpty())return loadSource(type,url,second,adultIds,preview);
+  LinkedHashMap<Integer,CatalogEntry> found=new LinkedHashMap<>();
+  for(String category:adultIds){background.ensureAllowed();if(Thread.currentThread().isInterrupted())throw new IOException("Cancelled");
+   List<CatalogEntry> part=loadSource(type,url+"&category_id="+enc(category),second,adultIds,entries->{for(CatalogEntry e:entries)found.put(e.id,e);preview.accept(new ArrayList<>(found.values()));});
+   for(CatalogEntry e:part)found.put(e.id,e);
+   if(!found.isEmpty())preview.accept(new ArrayList<>(found.values()));
+  }
+  return new ArrayList<>(found.values());
  }
  private List<CatalogEntry> loadSource(String type,String url,boolean second,Set<String> adultIds,ProgressiveCatalog.Preview preview)throws Exception {
   HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(15000);c.setReadTimeout(45000);if(url.startsWith(server+"?"))c.setRequestProperty("X-Cinema-Token",token);List<CatalogEntry> list=new ArrayList<>();
@@ -43,7 +56,7 @@ final class MediaRepository {
    boolean xxx=adult==1||adultIds.contains(category)||CatalogEntry.adultTitle(title);
    if(xxx!=type.equals("xxx"))continue;
    if(second)id+=1000000000;poster=PosterMetadata.resolve(poster,(second?secondary:primary).getString("server"));
-   list.add(new CatalogEntry(id,title,extension,poster,category,xxx?"xxx":"movies",added,movieId));if(list.size()==256)preview.accept(new ArrayList<>(list));
+   list.add(new CatalogEntry(id,title,extension,poster,category,xxx?"xxx":"movies",added,movieId));if(list.size()==(type.equals("xxx")?24:256))preview.accept(new ArrayList<>(list));
   }reader.endArray();}}finally{request.close();c.disconnect();}return list;
  }
  List<String> posters(CatalogEntry entry)throws Exception {

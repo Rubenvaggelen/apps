@@ -2,6 +2,11 @@ package com.theone.cinema.tv;
 import org.junit.Test;import static org.junit.Assert.*;import java.util.*;import java.util.concurrent.*;import java.io.*;
 public class CatalogLoadingTest {
  private CatalogEntry entry(int id,String name,String type){return new CatalogEntry(id,name,"mp4","https://example.org/poster.jpg","7",type,123,"42");}
+ @Test public void adultCategoryPreviewsGrowBeforeProviderCompletes()throws Exception{
+  List<Integer> sizes=new ArrayList<>();
+  ProgressiveCatalog.loadStreaming(Collections.singletonList(preview->{CatalogEntry a=entry(1,"Separate test A","xxx"),b=entry(2,"Separate test B","xxx");preview.accept(Collections.singletonList(a));preview.accept(Arrays.asList(a,b));return Arrays.asList(a,b);}),Collections.emptyList(),(items,done,success)->{if(!done)sizes.add(items.size());});
+  assertEquals(Arrays.asList(1,2),sizes);
+ }
  @Test public void streamingPreviewAppearsBeforeProviderFinishes()throws Exception{
   CountDownLatch release=new CountDownLatch(1),previewReady=new CountDownLatch(1);ExecutorService worker=Executors.newSingleThreadExecutor();List<List<CatalogEntry>> snapshots=new CopyOnWriteArrayList<>();
   Future<?> task=worker.submit(()->{try{ProgressiveCatalog.loadStreaming(Collections.singletonList(preview->{preview.accept(Collections.singletonList(entry(1,"EN - Film","movies")));if(!release.await(5,TimeUnit.SECONDS))throw new IOException();return Arrays.asList(entry(1,"EN - Film","movies"),entry(2,"EN - Other","movies"));}),Collections.emptyList(),(items,done,success)->{snapshots.add(items);if(!done)previewReady.countDown();});}catch(Exception e){throw new RuntimeException(e);}});
