@@ -532,7 +532,13 @@ if ($action === 'set_music_rights') {
         'series_android' => $ownerTarget ? true : (bool)($existingScoped['series_android'] ?? false),
         'tv_android' => $ownerTarget ? true : (bool)($existingScoped['tv_android'] ?? false)
     ];
-    $state['devices'][$deviceId]['access_requests'] = [];
+    // Een wijziging van de oudere muziekrechten mag onafhankelijke app-aanvragen
+    // niet afhandelen of wissen zonder expliciete beslissing van de eigenaar.
+    $pendingRequests = device_access_requests($state['devices'][$deviceId]);
+    $state['devices'][$deviceId]['access_requests'] = array_intersect_key(
+        $pendingRequests,
+        array_flip(['cinema_android', 'series_android', 'tv_android'])
+    );
     $state['devices'][$deviceId]['music_rights_updated'] = gmdate('c');
     devices_save($devicesFile, $state);
     respond_devices(200, [
