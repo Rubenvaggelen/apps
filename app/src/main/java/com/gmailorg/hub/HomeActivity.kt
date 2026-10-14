@@ -512,6 +512,14 @@ class HomeAdapter(
             } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
                 ContextCompat.getDrawable(context, R.drawable.the_one_run_icon)
             }
+        } else if (tile.id in setOf("com.theone.cinema", "com.theone.series", "com.theone.tv.phone")) {
+            // Gebruik uitsluitend het echte huidige launcherlogo uit de APK.
+            // Een niet-geinstalleerde app mag geen verzonnen of verkeerd logo tonen.
+            try {
+                context.packageManager.getApplicationIcon(tile.packageName!!)
+            } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
+                ContextCompat.getDrawable(context, R.drawable.ic_home_movies_fancy)
+            }
         } else when (tile.type) {
             TileType.NOTIFICATIONS -> ContextCompat.getDrawable(context, R.drawable.ic_home_notifications_fancy)
             TileType.MAIL -> ContextCompat.getDrawable(context, R.drawable.ic_home_mail_fancy)
@@ -536,7 +544,7 @@ class HomeAdapter(
                 ContextCompat.getDrawable(context, R.drawable.ic_home_add_fancy)
             }
         }
-        val styledIcon = if (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") && iconDrawable != null) {
+        val styledIcon = if (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach", "com.theone.cinema", "com.theone.series", "com.theone.tv.phone") && iconDrawable != null) {
             buildTheOneAppTileIcon(context, iconDrawable)
         } else iconDrawable
         holder.icon.setImageDrawable(styledIcon)
