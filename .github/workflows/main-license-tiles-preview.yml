@@ -38,6 +38,8 @@ jobs:
           umask 077
           mkdir -p ~/.android
           printf '%s' "$SIGNING_KEY" | base64 -d > ~/.android/debug.keystore
+      - name: Bundle verified offline NL supermarket map
+        run: python3 .github/scripts/supermarket-snapshot.py
       - name: Validate Main Android code
         env:
           ORG_GRADLE_PROJECT_YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
