@@ -1,0 +1,40 @@
+name: Rutu POS isolated validation
+
+on:
+  push:
+    branches: [feature/rutu-pos-menu-20261014]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP syntax and isolated POS integration
+        run: |
+          php -l rutu-server/index.php
+          python3 tests/test_rutu_pos.py
+      - name: Check menu images and JS syntax
+        run: |
+          set -euo pipefail
+          node --check rutu-windows/rutu-pos.js
+          node --check rutubusinessandroid/src/main/assets/rutu-pos.js
+          for p in menu_extra_bout.webp menu_extra_salade.webp; do
+            test -s "rutu-windows/assets/menu/$p"
+            test -s "rutubusinessandroid/src/main/assets/menu/$p"
+            test -s "jadeorders/src/main/res/drawable-nodpi/$p"
+          done
+          grep -q '"rutu-pos.js"' rutu-windows/package.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+      - name: Compile the two Android apps
+        run: |
+          gradle :jadeorders:assembleDebug :rutubusinessandroid:assembleDebug --no-daemon --no-build-cache -PappVersionCode=999
