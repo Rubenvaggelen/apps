@@ -134,7 +134,6 @@ class HomeActivity : AppCompatActivity() {
             HomeTile(id = "com.theone.cinema", type = TileType.APP, label = "Cinema", packageName = "com.theone.cinema"),
             HomeTile(id = "com.theone.series", type = TileType.APP, label = "Series", packageName = "com.theone.series"),
             HomeTile(id = "com.theone.tv.phone", type = TileType.APP, label = "TV", packageName = "com.theone.tv.phone"),
-            HomeTile(id = "com.theone.mediaplayer", type = TileType.APP, label = "Media Player", packageName = "com.theone.mediaplayer"),
             HomeTile(id = "com.gmailorg.thedj", type = TileType.APP, label = "The One DJ", packageName = "com.gmailorg.thedj"),
             HomeTile(id = "com.gmailorg.runcoach", type = TileType.APP, label = "The One Run", packageName = "com.gmailorg.runcoach"),
             HomeTile(id = "remote_pc", type = TileType.REMOTE_PC, label = "Laptop"),
@@ -161,7 +160,6 @@ class HomeActivity : AppCompatActivity() {
         "com.theone.cinema" to "cinema_android",
         "com.theone.series" to "series_android",
         "com.theone.tv.phone" to "tv_android",
-        "com.theone.mediaplayer" to "mediaplayer_android"
     )
 
     private fun handleLicensedApp(packageName: String, scope: String) {
