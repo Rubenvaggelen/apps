@@ -204,6 +204,9 @@ object AccessRequestNotifications {
         MainDeviceRegistry.ACCESS_FAVORITES -> "Favorites"
         MainDeviceRegistry.ACCESS_DJ -> "The One DJ import"
         MainDeviceRegistry.ACCESS_RUN -> "The One Run"
+        MainDeviceRegistry.ACCESS_CINEMA -> "Cinema"
+        MainDeviceRegistry.ACCESS_SERIES -> "Series"
+        MainDeviceRegistry.ACCESS_TV -> "TV"
         MainDeviceRegistry.ACCESS_ORGANIZE -> "muziek organiseren"
         MainDeviceRegistry.ACCESS_FILE_DOWNLOADS -> "bestanden downloaden"
         else -> scope
