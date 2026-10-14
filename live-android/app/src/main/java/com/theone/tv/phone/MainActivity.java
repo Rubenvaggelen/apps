@@ -5,6 +5,7 @@ import androidx.media3.common.*;import androidx.media3.datasource.*;import andro
 import org.json.*;import java.io.*;import java.net.*;import java.util.*;import java.util.concurrent.*;
 
 public class MainActivity extends Activity {
+ private FamilyLicenseGate familyLicense;
  private FamilyUpdateNotice appUpdater;
  private static final int BG=Color.rgb(7,13,24),PANEL=Color.rgb(17,29,45),BLUE=Color.rgb(41,157,255),MUTED=Color.rgb(149,172,196);
  private final Handler handler=new Handler(Looper.getMainLooper());
@@ -20,7 +21,10 @@ public class MainActivity extends Activity {
  private ExoPlayer player;private PlayerView playerView;private TextView playbackStatus;private CatalogEntry playing;
  private List<CatalogEntry> playSources;private int sourceIndex,retries;private long resumePosition;private boolean userPaused=false;
  private Runnable stallTask,progressTask;private long bufferStarted;
- @Override public void onCreate(Bundle b){super.onCreate(b);appUpdater=new FamilyUpdateNotice(this);appUpdater.checkOnOpen();prefs=getSharedPreferences("the_one_live_tv",MODE_PRIVATE);favorites=new HashSet<>(prefs.getStringSet("favorites",Collections.emptySet()));preferredLanguage=prefs.getString("preferred_language","en");testMode=BuildConfig.DEBUG&&getIntent().getBooleanExtra("tv_test_mode",false);try{if(!testMode)repo=new MediaRepository(this);}catch(Exception e){showFatal();return;}if(testMode){List<CatalogEntry> samples=new ArrayList<>();for(int i=1;i<=(getIntent().getIntExtra("tv_test_count",12));i++){String country=i<=4?"NL":i<=8?"US":"GB";CatalogEntry entry=new CatalogEntry(i,country+" - Testkanaal "+i,"m3u8","",""+country,"live",0);samples.add(entry);variants.put(entry.key(),Arrays.asList(entry,new CatalogEntry(1000000000+i,country+" - Testkanaal "+i+" HD","ts","",country,"live",0)));}samples.sort(CatalogEntry.CHANNEL_ORDER);catalogs.put("live",samples);}showCatalog();}
+ @Override public void onCreate(Bundle b){super.onCreate(b);
+ familyLicense=new FamilyLicenseGate(this,"tv_android",()->startLicensedApp(b));
+ familyLicense.begin();}
+ private void startLicensedApp(Bundle b){appUpdater=new FamilyUpdateNotice(this);appUpdater.checkOnOpen();prefs=getSharedPreferences("the_one_live_tv",MODE_PRIVATE);favorites=new HashSet<>(prefs.getStringSet("favorites",Collections.emptySet()));preferredLanguage=prefs.getString("preferred_language","en");testMode=BuildConfig.DEBUG&&getIntent().getBooleanExtra("tv_test_mode",false);try{if(!testMode)repo=new MediaRepository(this);}catch(Exception e){showFatal();return;}if(testMode){List<CatalogEntry> samples=new ArrayList<>();for(int i=1;i<=(getIntent().getIntExtra("tv_test_count",12));i++){String country=i<=4?"NL":i<=8?"US":"GB";CatalogEntry entry=new CatalogEntry(i,country+" - Testkanaal "+i,"m3u8","",""+country,"live",0);samples.add(entry);variants.put(entry.key(),Arrays.asList(entry,new CatalogEntry(1000000000+i,country+" - Testkanaal "+i+" HD","ts","",country,"live",0)));}samples.sort(CatalogEntry.CHANNEL_ORDER);catalogs.put("live",samples);}showCatalog();}
  private boolean compact(){return getResources().getConfiguration().screenWidthDp<600;}
  private void showFatal(){LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setBackgroundColor(BG);box.setPadding(dp(40),dp(40),dp(40),dp(40));box.addView(label("THE ONE TV",30,BLUE));box.addView(label("De TV-bron ontbreekt. Installeer The One TV opnieuw.",20,Color.WHITE));setContentView(box);}
  private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
@@ -101,7 +105,7 @@ public class MainActivity extends Activity {
  @Override public void onConfigurationChanged(android.content.res.Configuration configuration){super.onConfigurationChanged(configuration);if(playerView!=null)playerView.requestLayout();else showCatalog();}
  @Override public void onBackPressed(){if(player!=null){showCatalog();return;}if(section.equals("episodes")){switchSection("series");return;}if(!query.isEmpty()){query="";search.setText("");filter();return;}super.onBackPressed();}
  @Override protected void onStop(){if(player!=null){storeProgress();player.pause();cancelStall();}super.onStop();}
- @Override protected void onDestroy(){if(appUpdater!=null)appUpdater.close();destroyed=true;++loadGeneration;stopPlayback();handler.removeCallbacksAndMessages(null);languageWorker.shutdownNow();catalogWorker.shutdownNow();imageWorker.shutdownNow();super.onDestroy();}
+ @Override protected void onDestroy(){if(familyLicense!=null)familyLicense.close();if(appUpdater!=null)appUpdater.close();destroyed=true;++loadGeneration;stopPlayback();handler.removeCallbacksAndMessages(null);languageWorker.shutdownNow();catalogWorker.shutdownNow();imageWorker.shutdownNow();super.onDestroy();}
  private void cancelPosterRequests(){posterGeneration++;if(imageWorker instanceof ThreadPoolExecutor)((ThreadPoolExecutor)imageWorker).getQueue().clear();}
  private void loadPoster(ImageView image,CatalogEntry entry){
   final int generation=posterGeneration;String tag=entry.type+":"+entry.id;image.setTag(tag);image.setScaleType(ImageView.ScaleType.FIT_CENTER);
