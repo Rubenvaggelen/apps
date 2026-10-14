@@ -33,6 +33,18 @@ jobs:
           umask 077
           mkdir -p ~/.android
           printf '%s' "$KEY_B64" | base64 -d > ~/.android/debug.keystore
+      - name: Restore approved Series logo
+        run: |
+          python3 - <<'PY_LOGO'
+          import pathlib,base64,hashlib
+          root=pathlib.Path('series-android')
+          encoded=''.join(p.read_text() for p in sorted((root/'branding').glob('series-logo-*.base64')))
+          data=base64.b64decode(encoded,validate=True)
+          assert hashlib.sha256(data).hexdigest()=='1d9035b0bf27692c2a3cb8630af7f36fc600cd72c837198620a7ad57e008e69f'
+          out=root/'app/src/main/res/drawable/series_logo.webp'
+          out.parent.mkdir(parents=True,exist_ok=True)
+          out.write_bytes(data)
+          PY_LOGO
       - name: Unit tests and compile (no publication)
         working-directory: series-android
         run: gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon
