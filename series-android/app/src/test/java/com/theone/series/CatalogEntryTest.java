@@ -1,0 +1,26 @@
+package com.theone.series;
+import org.junit.Test;import static org.junit.Assert.*;
+public class CatalogEntryTest {
+ @Test public void qualityVariantsShareKey(){CatalogEntry a=new CatalogEntry(1,"Film (2026) 1080p","mp4","","","movies",1);CatalogEntry b=new CatalogEntry(2,"Film (2026) 4K","mp4","","","movies",2);assertEquals(a.key(),b.key());assertTrue(b.rank>a.rank);}
+ @Test public void languageVersionsShareOneFilm(){assertEquals(CatalogEntry.normalize("Film NL 1080p"),CatalogEntry.normalize("Film EN 1080p"));assertEquals(CatalogEntry.normalize("EN - Film (2026) 720p"),CatalogEntry.normalize("FR - Film (2026) 4K"));}
+ @Test public void unsafeExtensionFallsBack(){CatalogEntry e=new CatalogEntry(1,"Film","../../bad","","","movies",0);assertEquals("mp4",e.extension);}
+ @Test public void filmAndSeriesAreSeparate(){assertNotEquals(new CatalogEntry(1,"Film","mp4","","","movies",0).key(),new CatalogEntry(1,"Film","mp4","","","series",0).key());}
+ @Test public void adultAndRegularFilmsNeverShareAKey(){CatalogEntry normal=new CatalogEntry(1,"Titel 1080p","mp4","","","movies",0);CatalogEntry adult=new CatalogEntry(2,"Titel 4K","mp4","","","xxx",0);assertNotEquals(normal.key(),adult.key());assertTrue(adult.isAdult());assertFalse(normal.isAdult());}
+ @Test public void matchingFilmsFromBothSourcesShareOneTitle(){assertEquals(new CatalogEntry(7,"Titel 1080p","mp4","","","movies",0).key(),new CatalogEntry(1000000007,"Titel 4K","mkv","","","movies",0).key());}
+ @Test public void adultCategoriesAreRecognizedWithoutMatchingOrdinaryTitles(){assertTrue(CatalogEntry.adultCategory("XXX"));assertTrue(CatalogEntry.adultCategory("18+"));assertFalse(CatalogEntry.adultCategory("Familiefilms"));assertFalse(CatalogEntry.adultTitle("Sex and the City"));}
+ @Test public void mainstreamXxxTitleIsNotAnAdultTag(){assertFalse(CatalogEntry.adultTitle("xXx: Return of Xander Cage (2017)"));assertTrue(CatalogEntry.adultTitle("[XXX] Fixture title"));}
+ private CatalogEntry film(int id,String title,String movieId){return new CatalogEntry(id,title,"mp4","","","movies",id,movieId);}
+ @Test public void englishComesBeforeHigherQualityOtherLanguages(){java.util.List<CatalogEntry> xs=new java.util.ArrayList<>(java.util.Arrays.asList(film(1,"NL - Film 4K",""),film(2,"EN - Film 720p",""),film(3,"ENG - Film 1080p","")));xs.sort(CatalogEntry.PLAYBACK_ORDER);assertEquals(3,xs.get(0).id);assertEquals(2,xs.get(1).id);assertEquals(1,xs.get(2).id);}
+ @Test public void unknownLanguageIsNotClaimedToBeEnglish(){assertEquals("",CatalogEntry.language("Film (2026)"));assertEquals("en",CatalogEntry.language("[English] Film"));assertEquals("nl",CatalogEntry.language("NL - Film"));}
+ @Test public void englishMissingStillKeepsAllBackups(){java.util.List<CatalogEntry> xs=new java.util.ArrayList<>(java.util.Arrays.asList(film(1,"NL - Film 720p",""),film(2,"FR - Film 1080p","")));java.util.Map<String,java.util.List<CatalogEntry>> groups=CatalogEntry.group(xs);assertEquals(1,groups.size());assertEquals(2,groups.values().iterator().next().size());assertEquals(2,groups.values().iterator().next().get(0).id);}
+ @Test public void providerMovieIdGroupsTranslatedTitles(){CatalogEntry a=film(1,"EN - The Example (2026)","123");CatalogEntry b=film(2,"FR - L Exemple (2026)","123");assertEquals(a.key(),b.key());assertNotEquals(a.key(),film(3,"EN - The Example (2026)","456").key());}
+ @Test public void missingMovieIdJoinsUnambiguousMatchingTitle(){java.util.Map<String,java.util.List<CatalogEntry>> g=CatalogEntry.group(java.util.Arrays.asList(film(1,"EN - Film 720p","123"),film(2,"NL - Film 4K","")));assertEquals(1,g.size());assertEquals("movies:tmdb:123",g.values().iterator().next().get(1).key());}
+ @Test public void ambiguousMovieIdsAreNotCollapsed(){assertEquals(3,CatalogEntry.group(java.util.Arrays.asList(film(1,"EN - Film","123"),film(2,"NL - Film","456"),film(3,"FR - Film",""))).size());}
+ @Test public void titleWordsAndYearArePreserved(){assertEquals("just go with it",CatalogEntry.normalize("Just Go with It"));assertEquals("it chapter two",CatalogEntry.normalize("It: Chapter Two"));assertNotEquals(CatalogEntry.normalize("EN - Film (2000)"),CatalogEntry.normalize("EN - Film (2026)"));}
+ @Test public void adultMetadataDoesNotMergeWithRegularFilm(){CatalogEntry a=film(1,"EN - Film","123");CatalogEntry b=new CatalogEntry(2,"NL - Film","mp4","","","xxx",0,"123");assertNotEquals(a.key(),b.key());}
+
+ @Test public void regionalAndNamedLanguagesNormalize(){assertEquals("en",CatalogEntry.canonical("eng"));assertEquals("nl",CatalogEntry.canonical("Dutch"));assertEquals("fr",CatalogEntry.canonical("fr-FR"));assertEquals("de",CatalogEntry.canonical("deu"));assertEquals("Nederlands",CatalogEntry.languageName("nl"));}
+ @Test public void chosenLanguagePrecedesEnglishButEnglishIsDefault(){java.util.List<CatalogEntry> xs=new java.util.ArrayList<>(java.util.Arrays.asList(film(1,"EN - Film 4K",""),film(2,"NL - Film 720p","")));xs.sort(CatalogEntry.playbackOrder("nl"));assertEquals(2,xs.get(0).id);xs.sort(CatalogEntry.playbackOrder("en"));assertEquals(1,xs.get(0).id);}
+ @Test public void missingPreferredLanguageRetainsEnglishBackup(){java.util.List<CatalogEntry> xs=new java.util.ArrayList<>(java.util.Arrays.asList(film(1,"FR - Film 4K",""),film(2,"EN - Film 720p","")));xs.sort(CatalogEntry.playbackOrder("nl"));assertEquals(2,xs.get(0).id);}
+
+}
