@@ -148,6 +148,19 @@ jobs:
           name: the-one-live-google-tv-v103
           path: live-google-tv/protected-deliverable/
           retention-days: 7
+      - name: Publish verified TV build to private Dev Hub
+        if: success()
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          BUILD_APP_ID: tv-google-tv
+          BUILD_APK_PATH: live-google-tv/deliverable/The-One-TV-Google-TV-v1.0.3.apk
+          BUILD_VERSION_NAME: 1.0.3
+        run: bash ci/publish-tv-icon-build.sh
       - name: Save test reports
         if: always()
         uses: actions/upload-artifact@v4
