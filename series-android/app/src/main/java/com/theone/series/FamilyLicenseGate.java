@@ -206,11 +206,10 @@ final class FamilyLicenseGate {
             long saved = lease.optLong("elapsed", -1L);
             long now = SystemClock.elapsedRealtime();
             int boot = bootCount();
-            return boot >= 0 && lease.optInt("boot", -2) == boot &&
+            return FamilyLeaseClock.isValid(now, saved, boot, lease.optInt("boot", -2)) &&
                 identity.equals(lease.optString("id")) &&
                 activity.getPackageName().equals(lease.optString("package")) &&
-                scope.equals(lease.optString("scope")) &&
-                saved >= 0 && now >= saved && now - saved <= MAX_OFFLINE_MS;
+                scope.equals(lease.optString("scope"));
         } catch (Exception ignored) { return false; }
     }
 
