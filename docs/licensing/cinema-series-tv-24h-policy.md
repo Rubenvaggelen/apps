@@ -25,3 +25,19 @@ Besluit eigenaar, 14 oktober 2026: exact 24 uur offline voor eerder online goedg
 - Main-tegels, originele geïnstalleerde launchericonen, afzonderlijke scopes, aanvragen en beheer-UI zijn voorbereid op ontwikkelbranch.
 - 24-uurs offline bewijs en in-app enforcement ontbreken nog: **niet production ready**.
 - Bestaande live licentieserver en individuele APK's zijn niet bijgewerkt of uitgerold.
+
+## Standaard zichtbaarheid in Main
+- Eigenaars-Main: Cinema, Series en TV staan altijd zichtbaar op het beginscherm met hun huidige iconen.
+- Alle andere Main-apparaten: tegels standaard verborgen onder Instellingen > Verborgen tegels.
+- Terugzetten maakt een tegel zichtbaar maar geeft geen toegangsrecht; openen blijft apart goedkeuren via de licentieserver.
+- Remote en Media Player worden niet aan de vaste tegels toegevoegd.
+
+## Updates voor telefoon en Google TV
+- Iedere app en platformvariant heeft een eigen pakket-ID, signing identity, versienummer, build-artifact en Dev Hub-vermelding.
+- Succesvolle CI-tests bouwen de juiste APK en publiceren uitsluitend die variant naar Dev Hub; oudere varianten en licentievelden moeten ongewijzigd blijven.
+- De geïnstalleerde app controleert bij openen en periodiek of er een nieuwere versie voor **exact haar pakket** beschikbaar is, en toont proactief een updateaanbod. Android/Google TV installatie vereist de reguliere systeemtoestemming; geen ongeautoriseerde silent install beloven.
+- Download via geauthenticeerde, gecontroleerde endpoint; controleer SHA-256, package name, hogere versionCode en dezelfde signing certificate voordat de installatie begint.
+- Bij mislukt netwerk, download of ondertekening blijft de huidige app werken; bewaar de huidige instellingen en rechten.
+- TV-installatie UX: een duidelijke afstandsbediening-vriendelijke updateprompt.
+- Rechten en offline licentiecontrole blijven verplicht vóór media-afspelen, ook na een nieuwe update.
+- Nog niet gerealiseerd: in-app updaters voor de zes afzonderlijke APK's; niet als live-gereed aanmerken voor end-to-end tests.
