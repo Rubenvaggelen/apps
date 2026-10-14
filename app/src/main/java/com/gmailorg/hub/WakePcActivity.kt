@@ -418,6 +418,24 @@ class WakePcActivity : AppCompatActivity() {
                     device.pendingRun
                 )
                 addAccessControl(
+                    "Cinema",
+                    MainDeviceRegistry.ACCESS_CINEMA,
+                    device.cinemaRights,
+                    device.pendingCinema
+                )
+                addAccessControl(
+                    "Series",
+                    MainDeviceRegistry.ACCESS_SERIES,
+                    device.seriesRights,
+                    device.pendingSeries
+                )
+                addAccessControl(
+                    "TV",
+                    MainDeviceRegistry.ACCESS_TV,
+                    device.tvRights,
+                    device.pendingTv
+                )
+                addAccessControl(
                     "Muziek organiseren",
                     MainDeviceRegistry.ACCESS_ORGANIZE,
                     device.downloadsRights,
