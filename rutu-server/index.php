@@ -370,6 +370,7 @@ function clean_order_for_business(array $order): array {
     $out = clean_order_for_customer($order, false);
     $out['payment_phone'] = (string)($order['payment_phone'] ?? '');
     $out['payment_reference'] = (string)($order['payment_request_token'] ?? '');
+    $out['source'] = (string)($order['source'] ?? 'Klantapp');
     $out['history_hidden'] = (bool)($order['history_hidden'] ?? false);
     $out['history_cleared'] = (bool)($order['history_cleared'] ?? false);
     return $out;
@@ -382,7 +383,7 @@ $catalog = [
     'BBQ Gezin' => 25.00, // Legacy clients
     'Extra bout' => 3.00,
     'Extra salade' => 2.50,
-    'Portie saté' => 5.00
+    'Portie saté' => 6.00
 ];
 
 $action = (string)($_GET['action'] ?? 'health');
@@ -779,6 +780,84 @@ if ($action === 'business_ordering_schedule') {
         return true;
     });
     respond(200, ['ok' => true, 'schedule' => $schedule, 'current' => ordering_schedule_status($schedule)]);
+}
+
+// Kassa orders come from the authenticated business app. Never trust prices or paid flags
+// supplied by a device: prices are calculated from the server catalog.
+if ($action === 'business_create_order') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => "POST vereist.\nPOST required."]);
+    if (!business_authorized($keyFile)) respond(401, ['ok' => false, 'error' => "Niet geautoriseerd.\nNot authorized."]);
+    $body = body_json();
+    $requestId = trim((string)($body['request_id'] ?? ''));
+    if (!preg_match('/^[A-Za-z0-9_-]{12,100}$/', $requestId)) {
+        respond(400, ['ok' => false, 'error' => "Ongeldig kassa-verzoek.\nInvalid POS request identifier."]);
+    }
+    $incoming = $body['items'] ?? null;
+    if (!is_array($incoming) || count($incoming) < 1 || count($incoming) > 20) {
+        respond(400, ['ok' => false, 'error' => "Voeg eerst geldige producten toe.\nAdd valid products first."]);
+    }
+    $items = [];
+    $total = 0.0;
+    foreach ($incoming as $name => $qty) {
+        $name = trim((string)$name);
+        // No custom prices, discounts or quantities from untrusted clients.
+        if (!array_key_exists($name, $catalog) || !is_numeric($qty) || (int)$qty != $qty || (int)$qty < 1 || (int)$qty > 25) {
+            respond(400, ['ok' => false, 'error' => "Ongeldig product of aantal.\nInvalid product or quantity."]);
+        }
+        $items[$name] = (int)$qty;
+        $total += $catalog[$name] * (int)$qty;
+    }
+    $total = round($total, 2);
+    $customer = trim((string)($body['customer'] ?? 'Balie'));
+    $customer = mb_substr($customer === '' ? 'Balie' : $customer, 0, 80);
+    $payment = strtolower(trim((string)($body['payment'] ?? 'later')));
+    if (!in_array($payment, ['later', 'cash', 'pin'], true)) {
+        respond(400, ['ok' => false, 'error' => "Ongeldige betaalkeuze.\nInvalid payment selection."]);
+    }
+    // Existing orders are idempotently returned if a response was lost and the cashier retries.
+    // The DB/state file is locked while checking and adding the order.
+    $result = with_state($stateFile, true, function (&$state) use ($requestId, $items, $total, $customer, $payment) {
+        foreach ($state['orders'] as $previous) {
+            if (($previous['pos_request_id'] ?? '') === $requestId) {
+                return ['order' => $previous, 'existing' => true];
+            }
+        }
+        $id = max(1046, (int)$state['next_id']);
+        $state['next_id'] = $id + 1;
+        $created = time();
+        $method = $payment === 'cash' ? 'Cash' : ($payment === 'pin' ? 'Pin' : 'Later');
+        $order = [
+            'id' => $id,
+            'items' => $items,
+            'total' => $total,
+            'status' => 'Nieuw',
+            'customer' => $customer,
+            'delivery' => false,
+            'address' => '',
+            'postcode' => '',
+            'delivery_fee' => 0.0,
+            'payment_method' => $method,
+            'payment_phone' => '',
+            // Cashier records a received cash/PIN payment; no bank payment is initiated here.
+            'payment_status' => $payment === 'later' ? 'Openstaand' : 'Ontvangen aan kassa',
+            'payment_url' => '',
+            'payment_request_token' => '',
+            'created' => gmdate('c', $created),
+            'created_display' => date('H:i', $created),
+            'tracking' => bin2hex(random_bytes(18)),
+            'history_hidden' => false,
+            'history_cleared' => false,
+            'source' => 'Kassa',
+            'pos_request_id' => $requestId
+        ];
+        array_unshift($state['orders'], $order);
+        return ['order' => $order, 'existing' => false];
+    });
+    respond($result['existing'] ? 200 : 201, [
+        'ok' => true,
+        'existing' => $result['existing'],
+        'order' => clean_order_for_business($result['order'])
+    ]);
 }
 
 if ($action === 'business_orders') {

@@ -1,0 +1,26 @@
+/* Rutu BBQ kassa: touch-friendly product tiles, consistent with the gold/charcoal theme. */
+.pos-panel h2{margin-bottom:6px}
+.pos-layout{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(265px,1fr);gap:18px;align-items:start;margin-top:14px}
+.pos-products{display:grid;grid-template-columns:repeat(auto-fill,minmax(156px,1fr));gap:12px}
+.pos-product{display:flex;flex-direction:column;gap:8px;min-width:0;background:linear-gradient(150deg,#262016,#14100c);border:1px solid #544227;border-radius:15px;padding:10px;text-align:left}
+.pos-product img,.pos-image-fallback{display:block;width:100%;height:137px;object-fit:cover;border-radius:10px;background:radial-gradient(circle at 30% 25%,#61401a,#15100b 75%)}
+.pos-image-fallback{display:grid;place-content:center;font-size:48px;color:var(--gold)}
+.pos-product-name{font:600 17px Georgia,serif;color:var(--light);line-height:1.22}
+.pos-product-desc{color:var(--muted);font-size:12px;line-height:1.3;flex:1}
+.pos-product-price{color:var(--gold);font-size:19px;font-weight:800}
+.pos-add{width:100%;min-height:44px}
+.pos-checkout{position:sticky;top:95px;background:#100d09;border:1px solid #584327;border-radius:15px;padding:15px;display:grid;gap:10px}
+.pos-checkout label{color:var(--light);font-size:13px;font-weight:700}
+.pos-checkout input,.pos-checkout select{display:block;width:100%;background:#201a12;color:#fff;border:1px solid var(--line);border-radius:10px;padding:12px;font:15px system-ui}
+.pos-cart-line{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px;align-items:center;border-bottom:1px solid #3b2d1d;padding:9px 0}
+.pos-cart-line strong{display:block;color:#fff;font-size:14px}
+.pos-cart-line small{display:block;color:var(--muted)}
+.pos-qty-controls{display:flex;gap:6px;align-items:center}
+.pos-qty-controls button{padding:0;width:42px;min-width:42px;min-height:42px;font-size:20px;background:#302417;border-color:#5f4b2c;color:var(--light)}
+.pos-qty-controls span{min-width:24px;text-align:center;font-weight:700}
+.pos-total{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid #75522a;padding-top:12px;font-weight:700}
+.pos-total strong{font-size:27px;color:var(--gold)}
+.pos-checkout .pos-submit{min-height:54px;font-size:16px}
+.pos-status{min-height:20px}
+@media(max-width:740px){.pos-layout{grid-template-columns:1fr}.pos-checkout{position:static}.pos-products{grid-template-columns:repeat(2,minmax(0,1fr))}.pos-product img,.pos-image-fallback{height:125px}}
+@media(max-width:360px){.pos-products{grid-template-columns:1fr}}

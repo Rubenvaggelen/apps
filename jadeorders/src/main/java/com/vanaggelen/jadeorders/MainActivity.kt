@@ -52,8 +52,8 @@ class MainActivity : AppCompatActivity() {
         Product("BBQ Regular", 10.00, "BBQ", "1 bout • 2 stokjes saté • salade", R.drawable.menu_bbq_regular),
         Product("BBQ Extra", 15.00, "BBQ", "2 bouten • 4 stokjes saté • salade"),
         Product("BBQ Family", 25.00, "BBQ", "3 bouten • 6 stokjes saté • 3 salades", R.drawable.menu_bbq_family),
-        Product("Extra bout", 3.00, "Extra's", "Los bij te bestellen"),
-        Product("Extra salade", 2.50, "Extra's", "Los bij te bestellen"),
+        Product("Extra bout", 3.00, "Extra's", "Los bij te bestellen", R.drawable.menu_extra_bout),
+        Product("Extra salade", 2.50, "Extra's", "Los bij te bestellen", R.drawable.menu_extra_salade),
         Product("Portie saté", 6.00, "Extra's", "Los bij te bestellen", R.drawable.menu_portie_sate)
     )
     private val cart = linkedMapOf<String, Int>()
@@ -1417,7 +1417,7 @@ class MainActivity : AppCompatActivity() {
         announcementCard()
         showEatWellBannerIfActive()
         if (announcement.orderingBlocked) {
-            hero("Bestellen bij Rutu BBQ / Order from Rutu BBQ", announcement.orderingMessage.ifBlank { bi("U kunt iedere woensdag van 10:00 tot 18:00 uur bestellen. Wij helpen u graag.", "You can order every Wednesday from 10:00 to 18:00. We are happy to help you.") })
+            hero("Bestellen bij Rutu BBQ / Order from Rutu BBQ", announcement.orderingMessage.ifBlank { bi("U kunt iedere woensdag bestellen. Wij helpen u graag.", "You can order every Wednesday. We are happy to help you.") })
         }
         hero("Van het vuur. Voor jou. / From the fire. For you.", bi("Kies je favorieten. Met aandacht bereid, vers van het vuur.", "Choose your favourites. Carefully prepared, fresh from the fire."))
         products.groupBy { it.category }.forEach { (category, items) ->
@@ -1479,7 +1479,7 @@ class MainActivity : AppCompatActivity() {
         val addTarget = if (effectiveBlocked) openOrders.firstOrNull { it.trackingToken.isNotBlank() } else null
         if (effectiveBlocked) {
             if (addTarget == null) {
-                hero("Bestellen bij Rutu BBQ / Order from Rutu BBQ", announcement.orderingMessage.ifBlank { bi("U kunt iedere woensdag van 10:00 tot 18:00 uur bestellen. Wij helpen u graag.", "You can order every Wednesday from 10:00 to 18:00. We are happy to help you.") } + "\n" + bi("Je winkelmand blijft bewaard.", "Your cart has been saved."))
+                hero("Bestellen bij Rutu BBQ / Order from Rutu BBQ", announcement.orderingMessage.ifBlank { bi("U kunt iedere woensdag bestellen. Wij helpen u graag.", "You can order every Wednesday. We are happy to help you.") } + "\n" + bi("Je winkelmand blijft bewaard.", "Your cart has been saved."))
                 return
             }
             hero("Toevoegen aan bestelling #${addTarget.id} / Add to order #${addTarget.id}", bi("Omdat je al een openstaande bestelling hebt, mag je hier nog producten aan toevoegen. Er wordt geen nieuwe bestelling aangemaakt.", "Because you already have an open order, you can add products to it here. No new order will be created."))
@@ -1588,7 +1588,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (announcement.orderingBlocked && !testOrderMode) {
-            hero("Bestellen bij Rutu BBQ / Order from Rutu BBQ", announcement.orderingMessage.ifBlank { bi("U kunt iedere woensdag van 10:00 tot 18:00 uur bestellen. Wij helpen u graag.", "You can order every Wednesday from 10:00 to 18:00. We are happy to help you.") } + "\n" + bi("Je winkelmand blijft bewaard.", "Your cart has been saved."))
+            hero("Bestellen bij Rutu BBQ / Order from Rutu BBQ", announcement.orderingMessage.ifBlank { bi("U kunt iedere woensdag bestellen. Wij helpen u graag.", "You can order every Wednesday. We are happy to help you.") } + "\n" + bi("Je winkelmand blijft bewaard.", "Your cart has been saved."))
         } else {
             button(if (testOrderMode) "Testbestelling plaatsen / Place test order" else "Bestelling plaatsen / Place order") {
                 if (deliverySelected) {
