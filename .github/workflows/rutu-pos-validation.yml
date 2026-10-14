@@ -28,6 +28,8 @@ jobs:
             test -s "jadeorders/src/main/res/drawable-nodpi/$p"
           done
           grep -q '"rutu-pos.js"' rutu-windows/package.json
+      - name: Validate shared menu and approved BBQ Extra photo
+        run: python3 tests/test_rutu_menu.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
