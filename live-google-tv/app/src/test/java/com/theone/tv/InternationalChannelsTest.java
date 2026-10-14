@@ -1,0 +1,4 @@
+package com.theone.tv;import org.junit.Test;import static org.junit.Assert.*;public class InternationalChannelsTest {
+@Test public void sameNamedInternationalChannelsAreNotMerged(){CatalogEntry sr=new CatalogEntry(1,"ESPN","ts","","Suriname","live",0);CatalogEntry ca=new CatalogEntry(2,"ESPN","ts","","Canada","live",0);assertEquals("SR",sr.category);assertEquals("CA",ca.category);assertNotEquals(sr.key(),ca.key());}
+@Test public void internationalCountryPrefixesWork(){assertEquals("SR",CatalogEntry.country("SR - ABC TV",""));assertEquals("CW",CatalogEntry.country("CW - TeleCuracao",""));assertEquals("BR",CatalogEntry.country("BR - Globo",""));}
+}
