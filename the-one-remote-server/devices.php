@@ -217,7 +217,7 @@ if ($action === 'heartbeat') {
     $owner = $ownerId !== '' && hash_equals($ownerId, $deviceId);
     $rights = device_access_rights($state['devices'][$deviceId]);
     if ($owner) {
-        $rights = ['media_player' => true, 'mixes' => true, 'shared' => true, 'favorites' => true, 'dj' => true, 'run' => true, 'downloads' => true, 'download_files' => true];
+        $rights = ['media_player' => true, 'mixes' => true, 'shared' => true, 'favorites' => true, 'dj' => true, 'run' => true, 'downloads' => true, 'download_files' => true, 'cinema_android' => true, 'series_android' => true, 'tv_android' => true];
     }
     respond_devices(200, [
         'ok' => true,
@@ -527,7 +527,10 @@ if ($action === 'set_music_rights') {
         'dj' => false,
         'run' => $ownerTarget ? true : (bool)($existingScoped['run'] ?? false),
         'downloads' => $ownerTarget ? true : false,
-        'download_files' => $ownerTarget ? true : false
+        'download_files' => $ownerTarget ? true : false,
+        'cinema_android' => $ownerTarget ? true : (bool)($existingScoped['cinema_android'] ?? false),
+        'series_android' => $ownerTarget ? true : (bool)($existingScoped['series_android'] ?? false),
+        'tv_android' => $ownerTarget ? true : (bool)($existingScoped['tv_android'] ?? false)
     ];
     $state['devices'][$deviceId]['access_requests'] = [];
     $state['devices'][$deviceId]['music_rights_updated'] = gmdate('c');
