@@ -171,6 +171,7 @@ if ($action === 'heartbeat') {
     $deviceId = clean_device_id((string)($body['device_id'] ?? ''));
     $state = devices_load($devicesFile);
     $old = is_array($state['devices'][$deviceId] ?? null) ? $state['devices'][$deviceId] : [];
+    if (isset($old['family_public_key'])) respond_devices(403, ['ok' => false, 'error' => 'Family identities require signatures']);
     $name = trim((string)($body['name'] ?? 'Android apparaat'));
     $personName = trim((string)($body['person_name'] ?? ''));
     $platform = trim((string)($body['platform'] ?? 'Android'));
@@ -364,6 +365,116 @@ if ($action === 'connection_status') {
     respond_devices(200, ['ok' => true, 'devices' => $devices]);
 }
 
+
+/** The One Family: app-install identities are SHA-256 fingerprints of their public keys. */
+function family_scope_for_package(string $package): string {
+    $packages = [
+        'com.theone.cinema' => 'cinema_android',
+        'com.theone.cinema.tv' => 'cinema_android',
+        'com.theone.series' => 'series_android',
+        'com.theone.series.tv' => 'series_android',
+        'com.theone.tv.phone' => 'tv_android',
+        'com.theone.tv' => 'tv_android'
+    ];
+    return $packages[$package] ?? '';
+}
+
+function family_public_key(string $encoded): array {
+    $der = base64_decode($encoded, true);
+    if ($der === false || strlen($der) < 70 || strlen($der) > 2048) {
+        respond_devices(400, ['ok' => false, 'error' => 'Invalid public key']);
+    }
+    $pem = "-----BEGIN PUBLIC KEY-----\n" . chunk_split(base64_encode($der), 64, "\n") . "-----END PUBLIC KEY-----\n";
+    $key = openssl_pkey_get_public($pem);
+    $details = $key === false ? false : openssl_pkey_get_details($key);
+    if ($details === false || ($details['type'] ?? -1) !== OPENSSL_KEYTYPE_EC
+        || ($details['bits'] ?? 0) !== 256) {
+        respond_devices(400, ['ok' => false, 'error' => 'P-256 public key required']);
+    }
+    return [$pem, 'fam-' . substr(hash('sha256', $der), 0, 48)];
+}
+
+function family_signed_request(array $data, string $pem, string $action, string $deviceId, string $scope): void {
+    $nonce = (string)($data['nonce'] ?? '');
+    $encodedSignature = (string)($data['signature'] ?? '');
+    $binaryNonce = base64_decode($nonce, true);
+    $signature = base64_decode($encodedSignature, true);
+    if ($binaryNonce === false || strlen($binaryNonce) !== 32 ||
+        $signature === false || strlen($signature) < 60 || strlen($signature) > 256) {
+        respond_devices(400, ['ok' => false, 'error' => 'Invalid signed challenge']);
+    }
+    $message = $action . '|' . $deviceId . '|' . $scope . '|' . $nonce;
+    if (openssl_verify($message, $signature, $pem, OPENSSL_ALGO_SHA256) !== 1) {
+        respond_devices(403, ['ok' => false, 'error' => 'Device signature rejected']);
+    }
+}
+
+if ($action === 'family_register') {
+    $package = trim((string)($body['package'] ?? ''));
+    $scope = family_scope_for_package($package);
+    if ($scope === '') respond_devices(400, ['ok' => false, 'error' => 'Unknown app']);
+    [$publicKey, $derivedId] = family_public_key((string)($body['public_key'] ?? ''));
+    family_signed_request($body, $publicKey, 'register', $derivedId, $scope);
+    $personName = trim((string)($body['person_name'] ?? ''));
+    if ($personName === '') respond_devices(400, ['ok' => false, 'name_required' => true]);
+    $state = devices_load($devicesFile);
+    $existing = $state['devices'][$derivedId] ?? null;
+    if ($existing !== null && (!is_array($existing)
+        || !hash_equals((string)($existing['family_public_key'] ?? ''), $publicKey)
+        || (string)($existing['family_package'] ?? '') !== $package)) {
+        respond_devices(409, ['ok' => false, 'error' => 'Installation conflict']);
+    }
+    $device = is_array($existing) ? $existing : [
+        'device_id' => $derivedId,
+        'name' => mb_substr($package . ' (' . trim((string)($body['platform'] ?? 'Android')) . ')', 0, 100),
+        'device_role' => 'family',
+        'person_name' => mb_substr($personName, 0, 80),
+        'platform' => mb_substr((string)($body['platform'] ?? 'Android'), 0, 40),
+        'family_public_key' => $publicKey,
+        'family_package' => $package,
+        'music_rights' => false,
+        'access_rights' => [],
+        'access_requests' => [],
+        'blocked' => false,
+        'registered' => gmdate('c')
+    ];
+    if ((bool)($device['blocked'] ?? false)) respond_devices(403, ['ok' => false, 'error' => 'Device blocked']);
+    $rights = device_access_rights($device);
+    $requests = device_access_requests($device);
+    if (!(bool)($rights[$scope] ?? false) && !isset($requests[$scope])) {
+        $requests[$scope] = ['status' => 'pending', 'requested_at' => gmdate('c')];
+    }
+    $device['access_requests'] = $requests;
+    $device['last_seen'] = time();
+    $state['devices'][$derivedId] = $device;
+    devices_save($devicesFile, $state);
+    respond_devices(200, ['ok' => true, 'device_id' => $derivedId,
+        'allowed' => (bool)($rights[$scope] ?? false), 'pending' => isset($requests[$scope])]);
+}
+
+if ($action === 'family_check') {
+    $deviceId = clean_device_id((string)($body['device_id'] ?? ''));
+    $package = trim((string)($body['package'] ?? ''));
+    $scope = family_scope_for_package($package);
+    if ($scope === '') respond_devices(400, ['ok' => false, 'error' => 'Unknown app']);
+    $state = devices_load($devicesFile);
+    $device = $state['devices'][$deviceId] ?? null;
+    if (!is_array($device) || !isset($device['family_public_key'])
+        || (string)($device['family_package'] ?? '') !== $package) {
+        respond_devices(404, ['ok' => false, 'error' => 'Installation not registered']);
+    }
+    family_signed_request($body, (string)$device['family_public_key'], 'check', $deviceId, $scope);
+    $rights = device_access_rights($device);
+    $requests = device_access_requests($device);
+    $allowed = !(bool)($device['blocked'] ?? false) && (bool)($rights[$scope] ?? false);
+    $device['last_seen'] = time();
+    $state['devices'][$deviceId] = $device;
+    devices_save($devicesFile, $state);
+    respond_devices(200, ['ok' => true, 'allowed' => $allowed,
+        'pending' => isset($requests[$scope]), 'server_time' => time(),
+        'valid_seconds' => $allowed ? 86400 : 0]);
+}
+
 if ($action === 'access_status') {
     $deviceId = clean_device_id((string)($body['device_id'] ?? ''));
     $scope = clean_access_scope((string)($body['scope'] ?? ''));
@@ -471,6 +582,10 @@ if ($action === 'list') {
 }
 
 if ($action === 'set_access_right') {
+    // New Family permissions need the authenticated owner *and* the existing admin credential.
+    if (in_array((string)($body['scope'] ?? ''), ['cinema_android','series_android','tv_android'], true) && !devices_admin($body)) {
+        respond_devices(403, ['ok' => false, 'error' => 'Owner PIN required for Family rights']);
+    }
     $deviceId = clean_device_id((string)($body['device_id'] ?? ''));
     $scope = clean_access_scope((string)($body['scope'] ?? ''));
     if (!isset($state['devices'][$deviceId]) || !is_array($state['devices'][$deviceId])) {
