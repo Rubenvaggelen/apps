@@ -145,7 +145,7 @@ class HomeActivity : AppCompatActivity() {
             // anders zie je een leeg "+"-icoontje voor een niet-bestaande app.
             (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") || tile.id in licensedAppScopes || tile.packageName == null || isPackageInstalled(tile.packageName)) &&
                 (tile.id != "remote_pc" || MainDeviceRegistry.isLocallyOwner(this)) &&
-                (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") || tile.id in licensedAppScopes || !HiddenTilesStore.isHidden(tile.id))
+                (if (tile.id in licensedAppScopes) LicensedTileVisibility.isVisible(this, tile.id) else tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") || !HiddenTilesStore.isHidden(tile.id))
         }
         val userApps = ShortcutStore.getAll().filter {
             !HiddenTilesStore.isHidden(it.id) && it.packageName !in (setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") + licensedAppScopes.keys)
@@ -226,7 +226,15 @@ class HomeActivity : AppCompatActivity() {
 
     private fun handleTileLongClick(tile: HomeTile): Boolean {
         if (tile.type == TileType.ADD_BUTTON) return false
-        if (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") || tile.id in licensedAppScopes) return true
+        if (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach")) return true
+        if (tile.id in licensedAppScopes) {
+            if (!MainDeviceRegistry.isLocallyOwner(this)) {
+                LicensedTileVisibility.setVisible(this, tile.id, false)
+                refreshTiles()
+                Toast.makeText(this, "${tile.label} verborgen; terugzetten via Instellingen.", Toast.LENGTH_SHORT).show()
+            }
+            return true
+        }
 
         AlertDialog.Builder(this)
             .setTitle("Tegel verbergen?")
