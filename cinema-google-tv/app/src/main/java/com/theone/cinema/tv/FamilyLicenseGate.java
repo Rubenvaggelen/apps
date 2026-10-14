@@ -59,6 +59,24 @@ final class FamilyLicenseGate {
     private volatile boolean closed;
     private volatile boolean granted;
     private volatile boolean busy;
+    private volatile String approvedIdentity;
+    private volatile long lastOnlineCheckElapsed;
+    private final Runnable leaseWatch = new Runnable() {
+        @Override public void run() {
+            if (closed || !granted || activity.isFinishing()) return;
+            String id = approvedIdentity;
+            if (id == null || !cachedLeaseValid(id)) {
+                expireSession("Offline-toestemming verlopen. Verbind met internet om opnieuw te controleren.");
+                return;
+            }
+            long now = SystemClock.elapsedRealtime();
+            if (now - lastOnlineCheckElapsed >= 15L * 60L * 1000L && !busy) {
+                lastOnlineCheckElapsed = now;
+                revalidateInBackground(id);
+            }
+            main.postDelayed(this, 30000L);
+        }
+    };
 
     FamilyLicenseGate(Activity activity, String scope, Runnable onGranted) {
         this.activity = activity;
@@ -216,7 +234,7 @@ final class FamilyLicenseGate {
                     JSONObject status = post("family_check", proof("check", pair, id));
                     if (status.optBoolean("allowed", false)) {
                         saveLease(id);
-                        unlock();
+                        unlock(id);
                     } else {
                         clearLease();
                         showStatus(status.optBoolean("pending", false)
@@ -227,7 +245,7 @@ final class FamilyLicenseGate {
                     clearLease();
                     showStatus(rejected.getMessage(), true);
                 } catch (Exception connectionError) {
-                    if (cachedLeaseValid(id)) unlock();
+                    if (cachedLeaseValid(id)) unlock(id);
                     else showStatus("Geen geldige licentie. Maak verbinding met internet om toestemming te controleren.", true);
                 }
             } catch (Exception error) {
@@ -236,11 +254,46 @@ final class FamilyLicenseGate {
         });
     }
 
-    private void unlock() {
+    private void unlock(String id) {
         main.post(() -> {
             if (closed || activity.isFinishing() || activity.isDestroyed() || granted) return;
+            approvedIdentity = id;
+            lastOnlineCheckElapsed = SystemClock.elapsedRealtime();
             granted = true;
             onGranted.run();
+            main.removeCallbacks(leaseWatch);
+            main.postDelayed(leaseWatch, 30000L);
+        });
+    }
+
+    private void revalidateInBackground(String id) {
+        if (busy || closed) return;
+        busy = true;
+        worker.execute(() -> {
+            try {
+                KeyPair pair = identity();
+                JSONObject status = post("family_check", proof("check", pair, id));
+                if (status.optBoolean("allowed", false)) {
+                    saveLease(id);
+                    lastOnlineCheckElapsed = SystemClock.elapsedRealtime();
+                } else {
+                    clearLease();
+                    expireSession("Toestemming is ingetrokken. De app wordt afgesloten.");
+                }
+            } catch (RejectedException rejected) {
+                clearLease();
+                expireSession("Toegang geweigerd door de licentieserver.");
+            } catch (Exception unavailable) {
+                if (!cachedLeaseValid(id)) expireSession("Offline-toestemming verlopen.");
+            } finally { busy = false; }
+        });
+    }
+
+    private void expireSession(String reason) {
+        main.post(() -> {
+            if (closed || activity.isFinishing() || activity.isDestroyed()) return;
+            android.widget.Toast.makeText(activity, reason, android.widget.Toast.LENGTH_LONG).show();
+            activity.finish();
         });
     }
 
@@ -272,6 +325,7 @@ final class FamilyLicenseGate {
     void close() {
         closed = true;
         worker.shutdownNow();
+        main.removeCallbacks(leaseWatch);
         main.removeCallbacksAndMessages(null);
     }
 }
