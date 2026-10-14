@@ -381,9 +381,9 @@ $catalog = [
     'BBQ Extra' => 15.00,
     'BBQ Family' => 25.00,
     'BBQ Gezin' => 25.00, // Legacy clients
-    'Extra bout' => 3.00,
+    'Extra bout' => 6.00,
     'Extra salade' => 2.50,
-    'Portie saté' => 6.00
+    'Portie saté' => 7.00
 ];
 
 $action = (string)($_GET['action'] ?? 'health');

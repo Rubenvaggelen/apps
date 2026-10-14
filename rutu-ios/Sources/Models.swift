@@ -23,11 +23,11 @@ final class RutuStore: ObservableObject {
 
     let products: [Product] = [
         .init(name: "BBQ Regular", price: 10.00, category: "BBQ", description: "1 bout • 2 stokjes saté • salade"),
-        .init(name: "BBQ Extra", price: 15.00, category: "BBQ", description: "2 bouten • 4 stokjes saté • salade"),
+        .init(name: "BBQ Extra", price: 15.00, category: "BBQ", description: "2 bouten • 2 stokjes saté • salade"),
         .init(name: "BBQ Family", price: 25.00, category: "BBQ", description: "3 bouten • 6 stokjes saté • 3 salades"),
-        .init(name: "Extra bout", price: 3.00, category: "Extra's", description: "Los bij te bestellen"),
+        .init(name: "Extra bout", price: 6.00, category: "Extra's", description: "Los bij te bestellen"),
         .init(name: "Extra salade", price: 2.50, category: "Extra's", description: "Los bij te bestellen"),
-        .init(name: "Portie saté", price: 5.00, category: "Extra's", description: "Los bij te bestellen")
+        .init(name: "Portie saté", price: 7.00, category: "Extra's", description: "Los bij te bestellen")
     ]
 
     init() { load() }

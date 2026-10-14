@@ -50,11 +50,11 @@ class MainActivity : AppCompatActivity() {
 
     private val products = listOf(
         Product("BBQ Regular", 10.00, "BBQ", "1 bout • 2 stokjes saté • salade", R.drawable.menu_bbq_regular),
-        Product("BBQ Extra", 15.00, "BBQ", "2 bouten • 4 stokjes saté • salade"),
+        Product("BBQ Extra", 15.00, "BBQ", "2 bouten • 2 stokjes saté • salade", R.drawable.menu_bbq_extra),
         Product("BBQ Family", 25.00, "BBQ", "3 bouten • 6 stokjes saté • 3 salades", R.drawable.menu_bbq_family),
-        Product("Extra bout", 3.00, "Extra's", "Los bij te bestellen", R.drawable.menu_extra_bout),
+        Product("Extra bout", 6.00, "Extra's", "Los bij te bestellen", R.drawable.menu_extra_bout),
         Product("Extra salade", 2.50, "Extra's", "Los bij te bestellen", R.drawable.menu_extra_salade),
-        Product("Portie saté", 6.00, "Extra's", "Los bij te bestellen", R.drawable.menu_portie_sate)
+        Product("Portie saté", 7.00, "Extra's", "Los bij te bestellen", R.drawable.menu_portie_sate)
     )
     private val cart = linkedMapOf<String, Int>()
     private var deliverySelected = false

@@ -75,7 +75,7 @@ def main():
             order = result["order"]
             assert order["source"] == "Kassa"
             assert order["items"] == items
-            assert order["total"] == 14.5, "Prices must be calculated server-side"
+            assert order["total"] == 21.5, "Prices must be calculated server-side"
             assert order["payment_status"] == "Ontvangen aan kassa"
             first_id = order["id"]
             status, second = request(base, "business_create_order", sale, key)
@@ -88,10 +88,10 @@ def main():
             status, _ = request(base, "business_create_order", invalid, key)
             assert status == 400, "Unknown catalog item accepted"
             later = dict(sale, request_id="pos-another-test-request-456789",
-                         items={"BBQ Family":1}, payment="later")
+                         items={"BBQ Extra":1, "Portie saté":1}, payment="later")
             status, response = request(base, "business_create_order", later, key)
             assert status == 201
-            assert response["order"]["total"] == 25.0
+            assert response["order"]["total"] == 22.0
             assert response["order"]["payment_status"] == "Openstaand"
             status, response = request(base, "business_orders", key=key)
             assert status == 200 and len(response["orders"]) == 2

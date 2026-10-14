@@ -2,11 +2,11 @@
 // validates the menu, recalculates totals and stores orders under the same order ID sequence.
 const posMenu=[
  {name:'BBQ Regular',price:10.00,desc:'1 bout · 2 stokjes saté · salade',photo:'menu_bbq_regular.webp'},
- {name:'BBQ Extra',price:15.00,desc:'2 bouten · 4 stokjes saté · salade',photo:''},
+ {name:'BBQ Extra',price:15.00,desc:'2 bouten · 2 stokjes saté · salade',photo:'menu_bbq_extra.webp'},
  {name:'BBQ Family',price:25.00,desc:'3 bouten · 6 stokjes saté · 3 salades',photo:'menu_bbq_family.webp'},
- {name:'Extra bout',price:3.00,desc:'Los bij te bestellen',photo:'menu_extra_bout.webp'},
+ {name:'Extra bout',price:6.00,desc:'Los bij te bestellen',photo:'menu_extra_bout.webp'},
  {name:'Extra salade',price:2.50,desc:'Los bij te bestellen',photo:'menu_extra_salade.webp'},
- {name:'Portie saté',price:6.00,desc:'Los bij te bestellen',photo:'menu_portie_sate.webp'}
+ {name:'Portie saté',price:7.00,desc:'Los bij te bestellen',photo:'menu_portie_sate.webp'}
 ];
 const posState={quantities:{},requestId:null,submitting:false};
 const posImages=document.querySelector('header .brand-logo').getAttribute('src').replace(/rutu-logo\.png(?:\?.*)?$/,'menu/');

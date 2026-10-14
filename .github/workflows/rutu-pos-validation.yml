@@ -2,7 +2,7 @@ name: Rutu POS isolated validation
 
 on:
   push:
-    branches: [feature/rutu-pos-menu-20261014]
+    branches: [feature/rutu-pos-menu-20261014, feature/rutu-bbqextra-menu-20261014]
   workflow_dispatch: {}
 
 permissions:
@@ -22,7 +22,7 @@ jobs:
           set -euo pipefail
           node --check rutu-windows/rutu-pos.js
           node --check rutubusinessandroid/src/main/assets/rutu-pos.js
-          for p in menu_extra_bout.webp menu_extra_salade.webp; do
+          for p in menu_bbq_extra.webp menu_extra_bout.webp menu_extra_salade.webp; do
             test -s "rutu-windows/assets/menu/$p"
             test -s "rutubusinessandroid/src/main/assets/menu/$p"
             test -s "jadeorders/src/main/res/drawable-nodpi/$p"
