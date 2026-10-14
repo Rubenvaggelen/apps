@@ -109,7 +109,7 @@ function clean_device_id(string $value): string {
 
 function clean_access_scope(string $value): string {
     $scope = strtolower(trim($value));
-    if (!in_array($scope, ['media_player', 'mixes', 'shared', 'favorites', 'dj', 'run', 'downloads', 'download_files'], true)) {
+    if (!in_array($scope, ['media_player', 'mixes', 'shared', 'favorites', 'dj', 'run', 'downloads', 'download_files', 'cinema_android', 'series_android', 'tv_android'], true)) {
         respond_devices(400, ['ok' => false, 'error' => 'Invalid access scope']);
     }
     return $scope;
@@ -130,14 +130,17 @@ function device_access_rights(array $device): array {
         'downloads' => (bool)($stored['downloads'] ?? false),
         // Los recht om bestanden echt naar het toestel te downloaden.
         // Standaard altijd uit, ook als iemand legacy muziekrechten heeft.
-        'download_files' => (bool)($stored['download_files'] ?? false)
+        'download_files' => (bool)($stored['download_files'] ?? false),
+        'cinema_android' => (bool)($stored['cinema_android'] ?? false),
+        'series_android' => (bool)($stored['series_android'] ?? false),
+        'tv_android' => (bool)($stored['tv_android'] ?? false)
     ];
 }
 
 function device_access_requests(array $device): array {
     $stored = is_array($device['access_requests'] ?? null) ? $device['access_requests'] : [];
     $result = [];
-    foreach (['media_player', 'mixes', 'shared', 'favorites', 'dj', 'run', 'downloads', 'download_files'] as $scope) {
+    foreach (['media_player', 'mixes', 'shared', 'favorites', 'dj', 'run', 'downloads', 'download_files', 'cinema_android', 'series_android', 'tv_android'] as $scope) {
         $row = is_array($stored[$scope] ?? null) ? $stored[$scope] : [];
         if (($row['status'] ?? '') === 'pending') {
             $result[$scope] = [
