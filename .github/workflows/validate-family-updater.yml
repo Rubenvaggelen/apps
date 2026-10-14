@@ -33,6 +33,30 @@ jobs:
           umask 077
           mkdir -p ~/.android
           printf '%s' "$KEY_B64" | base64 -d > ~/.android/debug.keystore
+      - name: Restore approved Series logo
+        run: |
+          python3 - <<'PY_LOGO'
+          import pathlib,base64,hashlib
+          root=pathlib.Path('series-google-tv')
+          encoded=''.join(p.read_text() for p in sorted((root/'branding').glob('series-logo-*.base64')))
+          data=base64.b64decode(encoded,validate=True)
+          assert hashlib.sha256(data).hexdigest()=='1d9035b0bf27692c2a3cb8630af7f36fc600cd72c837198620a7ad57e008e69f'
+          out=root/'app/src/main/res/drawable/series_logo.webp'
+          out.parent.mkdir(parents=True,exist_ok=True)
+          out.write_bytes(data)
+          PY_LOGO
+      - name: Restore approved TV launcher banner
+        run: |
+          python3 - <<'PY_BANNER'
+          import pathlib,base64,hashlib
+          root=pathlib.Path('series-google-tv')
+          encoded=''.join(p.read_text() for p in sorted((root/'branding').glob('series-banner-*.base64')))
+          data=base64.b64decode(encoded,validate=True)
+          assert hashlib.sha256(data).hexdigest()=='8cb985b9e9dd6ba0e69bdb516f4e46d97ca16ca2cb0de0fceda9ff8a8a3703e2'
+          out=root/'app/src/main/res/drawable-xhdpi/tv_banner.png'
+          out.parent.mkdir(parents=True,exist_ok=True)
+          out.write_bytes(data)
+          PY_BANNER
       - name: Unit tests and compile (no publication)
         working-directory: series-google-tv
         run: gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon
