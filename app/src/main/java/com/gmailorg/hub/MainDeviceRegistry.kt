@@ -22,6 +22,9 @@ data class MainRegisteredDevice(
     val favoritesRights: Boolean,
     val djRights: Boolean,
     val runRights: Boolean,
+    val cinemaRights: Boolean,
+    val seriesRights: Boolean,
+    val tvRights: Boolean,
     val downloadsRights: Boolean,
     val fileDownloadsRights: Boolean,
     val pendingMediaPlayer: Boolean,
@@ -30,6 +33,9 @@ data class MainRegisteredDevice(
     val pendingFavorites: Boolean,
     val pendingDj: Boolean,
     val pendingRun: Boolean,
+    val pendingCinema: Boolean,
+    val pendingSeries: Boolean,
+    val pendingTv: Boolean,
     val pendingDownloads: Boolean,
     val pendingFileDownloads: Boolean,
     val online: Boolean,
@@ -66,6 +72,9 @@ object MainDeviceRegistry {
     const val ACCESS_FAVORITES = "favorites"
     const val ACCESS_DJ = "dj"
     const val ACCESS_RUN = "run"
+    const val ACCESS_CINEMA = "cinema_android"
+    const val ACCESS_SERIES = "series_android"
+    const val ACCESS_TV = "tv_android"
     // Legacy scope "downloads" is the existing right to organize/move music.
     const val ACCESS_ORGANIZE = "downloads"
     // Separate explicit right for saving a Shared Media file onto the device.
@@ -162,6 +171,9 @@ object MainDeviceRegistry {
             .putBoolean("access_favorites", accessRights.optBoolean(ACCESS_FAVORITES, owner || musicRights))
             .putBoolean("access_dj", accessRights.optBoolean(ACCESS_DJ, owner))
             .putBoolean("access_run", accessRights.optBoolean(ACCESS_RUN, owner))
+            .putBoolean("access_cinema_android", accessRights.optBoolean(ACCESS_CINEMA, owner))
+            .putBoolean("access_series_android", accessRights.optBoolean(ACCESS_SERIES, owner))
+            .putBoolean("access_tv_android", accessRights.optBoolean(ACCESS_TV, owner))
             .putBoolean("access_downloads", accessRights.optBoolean(ACCESS_ORGANIZE, owner))
             .putBoolean("access_download_files", accessRights.optBoolean(ACCESS_FILE_DOWNLOADS, owner))
             .apply()
@@ -263,6 +275,9 @@ object MainDeviceRegistry {
                         runRights = item.optJSONObject("access_rights")
                             ?.optBoolean(ACCESS_RUN, item.optBoolean("owner", false))
                             ?: item.optBoolean("owner", false),
+                        cinemaRights = item.optJSONObject("access_rights")?.optBoolean(ACCESS_CINEMA, item.optBoolean("owner", false)) ?: item.optBoolean("owner", false),
+                        seriesRights = item.optJSONObject("access_rights")?.optBoolean(ACCESS_SERIES, item.optBoolean("owner", false)) ?: item.optBoolean("owner", false),
+                        tvRights = item.optJSONObject("access_rights")?.optBoolean(ACCESS_TV, item.optBoolean("owner", false)) ?: item.optBoolean("owner", false),
                         downloadsRights = item.optJSONObject("access_rights")
                             ?.optBoolean(ACCESS_ORGANIZE, item.optBoolean("owner", false))
                             ?: item.optBoolean("owner", false),
@@ -275,6 +290,9 @@ object MainDeviceRegistry {
                         pendingFavorites = item.optJSONObject("access_requests")?.has(ACCESS_FAVORITES) == true,
                         pendingDj = item.optJSONObject("access_requests")?.has(ACCESS_DJ) == true,
                         pendingRun = item.optJSONObject("access_requests")?.has(ACCESS_RUN) == true,
+                        pendingCinema = item.optJSONObject("access_requests")?.has(ACCESS_CINEMA) == true,
+                        pendingSeries = item.optJSONObject("access_requests")?.has(ACCESS_SERIES) == true,
+                        pendingTv = item.optJSONObject("access_requests")?.has(ACCESS_TV) == true,
                         pendingDownloads = item.optJSONObject("access_requests")?.has(ACCESS_ORGANIZE) == true,
                         pendingFileDownloads = item.optJSONObject("access_requests")?.has(ACCESS_FILE_DOWNLOADS) == true,
                         online = item.optBoolean("online", false),
