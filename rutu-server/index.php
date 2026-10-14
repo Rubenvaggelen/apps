@@ -43,7 +43,7 @@ function body_json(): array {
 function default_ordering_schedule(): array {
     $days = [];
     for ($day = 1; $day <= 7; $day++) {
-        $days[(string)$day] = ['open' => $day === 3, 'from' => '10:00', 'until' => '18:00'];
+        $days[(string)$day] = ['open' => $day === 3];
     }
     return ['timezone' => 'Europe/Amsterdam', 'days' => $days, 'updated' => ''];
 }
@@ -54,13 +54,8 @@ function normalize_ordering_schedule($value): array {
     $rawDays = is_array($value['days'] ?? null) ? $value['days'] : [];
     foreach ($default['days'] as $key => $fallback) {
         $day = is_array($rawDays[$key] ?? null) ? $rawDays[$key] : [];
-        $open = (bool)($day['open'] ?? $fallback['open']);
-        $from = trim((string)($day['from'] ?? $fallback['from']));
-        $until = trim((string)($day['until'] ?? $fallback['until']));
-        if (!preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $from)) $from = $fallback['from'];
-        if (!preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $until)) $until = $fallback['until'];
-        if ($until <= $from) { $from = $fallback['from']; $until = $fallback['until']; }
-        $default['days'][$key] = ['open' => $open, 'from' => $from, 'until' => $until];
+        // Older saved schedules can still have from/until: only the open day matters now.
+        $default['days'][$key] = ['open' => (bool)($day['open'] ?? $fallback['open'])];
     }
     $default['updated'] = (string)($value['updated'] ?? '');
     return $default;
@@ -127,31 +122,29 @@ function rutu_device_blocked(string $file, string $deviceId): bool {
 
 function ordering_schedule_status(array $schedule): array {
     $schedule = normalize_ordering_schedule($schedule);
-    $tz = new DateTimeZone('Europe/Amsterdam');
-    $now = new DateTimeImmutable('now', $tz);
+    $now = new DateTimeImmutable('now', new DateTimeZone('Europe/Amsterdam'));
     $dayKey = $now->format('N');
-    $time = $now->format('H:i');
-    $day = $schedule['days'][$dayKey] ?? ['open'=>false,'from'=>'10:00','until'=>'18:00'];
-    $allowed = (bool)$day['open'] && $time >= $day['from'] && $time < $day['until'];
+    $day = $schedule['days'][$dayKey] ?? ['open' => false];
+    // A selected day is open for all 24 hours, regardless of legacy time fields.
+    $allowed = (bool)$day['open'];
 
     $namesNl = ['1'=>'maandag','2'=>'dinsdag','3'=>'woensdag','4'=>'donderdag','5'=>'vrijdag','6'=>'zaterdag','7'=>'zondag'];
     $namesEn = ['1'=>'Monday','2'=>'Tuesday','3'=>'Wednesday','4'=>'Thursday','5'=>'Friday','6'=>'Saturday','7'=>'Sunday'];
-    $windowsNl = [];
-    $windowsEn = [];
+    $daysNl = [];
+    $daysEn = [];
     foreach ($schedule['days'] as $key => $entry) {
         if (!empty($entry['open'])) {
-            $windowsNl[] = $namesNl[$key] . ' ' . $entry['from'] . '-' . $entry['until'] . ' uur';
-            $windowsEn[] = $namesEn[$key] . ' ' . $entry['from'] . '-' . $entry['until'];
+            $daysNl[] = $namesNl[$key];
+            $daysEn[] = $namesEn[$key];
         }
     }
-    $message = count($windowsNl) === 1 && !empty($schedule['days']['3']['open'])
-        && $schedule['days']['3']['from'] === '10:00' && $schedule['days']['3']['until'] === '18:00'
-        ? "U kunt iedere woensdag van 10:00 tot 18:00 uur bestellen. Wij helpen u graag.\nYou can order every Wednesday from 10:00 to 18:00. We are happy to help you."
-        : (count($windowsNl)
-            ? "Bestellen kan op: " . implode(', ', $windowsNl) . ".\nOrdering is available on: " . implode(', ', $windowsEn) . "."
+    $message = count($daysNl) === 1 && !empty($schedule['days']['3']['open'])
+        ? "U kunt iedere woensdag bestellen. Wij helpen u graag.\nYou can order every Wednesday. We are happy to help you."
+        : (count($daysNl)
+            ? "Bestellen kan op: " . implode(', ', $daysNl) . ".\nOrdering is available on: " . implode(', ', $daysEn) . "."
             : "Bestellen is momenteel gesloten.\nOrdering is currently closed.");
 
-    return ['allowed'=>$allowed, 'message'=>$message, 'day'=>(int)$dayKey, 'time'=>$time, 'schedule'=>$schedule];
+    return ['allowed'=>$allowed, 'message'=>$message, 'day'=>(int)$dayKey, 'schedule'=>$schedule];
 }
 
 function with_state(string $file, bool $write, callable $callback) {
