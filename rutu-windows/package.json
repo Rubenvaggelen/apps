@@ -26,6 +26,8 @@
       "launcher.html",
       "business.html",
       "brand.css",
+      "rutu-pos.js",
+      "rutu-pos.css",
       "assets/**"
     ],
     "win": {
