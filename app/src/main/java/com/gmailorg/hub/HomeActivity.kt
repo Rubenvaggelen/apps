@@ -131,6 +131,10 @@ class HomeActivity : AppCompatActivity() {
             HomeTile(id = "news", type = TileType.NEWS, label = "Nieuws"),
             HomeTile(id = "radio", type = TileType.RADIO, label = "Radio"),
             HomeTile(id = "currency", type = TileType.CURRENCY, label = "Koers (EUR / SRD / USD)"),
+            HomeTile(id = "com.theone.cinema", type = TileType.APP, label = "Cinema", packageName = "com.theone.cinema"),
+            HomeTile(id = "com.theone.series", type = TileType.APP, label = "Series", packageName = "com.theone.series"),
+            HomeTile(id = "com.theone.tv.phone", type = TileType.APP, label = "TV", packageName = "com.theone.tv.phone"),
+            HomeTile(id = "com.theone.mediaplayer", type = TileType.APP, label = "Media Player", packageName = "com.theone.mediaplayer"),
             HomeTile(id = "com.gmailorg.thedj", type = TileType.APP, label = "The One DJ", packageName = "com.gmailorg.thedj"),
             HomeTile(id = "com.gmailorg.runcoach", type = TileType.APP, label = "The One Run", packageName = "com.gmailorg.runcoach"),
             HomeTile(id = "remote_pc", type = TileType.REMOTE_PC, label = "Laptop"),
@@ -140,18 +144,44 @@ class HomeActivity : AppCompatActivity() {
             // Vaste snelkoppelingen naar apps (WhatsApp, Google Home) alleen
             // tonen als die app ook daadwerkelijk geïnstalleerd staat —
             // anders zie je een leeg "+"-icoontje voor een niet-bestaande app.
-            (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") || tile.packageName == null || isPackageInstalled(tile.packageName)) &&
+            (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") || tile.id in licensedAppScopes || tile.packageName == null || isPackageInstalled(tile.packageName)) &&
                 (tile.id != "remote_pc" || MainDeviceRegistry.isLocallyOwner(this)) &&
-                (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") || !HiddenTilesStore.isHidden(tile.id))
+                (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") || tile.id in licensedAppScopes || !HiddenTilesStore.isHidden(tile.id))
         }
         val userApps = ShortcutStore.getAll().filter {
-            !HiddenTilesStore.isHidden(it.id) && it.packageName !in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach")
+            !HiddenTilesStore.isHidden(it.id) && it.packageName !in (setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") + licensedAppScopes.keys)
         }
         val addButton = HomeTile(id = "add", type = TileType.ADD_BUTTON, label = "App toevoegen")
         adapter.updateTiles(fixed + userApps + addButton)
     }
 
+    // Elke Android-app krijgt een zelfstandige rechtennaam. Zolang de server
+    // deze scopes nog niet kent, blijft toegang voor niet-eigenaren gesloten.
+    private val licensedAppScopes = mapOf(
+        "com.theone.cinema" to "cinema_android",
+        "com.theone.series" to "series_android",
+        "com.theone.tv.phone" to "tv_android",
+        "com.theone.mediaplayer" to "mediaplayer_android"
+    )
+
+    private fun handleLicensedApp(packageName: String, scope: String) {
+        Thread {
+            val allowed = runCatching {
+                MainDeviceRegistry.heartbeat(this)
+                if (MainDeviceRegistry.isLocallyBlocked(this)) false
+                else if (MainDeviceRegistry.isLocallyOwner(this)) true
+                else MainDeviceRegistry.refreshAccess(this, scope).allowed
+            }.getOrDefault(false)
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (allowed) launchExternalApp(packageName)
+                else Toast.makeText(this, "Geen toegang. Deze app vereist afzonderlijke goedkeuring van de eigenaar.", Toast.LENGTH_LONG).show()
+            }
+        }.start()
+    }
+
     private fun handleTileClick(tile: HomeTile) {
+        licensedAppScopes[tile.id]?.let { scope -> handleLicensedApp(tile.id, scope); return }
         if (tile.id == "com.gmailorg.thedj") { openDj(); return }
         if (tile.id == "com.gmailorg.runcoach") { openRun(); return }
         when (tile.type) {
@@ -180,7 +210,7 @@ class HomeActivity : AppCompatActivity() {
 
     private fun handleTileLongClick(tile: HomeTile): Boolean {
         if (tile.type == TileType.ADD_BUTTON) return false
-        if (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach")) return true
+        if (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") || tile.id in licensedAppScopes) return true
 
         AlertDialog.Builder(this)
             .setTitle("Tegel verbergen?")
