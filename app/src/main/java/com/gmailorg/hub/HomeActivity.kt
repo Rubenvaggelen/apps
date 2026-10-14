@@ -164,16 +164,34 @@ class HomeActivity : AppCompatActivity() {
 
     private fun handleLicensedApp(packageName: String, scope: String) {
         Thread {
-            val allowed = runCatching {
+            val result = runCatching {
                 MainDeviceRegistry.heartbeat(this)
-                if (MainDeviceRegistry.isLocallyBlocked(this)) false
-                else if (MainDeviceRegistry.isLocallyOwner(this)) true
-                else MainDeviceRegistry.refreshAccess(this, scope).allowed
-            }.getOrDefault(false)
+                if (MainDeviceRegistry.isLocallyBlocked(this)) MainAccessStatus(false, false, false, scope)
+                else MainDeviceRegistry.refreshAccess(this, scope)
+            }
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
-                if (allowed) launchExternalApp(packageName)
-                else Toast.makeText(this, "Geen toegang. Deze app vereist afzonderlijke goedkeuring van de eigenaar.", Toast.LENGTH_LONG).show()
+                val status = result.getOrNull()
+                when {
+                    status?.allowed == true -> launchExternalApp(packageName)
+                    status?.pending == true -> Toast.makeText(this, "Je aanvraag staat nog open bij de eigenaar.", Toast.LENGTH_LONG).show()
+                    status == null -> Toast.makeText(this, "Licentieserver niet bereikbaar; toegang niet bevestigd.", Toast.LENGTH_LONG).show()
+                    else -> AlertDialog.Builder(this)
+                        .setTitle("Toestemming aanvragen")
+                        .setMessage("Voor deze app is afzonderlijke toestemming van de eigenaar nodig.")
+                        .setNegativeButton("Annuleren", null)
+                        .setPositiveButton("Aanvragen") { _, _ ->
+                            Thread {
+                                val request = runCatching { MainDeviceRegistry.requestAccess(this, scope) }
+                                runOnUiThread {
+                                    if (!isFinishing && !isDestroyed) {
+                                        val message = if (request.getOrNull()?.pending == true) "Aanvraag naar de eigenaar verstuurd." else "Aanvraag niet bevestigd. Probeer later opnieuw."
+                                        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }.start()
+                        }.show()
+                }
             }
         }.start()
     }
