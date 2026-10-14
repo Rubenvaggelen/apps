@@ -441,7 +441,8 @@ if ($action === 'family_register') {
     if ((bool)($device['blocked'] ?? false)) respond_devices(403, ['ok' => false, 'error' => 'Device blocked']);
     $rights = device_access_rights($device);
     $requests = device_access_requests($device);
-    if (!(bool)($rights[$scope] ?? false) && !isset($requests[$scope])) {
+    if (!(bool)($rights[$scope] ?? false) && !isset($requests[$scope])
+        && !isset($device['family_denied_scopes'][$scope])) {
         $requests[$scope] = ['status' => 'pending', 'requested_at' => gmdate('c')];
     }
     $device['access_requests'] = $requests;
@@ -602,6 +603,17 @@ if ($action === 'set_access_right') {
     $rights = device_access_rights($state['devices'][$deviceId]);
     $rights[$scope] = $ownerTarget ? true : $enabled;
     $state['devices'][$deviceId]['access_rights'] = $rights;
+    // Een expliciete afwijzing mag niet automatisch telkens een nieuwe aanvraag worden.
+    // De eigenaar kan het recht later alsnog handmatig inschakelen.
+    if (isset($state['devices'][$deviceId]['family_public_key'])
+        && in_array($scope, ['cinema_android', 'series_android', 'tv_android'], true)) {
+        $denials = is_array($state['devices'][$deviceId]['family_denied_scopes'] ?? null)
+            ? $state['devices'][$deviceId]['family_denied_scopes'] : [];
+        if ($enabled) unset($denials[$scope]);
+        else $denials[$scope] = gmdate('c');
+        $state['devices'][$deviceId]['family_denied_scopes'] = $denials;
+    }
+
 
     $requests = is_array($state['devices'][$deviceId]['access_requests'] ?? null)
         ? $state['devices'][$deviceId]['access_requests']
