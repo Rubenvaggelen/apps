@@ -1,0 +1,163 @@
+name: Signed Family release candidate series-android
+on:
+  push:
+    branches: [feature/series-android-autoupdate-20261014]
+    paths: [series-android/**, .github/workflows/family-release-candidate.yml]
+permissions:
+  contents: read
+concurrency:
+  group: family-release-candidate-series-android
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v3
+        with: {gradle-version: '8.7'}
+      - name: Restore stable owner signing identity
+        env:
+          SIGNING_KEY: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$SIGNING_KEY"
+          mkdir -p ~/.android
+          printf '%s' "$SIGNING_KEY" | base64 -d > ~/.android/debug.keystore
+      - name: Restore verified existing Media Player configuration
+        run: |
+          set -euo pipefail
+          umask 077
+          curl -fLsS --max-time 120 'https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2400/The-One-Media-Player-v2400.apk' -o /tmp/cinema-source.apk
+          echo 'a76dfa81c8670d1c044776fa1f10264eff958eca64339d6dd0d6f6ccedb3e04b  /tmp/cinema-source.apk' | sha256sum --check --status
+          python3 - <<'PY'
+          import zipfile,json,pathlib,hmac,hashlib
+          with zipfile.ZipFile('/tmp/cinema-source.apk') as z:
+              c=json.loads(z.read('assets/private_xtream.json'))
+          if not all(isinstance(c.get(k),str) and c[k].strip() for k in ['server','username','password']):
+              raise SystemExit('Media Player configuration unavailable')
+          p=pathlib.Path('series-android/app/src/main/assets/private_cinema.json')
+          p.parent.mkdir(parents=True,exist_ok=True)
+          token=hmac.new(c['password'].encode(),b'the-one-cinema-relay-v1',hashlib.sha256).hexdigest()
+          (p.parent/'private_xtream_primary.json').write_text(json.dumps(c))
+          p.write_text(json.dumps({'relay_url':'https://rubenvanaggelen.com/the-one-remote-api/cinema.php','relay_token':token}))
+          PY
+          keytool -importkeystore -srckeystore ~/.android/debug.keystore -srcstorepass android -srcalias androiddebugkey -destkeystore /tmp/cinema-signing.p12 -deststoretype PKCS12 -deststorepass changeit -destkeypass changeit -noprompt >/dev/null
+          openssl pkcs12 -in /tmp/cinema-signing.p12 -passin pass:changeit -nodes -nocerts -out /tmp/cinema-private.pem >/dev/null 2>&1
+          base64 -d series-android/secondary-source.enc.b64 > /tmp/cinema-secondary.enc
+          openssl pkeyutl -decrypt -inkey /tmp/cinema-private.pem -in /tmp/cinema-secondary.enc -out series-android/app/src/main/assets/private_xtream_secondary.json -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
+          python3 - <<'PY_VERIFY'
+          import json,pathlib
+          c=json.loads(pathlib.Path('series-android/app/src/main/assets/private_xtream_secondary.json').read_text())
+          assert c['server']=='http://cqqwnnig.bulidns.com' and all(c.get(k) for k in ['username','password'])
+          PY_VERIFY
+          rm /tmp/cinema-signing.p12 /tmp/cinema-private.pem /tmp/cinema-secondary.enc
+          rm /tmp/cinema-source.apk
+      - name: Restore verified phone starter catalog
+        run: |
+          python3 - <<'PY_START'
+          import pathlib,base64,gzip,json
+          root=pathlib.Path('series-android')
+          data=base64.b64decode((root/'bootstrap/series.base64').read_text(),validate=True)
+          assert len(json.loads(gzip.decompress(data)))==256
+          (root/'app/src/main/assets/bootstrap-series.bin').write_bytes(data)
+          PY_START
+      - name: Restore approved Series logo
+        run: |
+          python3 - <<'PY_LOGO'
+          import pathlib,base64,hashlib
+          root=pathlib.Path('series-android')
+          encoded=''.join(p.read_text() for p in sorted((root/'branding').glob('series-logo-*.base64')))
+          data=base64.b64decode(encoded,validate=True)
+          assert hashlib.sha256(data).hexdigest()=='1d9035b0bf27692c2a3cb8630af7f36fc600cd72c837198620a7ad57e008e69f'
+          out=root/'app/src/main/res/drawable/series_logo.webp'
+          out.parent.mkdir(parents=True,exist_ok=True)
+          out.write_bytes(data)
+          PY_LOGO
+      - name: Verify native playback test fixture
+        run: |
+          python3 - <<'PY_FIXTURE'
+          import pathlib,base64,hashlib
+          root=pathlib.Path('series-android')
+          data=base64.b64decode((root/'tests/test-clip.mp4.base64').read_text(),validate=False)
+          digest=hashlib.sha1(b'blob '+str(len(data)).encode()+b'\x00'+data).hexdigest()
+          assert digest=='5f9ae34ede49119e518895d59deccba6f242ade0', 'Fixture integrity mismatch'
+          p=root/'app/src/debug/assets/test-clip.mp4'
+          p.parent.mkdir(parents=True,exist_ok=True)
+          p.write_bytes(data)
+          PY_FIXTURE
+      - name: Build and unit test independent Series APK
+        working-directory: series-android
+        run: gradle :app:testDebugUnitTest :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
+      - name: Verify Android phone package and signature
+        working-directory: series-android
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          BT=$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -type d | sort -V | tail -1)
+          "$BT/apksigner" verify --verbose --print-certs "$APK" > /tmp/cinema-signature.txt
+          keytool -exportcert -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -file /tmp/cinema-owner.der >/dev/null
+          OWNER_SHA=$(sha256sum /tmp/cinema-owner.der | cut -d " " -f1)
+          grep -i "certificate SHA-256 digest: $OWNER_SHA" /tmp/cinema-signature.txt
+          "$BT/aapt" dump badging "$APK" > /tmp/cinema-badging.txt
+          grep "package: name='com.theone.series' versionCode='118'" /tmp/cinema-badging.txt
+          grep 'launchable-activity' /tmp/cinema-badging.txt
+          python3 - <<'PY_ASSETS'
+          import zipfile,gzip,json
+          for variant in ['release','debug']:
+              with zipfile.ZipFile('app/build/outputs/apk/'+variant+'/app-'+variant+'.apk') as z:
+                  assert len(json.loads(gzip.decompress(z.read('assets/bootstrap-series.bin'))))==256
+          PY_ASSETS
+          mkdir -p deliverable
+          cp "$APK" deliverable/The-One-Series-Android-v1.1.8.apk
+          sha256sum deliverable/The-One-Series-Android-v1.1.8.apk > deliverable/SHA256SUMS.txt
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Test series search, seasons, episodes and native playback
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: cd series-android && gradle :app:connectedDebugAndroidTest --no-daemon
+      - name: Encrypt personal APK before artifact publication
+        if: success()
+        working-directory: series-android
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p protected-deliverable
+          openssl rand -hex 32 > /tmp/cinema-artifact-key
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/cinema-artifact-key -in deliverable/The-One-Series-Android-v1.1.8.apk -out protected-deliverable/The-One-Series-Android-v1.1.8.apk.enc
+          openssl pkeyutl -encrypt -pubin -inkey owner-artifact-public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in /tmp/cinema-artifact-key -out protected-deliverable/key.enc
+          cp deliverable/SHA256SUMS.txt protected-deliverable/SHA256SUMS.txt
+          rm /tmp/cinema-artifact-key
+      - name: Save personal installable APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: the-one-series-android-v118
+          path: series-android/protected-deliverable/
+          retention-days: 7
+      - name: Save test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: series-android-test-reports
+          path: |
+            series-android/app/build/reports/tests/
+            series-android/app/build/reports/androidTests/
+          retention-days: 7
