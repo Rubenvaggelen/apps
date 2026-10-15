@@ -415,8 +415,12 @@ if ($action === 'family_register') {
     if ($scope === '') respond_devices(400, ['ok' => false, 'error' => 'Unknown app']);
     [$publicKey, $derivedId] = family_public_key((string)($body['public_key'] ?? ''));
     family_signed_request($body, $publicKey, 'register', $derivedId, $scope);
-    $personName = trim((string)($body['person_name'] ?? ''));
-    if ($personName === '') respond_devices(400, ['ok' => false, 'name_required' => true]);
+    $personName = preg_replace('/\\s+/u', ' ', trim((string)($body['person_name'] ?? '')));
+    if (!is_string($personName) || mb_strlen($personName) < 2 ||
+        mb_strlen($personName) > 80 || preg_match('/[\\x00-\\x1F\\x7F]/u', $personName)) {
+        respond_devices(400, ['ok' => false, 'name_required' => true,
+            'error' => 'Applicant name must contain 2 to 80 characters']);
+    }
     $state = devices_load($devicesFile);
     $existing = $state['devices'][$derivedId] ?? null;
     if ($existing !== null && (!is_array($existing)
@@ -426,7 +430,7 @@ if ($action === 'family_register') {
     }
     $device = is_array($existing) ? $existing : [
         'device_id' => $derivedId,
-        'name' => mb_substr($package . ' (' . trim((string)($body['platform'] ?? 'Android')) . ')', 0, 100),
+        'name' => mb_substr($package . ' (' . trim((string)($body['device_name'] ?? ($body['platform'] ?? 'Android'))) . ')', 0, 100),
         'device_role' => 'family',
         'person_name' => mb_substr($personName, 0, 80),
         'platform' => mb_substr((string)($body['platform'] ?? 'Android'), 0, 40),
@@ -441,6 +445,11 @@ if ($action === 'family_register') {
     if ((bool)($device['blocked'] ?? false)) respond_devices(403, ['ok' => false, 'error' => 'Device blocked']);
     $rights = device_access_rights($device);
     $requests = device_access_requests($device);
+    // Refresh a still-pending request with the name actually typed by the
+    // applicant. Never rewrite the name of an already approved installation.
+    if (isset($requests[$scope]) && !(bool)($rights[$scope] ?? false)) {
+        $device['person_name'] = $personName;
+    }
     if (!(bool)($rights[$scope] ?? false) && !isset($requests[$scope])
         && !isset($device['family_denied_scopes'][$scope])) {
         $requests[$scope] = ['status' => 'pending', 'requested_at' => gmdate('c')];
