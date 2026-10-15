@@ -46,15 +46,33 @@ jobs:
           printf '%s' "$SIGNING_KEY" | base64 -d > ~/.android/debug.keystore
       - name: Bundle verified offline NL supermarket map
         run: python3 .github/scripts/supermarket-snapshot.py
+      - name: Verify original Family launcher artwork
+        run: |
+          python3 - <<'PY_FAMILY_LOGOS'
+          import base64,hashlib,pathlib
+          assets=pathlib.Path('app/src/main/assets/family-branding')
+          expected={
+            'cinema':'99cdfac91335cd1abada5d896ab777b419e4861e4d38c7f79f9469c563ab0807',
+            'series':'1d9035b0bf27692c2a3cb8630af7f36fc600cd72c837198620a7ad57e008e69f',
+            'tv':'a752c2df2c05dc6c242d91a2c48b08b59709a69d389495c3feef47ca7ce4b0c9'
+          }
+          for name,checksum in expected.items():
+              encoded=''.join((assets/f'{name}-logo-{i}.base64').read_text().strip() for i in range(1,4))
+              data=base64.b64decode(encoded,validate=True)
+              actual=hashlib.sha256(data).hexdigest()
+              assert actual==checksum, f'Original {name} logo damaged'
+              assert data[:4]==b'RIFF' and data[8:12]==b'WEBP', f'Unexpected image type: {name}'
+              print(f'OFFICIAL_FAMILY_LOGO={name} sha256-valid bytes={len(data)}')
+          PY_FAMILY_LOGOS
       - name: Validate Main Android code
         env:
           ORG_GRADLE_PROJECT_YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           ORG_GRADLE_PROJECT_TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-        run: gradle :app:testDebugUnitTest :app:assembleDebug -PappVersionCode=1016 --no-daemon
+        run: gradle :app:testDebugUnitTest :app:assembleDebug -PappVersionCode=1017 --no-daemon
       - name: Store Main test APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: main-license-tiles-preview-v1016
+          name: main-license-tiles-preview-v1017
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 3
