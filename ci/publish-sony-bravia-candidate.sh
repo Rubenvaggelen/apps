@@ -15,6 +15,15 @@ if [ "$code" != 401 ]; then
   echo "Candidate remains encrypted in GitHub Actions."
   exit 0
 fi
+# Confirm authorization applies to a new file under the exact candidate path.
+# A PHP-only 401 on builds.php is insufficient to protect raw APK files.
+probe=$(curl -L -sS --connect-timeout 10 --max-time 25 -o /dev/null -w '%{http_code}' \
+  "https://dev.rubenvanaggelen.com/sony-bravia-audio-tests/this-file-must-require-login")
+if [ "$probe" != 401 ]; then
+  echo "DIRECT_CANDIDATE_PATH_NOT_PROTECTED=HTTP_$probe"
+  echo "No confidential APK uploaded; encrypted artifact remains available."
+  exit 0
+fi
 sha=$(sha256sum "$BUILD_APK_PATH" | awk '{print $1}')
 umask 077
 d=$(mktemp -d)

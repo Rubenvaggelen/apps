@@ -2,7 +2,7 @@ name: Sony Bravia audio candidate cinema-google-tv 1.4.3
 on:
   push:
     branches: [feature/sony-bravia-cinema-audio-20261015]
-    paths: [cinema-google-tv/**, .github/workflows/sony-bravia-cinema-audio-test.yml]
+    paths: [cinema-google-tv/**, ci/publish-sony-bravia-candidate.sh, .github/workflows/sony-bravia-cinema-audio-test.yml]
 permissions:
   contents: read
 concurrency:
