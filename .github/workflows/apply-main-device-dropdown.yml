@@ -1,0 +1,28 @@
+name: Fix Main device chooser dropdown
+on:
+  push:
+    branches: [feature/main-android-app-tiles-license-prep-20261014]
+    paths:
+      - ci/fix-main-device-dropdown.py
+      - .github/workflows/apply-main-device-dropdown.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Replace the long device list with one-device selection
+        run: |
+          python3 ci/fix-main-device-dropdown.py
+          git diff --check
+          git diff --stat
+      - name: Commit only the screen code
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/gmailorg/hub/WakePcActivity.kt
+          git commit -m "Replace management long list with per-device dropdown"
+          git push origin HEAD:feature/main-android-app-tiles-license-prep-20261014

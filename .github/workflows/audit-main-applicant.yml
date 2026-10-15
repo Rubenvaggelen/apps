@@ -1,0 +1,95 @@
+name: Check Main registration and missing applicant (read-only)
+on:
+  push:
+    branches: [feature/main-android-app-tiles-license-prep-20261014]
+    paths: [.github/workflows/audit-main-applicant.yml]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Read only — search exact applicant on live registration server
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for v in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "${!v}" || { echo "REQUIRED_CONNECTION_MISSING"; exit 1; }
+          done
+          umask 077
+          tmp=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$tmp"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$tmp/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$tmp/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$tmp/askpass"
+          chmod 600 "$tmp/key" "$tmp/known_hosts"
+          chmod 700 "$tmp/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$tmp/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$tmp/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          opts=(-i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=20)
+          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$DEPLOY_USER@$DEPLOY_HOST" 'python3 -' <<'PY'
+          import json, os, pathlib, datetime, re
+          p=pathlib.Path.home() / 'the-one-remote-data' / 'main-devices.json'
+          print('REGISTRY_EXISTS='+str(p.is_file()).lower())
+          if not p.is_file():
+              raise SystemExit('Cannot confirm registrations: live registry not found')
+          state=json.loads(p.read_text(encoding='utf-8'))
+          records=state.get('devices',{})
+          if not isinstance(records,dict): raise SystemExit('Cannot confirm registrations: malformed registry')
+          def normalized(s):
+              return ' '.join(str(s or '').casefold().split())
+          target='leroy rack'
+          matches=[]
+          for identifier,row in records.items():
+              if not isinstance(row,dict):continue
+              person=normalized(row.get('person_name'))
+              device=normalized(row.get('name'))
+              if person==target or target in person or target in device:
+                  matches.append(row)
+          print('REGISTRY_RECORD_COUNT='+str(len(records)))
+          print('MATCH_COUNT='+str(len(matches)))
+          print('REGISTRY_MODIFIED_UTC='+datetime.datetime.fromtimestamp(p.stat().st_mtime,datetime.timezone.utc).isoformat())
+          near=[row for row in records.values() if isinstance(row,dict) and (
+              'leroy' in normalized(row.get('person_name')) or
+              'rack' in normalized(row.get('person_name')) or
+              'leroy' in normalized(row.get('name')) or
+              'rack' in normalized(row.get('name'))
+          )]
+          print('PARTIAL_LEROY_OR_RACK_COUNT='+str(len(near)))
+          for i,row in enumerate(near,1):
+              pending=row.get('access_requests') or {}
+              if not isinstance(pending,dict):pending={}
+              print('PARTIAL_'+str(i)+'_PERSON_CONTAINS_LEROY='+str('leroy' in normalized(row.get('person_name'))).lower())
+              print('PARTIAL_'+str(i)+'_PERSON_CONTAINS_RACK='+str('rack' in normalized(row.get('person_name'))).lower())
+              print('PARTIAL_'+str(i)+'_PENDING='+','.join(sorted(pending)))
+          print('UNNAMED_RECORD_COUNT='+str(sum(1 for row in records.values() if isinstance(row,dict) and not normalized(row.get('person_name')))))
+          print('RECORDS_WITH_PENDING='+str(sum(1 for row in records.values() if isinstance(row,dict) and bool(row.get('access_requests')))))
+          now=datetime.datetime.now(datetime.timezone.utc).timestamp()
+          print('RECENT_24H_RECORDS='+str(sum(1 for row in records.values() if isinstance(row,dict) and 0 < now - int(row.get('last_seen') or 0) < 86400)))
+          for i,row in enumerate(matches,1):
+              requests=row.get('access_requests') or {}
+              rights=row.get('access_rights') or {}
+              if not isinstance(requests,dict):requests={}
+              if not isinstance(rights,dict):rights={}
+              last=int(row.get('last_seen') or 0)
+              last_display=datetime.datetime.fromtimestamp(last,datetime.timezone.utc).isoformat() if last>0 else 'never'
+              print('MATCH_'+str(i)+'_PERSON_MATCH='+str(normalized(row.get('person_name'))==target).lower())
+              print('MATCH_'+str(i)+'_ROLE='+re.sub(r'[^a-zA-Z0-9_-]','',str(row.get('device_role') or 'unknown'))[:35])
+              print('MATCH_'+str(i)+'_PLATFORM='+re.sub(r'[^a-zA-Z0-9 ._-]','',str(row.get('platform') or 'unknown'))[:45])
+              print('MATCH_'+str(i)+'_APP='+re.sub(r'[^a-zA-Z0-9._-]','',str(row.get('family_package') or 'Main/legacy'))[:85])
+              print('MATCH_'+str(i)+'_PENDING_SCOPES='+','.join(sorted(str(k) for k in requests)))
+              print('MATCH_'+str(i)+'_APPROVED_SCOPES='+','.join(sorted(str(k) for k,v in rights.items() if v is True)))
+              print('MATCH_'+str(i)+'_BLOCKED='+str(bool(row.get('blocked'))).lower())
+              print('MATCH_'+str(i)+'_LAST_SEEN_UTC='+last_display)
+              print('MATCH_'+str(i)+'_REGISTERED='+str(row.get('registered') or 'unknown')[:45])
+          PY

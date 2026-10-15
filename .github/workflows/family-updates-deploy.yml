@@ -1,0 +1,69 @@
+name: Deploy authenticated Family private update endpoint
+on:
+  push:
+    branches: [feature/main-android-app-tiles-license-prep-20261014]
+    paths: [.github/workflows/family-updates-deploy.yml]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  deploy-new-endpoint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify private update endpoint and signed-access tests
+        run: |
+          php -l the-one-remote-server/family-updates.php
+          php the-one-remote-server/tests/family-license-smoke.php
+      - name: Deploy new endpoint only; leave devices.php and registrations untouched
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for v in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "$(printenv "$v")" || { echo "Missing $v"; exit 1; }
+          done
+          d=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$d"' EXIT
+          umask 077
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$d/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$d/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$d/askpass"
+          chmod 600 "$d/key" "$d/known_hosts"
+          chmod 700 "$d/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$d/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$d/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          o=(-i "$d/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$d/known_hosts" -o ConnectTimeout=20)
+
+          stage=$(ssh -p "$DEPLOY_PORT" "${o[@]}" "$DEPLOY_USER@$DEPLOY_HOST" 'umask 077; mktemp -d "$HOME/.the-one-family-updates-stage.XXXXXXXX"')
+          scp -O -P "$DEPLOY_PORT" "${o[@]}" the-one-remote-server/family-updates.php "$DEPLOY_USER@$DEPLOY_HOST:$stage/family-updates.php"
+          ssh -p "$DEPLOY_PORT" "${o[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "bash -s -- '$stage'" <<'REMOTE'
+          set -euo pipefail
+          umask 077
+          stage="$1"
+          target="$HOME/public_html/the-one-remote-api/family-updates.php"
+          php -l "$stage/family-updates.php" >/dev/null
+          if [ -e "$target" ]; then
+            echo 'UPDATE_ENDPOINT_ALREADY_PRESENT: manual compatibility review required'
+            exit 17
+          fi
+          tmp=$(mktemp "$target.stage.XXXXXXXX")
+          cp "$stage/family-updates.php" "$tmp"
+          chmod 644 "$tmp"
+          mv "$tmp" "$target"
+          if ! curl -fsS --max-time 15 'https://rubenvanaggelen.com/the-one-remote-api/family-updates.php?action=health' | grep -q '"ok":true'; then
+            rm -f "$target"
+            echo 'UPDATE_ENDPOINT_DEPLOY=rolled-back'
+            exit 19
+          fi
+          rm -f "$stage/family-updates.php"
+          rmdir "$stage"
+          echo 'UPDATE_ENDPOINT_DEPLOY=success'
+          REMOTE

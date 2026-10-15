@@ -364,11 +364,14 @@ class SettingsActivity : AppCompatActivity() {
         val emptyState = findViewById<TextView>(R.id.hiddenTilesEmptyState)
         container.removeAllViews()
 
-        val hiddenIds = HiddenTilesStore.getAllHidden().filterNot { it == "finance" }
+        val hiddenIds = (
+            HiddenTilesStore.getAllHidden().filterNot { it == "finance" } +
+            LicensedTileVisibility.labels.keys.filter { LicensedTileVisibility.isHidden(this, it) }
+        ).distinct()
         emptyState.visibility = if (hiddenIds.isEmpty()) View.VISIBLE else View.GONE
 
         hiddenIds.forEach { id ->
-            val label = fixedTileLabels[id] ?: id
+            val label = LicensedTileVisibility.labels[id] ?: fixedTileLabels[id] ?: id
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 layoutParams = LinearLayout.LayoutParams(
@@ -387,7 +390,11 @@ class SettingsActivity : AppCompatActivity() {
                 text = "Terugzetten"
                 setTextColor(ContextCompat.getColor(context, R.color.amber))
                 setOnClickListener {
-                    HiddenTilesStore.unhide(id)
+                    if (id in LicensedTileVisibility.labels) {
+                        LicensedTileVisibility.setVisible(this@SettingsActivity, id, true)
+                    } else {
+                        HiddenTilesStore.unhide(id)
+                    }
                     refreshHiddenTiles()
                     Toast.makeText(this@SettingsActivity, "$label teruggezet", Toast.LENGTH_SHORT).show()
                 }

@@ -131,6 +131,9 @@ class HomeActivity : AppCompatActivity() {
             HomeTile(id = "news", type = TileType.NEWS, label = "Nieuws"),
             HomeTile(id = "radio", type = TileType.RADIO, label = "Radio"),
             HomeTile(id = "currency", type = TileType.CURRENCY, label = "Koers (EUR / SRD / USD)"),
+            HomeTile(id = "com.theone.cinema", type = TileType.APP, label = "Cinema", packageName = "com.theone.cinema"),
+            HomeTile(id = "com.theone.series", type = TileType.APP, label = "Series", packageName = "com.theone.series"),
+            HomeTile(id = "com.theone.tv.phone", type = TileType.APP, label = "TV", packageName = "com.theone.tv.phone"),
             HomeTile(id = "com.gmailorg.thedj", type = TileType.APP, label = "The One DJ", packageName = "com.gmailorg.thedj"),
             HomeTile(id = "com.gmailorg.runcoach", type = TileType.APP, label = "The One Run", packageName = "com.gmailorg.runcoach"),
             HomeTile(id = "remote_pc", type = TileType.REMOTE_PC, label = "Laptop"),
@@ -140,18 +143,89 @@ class HomeActivity : AppCompatActivity() {
             // Vaste snelkoppelingen naar apps (WhatsApp, Google Home) alleen
             // tonen als die app ook daadwerkelijk geïnstalleerd staat —
             // anders zie je een leeg "+"-icoontje voor een niet-bestaande app.
-            (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") || tile.packageName == null || isPackageInstalled(tile.packageName)) &&
+            (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") || tile.id in licensedAppScopes || tile.packageName == null || isPackageInstalled(tile.packageName)) &&
                 (tile.id != "remote_pc" || MainDeviceRegistry.isLocallyOwner(this)) &&
-                (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") || !HiddenTilesStore.isHidden(tile.id))
+                (if (tile.id in licensedAppScopes) LicensedTileVisibility.isVisible(this, tile.id) else tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") || !HiddenTilesStore.isHidden(tile.id))
         }
         val userApps = ShortcutStore.getAll().filter {
-            !HiddenTilesStore.isHidden(it.id) && it.packageName !in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach")
+            !HiddenTilesStore.isHidden(it.id) && it.packageName !in (setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") + licensedAppScopes.keys)
         }
         val addButton = HomeTile(id = "add", type = TileType.ADD_BUTTON, label = "App toevoegen")
         adapter.updateTiles(fixed + userApps + addButton)
     }
 
+    // Elke Android-app krijgt een zelfstandige rechtennaam. Zolang de server
+    // deze scopes nog niet kent, blijft toegang voor niet-eigenaren gesloten.
+    private val licensedAppScopes = mapOf(
+        "com.theone.cinema" to "cinema_android",
+        "com.theone.series" to "series_android",
+        "com.theone.tv.phone" to "tv_android",
+    )
+
+    private fun showMissingFamilyApp(packageName: String) {
+        val label = when (packageName) {
+            "com.theone.cinema" -> "Cinema"
+            "com.theone.series" -> "Series"
+            "com.theone.tv.phone" -> "TV"
+            else -> return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("The One $label installeren")
+            .setMessage("De $label-app is nog niet op dit toestel geïnstalleerd. Deze tegel is een snelkoppeling naar de aparte app. Installeer de Android-telefoonversie uit de privé Dev Hub. Daarna opent deze tegel de app rechtstreeks.")
+            .setNegativeButton("Later", null)
+            .setPositiveButton("Dev Hub openen") { _, _ ->
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://dev.rubenvanaggelen.com/builds.php")))
+            }.show()
+    }
+
+    private fun handleLicensedApp(packageName: String, scope: String) {
+        // Eerst de installatie controleren, pas daarna het Main-toegangsrecht.
+        // Zo ziet de eigenaar waarom een tegel niet start en kan hij de APK installeren.
+        if (!isPackageInstalled(packageName)) {
+            showMissingFamilyApp(packageName)
+            return
+        }
+        // Main is de eigenaarconsole. De zelfstandige APK controleert altijd
+        // zijn eigen apparaatgebonden licentie, ook als Main op dit toestel eigenaar is.
+        if (MainDeviceRegistry.isLocallyOwner(this) && !MainDeviceRegistry.isLocallyBlocked(this)) {
+            launchExternalApp(packageName)
+            return
+        }
+        Thread {
+            val result = runCatching {
+                MainDeviceRegistry.heartbeat(this)
+                if (MainDeviceRegistry.isLocallyBlocked(this)) MainAccessStatus(false, false, false, scope)
+                else MainDeviceRegistry.refreshAccess(this, scope)
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                val status = result.getOrNull()
+                when {
+                    status?.allowed == true -> launchExternalApp(packageName)
+                    status?.pending == true -> Toast.makeText(this, "Je aanvraag staat nog open bij de eigenaar.", Toast.LENGTH_LONG).show()
+                    status == null -> Toast.makeText(this, "Licentieserver niet bereikbaar; toegang niet bevestigd.", Toast.LENGTH_LONG).show()
+                    else -> AlertDialog.Builder(this)
+                        .setTitle("Toestemming aanvragen")
+                        .setMessage("Voor deze app is afzonderlijke toestemming van de eigenaar nodig.")
+                        .setNegativeButton("Annuleren", null)
+                        .setPositiveButton("Aanvragen") { _, _ ->
+                            Thread {
+                                val request = runCatching { MainDeviceRegistry.requestAccess(this, scope) }
+                                runOnUiThread {
+                                    if (!isFinishing && !isDestroyed) {
+                                        val message = if (request.getOrNull()?.pending == true) "Aanvraag naar de eigenaar verstuurd." else "Aanvraag niet bevestigd. Probeer later opnieuw."
+                                        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }.start()
+                        }.show()
+                }
+            }
+        }.start()
+    }
+
     private fun handleTileClick(tile: HomeTile) {
+        licensedAppScopes[tile.id]?.let { scope -> handleLicensedApp(tile.id, scope); return }
         if (tile.id == "com.gmailorg.thedj") { openDj(); return }
         if (tile.id == "com.gmailorg.runcoach") { openRun(); return }
         when (tile.type) {
@@ -181,6 +255,14 @@ class HomeActivity : AppCompatActivity() {
     private fun handleTileLongClick(tile: HomeTile): Boolean {
         if (tile.type == TileType.ADD_BUTTON) return false
         if (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach")) return true
+        if (tile.id in licensedAppScopes) {
+            if (!MainDeviceRegistry.isLocallyOwner(this)) {
+                LicensedTileVisibility.setVisible(this, tile.id, false)
+                refreshTiles()
+                Toast.makeText(this, "${tile.label} verborgen; terugzetten via Instellingen.", Toast.LENGTH_SHORT).show()
+            }
+            return true
+        }
 
         AlertDialog.Builder(this)
             .setTitle("Tegel verbergen?")
@@ -441,7 +523,16 @@ class HomeActivity : AppCompatActivity() {
         if (packageName == null) return
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
         if (launchIntent != null) {
-            startActivity(launchIntent)
+            try {
+                startActivity(launchIntent)
+            } catch (_: android.content.ActivityNotFoundException) {
+                if (packageName in licensedAppScopes) showMissingFamilyApp(packageName)
+                else Toast.makeText(this, "Deze app kan niet worden gestart.", Toast.LENGTH_LONG).show()
+            } catch (_: SecurityException) {
+                Toast.makeText(this, "Android heeft het starten van deze app geweigerd.", Toast.LENGTH_LONG).show()
+            }
+        } else if (packageName in licensedAppScopes) {
+            showMissingFamilyApp(packageName)
         } else {
             Toast.makeText(this, "Kan deze app niet openen (mogelijk verwijderd)", Toast.LENGTH_SHORT).show()
         }
@@ -484,6 +575,11 @@ class HomeAdapter(
             } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
                 ContextCompat.getDrawable(context, R.drawable.the_one_run_icon)
             }
+        } else if (tile.id in setOf("com.theone.cinema", "com.theone.series", "com.theone.tv.phone")) {
+            // De originele app-logo's zitten ook in Main zelf, en blijven
+            // correct wanneer een losse APK nog niet op dit toestel staat.
+            OfficialFamilyArtwork.drawable(context, tile.packageName!!)
+                ?: runCatching { context.packageManager.getApplicationIcon(tile.packageName) }.getOrNull()
         } else when (tile.type) {
             TileType.NOTIFICATIONS -> ContextCompat.getDrawable(context, R.drawable.ic_home_notifications_fancy)
             TileType.MAIL -> ContextCompat.getDrawable(context, R.drawable.ic_home_mail_fancy)
@@ -508,7 +604,7 @@ class HomeAdapter(
                 ContextCompat.getDrawable(context, R.drawable.ic_home_add_fancy)
             }
         }
-        val styledIcon = if (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") && iconDrawable != null) {
+        val styledIcon = if (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach", "com.theone.cinema", "com.theone.series", "com.theone.tv.phone") && iconDrawable != null) {
             buildTheOneAppTileIcon(context, iconDrawable)
         } else iconDrawable
         holder.icon.setImageDrawable(styledIcon)
