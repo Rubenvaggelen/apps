@@ -1,4 +1,4 @@
-name: Audit The One User license integrity (read-only)
+name: Re-audit The One User after music permissions fix (read-only)
 on:
   push:
     branches: [feature/license-user-integrity-audit-20261015]
