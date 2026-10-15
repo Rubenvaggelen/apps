@@ -55,3 +55,20 @@ jobs:
           fi
           echo "LIVE_SHA256=$remote"
           echo "BASELINE_SHA256=$base"
+          # Compare only function/action names and changed-line counts, never print live source.
+          ssh -p "$DEPLOY_PORT" "${o[@]}" "$DEPLOY_USER@$DEPLOY_HOST" 'cat "$HOME/public_html/the-one-remote-api/devices.php"' > "$d/live.php"
+          python3 - "$d/baseline.php" "$d/live.php" <<'PY'
+          import sys,re,difflib
+          old=open(sys.argv[1],encoding='utf-8').read().splitlines()
+          new=open(sys.argv[2],encoding='utf-8').read().splitlines()
+          changes=[x for x in difflib.SequenceMatcher(a=old,b=new,autojunk=False).get_opcodes() if x[0]!='equal']
+          print('DRIFT_HUNKS='+str(len(changes)))
+          print('DRIFT_LINES='+str(sum((a2-a1)+(b2-b1) for _,a1,a2,b1,b2 in changes)))
+          pats=r'function\s+[a-zA-Z_][a-zA-Z0-9_]*|\$action\s*===\s*[\x27\x22][a-zA-Z0-9_]+[\x27\x22]'
+          labels=set()
+          for _,a1,a2,b1,b2 in changes:
+              for seq,lo,hi in ((old,a1,a2),(new,b1,b2)):
+                  text='\n'.join(seq[max(0,lo-50):min(len(seq),hi+20)])
+                  labels.update(re.findall(pats,text))
+          print('DRIFT_SYMBOLS='+','.join(sorted(labels)[:35]))
+          PY
