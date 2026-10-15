@@ -80,6 +80,23 @@ final class FamilyUpdateNotice {
         });
     }
 
+
+    /** Kept for regression tests; APK installation itself compares Android versionCode. */
+    static int compareVersions(String left, String right) {
+        if (left == null || right == null ||
+            !left.matches("[0-9]+\\.[0-9]+\\.[0-9]+") ||
+            !right.matches("[0-9]+\\.[0-9]+\\.[0-9]+")) return -1;
+        try {
+            String[] a = left.split("\\.");
+            String[] b = right.split("\\.");
+            for (int i = 0; i < 3; i++) {
+                long x = Long.parseLong(a[i]), y = Long.parseLong(b[i]);
+                if (x != y) return Long.compare(x, y);
+            }
+            return 0;
+        } catch (NumberFormatException ignored) { return -1; }
+    }
+
     private static String hex(byte[] bytes) {
         StringBuilder result = new StringBuilder();
         for (byte b : bytes) result.append(String.format(Locale.ROOT, "%02x", b & 0xff));
