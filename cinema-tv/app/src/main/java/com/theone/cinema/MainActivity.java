@@ -23,7 +23,7 @@ public class MainActivity extends Activity {
  private List<CatalogEntry> playSources;private int sourceIndex,retries;private long resumePosition;private boolean userPaused=false;
  private Runnable stallTask,progressTask;private long bufferStarted;
  @Override public void onCreate(Bundle b){super.onCreate(b);
- if (BuildConfig.DEBUG && getIntent() != null && getIntent().getBooleanExtra("tv_test_mode", false)) {
+ if (BuildConfig.DEBUG && getIntent() != null && (getIntent().getBooleanExtra("tv_test_mode", false) || getIntent().getBooleanExtra("cinema_test_mode", false) || getIntent().getBooleanExtra("starter_test_mode", false) || getIntent().getBooleanExtra("subtitle_test_mode", false))) {
    startLicensedApp(b);
  } else {
    familyLicense=new FamilyLicenseGate(this,"cinema_android",()->startLicensedApp(b));
