@@ -280,16 +280,9 @@ class WakePcActivity : AppCompatActivity() {
                 textSize = 14f
             })
         } else {
-            val sorted = devices.sortedWith(compareBy(
-                { it.name.lowercase(java.util.Locale.ROOT) },
-                { it.personName.lowercase(java.util.Locale.ROOT) },
-                { it.id }
-            ))
-            val labels = listOf("Kies een apparaat…") + sorted.map { device ->
-                val name = device.name.ifBlank { "Apparaat" }
-                val person = device.personName.trim()
-                (if (device.online) "● " else "○ ") + name +
-                    (if (person.isNotEmpty() && person != name) " — $person" else "")
+            val groups = FamilyApplicantGroups.groupDevices(devices)
+            val labels = listOf("Kies een persoon of apparaat…") + groups.map { group ->
+                (if (group.devices.any { it.online }) "● " else "○ ") + group.label
             }
             val selector = android.widget.Spinner(this)
             val adapter = android.widget.ArrayAdapter(
@@ -307,7 +300,17 @@ class WakePcActivity : AppCompatActivity() {
                 ) {
                     details.removeAllViews()
                     if (position > 0) {
-                        renderManagedDevice(details, sorted[position - 1])
+                        val selected = groups[position - 1]
+                        if (selected.family) {
+                            details.addView(TextView(this@WakePcActivity).apply {
+                                text = selected.devices.first().personName.trim() +
+                                    " — toegang per app beheren"
+                                textSize = 17f
+                                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                                setPadding(8, 8, 8, 14)
+                            })
+                        }
+                        selected.devices.forEach { renderManagedDevice(details, it) }
                     } else {
                         details.addView(TextView(this@WakePcActivity).apply {
                             text = "Kies hierboven een apparaat om de rechten te beheren."
@@ -344,9 +347,17 @@ class WakePcActivity : AppCompatActivity() {
 
     private fun renderManagedDevice(list: LinearLayout, device: MainRegisteredDevice) {
         val personLabel = device.personName.ifBlank { "Naam nog niet ingevuld" }
+        val familyApp = when (device.familyPackage) {
+            "com.theone.cinema", "com.theone.cinema.tv" -> "Cinema"
+            "com.theone.series", "com.theone.series.tv" -> "Series"
+            "com.theone.tv.phone", "com.theone.tv" -> "TV"
+            else -> ""
+        }
         val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(16, 14, 16, 14) }
         card.addView(TextView(this).apply {
-            text = (if (device.online) "●  " else "○  ") + personLabel + (if (device.owner) "  •  The One" else "")
+            text = (if (device.online) "●  " else "○  ") +
+                if (familyApp.isNotEmpty()) familyApp else
+                    personLabel + (if (device.owner) "  •  The One" else "")
             textSize = 17f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setTextColor(ContextCompat.getColor(this@WakePcActivity, if (device.online) R.color.amber else R.color.text_main))
@@ -511,6 +522,22 @@ class WakePcActivity : AppCompatActivity() {
                 card.addView(section)
             }
 
+            if (familyApp.isNotEmpty()) {
+                when (device.familyPackage) {
+                    "com.theone.cinema", "com.theone.cinema.tv" -> addAccessControl(
+                        "Cinema", MainDeviceRegistry.ACCESS_CINEMA,
+                        device.cinemaRights, device.pendingCinema
+                    )
+                    "com.theone.series", "com.theone.series.tv" -> addAccessControl(
+                        "Series", MainDeviceRegistry.ACCESS_SERIES,
+                        device.seriesRights, device.pendingSeries
+                    )
+                    "com.theone.tv.phone", "com.theone.tv" -> addAccessControl(
+                        "TV", MainDeviceRegistry.ACCESS_TV,
+                        device.tvRights, device.pendingTv
+                    )
+                }
+            } else {
             addAccessControl(
                 "Media Player",
                 MainDeviceRegistry.ACCESS_MEDIA_PLAYER,
@@ -577,6 +604,8 @@ class WakePcActivity : AppCompatActivity() {
                 device.fileDownloadsRights,
                 device.pendingFileDownloads
             )
+
+            }
 
             card.addView(android.widget.Button(this).apply {
                 text = if (device.blocked) "Deblokkeren" else "Blokkeren"
