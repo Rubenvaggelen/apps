@@ -1,0 +1,57 @@
+name: Family server read-only preflight
+on:
+  push:
+    branches: [feature/main-android-app-tiles-license-prep-20261014]
+    paths: [.github/workflows/family-server-preflight.yml]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  read-only-compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Test isolated license contract
+        run: |
+          php -l the-one-remote-server/devices.php
+          php the-one-remote-server/tests/family-license-smoke.php
+      - name: Inspect live server without changing files
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for v in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "$(printenv "$v")" || { echo "Missing $v"; exit 1; }
+          done
+          d=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$d"' EXIT
+          umask 077
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$d/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$d/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$d/askpass"
+          chmod 600 "$d/key" "$d/known_hosts"
+          chmod 700 "$d/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$d/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$d/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          o=(-i "$d/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$d/known_hosts" -o ConnectTimeout=20)
+          git fetch --no-tags origin main
+          git show origin/main:the-one-remote-server/devices.php > "$d/baseline.php"
+          base=$(sha256sum "$d/baseline.php" | cut -d ' ' -f1)
+          remote=$(ssh -p "$DEPLOY_PORT" "${o[@]}" "$DEPLOY_USER@$DEPLOY_HOST" 'test -f "$HOME/public_html/the-one-remote-api/devices.php" && php -l "$HOME/public_html/the-one-remote-api/devices.php" >/dev/null && sha256sum "$HOME/public_html/the-one-remote-api/devices.php" | cut -d " " -f1')
+          test "${#remote}" -eq 64
+          if [ "$remote" = "$base" ]; then
+            echo 'PREFLIGHT_RESULT=base-matches-live'
+          else
+            echo 'PREFLIGHT_RESULT=live-server-drift'
+            echo '::warning::Live PHP differs from repository baseline. Do not overwrite without reconciliation.'
+          fi
+          echo "LIVE_SHA256=$remote"
+          echo "BASELINE_SHA256=$base"
