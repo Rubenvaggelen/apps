@@ -128,6 +128,7 @@ public class MainActivity extends Activity {
  @Override public void onConfigurationChanged(android.content.res.Configuration configuration){super.onConfigurationChanged(configuration);if(playerView!=null)playerView.requestLayout();else showCatalog();}
  @Override public void onBackPressed(){if(player!=null){showCatalog();return;}if(section.equals("episodes")){switchSection("series");return;}if(!query.isEmpty()){query="";search.setText("");filter();return;}super.onBackPressed();}
  @Override protected void onStop(){cancelRetry();recoveryPending=false;if(player!=null){storeProgress();player.pause();cancelStall();}super.onStop();}
+ @Override protected void onResume(){super.onResume();if(appUpdater!=null)appUpdater.checkOnOpen();}
  @Override protected void onDestroy(){if(familyLicense!=null)familyLicense.close();
   if (appUpdater != null) appUpdater.close();destroyed=true;++catalogGeneration;++loadGeneration;stopPlayback();handler.removeCallbacksAndMessages(null);languageWorker.shutdownNow();catalogWorker.shutdownNow();episodeWorker.shutdownNow();imageWorker.shutdownNow();for(Runnable cancel:background.pause())networkCancelWorker.execute(cancel);networkCancelWorker.shutdown();super.onDestroy();}
  private void cancelPosterRequests(){posterGeneration++;if(imageWorker instanceof ThreadPoolExecutor)((ThreadPoolExecutor)imageWorker).getQueue().clear();}
