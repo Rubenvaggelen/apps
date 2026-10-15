@@ -30,7 +30,8 @@ jobs:
         with:
           packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
       - name: Verify PHP licensing endpoint syntax
-        run: php -l the-one-remote-server/devices.php
+        run: |
+          php -l the-one-remote-server/devices.php
           php -l the-one-remote-server/family-updates.php
       - name: Run isolated Family license HTTP contract
         run: php the-one-remote-server/tests/family-license-smoke.php
