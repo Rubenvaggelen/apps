@@ -1,0 +1,117 @@
+name: The One User OTA stable asset and Dev Hub preflight
+on:
+  push:
+    branches: [feature/the-one-user-standalone-20261015]
+    paths: ['.github/workflows/the-one-user-ota-preflight.yml']
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  publish-user-ota:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm existing user APK v1002 looks for stable asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'USER_ASSET_NAME = "The-One-Android-User.apk"' app/src/main/java/com/gmailorg/hub/UpdateChecker.kt
+          grep -q 'tagPrefix = if (BuildConfig.IS_USER_APP) "user-v"' app/src/main/java/com/gmailorg/hub/UpdateChecker.kt
+          echo 'USER_OLD_UPDATER_CONTRACT=confirmed'
+      - name: Add stable asset alias to v1003 without changing APK bytes
+        env:
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          d="$(mktemp -d)"
+          trap 'rm -rf "$d"' EXIT
+          gh release download user-v1003 -R "$GITHUB_REPOSITORY" \
+            --pattern 'The-One-Android-User-v1003.apk' --dir "$d"
+          printf '%s  %s\n' 'f6b4d2ae2661a2b595ed2e102bc8e0b9d31162c0675ce2de4350b0805f224ebb' \
+            "$d/The-One-Android-User-v1003.apk" | sha256sum --check --status
+          cp "$d/The-One-Android-User-v1003.apk" "$d/The-One-Android-User.apk"
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/user-v1003" \
+              --jq '.assets[].name' | grep -Fxq 'The-One-Android-User.apk'; then
+            echo 'OTA_ALIAS=already-present'
+          else
+            gh release upload user-v1003 "$d/The-One-Android-User.apk" \
+              -R "$GITHUB_REPOSITORY"
+            echo 'OTA_ALIAS=uploaded'
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/user-v1003" \
+            --jq '.assets[] | select(.name=="The-One-Android-User.apk") | .digest' \
+              | grep -Fxq 'sha256:f6b4d2ae2661a2b595ed2e102bc8e0b9d31162c0675ce2de4350b0805f224ebb'
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=40" \
+            --jq '.[].tag_name' | grep -Fxq 'user-v1003'
+          echo 'USER_V1003_UPDATE_WILL_APPEAR_ON_EXISTING_V1002_CLIENT=confirmed'
+  devhub-preflight:
+    needs: publish-user-ota
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Read-only Dev Hub active web-root check
+        shell: bash
+        env:
+          DEPLOY_HOST: \${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: \${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: \${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: \${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: \${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: \${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for v in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "\${!v}" || { echo "::error::Missing $v"; exit 1; }
+          done
+          umask 077
+          d="$(mktemp -d)"
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$d"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$d/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$d/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$d/askpass"
+          chmod 600 "$d/key" "$d/known_hosts"
+          chmod 700 "$d/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$d/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$d/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          ssh -p "$DEPLOY_PORT" -i "$d/key" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$d/known_hosts" \
+            -o ConnectTimeout=20 "$DEPLOY_USER@$DEPLOY_HOST" 'python3 -' <<'PY'
+          from pathlib import Path
+          import hashlib
+          home=Path.home()
+          candidates=[
+              home/"dev.vanaggelen.com",
+              home/"dev.rubenvanaggelen.com",
+              home/"public_html"/"dev",
+              home/"public_html"/"devhub",
+              home/"public_html"/"dev.rubenvanaggelen.com",
+              home/"public_html"
+          ]
+          matched=[]
+          for folder in candidates:
+              builds=folder/"builds.php"
+              if builds.is_file():
+                  matched.append(folder)
+          print("DEVHUB_ROOT_MATCHES="+str(len(matched)))
+          for folder in matched:
+              print("DEVHUB_ROOT="+str(folder))
+              for filename in ["builds.php","index.php"]:
+                  f=folder/filename
+                  if not f.is_file():
+                      print("DEVHUB_FILE_MISSING="+filename)
+                      continue
+                  body=f.read_text(encoding="utf-8")
+                  print("DEVHUB_FILE="+filename+" SIZE="+str(len(body))+" SHA256="+hashlib.sha256(body.encode()).hexdigest())
+                  print("DEVHUB_MARKERS_"+filename+"="+",".join(
+                      marker+":"+str(marker in body).lower() for marker in [
+                          "The One Run", "runDownload", "loadDownloads",
+                          "loadLatestRelease", "download-row", "download-panel",
+                          "The One Dev Hub", "user-v1003"
+                      ]
+                  ))
+          if not matched:
+              raise SystemExit("No deployed Dev Hub builds.php found in expected roots")
+          PY
