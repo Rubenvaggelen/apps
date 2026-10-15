@@ -63,7 +63,7 @@ final class FamilyLicenseGate {
     private volatile long lastOnlineCheckElapsed;
     // Requests stay visible in Main. An awaiting app retries without a button press.
     private final Runnable pendingApprovalPoll = () -> {
-        if (!closed && !granted && !activity.isFinishing()) verifyAccess();
+        if (!closed && !granted) verifyAccess();
     };
 
     private final Runnable leaseWatch = new Runnable() {
