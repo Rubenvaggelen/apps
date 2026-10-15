@@ -28,6 +28,51 @@ class WakePcActivity : AppCompatActivity() {
 
     private var activeDeviceAdminPin = ""
 
+    /**
+     * Family approvals require the existing owner credential. Ask only on
+     * Family grant/deny; never persist the credential in preferences or logs.
+     */
+    private fun requestFamilyOwnerAuthorization(
+        scope: String,
+        label: String,
+        proceed: (String) -> Unit
+    ) {
+        if (scope !in setOf(
+                MainDeviceRegistry.ACCESS_CINEMA,
+                MainDeviceRegistry.ACCESS_SERIES,
+                MainDeviceRegistry.ACCESS_TV
+            )) {
+            proceed(activeDeviceAdminPin)
+            return
+        }
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            hint = "Eigenaar-PIN"
+            isSingleLine = true
+            setPadding(28, 14, 28, 14)
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("$label: eigenaarstoestemming")
+            .setMessage("Voer de bestaande beheer-PIN in om de app-toegang te wijzigen. De PIN wordt niet opgeslagen.")
+            .setView(input)
+            .setNegativeButton("Annuleren", null)
+            .setPositiveButton("Bevestigen", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val pin = input.text.toString().trim()
+                if (pin.isEmpty()) {
+                    input.error = "Voer de beheer-PIN in"
+                } else {
+                    dialog.dismiss()
+                    proceed(pin)
+                }
+            }
+        }
+        dialog.show()
+    }
+
+
     private data class WakeTarget(
         val id: String,
         val label: String,
@@ -282,13 +327,14 @@ class WakePcActivity : AppCompatActivity() {
                         }
                         refreshLabel()
                         setOnClickListener {
-                            isEnabled = false
                             val enable = !allowed
+                            requestFamilyOwnerAuthorization(scope, label) { pin ->
+                            isEnabled = false
                             Thread {
                                 val result = runCatching {
                                     MainDeviceRegistry.setAccessRight(
                                         this@WakePcActivity,
-                                        activeDeviceAdminPin,
+                                        pin,
                                         device.id,
                                         scope,
                                         enable
@@ -318,6 +364,7 @@ class WakePcActivity : AppCompatActivity() {
                                     }
                                 }
                             }.start()
+                            }
                         }
                     }
                     buttons.addView(
@@ -334,12 +381,13 @@ class WakePcActivity : AppCompatActivity() {
                             android.widget.Button(this).apply {
                                 text = "Weigeren"
                                 setOnClickListener {
+                                    requestFamilyOwnerAuthorization(scope, "$label weigeren") { pin ->
                                     isEnabled = false
                                     Thread {
                                         val result = runCatching {
                                             MainDeviceRegistry.setAccessRight(
                                                 this@WakePcActivity,
-                                                activeDeviceAdminPin,
+                                                pin,
                                                 device.id,
                                                 scope,
                                                 false
@@ -367,6 +415,7 @@ class WakePcActivity : AppCompatActivity() {
                                             }
                                         }
                                     }.start()
+                                    }
                                 }
                             },
                             LinearLayout.LayoutParams(
