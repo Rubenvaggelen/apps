@@ -168,7 +168,7 @@ jobs:
           curl --fail --silent --show-error --max-time 15 https://rubenvanaggelen.com/the-one-remote-api/family-updates.php?action=health |
             python3 -c 'import json,sys; x=json.load(sys.stdin); assert x.get("ok") is True and x.get("service") == "The One Family Secure Updates"'
       - name: Publish signed app to private Dev Hub after tests
-        if: success()
+        if: false # applicant-name test build; publish after real-device verification
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
