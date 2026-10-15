@@ -23,8 +23,12 @@ public class MainActivity extends Activity {
  private List<CatalogEntry> playSources;private int sourceIndex,retries;private long resumePosition;private boolean userPaused=false;
  private Runnable stallTask,progressTask;private long bufferStarted;
  @Override public void onCreate(Bundle b){super.onCreate(b);
- familyLicense=new FamilyLicenseGate(this,"series_android",()->startLicensedApp(b));
- familyLicense.begin();}
+ if (BuildConfig.DEBUG && getIntent() != null && getIntent().getBooleanExtra("tv_test_mode", false)) {
+   startLicensedApp(b);
+ } else {
+   familyLicense=new FamilyLicenseGate(this,"series_android",()->startLicensedApp(b));
+ familyLicense.begin();
+ }}
  private void startLicensedApp(Bundle b){
   appUpdater = new FamilyUpdateNotice(this);
   appUpdater.checkOnOpen();prefs=getSharedPreferences("the_one_series_tv",MODE_PRIVATE);favorites=new HashSet<>(prefs.getStringSet("favorites",Collections.emptySet()));preferredLanguage=prefs.getString("preferred_language","en");testMode=BuildConfig.DEBUG&&getIntent().getBooleanExtra("series_test_mode",false);try{if(!testMode){repo=new MediaRepository(this);if(BuildConfig.DEBUG&&getIntent().getBooleanExtra("starter_test_mode",false))repo.enableOfflineForTest();}}catch(Exception e){showFatal();return;}if(testMode){List<CatalogEntry> samples=new ArrayList<>();for(int i=1;i<=12;i++){CatalogEntry en=new CatalogEntry(i,"EN - Series testserie "+i,"mp4","","","series",i);samples.add(en);variants.put(en.key(),Arrays.asList(en,new CatalogEntry(100+i,"NL - Series testserie "+i,"mp4","","","series",i)));}catalogs.put("series",samples);}showCatalog();}
