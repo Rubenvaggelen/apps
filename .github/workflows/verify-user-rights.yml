@@ -1,0 +1,26 @@
+name: Verify The One User music permissions isolation
+on:
+  push:
+    branches: [feature/license-user-integrity-audit-20261015]
+    paths: [.github/workflows/verify-user-rights.yml]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  test-isolated:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax test user license server
+        run: php -l the-one-remote-server/devices.php
+      - name: Full isolated HTTP contract test (never live registrations)
+        run: php the-one-remote-server/tests/family-license-smoke.php
+      - name: Check user admission retained when music changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "Preserve all independent" the-one-remote-server/devices.php
+          grep -q "Music grant revoked existing The One User admission" the-one-remote-server/tests/family-license-smoke.php
+          grep -q "Owner could not block the user installation" the-one-remote-server/tests/family-license-smoke.php
+          echo 'USER_LICENSE_FULL_ISOLATED_HTTP_TEST=passed'

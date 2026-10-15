@@ -146,6 +146,15 @@ try {
     $ownerId='test-owner-'.bin2hex(random_bytes(6));
     file_put_contents($root.'/the-one-remote-data/main-device-owner.json',
         json_encode(['device_id'=>$ownerId,'person_name'=>'Test eigenaar']));
+    // A real owner device also exists in the registry; a fixture must model
+    // that fact before testing the server's owner cannot be blocked guard.
+    $ownerState=json_decode((string)file_get_contents($root.'/the-one-remote-data/main-devices.json'),true);
+    $ownerState['devices'][$ownerId]=[
+        'device_id'=>$ownerId,'name'=>'The One Main test','person_name'=>'Test eigenaar',
+        'platform'=>'Android test','blocked'=>false,'last_seen'=>time(),
+        'access_rights'=>[],'access_requests'=>[]
+    ];
+    file_put_contents($root.'/the-one-remote-data/main-devices.json',json_encode($ownerState));
     [$ownerCode,$ownerBody]=call_api($base,'pending_requests',['request_device_id'=>$ownerId]);
     $items=$ownerBody['requests']??[];
     need($ownerCode===200 && count(array_filter($items,fn($row)=>
@@ -202,6 +211,68 @@ try {
     $userForged['package']='com.theone.cinema';
     [$userCode,$userCross]=call_api($base,'family_check',$userForged);
     need($userCode===404,'The One user license was incorrectly accepted for Cinema');
+
+    // Change the legacy music bundle without destroying separately approved
+    // The One User, DJ, downloads or pending Run authorizations.
+    $userState=json_decode((string)file_get_contents($root.'/the-one-remote-data/main-devices.json'),true);
+    $userState['devices'][$userId]['access_rights']['dj']=true;
+    $userState['devices'][$userId]['access_rights']['download_files']=true;
+    $userState['devices'][$userId]['access_requests']['run']=[
+        'status'=>'pending','requested_at'=>gmdate('c')];
+    file_put_contents($root.'/the-one-remote-data/main-devices.json',json_encode($userState));
+    [$userCode,$enabledMusic]=call_api($base,'set_music_rights',[
+        'request_device_id'=>$ownerId,'device_id'=>$userId,'enabled'=>true]);
+    need($userCode===200 && ($enabledMusic['music_rights']??false)===true,
+        'Owner could not enable the legacy music bundle');
+    $userState=json_decode((string)file_get_contents($root.'/the-one-remote-data/main-devices.json'),true);
+    $ur=$userState['devices'][$userId]['access_rights']??[];
+    $pending=$userState['devices'][$userId]['access_requests']??[];
+    need(($ur['the_one_user']??false)===true && ($ur['dj']??false)===true &&
+         ($ur['download_files']??false)===true &&
+         ($ur['shared']??false)===true && isset($pending['run']),
+         'Music grant removed an independent User/DJ/download right or pending request');
+    [$userCode,$stillAllowed]=call_api($base,'family_check',
+        signed_payload($userKey,'check',$userId,'the_one_user','com.gmailorg.theoneuser'));
+    need($userCode===200 && ($stillAllowed['allowed']??false)===true,
+        'Music grant revoked existing The One User admission');
+    [$userCode,$disabledMusic]=call_api($base,'set_music_rights',[
+        'request_device_id'=>$ownerId,'device_id'=>$userId,'enabled'=>false]);
+    need($userCode===200 && ($disabledMusic['music_rights']??true)===false,
+        'Owner could not disable the legacy music bundle');
+    $userState=json_decode((string)file_get_contents($root.'/the-one-remote-data/main-devices.json'),true);
+    $ur=$userState['devices'][$userId]['access_rights']??[];
+    $pending=$userState['devices'][$userId]['access_requests']??[];
+    need(($ur['the_one_user']??false)===true && ($ur['dj']??false)===true &&
+         ($ur['download_files']??false)===true && ($ur['shared']??true)===false &&
+         isset($pending['run']),
+         'Music revoke damaged unrelated user permissions or pending request');
+
+    // Block/unblock through actual owner API calls on isolated test records.
+    [$userCode,$notOwnerBlock]=call_api($base,'set_blocked',[
+        'request_device_id'=>'unrelated-device','device_id'=>$userId,'blocked'=>true]);
+    need($userCode===403,'Non-owner blocked a user installation');
+    [$userCode,$blockedUser]=call_api($base,'set_blocked',[
+        'request_device_id'=>$ownerId,'device_id'=>$userId,'blocked'=>true]);
+    need($userCode===200 && ($blockedUser['blocked']??false)===true,
+        'Owner could not block the user installation');
+    [$userCode,$blockedCheck]=call_api($base,'family_check',
+        signed_payload($userKey,'check',$userId,'the_one_user','com.gmailorg.theoneuser'));
+    need($userCode===200 && ($blockedCheck['allowed']??true)===false,
+        'Blocked The One User installation retained access');
+    [$userCode,$blockedRequest]=call_api($base,'request_access',[
+        'device_id'=>$userId,'scope'=>'tv_android']);
+    need($userCode===403,'Blocked user could request a new app right');
+    [$userCode,$unblockedUser]=call_api($base,'set_blocked',[
+        'request_device_id'=>$ownerId,'device_id'=>$userId,'blocked'=>false]);
+    need($userCode===200 && ($unblockedUser['blocked']??true)===false,
+        'Owner could not unblock the user installation');
+    [$userCode,$restoredUser]=call_api($base,'family_check',
+        signed_payload($userKey,'check',$userId,'the_one_user','com.gmailorg.theoneuser'));
+    need($userCode===200 && ($restoredUser['allowed']??false)===true,
+        'Unblocking did not restore previously approved user access');
+    [$userCode,$ownerBlocked]=call_api($base,'set_blocked',[
+        'request_device_id'=>$ownerId,'device_id'=>$ownerId,'blocked'=>true]);
+    need($userCode===409,'Owner device must not be blockable');
 
     [$strangerCode,$strangerBody]=call_api($base,'pending_requests',['request_device_id'=>'stranger']);
     need($strangerCode===403,'Non-owner may read the owner approval inbox');

@@ -724,26 +724,18 @@ if ($action === 'set_music_rights') {
 
     $state['devices'][$deviceId]['music_rights'] = $ownerTarget ? true : $enabled;
     $existingScoped = device_access_rights($state['devices'][$deviceId]);
-    $state['devices'][$deviceId]['access_rights'] = [
-        'media_player' => $ownerTarget ? true : (bool)($existingScoped['media_player'] ?? false),
-        'mixes' => $ownerTarget ? true : $enabled,
-        'shared' => $ownerTarget ? true : $enabled,
-        'favorites' => $ownerTarget ? true : $enabled,
-        'dj' => false,
-        'run' => $ownerTarget ? true : (bool)($existingScoped['run'] ?? false),
-        'downloads' => $ownerTarget ? true : false,
-        'download_files' => $ownerTarget ? true : false,
-        'cinema_android' => $ownerTarget ? true : (bool)($existingScoped['cinema_android'] ?? false),
-        'series_android' => $ownerTarget ? true : (bool)($existingScoped['series_android'] ?? false),
-        'tv_android' => $ownerTarget ? true : (bool)($existingScoped['tv_android'] ?? false)
-    ];
-    // Een wijziging van de oudere muziekrechten mag onafhankelijke app-aanvragen
-    // niet afhandelen of wissen zonder expliciete beslissing van de eigenaar.
+    // Only the legacy music bundle is changed here. Preserve all independent
+    // rights (including the_one_user, DJ, Run, downloads, Cinema, Series, TV)
+    // and all unrelated pending approval requests.
+    foreach (['mixes', 'shared', 'favorites'] as $musicScope) {
+        $existingScoped[$musicScope] = $ownerTarget ? true : $enabled;
+    }
+    $state['devices'][$deviceId]['access_rights'] = $existingScoped;
     $pendingRequests = device_access_requests($state['devices'][$deviceId]);
-    $state['devices'][$deviceId]['access_requests'] = array_intersect_key(
-        $pendingRequests,
-        array_flip(['cinema_android', 'series_android', 'tv_android'])
-    );
+    foreach (['mixes', 'shared', 'favorites'] as $musicScope) {
+        unset($pendingRequests[$musicScope]);
+    }
+    $state['devices'][$deviceId]['access_requests'] = $pendingRequests;
     $state['devices'][$deviceId]['music_rights_updated'] = gmdate('c');
     devices_save($devicesFile, $state);
     respond_devices(200, [
