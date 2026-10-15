@@ -148,6 +148,23 @@ jobs:
           name: the-one-live-android-v104
           path: live-android/protected-deliverable/
           retention-days: 7
+      - name: Verify private update service is deployed
+        run: |
+          curl --fail --silent --show-error --max-time 15 https://rubenvanaggelen.com/the-one-remote-api/family-updates.php?action=health |
+            python3 -c 'import json,sys; x=json.load(sys.stdin); assert x.get("ok") is True and x.get("service") == "The One Family Secure Updates"'
+      - name: Publish signed app to private Dev Hub after tests
+        if: success()
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          BUILD_APP_ID: tv-phone
+          BUILD_APK_PATH: live-android/deliverable/The-One-TV-Android-v1.0.4.apk
+          BUILD_VERSION_NAME: 1.0.4
+        run: bash ci/publish-family-private.sh
       - name: Save test reports
         if: always()
         uses: actions/upload-artifact@v4
