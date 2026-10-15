@@ -269,7 +269,7 @@ class WakePcActivity : AppCompatActivity() {
             setPadding(4, 8, 4, 8)
         }
         root.addView(TextView(this).apply {
-            text = "Selecteer een apparaat"
+            text = "Selecteer een persoon"
             textSize = 15f
             setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_main))
         })
@@ -281,7 +281,7 @@ class WakePcActivity : AppCompatActivity() {
             })
         } else {
             val groups = FamilyApplicantGroups.groupDevices(devices)
-            val labels = listOf("Kies een persoon of apparaat…") + groups.map { group ->
+            val labels = listOf("Kies een persoon…") + groups.map { group ->
                 (if (group.devices.any { it.online }) "● " else "○ ") + group.label
             }
             val selector = android.widget.Spinner(this)
@@ -303,8 +303,7 @@ class WakePcActivity : AppCompatActivity() {
                         val selected = groups[position - 1]
                         if (selected.family) {
                             details.addView(TextView(this@WakePcActivity).apply {
-                                text = selected.devices.first().personName.trim() +
-                                    " — toegang per app beheren"
+                                text = selected.label + " — apps en rechten"
                                 textSize = 17f
                                 setTypeface(typeface, android.graphics.Typeface.BOLD)
                                 setPadding(8, 8, 8, 14)
@@ -313,7 +312,7 @@ class WakePcActivity : AppCompatActivity() {
                         selected.devices.forEach { renderManagedDevice(details, it) }
                     } else {
                         details.addView(TextView(this@WakePcActivity).apply {
-                            text = "Kies hierboven een apparaat om de rechten te beheren."
+                            text = "Kies hierboven een persoon. Je ziet daarna alle apps en toestellen van die persoon."
                             textSize = 13f
                             setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
                             setPadding(8, 24, 8, 8)
@@ -345,6 +344,43 @@ class WakePcActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun askNameForDevice(device: MainRegisteredDevice) {
+        val input = EditText(this).apply {
+            hint = "Naam van de persoon"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
+            isSingleLine = true
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Persoon aan bestaande installatie koppelen")
+            .setMessage("Bestaat deze naam al? Dan verschijnt de app onder dezelfde persoon. Rechten blijven per installatie en worden niet overgenomen.")
+            .setView(input)
+            .setNegativeButton("Annuleren", null)
+            .setPositiveButton("Volgende") { _, _ ->
+                val name = input.text.toString().trim().replace(Regex("\\s+"), " ")
+                if (name.length !in 2..80 || name.any { java.lang.Character.isISOControl(it) }) {
+                    Toast.makeText(this, "Voer een geldige naam van 2 tot 80 tekens in.", Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
+                requestFamilyOwnerAuthorization(MainDeviceRegistry.ACCESS_CINEMA, "Persoon koppelen") { pin ->
+                    Thread {
+                        val result = runCatching { MainDeviceRegistry.setPersonName(this, pin, device.id, name) }
+                        runOnUiThread {
+                            result.onSuccess { exists ->
+                                Toast.makeText(this,
+                                    if (exists) "$name gekoppeld aan bestaande persoon." else "$name aangemaakt; installatie gekoppeld.",
+                                    Toast.LENGTH_LONG).show()
+                                // Re-open manager with the fresh owner-confirmed server state.
+                                Toast.makeText(this, "Sluit het overzicht en open Apparaten beheren opnieuw.", Toast.LENGTH_SHORT).show()
+                            }.onFailure {
+                                Toast.makeText(this, "Naam koppelen mislukt: " + (it.message ?: "serverfout"), Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }.start()
+                }
+            }
+            .show()
+    }
+
     private fun renderManagedDevice(list: LinearLayout, device: MainRegisteredDevice) {
         val personLabel = device.personName.ifBlank { "Naam nog niet ingevuld" }
         val familyApp = when (device.familyPackage) {
@@ -362,7 +398,17 @@ class WakePcActivity : AppCompatActivity() {
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setTextColor(ContextCompat.getColor(this@WakePcActivity, if (device.online) R.color.amber else R.color.text_main))
         })
-        card.addView(TextView(this).apply { text = device.name; textSize = 12f; setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim)) })
+        card.addView(TextView(this).apply {
+            text = FamilyApplicantGroups.deviceLabel(device) + " • installatie " + device.id.takeLast(6)
+            textSize = 12f
+            setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
+        })
+        if (device.personName.isBlank() && !device.owner) {
+            card.addView(android.widget.Button(this).apply {
+                text = "Persoon koppelen"
+                setOnClickListener { askNameForDevice(device) }
+            })
+        }
         val state = TextView(this).apply {
             text = managedDeviceStateText(device)
             textSize = 12f

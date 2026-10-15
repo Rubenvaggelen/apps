@@ -40,7 +40,8 @@ data class MainRegisteredDevice(
     val pendingFileDownloads: Boolean,
     val online: Boolean,
     val lastSeen: Long,
-    val familyPackage: String = ""
+    val familyPackage: String = "",
+    val personId: String = ""
 )
 
 data class MainAccessStatus(
@@ -253,6 +254,7 @@ object MainDeviceRegistry {
                         id = item.optString("device_id"),
                         name = item.optString("name", "Apparaat"),
                         personName = item.optString("person_name", "").trim(),
+                        personId = item.optString("person_id", "").trim(),
                         familyPackage = item.optString("family_package", ""),
                         platform = item.optString("platform", ""),
                         version = item.optString("version", ""),
@@ -419,6 +421,18 @@ object MainDeviceRegistry {
             .putBoolean(KEY_OWNER, owner)
             .apply()
         return allowed
+    }
+
+    fun setPersonName(context: Context, pin: String, targetDeviceId: String, personName: String): Boolean {
+        val result = request(
+            "set_person_name",
+            JSONObject()
+                .put("pin", pin)
+                .put("request_device_id", deviceId(context))
+                .put("device_id", targetDeviceId)
+                .put("person_name", personName)
+        )
+        return result.optBoolean("person_exists", false)
     }
 
     fun setMusicRights(

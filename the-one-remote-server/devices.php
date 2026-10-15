@@ -326,6 +326,7 @@ if ($action === 'pending_requests') {
             $requests[] = [
                 'device_id' => (string)$deviceId,
                 'person_name' => $personName,
+                'person_id' => (string)($d['person_id'] ?? ''),
                 'device_name' => $deviceName,
                 'scope' => (string)$scope,
                 'requested_at' => (string)($row['requested_at'] ?? '')
@@ -365,6 +366,35 @@ if ($action === 'connection_status') {
     respond_devices(200, ['ok' => true, 'devices' => $devices]);
 }
 
+
+/** User-facing people are names; app rights still belong to signed installations. */
+function family_person_key(string $name): string {
+    $normalized = preg_replace('/\\s+/u', ' ', trim($name));
+    return mb_strtolower(is_string($normalized) ? $normalized : '', 'UTF-8');
+}
+
+/** Reuse or create a person's grouping ID without granting any app permissions. */
+function family_link_person(array &$state, string $name, string $currentId): array {
+    $key = family_person_key($name);
+    $id = '';
+    $exists = false;
+    foreach ($state['devices'] as $deviceId => $record) {
+        if (!is_array($record) || family_person_key((string)($record['person_name'] ?? '')) !== $key) continue;
+        if ((string)$deviceId !== $currentId) $exists = true;
+        if ($id === '' && trim((string)($record['person_id'] ?? '')) !== '') {
+            $id = trim((string)$record['person_id']);
+        }
+    }
+    if ($id === '') $id = 'person-' . bin2hex(random_bytes(12));
+    // Backfill only a grouping label. Never copy any authorization bits.
+    foreach ($state['devices'] as &$record) {
+        if (!is_array($record)) continue;
+        if (family_person_key((string)($record['person_name'] ?? '')) !== $key) continue;
+        if (trim((string)($record['person_id'] ?? '')) === '') $record['person_id'] = $id;
+    }
+    unset($record);
+    return [$id, $exists];
+}
 
 /** The One Family: app-install identities are SHA-256 fingerprints of their public keys. */
 function family_scope_for_package(string $package): string {
@@ -455,11 +485,21 @@ if ($action === 'family_register') {
         $requests[$scope] = ['status' => 'pending', 'requested_at' => gmdate('c')];
     }
     $device['access_requests'] = $requests;
+    // Approved/denied installations cannot silently change their owner name.
+    // However, an old installation without a name can be named by its applicant.
+    if (trim((string)($device['person_name'] ?? '')) === '') {
+        $device['person_name'] = $personName;
+    }
+    [$personId, $existingPerson] = family_link_person(
+        $state, (string)$device['person_name'], $derivedId
+    );
+    $device['person_id'] = $personId;
     $device['last_seen'] = time();
     $state['devices'][$derivedId] = $device;
     devices_save($devicesFile, $state);
     respond_devices(200, ['ok' => true, 'device_id' => $derivedId,
-        'allowed' => (bool)($rights[$scope] ?? false), 'pending' => isset($requests[$scope])]);
+        'allowed' => (bool)($rights[$scope] ?? false), 'pending' => isset($requests[$scope]),
+        'person_id' => $personId, 'person_exists' => $existingPerson]);
 }
 
 if ($action === 'family_check') {
@@ -573,9 +613,8 @@ if ($action === 'list') {
         $owner = $ownerId !== '' && $deviceId !== '' && hash_equals($ownerId, $deviceId);
         $personName = trim((string)($d['person_name'] ?? ''));
 
-        // Oude installaties zonder naam blijven uit de beheerweergave. Zodra
-        // dat apparaat de nieuwe versie opent, wordt eerst om een naam gevraagd.
-        if (!$owner && $personName === '') continue;
+        // Unnamed legacy installs remain visible for owner-assisted naming.
+        // An unnamed row never inherits an existing person's permissions.
 
         $d['online'] = $lastSeen > 0 && ($now - $lastSeen) <= 90;
         $d['owner'] = $owner;
@@ -585,10 +624,38 @@ if ($action === 'list') {
             : device_access_rights($d);
         $d['access_requests'] = device_access_requests($d);
         $d['person_name'] = $personName;
+        $d['person_id'] = trim((string)($d['person_id'] ?? ''));
         $devices[] = $d;
     }
     usort($devices, fn($a, $b) => ((int)($b['last_seen'] ?? 0)) <=> ((int)($a['last_seen'] ?? 0)));
     respond_devices(200, ['ok' => true, 'devices' => $devices]);
+}
+
+if ($action === 'set_person_name') {
+    // The existing owner PIN is required to attach an old installation to a person.
+    if (!devices_admin($body)) {
+        respond_devices(403, ['ok' => false, 'error' => 'Owner PIN required']);
+    }
+    $deviceId = clean_device_id((string)($body['device_id'] ?? ''));
+    $personName = preg_replace('/\\s+/u', ' ', trim((string)($body['person_name'] ?? '')));
+    if (!is_string($personName) || mb_strlen($personName) < 2 ||
+        mb_strlen($personName) > 80 || preg_match('/[\\x00-\\x1F\\x7F]/u', $personName)) {
+        respond_devices(400, ['ok' => false, 'name_required' => true]);
+    }
+    if (!isset($state['devices'][$deviceId]) || !is_array($state['devices'][$deviceId])) {
+        respond_devices(404, ['ok' => false, 'error' => 'Device not found']);
+    }
+    $ownerTarget = devices_owner_id($ownerFile) === $deviceId;
+    if ($ownerTarget && trim((string)($state['devices'][$deviceId]['person_name'] ?? '')) !== '') {
+        respond_devices(409, ['ok' => false, 'error' => 'Owner name cannot be changed here']);
+    }
+    [$personId, $existingPerson] = family_link_person($state, $personName, $deviceId);
+    $state['devices'][$deviceId]['person_name'] = $personName;
+    $state['devices'][$deviceId]['person_id'] = $personId;
+    $state['devices'][$deviceId]['person_name_updated'] = gmdate('c');
+    devices_save($devicesFile, $state);
+    respond_devices(200, ['ok' => true, 'device_id' => $deviceId,
+        'person_name' => $personName, 'person_id' => $personId, 'person_exists' => $existingPerson]);
 }
 
 if ($action === 'set_access_right') {

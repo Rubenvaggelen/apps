@@ -2,7 +2,10 @@ name: Family license server guarded deployment
 on:
   push:
     branches: [feature/main-android-app-tiles-license-prep-20261014]
-    paths: [.github/workflows/family-license-deploy.yml]
+    paths:
+      - '.github/workflows/family-license-deploy.yml'
+      - 'the-one-remote-server/devices.php'
+      - 'the-one-remote-server/tests/family-license-smoke.php'
   workflow_dispatch: {}
 permissions:
   contents: read

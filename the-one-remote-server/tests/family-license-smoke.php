@@ -103,6 +103,43 @@ try {
     $current=json_decode((string)file_get_contents($root.'/the-one-remote-data/main-devices.json'),true,512,JSON_THROW_ON_ERROR);
     need(($current['devices'][$id]['person_name']??'')==='Anna Aanvrager',
         'Owner inbox did not get the person name supplied by the applicant');
+    $personId = (string)($current['devices'][$id]['person_id'] ?? '');
+    need(str_starts_with($personId, 'person-'), 'First applicant did not receive a person ID');
+
+    // Another independently signed app install with the same name joins the person,
+    // but must NOT inherit Cinema permission from the first installation.
+    $secondKey = openssl_pkey_new(['private_key_type'=>OPENSSL_KEYTYPE_EC, 'curve_name'=>'prime256v1']);
+    need($secondKey instanceof OpenSSLAsymmetricKey, 'Second key generation failed');
+    $secondPem = (string)openssl_pkey_get_details($secondKey)['key'];
+    $secondDer = base64_decode(preg_replace('~-----[^-]+-----|\\s+~', '', $secondPem), true);
+    need(is_string($secondDer), 'Second public key unavailable');
+    $secondId = 'fam-' . substr(hash('sha256', $secondDer), 0, 48);
+    $second = signed_payload($secondKey, 'register', $secondId, 'cinema_android');
+    $second['public_key'] = base64_encode($secondDer);
+    $second['person_name'] = '  anna   aanvrager ';
+    $second['platform'] = 'Google TV test';
+    [$code,$linked] = call_api($base,'family_register',$second);
+    need($code===200 && ($linked['person_exists']??false) === true &&
+        ($linked['person_id']??'') === $personId && ($linked['pending']??false) === true &&
+        ($linked['allowed']??true) === false, 'Existing person was not reused safely');
+    [$checkCode,$check] = call_api($base,'family_check',
+        signed_payload($secondKey,'check',$secondId,'cinema_android'));
+    need($checkCode===200 && ($check['allowed']??true)===false,
+        'Second installation inherited approval by reusing a name');
+
+    // A different name creates a separate person without touching other rights.
+    $thirdKey = openssl_pkey_new(['private_key_type'=>OPENSSL_KEYTYPE_EC, 'curve_name'=>'prime256v1']);
+    need($thirdKey instanceof OpenSSLAsymmetricKey, 'Third key generation failed');
+    $thirdPem = (string)openssl_pkey_get_details($thirdKey)['key'];
+    $thirdDer = base64_decode(preg_replace('~-----[^-]+-----|\\s+~', '', $thirdPem), true);
+    need(is_string($thirdDer), 'Third public key unavailable');
+    $thirdId = 'fam-' . substr(hash('sha256', $thirdDer), 0, 48);
+    $third = signed_payload($thirdKey, 'register', $thirdId, 'cinema_android');
+    $third['public_key'] = base64_encode($thirdDer);
+    $third['person_name'] = 'Nieuwe Persoon';
+    [$code,$fresh] = call_api($base,'family_register',$third);
+    need($code===200 && ($fresh['person_exists']??true)===false &&
+        ($fresh['person_id']??'') !== $personId, 'New name reused wrong person identity');
 
 
     // The Main owner must see the pending app license in the same existing device inbox.
