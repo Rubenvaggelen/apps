@@ -69,6 +69,22 @@ try {
     $reg['public_key']=base64_encode($der);
     $reg['person_name']='Licentie Test';
     $reg['platform']='Android test';
+
+    // The app must collect a real typed name before registration, not auto-fill a device model.
+    $withoutName=$reg;
+    $withoutName['person_name']=' ';
+    [$nameCode,$nameBody]=call_api($base,'family_register',$withoutName);
+    need($nameCode===400 && ($nameBody['name_required']??false)===true,
+        'Blank name was accepted for a new Family request');
+    $oneCharacter=$reg;
+    $oneCharacter['person_name']='A';
+    [$nameCode,$nameBody]=call_api($base,'family_register',$oneCharacter);
+    need($nameCode===400,'One-character name was accepted');
+    $longName=$reg;
+    $longName['person_name']=str_repeat('Z',81);
+    [$nameCode,$nameBody]=call_api($base,'family_register',$longName);
+    need($nameCode===400,'Overlong applicant name was accepted');
+
     [$code,$body]=call_api($base,'family_register',$reg);
     need($code===200 && ($body['device_id']??null)===$id && ($body['pending']??false)===true,
         'New installation did not request approval');
@@ -78,6 +94,16 @@ try {
     // A second register request must not create another device or reset the pending request.
     [$code,$body]=call_api($base,'family_register',$reg);
     need($code===200 && ($body['pending']??false)===true,'Pending approval was not retained');
+
+    $renamed=$reg;
+    $renamed['person_name']='Anna Aanvrager';
+    [$code,$body]=call_api($base,'family_register',$renamed);
+    need($code===200 && ($body['pending']??false)===true,
+        'Pending request did not survive entering the applicant name');
+    $current=json_decode((string)file_get_contents($root.'/the-one-remote-data/main-devices.json'),true,512,JSON_THROW_ON_ERROR);
+    need(($current['devices'][$id]['person_name']??'')==='Anna Aanvrager',
+        'Owner inbox did not get the person name supplied by the applicant');
+
 
     // The Main owner must see the pending app license in the same existing device inbox.
     $ownerId='test-owner-'.bin2hex(random_bytes(6));
@@ -112,6 +138,16 @@ try {
     [$code,$body]=call_api($base,'family_check',signed_payload($key,'check',$id,'cinema_android'));
     need($code===200 && ($body['allowed']??false)===true && ($body['valid_seconds']??0)===86400,
         'Approved installation did not receive a 24h online grant');
+
+    $renameAfterApproval=$reg;
+    $renameAfterApproval['person_name']='Andere Aanvrager';
+    [$code,$body]=call_api($base,'family_register',$renameAfterApproval);
+    need($code===200 && ($body['allowed']??false)===true,
+        'Existing approved installation should remain approved');
+    $confirmed=json_decode((string)file_get_contents($root.'/the-one-remote-data/main-devices.json'),true,512,JSON_THROW_ON_ERROR);
+    need(($confirmed['devices'][$id]['person_name']??'')==='Anna Aanvrager',
+        'An approved installation name was overwritten after approval');
+
 
     // The update manifest and APK are private; only approved signing keys may read them.
     $rootBuild=$root.'/the-one-private-builds/2026-10-13';
