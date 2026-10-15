@@ -14,6 +14,8 @@ import android.security.keystore.KeyProperties;
 import android.util.Base64;
 import android.view.Gravity;
 import android.widget.Button;
+import android.widget.EditText;
+import android.text.InputType;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import java.io.BufferedReader;
@@ -94,6 +96,66 @@ final class FamilyLicenseGate {
         showStatus("Licentie controleren…", false);
         verifyAccess();
     }
+
+    /** An applicant name is required only when requesting access, never inferred from hardware. */
+    static String normalizeApplicantName(String raw) {
+        if (raw == null) return "";
+        String name = raw.trim().replaceAll("\\s+", " ");
+        if (name.length() < 2 || name.length() > 80) return "";
+        for (int n = 0; n < name.length(); n++) {
+            if (Character.isISOControl(name.charAt(n))) return "";
+        }
+        return name;
+    }
+
+    private void askApplicantName() {
+        main.post(() -> {
+            if (closed || granted || activity.isFinishing() || activity.isDestroyed()) return;
+            main.removeCallbacks(pendingApprovalPoll);
+            LinearLayout layout = new LinearLayout(activity);
+            layout.setOrientation(LinearLayout.VERTICAL);
+            layout.setGravity(Gravity.CENTER);
+            layout.setPadding(32, 32, 32, 32);
+
+            TextView title = new TextView(activity);
+            title.setText("The One — toegang aanvragen");
+            title.setTextSize(21f);
+            title.setGravity(Gravity.CENTER);
+            layout.addView(title);
+
+            TextView description = new TextView(activity);
+            description.setText("Wie vraagt toegang tot deze app? Vul je naam in. De eigenaar ziet deze naam bij de goedkeuringsaanvraag in Main.");
+            description.setTextSize(16f);
+            description.setPadding(0, 18, 0, 12);
+            layout.addView(description);
+
+            EditText nameInput = new EditText(activity);
+            nameInput.setSingleLine(true);
+            nameInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+            nameInput.setHint("Jouw naam");
+            nameInput.setText(prefs.getString("applicant_name", ""));
+            layout.addView(nameInput);
+
+            Button submit = new Button(activity);
+            submit.setText("Toegang aanvragen");
+            submit.setOnClickListener(v -> {
+                String applicant = normalizeApplicantName(nameInput.getText().toString());
+                if (applicant.isEmpty()) {
+                    nameInput.setError("Vul je naam in (2 tot 80 tekens)");
+                    nameInput.requestFocus();
+                    return;
+                }
+                // Only the applicant name is stored locally; no PIN or owner credential.
+                prefs.edit().putString("applicant_name", applicant).apply();
+                showStatus("Aanvraag voor " + applicant + " versturen…", false);
+                main.postDelayed(this::verifyAccess, 150L);
+            });
+            layout.addView(submit);
+            activity.setContentView(layout);
+            nameInput.requestFocus();
+        });
+    }
+
 
     private static String encode(byte[] bytes) {
         return Base64.encodeToString(bytes, Base64.NO_WRAP);
@@ -229,11 +291,35 @@ final class FamilyLicenseGate {
             try {
                 KeyPair pair = identity();
                 String id = installationId(pair.getPublic().getEncoded());
+                String applicantName = normalizeApplicantName(prefs.getString("applicant_name", ""));
+                // Existing approved users retain access. Names are required only for a
+                // new/pending request; previously authorized installations are unchanged.
+                if (applicantName.isEmpty()) {
+                    try {
+                        JSONObject existing = post("family_check", proof("check", pair, id));
+                        if (existing.optBoolean("allowed", false)) {
+                            saveLease(id);
+                            unlock(id);
+                        } else if (existing.optBoolean("pending", false)) {
+                            askApplicantName();
+                        } else {
+                            showStatus("De aanvraag is geweigerd of het apparaat is geblokkeerd.", true);
+                        }
+                    } catch (RejectedException missing) {
+                        if (missing.getMessage().contains("HTTP 404")) askApplicantName();
+                        else showStatus(missing.getMessage(), true);
+                    } catch (Exception network) {
+                        if (cachedLeaseValid(id)) unlock(id);
+                        else showStatus("Geen netwerkverbinding. Verbind met internet om toegang aan te vragen.", true);
+                    }
+                    return;
+                }
                 try {
                     JSONObject registration = proof("register", pair, id);
                     registration.put("public_key", encode(pair.getPublic().getEncoded()));
-                    registration.put("person_name", Build.MANUFACTURER + " " + Build.MODEL);
-                    registration.put("platform", Build.VERSION.RELEASE);
+                    registration.put("person_name", applicantName);
+                    registration.put("platform", "Android " + Build.VERSION.RELEASE);
+                    registration.put("device_name", Build.MANUFACTURER + " " + Build.MODEL);
                     post("family_register", registration);
                     JSONObject status = post("family_check", proof("check", pair, id));
                     if (status.optBoolean("allowed", false)) {
