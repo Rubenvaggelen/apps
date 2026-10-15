@@ -1,0 +1,92 @@
+name: Audit The One User license integrity (read-only)
+on:
+  push:
+    branches: [feature/license-user-integrity-audit-20261015]
+    paths: [.github/workflows/audit-user-license-integrity.yml]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  isolated-license-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate PHP and isolated registration, name, approval, rights, block
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l the-one-remote-server/devices.php
+          php the-one-remote-server/tests/family-license-smoke.php
+          echo 'ISOLATED_FAMILY_TESTS=passed'
+          # No production device registration was modified by this test.
+  live-read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Read-only check of live User registration and scope persistence
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "${!name}" || { echo 'DEPLOY_READ_PERMISSION_MISSING'; exit 1; }
+          done
+          umask 077
+          d=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$d"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$d/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$d/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$d/askpass"
+          chmod 600 "$d/key" "$d/known_hosts"
+          chmod 700 "$d/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$d/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$d/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          opts=(-i "$d/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$d/known_hosts" -o ConnectTimeout=20)
+          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$DEPLOY_USER@$DEPLOY_HOST" 'python3 -' <<'PY'
+          import pathlib,json,re,time
+          home=pathlib.Path.home()
+          registry=home/'the-one-remote-data'/'main-devices.json'
+          owner=home/'the-one-remote-data'/'main-device-owner.json'
+          php=home/'public_html'/'the-one-remote-api'/'devices.php'
+          assert registry.is_file() and php.is_file() and owner.is_file(), 'Live registry/API/owner not found'
+          state=json.loads(registry.read_text(encoding='utf-8'))
+          records=state.get('devices') or {}
+          assert isinstance(records,dict), 'Invalid live registry structure'
+          o=json.loads(owner.read_text(encoding='utf-8'))
+          print('LIVE_OWNER_RECORD_CONFIGURED='+str(bool(o.get('device_id'))).lower())
+          def norm(v):return ' '.join(str(v or '').casefold().split())
+          matches=[
+            v for v in records.values()
+            if isinstance(v,dict) and v.get('family_package')=='com.gmailorg.theoneuser' and
+            ('leroy' in norm(v.get('person_name')) or 'leroy' in norm(v.get('name')))
+          ]
+          print('LIVE_USER_APP_REGISTERED='+str(len(matches)>0).lower())
+          print('LIVE_MATCHING_USER_APP_COUNT='+str(len(matches)))
+          print('LIVE_USER_APP_OWNER_NAMED='+str(bool(matches) and all(bool(norm(v.get('person_name'))) for v in matches)).lower())
+          print('LIVE_USER_APP_APPROVED='+str(bool(matches) and any(bool((v.get('access_rights') or {}).get('the_one_user')) for v in matches)).lower())
+          print('LIVE_USER_APP_BLOCKED='+str(bool(matches) and any(bool(v.get('blocked')) for v in matches)).lower())
+          print('LIVE_USER_APP_ACCESS_REQUEST_PENDING='+str(bool(matches) and any('the_one_user' in (v.get('access_requests') or {}) for v in matches)).lower())
+          now=time.time()
+          print('LIVE_USER_APP_SEEN_WITHIN_24H='+str(bool(matches) and any(now-float(v.get('last_seen') or 0)<86400 and now-float(v.get('last_seen') or 0)>=0 for v in matches)).lower())
+          source=php.read_text(encoding='utf-8')
+          section=re.search(r"if \(\$action === 'set_music_rights'\) \{(.*?)\n\}\s*if \(\$action === 'set_blocked'\)", source, re.S)
+          assert section, 'Music permissions handler could not be located; manual review required'
+          music=section.group(1)
+          preserve_user=bool(re.search(r"'the_one_user'\s*=>",music)) or bool(re.search(r"array_merge\s*\(\s*\$existingScoped",music))
+          preserve_pending=bool(re.search(r"array_flip\s*\(\s*\[[^\]]*'the_one_user'",music,re.S))
+          print('LIVE_MUSIC_CHANGE_PRESERVES_USER_SCOPE='+str(preserve_user).lower())
+          print('LIVE_MUSIC_CHANGE_PRESERVES_USER_PENDING='+str(preserve_pending).lower())
+          print('LIVE_USER_APP_FAMILY_SIGNED='+str("'com.gmailorg.theoneuser' => 'the_one_user'" in source).lower())
+          block=re.search(r"if \(\$action === 'set_blocked'\)\s*\{",source)
+          print('LIVE_BLOCK_HANDLER_EXISTS='+str(block is not None).lower())
+          print('READ_ONLY_AUDIT=completed')
+          PY
