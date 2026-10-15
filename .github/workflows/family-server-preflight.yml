@@ -2,7 +2,7 @@ name: Family server read-only preflight
 on:
   push:
     branches: [feature/main-android-app-tiles-license-prep-20261014]
-    paths: [.github/workflows/family-server-preflight.yml]
+    paths: [.github/workflows/family-server-preflight.yml, the-one-remote-server/family-updates.php, the-one-remote-server/tests/**]
   workflow_dispatch: {}
 permissions:
   contents: read
@@ -16,6 +16,7 @@ jobs:
       - name: Test isolated license contract
         run: |
           php -l the-one-remote-server/devices.php
+          php -l the-one-remote-server/family-updates.php
           php the-one-remote-server/tests/family-license-smoke.php
       - name: Inspect live server without changing files
         env:
