@@ -6,6 +6,7 @@ on:
       - '.github/workflows/family-license-deploy.yml'
       - 'the-one-remote-server/devices.php'
       - 'the-one-remote-server/tests/family-license-smoke.php'
+      - 'ci/family-people-live-merge.py'
   workflow_dispatch: {}
 permissions:
   contents: read
@@ -80,10 +81,12 @@ jobs:
           if git merge-file -p "$d/live.php" "$d/baseline.php" the-one-remote-server/devices.php > "$d/merged.php"; then
             echo 'MERGE_RESULT=clean'
           else
-            echo 'MERGE_RESULT=conflict; do not deploy'
-            exit 31
+            echo 'MERGE_RESULT=three-way-conflict; trying a fail-closed surgical change only'
+            python3 ci/family-people-live-merge.py "$d/live.php" the-one-remote-server/devices.php "$d/merged.php"
+            echo 'MERGE_RESULT=surgical-preserve-live'
           fi
           php -l "$d/merged.php"
+          # The candidate is always smoke-tested again before any remote write.
           python3 - "$d/live.php" "$d/merged.php" <<'CHECK'
           import sys,re
           def symbols(path):
