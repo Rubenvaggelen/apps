@@ -61,6 +61,11 @@ final class FamilyLicenseGate {
     private volatile boolean busy;
     private volatile String approvedIdentity;
     private volatile long lastOnlineCheckElapsed;
+    // Requests stay visible in Main. An awaiting app retries without a button press.
+    private final Runnable pendingApprovalPoll = () -> {
+        if (!closed && !granted && !activity.isFinishing()) verifyAccess();
+    };
+
     private final Runnable leaseWatch = new Runnable() {
         @Override public void run() {
             if (closed || !granted || activity.isFinishing()) return;
@@ -236,9 +241,10 @@ final class FamilyLicenseGate {
                         unlock(id);
                     } else {
                         clearLease();
-                        showStatus(status.optBoolean("pending", false)
-                            ? "Toestemming aangevraagd. Wacht op goedkeuring in Main."
-                            : "Geen toegang. Vraag de eigenaar om toestemming.", true);
+                        boolean pending = status.optBoolean("pending", false);
+                        showStatus(pending
+                            ? "Toestemming aangevraagd. Wacht op goedkeuring in Main. We controleren automatisch elke 30 seconden."
+                            : "Geen toegang. Vraag de eigenaar om toestemming.", true, pending);
                     }
                 } catch (RejectedException rejected) {
                     clearLease();
@@ -255,6 +261,7 @@ final class FamilyLicenseGate {
 
     private void unlock(String id) {
         main.post(() -> {
+            main.removeCallbacks(pendingApprovalPoll);
             if (closed || activity.isFinishing() || activity.isDestroyed() || granted) return;
             approvedIdentity = id;
             lastOnlineCheckElapsed = SystemClock.elapsedRealtime();
@@ -297,7 +304,12 @@ final class FamilyLicenseGate {
     }
 
     private void showStatus(String message, boolean retry) {
+        showStatus(message, retry, false);
+    }
+
+    private void showStatus(String message, boolean retry, boolean autoPoll) {
         main.post(() -> {
+            main.removeCallbacks(pendingApprovalPoll);
             if (closed || granted || activity.isFinishing() || activity.isDestroyed()) return;
             LinearLayout layout = new LinearLayout(activity);
             layout.setOrientation(LinearLayout.VERTICAL);
@@ -312,12 +324,14 @@ final class FamilyLicenseGate {
                 Button button = new Button(activity);
                 button.setText("Toestemming opnieuw controleren");
                 button.setOnClickListener(v -> {
+                    main.removeCallbacks(pendingApprovalPoll);
                     showStatus("Licentie controleren…", false);
                     verifyAccess();
                 });
                 layout.addView(button);
             }
             activity.setContentView(layout);
+            if (autoPoll) main.postDelayed(pendingApprovalPoll, 30000L);
         });
     }
 
@@ -325,6 +339,7 @@ final class FamilyLicenseGate {
         closed = true;
         worker.shutdownNow();
         main.removeCallbacks(leaseWatch);
+        main.removeCallbacks(pendingApprovalPoll);
         main.removeCallbacksAndMessages(null);
     }
 }
