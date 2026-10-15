@@ -96,18 +96,18 @@ object AccessRequestNotifications {
 
         NotifStore.init(context.applicationContext)
 
-        val activeKeys = requests.map { requestKey(it) }.toSet()
+        // Family apps belonging to one named applicant create one Main message.
+        val grouped = FamilyAccessRequestGrouping.group(requests)
+        val activeKeys = grouped.map { it.notificationKey }.toSet()
         val activeNotifKeys = activeKeys.map { "theone-access|" + it }.toSet()
 
         // Dismissing a message never approves or rejects the actual request.
-        requests.forEach { request ->
-            val person = request.personName.ifBlank {
-                request.deviceName.ifBlank { "Iemand" }
-            }
-            val scopeLabel = scopeLabel(request.scope)
-            val key = "theone-access|" + requestKey(request)
+        grouped.forEach { summary ->
+            val person = summary.person
+            val scopeLabel = summary.scopes
+            val key = "theone-access|" + summary.notificationKey
             val time = runCatching {
-                java.time.Instant.parse(request.requestedAt).toEpochMilli()
+                java.time.Instant.parse(summary.requestedAt).toEpochMilli()
             }.getOrDefault(System.currentTimeMillis())
 
             NotifStore.addOrUpdate(
@@ -121,7 +121,7 @@ object AccessRequestNotifications {
                     hasReplyAction = false,
                     persistent = false,
                     actionType = "access_request",
-                    actionValue = request.deviceId
+                    actionValue = summary.firstDeviceId
                 )
             )
         }
@@ -150,19 +150,17 @@ object AccessRequestNotifications {
         ) {
             ensureChannel(context)
 
-            requests.forEach { request ->
-                val key = requestKey(request)
+            grouped.forEach { summary ->
+                val key = summary.notificationKey
                 if (key in seen) return@forEach
 
-                val person = request.personName.ifBlank {
-                    request.deviceName.ifBlank { "Iemand" }
-                }
-                val scopeLabel = scopeLabel(request.scope)
+                val person = summary.person
+                val scopeLabel = summary.scopes
 
                 val intent = Intent(context, WakePcActivity::class.java).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                     putExtra("open_access_management", true)
-                    putExtra("focus_device_id", request.deviceId)
+                    putExtra("focus_device_id", summary.firstDeviceId)
                 }
                 val pendingIntent = PendingIntent.getActivity(
                     context,
