@@ -132,6 +132,19 @@ jobs:
                       print("DEVHUB_UI_CONTEXT_"+filename+"_"+str(line_no)+":"+
                             ",".join(matched_tokens)+":"+excerpt)
                       found+=1
+          for folder in matched:
+              for filename,ranges in {
+                  "builds.php":[(467,495),(507,554)],
+                  "index.php":[(26,45)]
+              }.items():
+                  f=folder/filename
+                  if not f.is_file():continue
+                  lines=f.read_text(encoding="utf-8").splitlines()
+                  for start,end in ranges:
+                      for n in range(start,min(end,len(lines))+1):
+                          line=lines[n-1].strip()
+                          if "password" in line.lower() or "secret" in line.lower(): continue
+                          print("DEVHUB_LAYOUT_"+filename+"_"+str(n)+"="+line[:280])
           if not matched:
               raise SystemExit("No deployed Dev Hub builds.php found in expected roots")
           PY
