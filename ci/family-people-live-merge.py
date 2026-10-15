@@ -45,6 +45,21 @@ insert_before("/** The One Family: app-install identities", helpers, "person-hel
 
 family = section(text, "if ($action === 'family_register') {",
     "if ($action === 'family_check') {")
+desired_family = section(source, "if ($action === 'family_register') {",
+    "if ($action === 'family_check') {")
+# Ensure the live file uses the same strict, required-name validation as new apps.
+# A live-only one-character legacy check must not silently weaken this contract.
+if "mb_strlen($personName) < 2" not in family:
+    name_start = family.find("    $personName = ")
+    state_start = family.find("    $state = devices_load($devicesFile);", name_start)
+    desired_start = desired_family.find("    $personName = ")
+    desired_end = desired_family.find("    $state = devices_load($devicesFile);", desired_start)
+    if min(name_start, state_start, desired_start, desired_end) < 0:
+        raise SystemExit("INVALID_NAME_VALIDATION_ANCHOR")
+    old_family = family
+    family = family[:name_start] + desired_family[desired_start:desired_end] + family[state_start:]
+    text = text.replace(old_family, family, 1)
+    print("APPLIED=strict-applicant-name-validation")
 if "family_link_person(" not in family:
     anchor = "    $device['access_requests'] = $requests;\n    $device['last_seen'] = time();"
     replacement = section(source, "    $device['access_requests'] = $requests;\n    // Approved/denied",
