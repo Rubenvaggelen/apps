@@ -1,13 +1,8 @@
 name: The One User and Main independent APKs
 
+# Historical two-APK release remains manual-only.
+# Future user visual updates MUST NOT re-publish owner Main or older user v1001.
 on:
-  push:
-    branches: [feature/the-one-user-standalone-20261015]
-    paths:
-      - '.github/workflows/the-one-user-app-release.yml'
-      - 'app/**'
-      - 'the-one-remote-server/**'
-      - 'ci/user-app-live-merge.py'
   workflow_dispatch: {}
 
 permissions:
