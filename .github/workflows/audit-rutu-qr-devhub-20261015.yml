@@ -29,8 +29,11 @@ jobs:
               files=list(Path('audit-artifacts',directory).rglob('*.apk'))
               assert len(files)==1 and files[0].is_file(), "Missing required RUTU APK"
               path=files[0]
+              digest=hashlib.sha256()
               with path.open('rb') as stream:
-                  sha=hashlib.file_digest(stream,'sha256').hexdigest()
+                  for block in iter(lambda:stream.read(1024*1024),b''):
+                      digest.update(block)
+              sha=digest.hexdigest()
               print('APPROVED_RUTU_'+name+'_SIZE='+str(path.stat().st_size))
               print('APPROVED_RUTU_'+name+'_SHA256='+sha)
           PY
@@ -112,8 +115,11 @@ jobs:
           for name,path in files:
               if not path.is_file():
                   print('LIVE_RUTU_'+name+'_FILE=MISSING');continue
+              digest=hashlib.sha256()
               with path.open('rb') as stream:
-                  sha=hashlib.file_digest(stream,'sha256').hexdigest()
+                  for block in iter(lambda:stream.read(1024*1024),b''):
+                      digest.update(block)
+              sha=digest.hexdigest()
               print('LIVE_RUTU_'+name+'_SHA256='+sha)
               print('LIVE_RUTU_'+name+'_SIZE='+str(path.stat().st_size))
           for name,manifest in [('CUSTOMER','android.json'),('BUSINESS','business-android.json'),('WINDOWS','windows.json')]:
