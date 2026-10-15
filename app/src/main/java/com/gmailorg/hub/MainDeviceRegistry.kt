@@ -39,7 +39,8 @@ data class MainRegisteredDevice(
     val pendingDownloads: Boolean,
     val pendingFileDownloads: Boolean,
     val online: Boolean,
-    val lastSeen: Long
+    val lastSeen: Long,
+    val familyPackage: String = ""
 )
 
 data class MainAccessStatus(
@@ -252,6 +253,7 @@ object MainDeviceRegistry {
                         id = item.optString("device_id"),
                         name = item.optString("name", "Apparaat"),
                         personName = item.optString("person_name", "").trim(),
+                        familyPackage = item.optString("family_package", ""),
                         platform = item.optString("platform", ""),
                         version = item.optString("version", ""),
                         blocked = item.optBoolean("blocked", false),
