@@ -162,7 +162,35 @@ class HomeActivity : AppCompatActivity() {
         "com.theone.tv.phone" to "tv_android",
     )
 
+    private fun showMissingFamilyApp(packageName: String) {
+        val label = when (packageName) {
+            "com.theone.cinema" -> "Cinema"
+            "com.theone.series" -> "Series"
+            "com.theone.tv.phone" -> "TV"
+            else -> return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("The One $label installeren")
+            .setMessage("De $label-app is nog niet op dit toestel geïnstalleerd. Deze tegel is een snelkoppeling naar de aparte app. Installeer de Android-telefoonversie uit de privé Dev Hub. Daarna opent deze tegel de app rechtstreeks.")
+            .setNegativeButton("Later", null)
+            .setPositiveButton("Dev Hub openen") { _, _ ->
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://dev.rubenvanaggelen.com/builds.php")))
+            }.show()
+    }
+
     private fun handleLicensedApp(packageName: String, scope: String) {
+        // Eerst de installatie controleren, pas daarna het Main-toegangsrecht.
+        // Zo ziet de eigenaar waarom een tegel niet start en kan hij de APK installeren.
+        if (!isPackageInstalled(packageName)) {
+            showMissingFamilyApp(packageName)
+            return
+        }
+        // Main is de eigenaarconsole. De zelfstandige APK controleert altijd
+        // zijn eigen apparaatgebonden licentie, ook als Main op dit toestel eigenaar is.
+        if (MainDeviceRegistry.isLocallyOwner(this) && !MainDeviceRegistry.isLocallyBlocked(this)) {
+            launchExternalApp(packageName)
+            return
+        }
         Thread {
             val result = runCatching {
                 MainDeviceRegistry.heartbeat(this)
@@ -495,7 +523,16 @@ class HomeActivity : AppCompatActivity() {
         if (packageName == null) return
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
         if (launchIntent != null) {
-            startActivity(launchIntent)
+            try {
+                startActivity(launchIntent)
+            } catch (_: android.content.ActivityNotFoundException) {
+                if (packageName in licensedAppScopes) showMissingFamilyApp(packageName)
+                else Toast.makeText(this, "Deze app kan niet worden gestart.", Toast.LENGTH_LONG).show()
+            } catch (_: SecurityException) {
+                Toast.makeText(this, "Android heeft het starten van deze app geweigerd.", Toast.LENGTH_LONG).show()
+            }
+        } else if (packageName in licensedAppScopes) {
+            showMissingFamilyApp(packageName)
         } else {
             Toast.makeText(this, "Kan deze app niet openen (mogelijk verwijderd)", Toast.LENGTH_SHORT).show()
         }
@@ -539,13 +576,10 @@ class HomeAdapter(
                 ContextCompat.getDrawable(context, R.drawable.the_one_run_icon)
             }
         } else if (tile.id in setOf("com.theone.cinema", "com.theone.series", "com.theone.tv.phone")) {
-            // Gebruik uitsluitend het echte huidige launcherlogo uit de APK.
-            // Een niet-geinstalleerde app mag geen verzonnen of verkeerd logo tonen.
-            try {
-                context.packageManager.getApplicationIcon(tile.packageName!!)
-            } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
-                ContextCompat.getDrawable(context, R.drawable.ic_home_movies_fancy)
-            }
+            // De originele app-logo's zitten ook in Main zelf, en blijven
+            // correct wanneer een losse APK nog niet op dit toestel staat.
+            OfficialFamilyArtwork.drawable(context, tile.packageName!!)
+                ?: runCatching { context.packageManager.getApplicationIcon(tile.packageName) }.getOrNull()
         } else when (tile.type) {
             TileType.NOTIFICATIONS -> ContextCompat.getDrawable(context, R.drawable.ic_home_notifications_fancy)
             TileType.MAIL -> ContextCompat.getDrawable(context, R.drawable.ic_home_mail_fancy)
