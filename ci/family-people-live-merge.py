@@ -60,6 +60,21 @@ if "mb_strlen($personName) < 2" not in family:
     family = family[:name_start] + desired_family[desired_start:desired_end] + family[state_start:]
     text = text.replace(old_family, family, 1)
     print("APPLIED=strict-applicant-name-validation")
+# Older live versions retained pending requests but never refreshed their typed name.
+# Only still-pending, not-approved installations are allowed to update this field.
+if "Refresh a still-pending request with the name actually typed" not in family:
+    pending_start = "    // Refresh a still-pending request with the name actually typed"
+    # The repository may use another comment spelling; the guard is the logic.
+    if "if (isset($requests[$scope]) && !(bool)($rights[$scope] ?? false))" not in family:
+        repo_start = desired_family.find("    // Refresh a still-pending request")
+        repo_end = desired_family.find("    if (!(bool)($rights[$scope] ?? false)", repo_start)
+        target = family.find("    if (!(bool)($rights[$scope] ?? false)")
+        if min(repo_start, repo_end, target) < 0:
+            raise SystemExit("INVALID_PENDING_NAME_REFRESH_ANCHOR")
+        old_family = family
+        family = family[:target] + desired_family[repo_start:repo_end] + family[target:]
+        text = text.replace(old_family, family, 1)
+        print("APPLIED=pending-name-refresh")
 if "family_link_person(" not in family:
     anchor = "    $device['access_requests'] = $requests;\n    $device['last_seen'] = time();"
     replacement = section(source, "    $device['access_requests'] = $requests;\n    // Approved/denied",
