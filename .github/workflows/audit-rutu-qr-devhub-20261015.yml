@@ -1,0 +1,123 @@
+name: RUTU Saturday QR, APK and Dev Hub audit (read-only)
+on:
+  push:
+    branches: [feature/jade-orders]
+    paths: ['.github/workflows/audit-rutu-qr-devhub-20261015.yml']
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  actions: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Identify exact latest approved RUTU customer and business APK artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p audit-artifacts/customer audit-artifacts/business
+          gh run download 38755401421 -R "$GITHUB_REPOSITORY" -n jade-orders-apk -D audit-artifacts/customer
+          gh run download 38755401421 -R "$GITHUB_REPOSITORY" -n rutu-business-android-apk -D audit-artifacts/business
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          for name,directory in (('CUSTOMER','customer'),('BUSINESS','business')):
+              files=list(Path('audit-artifacts',directory).rglob('*.apk'))
+              assert len(files)==1 and files[0].is_file(), "Missing required RUTU APK"
+              path=files[0]
+              with path.open('rb') as stream:
+                  sha=hashlib.file_digest(stream,'sha256').hexdigest()
+              print('APPROVED_RUTU_'+name+'_SIZE='+str(path.stat().st_size))
+              print('APPROVED_RUTU_'+name+'_SHA256='+sha)
+          PY
+      - name: Decode the QR code already used in the RUTU business apps
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --quiet opencv-python-headless
+          python3 - <<'PY'
+          import cv2
+          from pathlib import Path
+          image=cv2.imread('rutu-windows/assets/rutu-android-qr.png')
+          assert image is not None, "QR image missing"
+          url,_,_=cv2.QRCodeDetector().detectAndDecode(image)
+          assert url.startswith('https://'), "Existing QR did not resolve to an HTTPS target"
+          print('CURRENT_RUTU_BUSINESS_QR_TARGET='+url)
+          PY
+      - name: Read live RUTU updates, exact APK SHA-256 and Dev Hub page without changing anything
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for v in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "${!v}" || { echo "::error::Missing deployment inspection setting $v"; exit 1; }
+          done
+          umask 077
+          d="$(mktemp -d)"
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$d"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$d/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$d/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$d/askpass"
+          chmod 600 "$d/key" "$d/known_hosts"
+          chmod 700 "$d/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$d/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$d/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          opts=(-i "$d/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+                -o UserKnownHostsFile="$d/known_hosts" -o ConnectTimeout=20)
+          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$DEPLOY_USER@$DEPLOY_HOST" 'python3 -' <<'PY'
+          from pathlib import Path
+          import json,hashlib,re
+          home=Path.home()
+          roots=[home/'public_html'/'rutu-updates', home/'dev.vanaggelen.com',home/'dev.rubenvanaggelen.com']
+          for root in roots:
+              print('AUDIT_ROOT_EXISTS_'+root.name.upper().replace('.','_')+'='+str(root.is_dir()).lower())
+          update=home/'public_html'/'rutu-updates'
+          files=[
+              ('CUSTOMER',update/'Rutu-BBQ-Android.apk'),
+              ('BUSINESS',update/'Rutu-BBQ-Bedrijf-Android.apk'),
+              ('WINDOWS',update/'Rutu-BBQ-Windows.exe'),
+              ('DEVHUB_BUSINESS',home/'dev.vanaggelen.com'/'rutu-downloads'/'Rutu-BBQ-Bedrijf-Android.apk'),
+              ('DEVHUB_WINDOWS',home/'dev.vanaggelen.com'/'rutu-downloads'/'Rutu-BBQ-Bedrijf-Windows.exe'),
+          ]
+          for name,path in files:
+              if not path.is_file():
+                  print('LIVE_RUTU_'+name+'_FILE=MISSING');continue
+              with path.open('rb') as stream:
+                  sha=hashlib.file_digest(stream,'sha256').hexdigest()
+              print('LIVE_RUTU_'+name+'_SHA256='+sha)
+              print('LIVE_RUTU_'+name+'_SIZE='+str(path.stat().st_size))
+          for name,manifest in [('CUSTOMER','android.json'),('BUSINESS','business-android.json'),('WINDOWS','windows.json')]:
+              p=update/manifest
+              if not p.is_file():
+                  print('LIVE_RUTU_'+name+'_MANIFEST=MISSING');continue
+              metadata=json.loads(p.read_text(encoding='utf-8'))
+              print('LIVE_RUTU_'+name+'_VERSION='+str(metadata.get('versionCode',metadata.get('version',''))))
+              print('LIVE_RUTU_'+name+'_META_URL='+str(metadata.get('url','')))
+              print('LIVE_RUTU_'+name+'_META_SHA256='+str(metadata.get('sha256','')))
+          hub=home/'dev.vanaggelen.com'/'rutu.html'
+          if not hub.is_file():
+              print('LIVE_RUTU_DEVHUB_PAGE=MISSING')
+          else:
+              s=hub.read_text(encoding='utf-8')
+              print('LIVE_RUTU_DEVHUB_PAGE_SIZE='+str(len(s)))
+              print('LIVE_RUTU_DEVHUB_PAGE_SHA256='+hashlib.sha256(s.encode('utf-8')).hexdigest())
+              for phrase in ['BUILD 438','WINDOWS 0.4.33','Rutu-BBQ-Android.apk','Rutu-BBQ-Bedrijf-Android.apk','Rutu-BBQ-Bedrijf-Windows.exe','rutu-updates']:
+                  print('LIVE_RUTU_HUB_MARKER_'+re.sub(r'[^A-Z0-9]','_',phrase.upper())+'='+str(phrase in s).lower())
+              for m in re.findall(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',s,re.I|re.S):
+                  dest,label=m
+                  if ('Rutu-' in dest or 'rutu-' in dest.lower()) and len(dest)<260:
+                      print('LIVE_RUTU_DOWNLOAD_LINK='+re.sub(r'<[^>]+>','',label).strip()+' -> '+dest)
+              print('LIVE_RUTU_BRANDING='+str('RUTU BBQ' in s).lower())
+          print('RUTU_LIVE_AUDIT=completed_read_only')
+          PY
