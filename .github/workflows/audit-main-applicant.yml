@@ -58,6 +58,24 @@ jobs:
                   matches.append(row)
           print('REGISTRY_RECORD_COUNT='+str(len(records)))
           print('MATCH_COUNT='+str(len(matches)))
+          print('REGISTRY_MODIFIED_UTC='+datetime.datetime.fromtimestamp(p.stat().st_mtime,datetime.timezone.utc).isoformat())
+          near=[row for row in records.values() if isinstance(row,dict) and (
+              'leroy' in normalized(row.get('person_name')) or
+              'rack' in normalized(row.get('person_name')) or
+              'leroy' in normalized(row.get('name')) or
+              'rack' in normalized(row.get('name'))
+          )]
+          print('PARTIAL_LEROY_OR_RACK_COUNT='+str(len(near)))
+          for i,row in enumerate(near,1):
+              pending=row.get('access_requests') or {}
+              if not isinstance(pending,dict):pending={}
+              print('PARTIAL_'+str(i)+'_PERSON_CONTAINS_LEROY='+str('leroy' in normalized(row.get('person_name'))).lower())
+              print('PARTIAL_'+str(i)+'_PERSON_CONTAINS_RACK='+str('rack' in normalized(row.get('person_name'))).lower())
+              print('PARTIAL_'+str(i)+'_PENDING='+','.join(sorted(pending)))
+          print('UNNAMED_RECORD_COUNT='+str(sum(1 for row in records.values() if isinstance(row,dict) and not normalized(row.get('person_name')))))
+          print('RECORDS_WITH_PENDING='+str(sum(1 for row in records.values() if isinstance(row,dict) and bool(row.get('access_requests')))))
+          now=datetime.datetime.now(datetime.timezone.utc).timestamp()
+          print('RECENT_24H_RECORDS='+str(sum(1 for row in records.values() if isinstance(row,dict) and 0 < now - int(row.get('last_seen') or 0) < 86400)))
           for i,row in enumerate(matches,1):
               requests=row.get('access_requests') or {}
               rights=row.get('access_rights') or {}
