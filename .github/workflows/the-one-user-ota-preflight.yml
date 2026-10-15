@@ -145,6 +145,23 @@ jobs:
                           line=lines[n-1].strip()
                           if "password" in line.lower() or "secret" in line.lower(): continue
                           print("DEVHUB_LAYOUT_"+filename+"_"+str(n)+"="+line[:280])
+          for folder in matched:
+              for filename in ["family-installaties.php","family-new-builds-20261013.php"]:
+                  f=folder/filename
+                  print("DEVHUB_EXTRA_EXISTS_"+filename+"="+str(f.is_file()).lower())
+                  if not f.is_file(): continue
+                  body=f.read_text(encoding="utf-8")
+                  print("DEVHUB_EXTRA_INFO_"+filename+"=lines:"+str(body.count("\\n")+1)+
+                        ",has_user:"+str("the_one_user" in body or "The One Gebruiker" in body).lower()+
+                        ",has_dj:"+str("The One DJ" in body).lower())
+                  found=0
+                  for n,line in enumerate(body.splitlines(),1):
+                      if found >= 20:break
+                      if not any(x in line.lower() for x in
+                          ("the one dj","the one run","main-v","<h2","<h3","family","com.theone","user-v")): continue
+                      if "password" in line.lower() or "secret" in line.lower():continue
+                      print("DEVHUB_EXTRA_CONTEXT_"+filename+"_"+str(n)+"="+line.strip()[:230])
+                      found+=1
           if not matched:
               raise SystemExit("No deployed Dev Hub builds.php found in expected roots")
           PY
