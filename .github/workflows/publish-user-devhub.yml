@@ -1,0 +1,153 @@
+name: Publish The One User in live Dev Hub (guarded, additive)
+on:
+  push:
+    branches: [feature/the-one-user-standalone-20261015]
+    paths: ['.github/workflows/publish-user-devhub.yml']
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  publish-devhub-user:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate user Dev Hub patch and published release
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile ci/patch-user-devhub-live.py
+          python3 - <<'PY'
+          import json,urllib.request
+          url='https://api.github.com/repos/Rubenvaggelen/apps/releases/tags/user-v1003'
+          req=urllib.request.Request(url,headers={'User-Agent':'The-One-DevHub-Release-Check'})
+          with urllib.request.urlopen(req,timeout=20) as response:
+              data=json.load(response)
+          matching=[a for a in data.get('assets',[]) if a.get('name')=='The-One-Android-User.apk']
+          assert not data.get('draft') and not data.get('prerelease') and len(matching)==1
+          assert matching[0].get('digest')=='sha256:f6b4d2ae2661a2b595ed2e102bc8e0b9d31162c0675ce2de4350b0805f224ebb'
+          print('USER_APP_RELEASE_ASSET=verified-stable-v1003')
+          PY
+      - name: Surgically add User APK to existing Dev Hub (3 pages, backup and rollback)
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for v in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "${!v}" || { echo "::error::Missing $v"; exit 1; }
+          done
+          umask 077
+          d="$(mktemp -d)"
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$d"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$d/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$d/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$d/askpass"
+          chmod 600 "$d/key" "$d/known_hosts"
+          chmod 700 "$d/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$d/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$d/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          opts=(-i "$d/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$d/known_hosts" -o ConnectTimeout=20)
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          # Inspect and patch the CURRENT live sources, never the outdated repo copy.
+          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" \
+            'test -f "$HOME/dev.vanaggelen.com/builds.php" &&
+             test -f "$HOME/dev.vanaggelen.com/index.php" &&
+             test -f "$HOME/dev.vanaggelen.com/family-installaties.php" &&
+             php -l "$HOME/dev.vanaggelen.com/builds.php" >/dev/null &&
+             php -l "$HOME/dev.vanaggelen.com/index.php" >/dev/null &&
+             php -l "$HOME/dev.vanaggelen.com/family-installaties.php" >/dev/null'
+          for f in builds.php index.php family-installaties.php; do
+            ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" \
+              "cat \"\$HOME/dev.vanaggelen.com/$f\"" > "$d/original-$f"
+          done
+          python3 ci/patch-user-devhub-live.py \
+            "$d/original-builds.php" "$d/original-index.php" "$d/original-family-installaties.php" \
+            "$d/new-builds.php" "$d/new-index.php" "$d/new-family-installaties.php"
+          for f in builds.php index.php family-installaties.php; do
+            php -l "$d/new-$f"
+          done
+          grep -q 'id="theOneUserDownload"' "$d/new-builds.php"
+          grep -q 'id="theOneUserDownload"' "$d/new-index.php"
+          grep -q "'The One Gebruiker','v1003','user-v'" "$d/new-family-installaties.php"
+          echo 'DEVHUB_PREDEPLOY=three-pages-patched-and-valid'
+
+          stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" \
+            'mktemp -d "$HOME/.the-one-user-devhub-stage.XXXXXXXX"')
+          for f in builds.php index.php family-installaties.php; do
+            scp -O -P "$DEPLOY_PORT" "${opts[@]}" \
+              "$d/new-$f" "$remote:$stage/$f"
+          done
+          sha_builds=$(sha256sum "$d/original-builds.php" | awk '{print $1}')
+          sha_index=$(sha256sum "$d/original-index.php" | awk '{print $1}')
+          sha_family=$(sha256sum "$d/original-family-installaties.php" | awk '{print $1}')
+          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" \
+            "bash -s -- '$stage' '$sha_builds' '$sha_index' '$sha_family'" <<'REMOTE'
+          set -euo pipefail
+          stage="$1"
+          root="$HOME/dev.vanaggelen.com"
+          names=(builds.php index.php family-installaties.php)
+          expected=("$2" "$3" "$4")
+          backup=""
+          committed=false
+          finish() {
+            rc=$?
+            trap - EXIT
+            if [ "$committed" != true ] && [ -n "$backup" ]; then
+              echo "DEVHUB_ROLLBACK=restoring-live-files"
+              for f in "${names[@]}"; do
+                if [ -f "$backup/$f" ]; then
+                  cp -p "$backup/$f" "$root/.$f.user-rollback.$$"
+                  mv -f "$root/.$f.user-rollback.$$" "$root/$f"
+                fi
+              done
+            fi
+            rm -rf "$stage"
+            exit "$rc"
+          }
+          trap finish EXIT
+          # Reject concurrent changes to any live Dev Hub page.
+          for i in 0 1 2; do
+            f="${names[$i]}"
+            test -f "$root/$f" && test -f "$stage/$f"
+            current=$(sha256sum "$root/$f" | awk '{print $1}')
+            if [ "$current" != "${expected[$i]}" ]; then
+              echo "LIVE_DEVHUB_CHANGED_DURING_DEPLOY=$f"
+              exit 10
+            fi
+            php -l "$stage/$f" >/dev/null
+          done
+          backup=$(mktemp -d "$HOME/.the-one-user-devhub-backups.XXXXXXXX")
+          for f in "${names[@]}"; do
+            cp -p "$root/$f" "$backup/$f"
+          done
+          for f in "${names[@]}"; do
+            cp "$stage/$f" "$root/.$f.user-release.$$"
+            chmod --reference="$root/$f" "$root/.$f.user-release.$$"
+            mv -f "$root/.$f.user-release.$$" "$root/$f"
+          done
+          for f in "${names[@]}"; do
+            php -l "$root/$f" >/dev/null
+          done
+          grep -q 'THE_ONE_USER_DEVHUB_DOWNLOAD_V1' "$root/builds.php"
+          grep -q 'THE_ONE_USER_DEVHUB_DOWNLOAD_V1' "$root/index.php"
+          grep -q "'The One Gebruiker','v1003','user-v'" "$root/family-installaties.php"
+          committed=true
+          echo 'DEVHUB_DEPLOY_RESULT=success'
+          echo 'DEVHUB_BACKUP_RESULT=preserved'
+          echo 'DEVHUB_PAGES=builds,index,family-installaties'
+          REMOTE
+          # HTTP 401 is normal if cPanel Directory Privacy is enabled.
+          code=$(curl -L --silent --output /dev/null --write-out '%{http_code}' \
+            --connect-timeout 10 --max-time 20 \
+            'https://dev.rubenvanaggelen.com/builds.php')
+          case "$code" in
+            200|401|403) echo "DEVHUB_PUBLIC_HTTP=$code" ;;
+            *) echo "::error::Dev Hub endpoint returned $code"; exit 20 ;;
+          esac
