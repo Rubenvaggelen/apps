@@ -21,7 +21,7 @@ jobs:
           echo 'USER_OLD_UPDATER_CONTRACT=confirmed'
       - name: Add stable asset alias to v1003 without changing APK bytes
         env:
-          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -54,16 +54,16 @@ jobs:
       - name: Read-only Dev Hub active web-root check
         shell: bash
         env:
-          DEPLOY_HOST: \${{ secrets.DEPLOY_HOST }}
-          DEPLOY_PORT: \${{ secrets.DEPLOY_PORT }}
-          DEPLOY_USER: \${{ secrets.DEPLOY_USER }}
-          DEPLOY_SSH_KEY: \${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_SSH_PASSPHRASE: \${{ secrets.DEPLOY_SSH_PASSPHRASE }}
-          DEPLOY_KNOWN_HOSTS: \${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
           for v in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
-            test -n "\${!v}" || { echo "::error::Missing $v"; exit 1; }
+            test -n "${!v}" || { echo "::error::Missing $v"; exit 1; }
           done
           umask 077
           d="$(mktemp -d)"
