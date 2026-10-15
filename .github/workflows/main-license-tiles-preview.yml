@@ -50,11 +50,11 @@ jobs:
         env:
           ORG_GRADLE_PROJECT_YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           ORG_GRADLE_PROJECT_TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-        run: gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon
+        run: gradle :app:testDebugUnitTest :app:assembleDebug -PappVersionCode=1016 --no-daemon
       - name: Store Main test APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: main-license-tiles-preview
+          name: main-license-tiles-preview-v1016
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 3
