@@ -81,8 +81,18 @@ jobs:
           section=re.search(r"if \(\$action === 'set_music_rights'\) \{(.*?)\n\}\s*if \(\$action === 'set_blocked'\)", source, re.S)
           assert section, 'Music permissions handler could not be located; manual review required'
           music=section.group(1)
-          preserve_user=bool(re.search(r"'the_one_user'\s*=>",music)) or bool(re.search(r"array_merge\s*\(\s*\$existingScoped",music))
-          preserve_pending=bool(re.search(r"array_flip\s*\(\s*\[[^\]]*'the_one_user'",music,re.S))
+          # New scoped implementation mutates ONLY mixes/shared/favorites.
+          # All other flags and all other pending requests stay untouched.
+          preserve_user=(
+              "foreach (['mixes', 'shared', 'favorites'] as $musicScope)" in music and
+              "$state['devices'][$deviceId]['access_rights'] = $existingScoped;" in music and
+              "'dj' => false" not in music
+          )
+          preserve_pending=(
+              "unset($pendingRequests[$musicScope])" in music and
+              "$state['devices'][$deviceId]['access_requests'] = $pendingRequests;" in music and
+              'array_intersect_key' not in music
+          )
           print('LIVE_MUSIC_CHANGE_PRESERVES_USER_SCOPE='+str(preserve_user).lower())
           print('LIVE_MUSIC_CHANGE_PRESERVES_USER_PENDING='+str(preserve_pending).lower())
           print('LIVE_USER_APP_FAMILY_SIGNED='+str("'com.gmailorg.theoneuser' => 'the_one_user'" in source).lower())
