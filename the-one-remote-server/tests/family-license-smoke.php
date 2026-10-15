@@ -78,6 +78,19 @@ try {
     // A second register request must not create another device or reset the pending request.
     [$code,$body]=call_api($base,'family_register',$reg);
     need($code===200 && ($body['pending']??false)===true,'Pending approval was not retained');
+
+    // The Main owner must see the pending app license in the same existing device inbox.
+    $ownerId='test-owner-'.bin2hex(random_bytes(6));
+    file_put_contents($root.'/the-one-remote-data/main-device-owner.json',
+        json_encode(['device_id'=>$ownerId,'person_name'=>'Test eigenaar']));
+    [$ownerCode,$ownerBody]=call_api($base,'pending_requests',['request_device_id'=>$ownerId]);
+    $items=$ownerBody['requests']??[];
+    need($ownerCode===200 && count(array_filter($items,fn($row)=>
+        ($row['device_id']??'')===$id && ($row['scope']??'')==='cinema_android'))===1,
+        'Pending Family request not shown in owner Main inbox');
+    [$strangerCode,$strangerBody]=call_api($base,'pending_requests',['request_device_id'=>'stranger']);
+    need($strangerCode===403,'Non-owner may read the owner approval inbox');
+
     // A Cinema installation may not authorize Series, even with the same device key.
     $cross=signed_payload($key,'check',$id,'series_android');
     $cross['package']='com.theone.series';
