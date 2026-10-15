@@ -74,6 +74,23 @@ try {
         'New installation did not request approval');
     [$code,$body]=call_api($base,'family_check',signed_payload($key,'check',$id,'cinema_android'));
     need($code===200 && ($body['allowed']??true)===false,'Unapproved installation received access');
+
+    // A second register request must not create another device or reset the pending request.
+    [$code,$body]=call_api($base,'family_register',$reg);
+    need($code===200 && ($body['pending']??false)===true,'Pending approval was not retained');
+    // A Cinema installation may not authorize Series, even with the same device key.
+    $cross=signed_payload($key,'check',$id,'series_android');
+    $cross['package']='com.theone.series';
+    [$crossCode,$crossBody]=call_api($base,'family_check',$cross);
+    need($crossCode===404,'Cross-app license accepted a Cinema identity as Series');
+    [$crossCode,$crossBody]=call_api($updateBase,'check',$cross);
+    need($crossCode===403,'Cross-app update accepted a Cinema identity as Series');
+    // A forged registration must never create another trusted installation.
+    $forged=$reg;
+    $forged['signature']=base64_encode(random_bytes(72));
+    [$forgeCode,$forgeBody]=call_api($base,'family_register',$forged);
+    need($forgeCode===403,'Registration accepted a forged installation signature');
+
     $jsonPath=$root.'/the-one-remote-data/main-devices.json';
     $state=json_decode((string)file_get_contents($jsonPath),true,512,JSON_THROW_ON_ERROR);
     $state['devices'][$id]['access_rights']['cinema_android']=true;
