@@ -72,3 +72,25 @@ jobs:
                   labels.update(re.findall(pats,text))
           print('DRIFT_SYMBOLS='+','.join(sorted(labels)[:35]))
           PY
+
+          # Three-way merge: current live file + GitHub main baseline + new Family changes.
+          if git merge-file -p "$d/live.php" "$d/baseline.php" the-one-remote-server/devices.php > "$d/merged.php"; then
+            echo 'MERGE_RESULT=clean'
+          else
+            echo 'MERGE_RESULT=conflict; do not deploy'
+            exit 0
+          fi
+          php -l "$d/merged.php"
+          python3 - "$d/live.php" "$d/merged.php" <<'CHECK'
+          import sys,re
+          def symbols(path):
+              code=open(path,encoding='utf-8').read()
+              return set(re.findall(r'function\s+([a-zA-Z_][\w]*)\s*\(',code)) | set(re.findall(r'\$action\s*===\s*[\x27\x22]([\w]+)[\x27\x22]',code))
+          missing=symbols(sys.argv[1])-symbols(sys.argv[2])
+          if missing:
+              raise SystemExit('MERGE_REJECTED: existing functions/actions would be lost: '+','.join(sorted(missing)))
+          print('MERGE_SYMBOLS_PRESERVED=true')
+          CHECK
+          cp "$d/merged.php" the-one-remote-server/devices.php
+          php the-one-remote-server/tests/family-license-smoke.php
+          echo 'MERGED_LICENSE_SMOKE=passed'
