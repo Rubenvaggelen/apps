@@ -117,7 +117,7 @@ jobs:
           OWNER_SHA=$(sha256sum /tmp/cinema-owner.der | cut -d " " -f1)
           grep -i "certificate SHA-256 digest: $OWNER_SHA" /tmp/cinema-signature.txt
           "$BT/aapt" dump badging "$APK" > /tmp/cinema-badging.txt
-          grep "package: name='com.theone.cinema.tv' versionCode='141'" /tmp/cinema-badging.txt
+          grep "package: name='com.theone.cinema.tv' versionCode='142'" /tmp/cinema-badging.txt
           grep 'leanback-launchable-activity' /tmp/cinema-badging.txt
           python3 - <<'PY_ASSETS'
           import zipfile,gzip,json
@@ -126,8 +126,8 @@ jobs:
                   assert len(json.loads(gzip.decompress(z.read('assets/bootstrap-movies.bin'))))==256
           PY_ASSETS
           mkdir -p deliverable
-          cp "$APK" deliverable/The-One-Cinema-Google-TV-v1.4.1.apk
-          sha256sum deliverable/The-One-Cinema-Google-TV-v1.4.1.apk > deliverable/SHA256SUMS.txt
+          cp "$APK" deliverable/The-One-Cinema-Google-TV-v1.4.2.apk
+          sha256sum deliverable/The-One-Cinema-Google-TV-v1.4.2.apk > deliverable/SHA256SUMS.txt
       - name: Encrypt signed release APK for this conversation
         working-directory: cinema-google-tv
         run: |
@@ -136,13 +136,13 @@ jobs:
           mkdir -p direct-delivery
           printf '%s' 'LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQm9qQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FZOEFNSUlCaWdLQ0FZRUEwTjQrMUUwVHI0VDRFYW9vYy9iNgo3UkZMV2J1NXd0NkZVSVFRNlA1WTVDL2JkOURkdTJuVXE0dGVxTmZ0ZkFYQWkxaUdKSHozb0l1c3BoZnI1M3RDCjhmTGNUMHA5YzhtRkRvN1FQbW8wVm9TYlVpb21XVmxTZENDc1dZcUJHVDBGckRGck92MjZoM2czenA3bS9wdjQKNFdiMUZQUlc3bFZ3eUdOUTlmbFljMU9UWTdYL2Y5Y01tTDhpMlRFZkZxL2Qya3VPVGt4Nk9DN3NSMzRYRGVrOApkQ2V2YnNHZDFWdkkwUVc4WTAyYURxZkNoQ0VESm5mMWk0UUFzUE8vRXNNWGZmMVpEOVNXU3gyQUxiTmljQlVnCi9vcjBnaXN2WHgwbmJlcFpCZ3RUU1BmWEVhcnJSNmlrZUlHKzB6MDJQdm1RWUltR1lZWktLVVo3SUFaOUJxT3IKSG85Tk81c1JxK0dLK1IwQ3UvREg3cWVwNVZKRE5jUXNseExJREhaOUc4WnpPdzBIbCsvN0tteXg1N0NJTHpEVApUYTVGYWRlU1MzekIranlOUFFKSnN4RkxmUmZPREl4RHBpazFEOXRoeTNSaWc4QUhBenZoY0I5RWpBVVRrcklsCmhXYy9OdlFxNUpOdzBFSHZ2eTJoaXVsNGtsZjhQQy9TUkpkSWc3aXUzVENMQWdNQkFBRT0KLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg==' | base64 -d > /tmp/the-one-conversation-pub.pem
           openssl rand -hex 32 > /tmp/the-one-conversation-aes
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/the-one-conversation-aes -in deliverable/The-One-Cinema-Google-TV-v1.4.1.apk -out direct-delivery/The-One-Cinema-Google-TV-v1.4.1.apk.enc
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/the-one-conversation-aes -in deliverable/The-One-Cinema-Google-TV-v1.4.2.apk -out direct-delivery/The-One-Cinema-Google-TV-v1.4.2.apk.enc
           openssl pkeyutl -encrypt -pubin -inkey /tmp/the-one-conversation-pub.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in /tmp/the-one-conversation-aes -out direct-delivery/key.enc
           cp deliverable/SHA256SUMS.txt direct-delivery/SHA256SUMS.txt
           rm /tmp/the-one-conversation-aes /tmp/the-one-conversation-pub.pem
       - name: Save conversation-encrypted install APK
         uses: actions/upload-artifact@v4
         with:
-          name: direct-cinema-google-tv-The-One-Cinema-Google-TV-v1.4.1
+          name: direct-cinema-google-tv-The-One-Cinema-Google-TV-v1.4.2
           path: cinema-google-tv/direct-delivery/
           retention-days: 1
