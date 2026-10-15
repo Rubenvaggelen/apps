@@ -72,8 +72,8 @@ JS = """
 
 def patch_html(content: str, kind: str) -> str:
     if MARKER in content or SCRIPT_MARKER in content:
-        if (content.count(MARKER) != 1 or content.count(SCRIPT_MARKER) != 1 or \
-                content.count('id="theOneUserDownload"') != 1:
+        if (content.count(MARKER) != 1 or content.count(SCRIPT_MARKER) != 1 or
+                content.count('id="theOneUserDownload"') != 1):
             raise SystemExit("PARTIALLY_PATCHED_OR_DUPLICATED_" + kind)
         if ASSET not in content:
             raise SystemExit("EXISTING_USER_DOWNLOAD_NOT_VERIFIED_" + kind)
