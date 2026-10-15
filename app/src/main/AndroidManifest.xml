@@ -29,6 +29,13 @@
         <package android:name="com.android.vending" />
         <package android:name="com.waze" />
         <package android:name="com.theone.remote" />
+        <package android:name="com.whatsapp" />
+        <package android:name="com.google.android.apps.chromecast.app" />
+        <!-- Android 11+ package visibility for added launcher apps (no QUERY_ALL_PACKAGES). -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 
     <application

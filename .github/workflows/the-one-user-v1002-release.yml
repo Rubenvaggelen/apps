@@ -1,11 +1,7 @@
 name: The One Gebruiker v1002 - original Main theme
 
+# Retired user-v1002 release: never republish old APK after a UI update.
 on:
-  push:
-    branches: [feature/the-one-user-standalone-20261015]
-    paths:
-      - '.github/workflows/the-one-user-v1002-release.yml'
-      - 'app/src/main/java/com/gmailorg/hub/UserHomeActivity.kt'
   workflow_dispatch: {}
 
 permissions:

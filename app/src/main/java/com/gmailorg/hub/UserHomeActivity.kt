@@ -274,16 +274,23 @@ class UserHomeActivity : AppCompatActivity() {
     )
 
     private fun installed(packageName: String): Boolean =
-        runCatching { packageManager.getPackageInfo(packageName, 0); true }.getOrDefault(false)
+        // Launcher visibility covers Samsung and Pixel on Android 11+.
+        // Missing, hidden or disabled external apps must never occupy a tile.
+        runCatching { packageManager.getLaunchIntentForPackage(packageName) != null }
+            .getOrDefault(false)
 
     private fun refreshMenuTiles() {
         if (!menuVisible || !::menuAdapter.isInitialized) return
+        // An app tile must correspond to an installed, launchable Android app.
+        // A Family licence only controls access; it must never make a missing APK visible.
         val standard = fixedUserTiles().filter { tile ->
-            (tile.id in familyScopes || tile.packageName == null || installed(tile.packageName)) &&
-                !HiddenTilesStore.isHidden(tile.id)
+            UserTileVisibility.isVisible(tile, ::installed) && !HiddenTilesStore.isHidden(tile.id)
         }
+        val existingIds = standard.map { it.id }.toSet()
         val custom = ShortcutStore.getAll().filter { shortcut ->
-            shortcut.id !in standard.map { it.id } && !HiddenTilesStore.isHidden(shortcut.id)
+            shortcut.id !in existingIds &&
+                UserTileVisibility.isVisible(shortcut, ::installed) &&
+                !HiddenTilesStore.isHidden(shortcut.id)
         }
         menuAdapter.updateTiles(standard + custom +
             HomeTile("add", TileType.ADD_BUTTON, "App toevoegen"))
