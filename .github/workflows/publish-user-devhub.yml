@@ -2,7 +2,9 @@ name: Publish The One User in live Dev Hub (guarded, additive)
 on:
   push:
     branches: [feature/the-one-user-standalone-20261015]
-    paths: ['.github/workflows/publish-user-devhub.yml']
+    paths:
+      - '.github/workflows/publish-user-devhub.yml'
+      - 'ci/patch-user-devhub-live.py'
   workflow_dispatch: {}
 permissions:
   contents: read
