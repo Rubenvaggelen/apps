@@ -23,8 +23,12 @@ public class MainActivity extends Activity {
  private List<CatalogEntry> playSources;private int sourceIndex,retries;private long resumePosition;private boolean userPaused=false;
  private Runnable stallTask,progressTask;private long bufferStarted;
  @Override public void onCreate(Bundle b){super.onCreate(b);
- familyLicense=new FamilyLicenseGate(this,"cinema_android",()->startLicensedApp(b));
- familyLicense.begin();}
+ if (BuildConfig.DEBUG && getIntent() != null && getIntent().getBooleanExtra("tv_test_mode", false)) {
+   startLicensedApp(b);
+ } else {
+   familyLicense=new FamilyLicenseGate(this,"cinema_android",()->startLicensedApp(b));
+ familyLicense.begin();
+ }}
  private void startLicensedApp(Bundle b){
   appUpdater = new FamilyUpdateNotice(this);
   appUpdater.checkOnOpen();for(android.view.Display.Mode mode:getWindowManager().getDefaultDisplay().getSupportedModes())videoHeightLimit=Math.max(videoHeightLimit,Math.min(mode.getPhysicalWidth(),mode.getPhysicalHeight()));prefs=getSharedPreferences("the_one_cinema",MODE_PRIVATE);favorites=new HashSet<>(prefs.getStringSet("favorites",Collections.emptySet()));preferredLanguage=prefs.getString("preferred_language","en");testMode=BuildConfig.DEBUG&&getIntent().getBooleanExtra("cinema_test_mode",false);try{if(!testMode){repo=new MediaRepository(this,background);if(BuildConfig.DEBUG&&getIntent().getBooleanExtra("starter_test_mode",false))repo.enableOfflineForTest();}}catch(Exception e){showFatal();return;}if(testMode){List<CatalogEntry> samples=new ArrayList<>();for(int i=1;i<=12;i++)samples.add(new CatalogEntry(i,"Cinema testfilm "+i,"mp4","","","movies",i));catalogs.put("movies",samples);for(CatalogEntry x:samples)variants.put(x.key(),Arrays.asList(x,new CatalogEntry(200+x.id,x.title+" NL","mp4","","","movies",x.added)));String posterRoot=getIntent().getStringExtra("cinema_test_poster_root");boolean posterTest=posterRoot!=null&&posterRoot.startsWith("http://127.0.0.1:");CatalogEntry adult=new CatalogEntry(99,"Afzonderlijke testtitel","mp4",posterTest?posterRoot+"/broken":"","","xxx",0);catalogs.put("xxx",Collections.singletonList(adult));variants.put(adult.key(),posterTest?Arrays.asList(adult,new CatalogEntry(100,"Afzonderlijke testtitel","mp4",posterRoot+"/cover","","xxx",0)):Collections.singletonList(adult));}showCatalog();}
