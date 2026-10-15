@@ -38,7 +38,7 @@ jobs:
           assert 'selected.devices.forEach { renderManagedDevice(details, it) }' in chooser
           assert 'if (familyApp.isNotEmpty())' in chooser
           assert 'details.removeAllViews()' in chooser
-          assert 'devices.forEach' not in chooser
+          assert 'devices.forEach { device ->' not in chooser
           assert 'requestFamilyOwnerAuthorization(scope, label)' in chooser
           assert 'requestFamilyOwnerAuthorization(scope, "$label weigeren")' in chooser
           notifications=Path("app/src/main/java/com/gmailorg/hub/AccessRequestNotificationWorker.kt").read_text()
