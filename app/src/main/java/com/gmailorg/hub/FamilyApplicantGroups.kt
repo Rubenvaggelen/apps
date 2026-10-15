@@ -10,7 +10,8 @@ internal object FamilyApplicantGroups {
         "com.theone.series" to "Series",
         "com.theone.series.tv" to "Series",
         "com.theone.tv.phone" to "TV",
-        "com.theone.tv" to "TV"
+        "com.theone.tv" to "TV",
+        "com.gmailorg.theoneuser" to "The One"
     )
     data class Group(val label: String, val devices: List<MainRegisteredDevice>, val family: Boolean)
 

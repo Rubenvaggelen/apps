@@ -47,6 +47,11 @@ class HomeActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (BuildConfig.IS_USER_APP) {
+            startActivity(Intent(this, UserHomeActivity::class.java))
+            finish()
+            return
+        }
         setContentView(R.layout.activity_home)
         ShortcutStore.init(applicationContext)
         HiddenTilesStore.init(applicationContext)

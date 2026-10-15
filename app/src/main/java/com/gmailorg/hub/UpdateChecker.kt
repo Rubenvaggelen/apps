@@ -18,9 +18,12 @@ object UpdateChecker {
     private const val TAG = "UpdateChecker"
     private const val RELEASES_URL =
         "https://api.github.com/repos/Rubenvaggelen/apps/releases?per_page=40"
-    private const val ASSET_NAME = "app-debug.apk"
+    private const val MAIN_ASSET_NAME = "app-debug.apk"
+    private const val USER_ASSET_NAME = "The-One-Android-User.apk"
 
     fun checkForUpdate(context: Context) {
+        val tagPrefix = if (BuildConfig.IS_USER_APP) "user-v" else "main-v"
+        val assetName = if (BuildConfig.IS_USER_APP) USER_ASSET_NAME else MAIN_ASSET_NAME
         Thread {
             try {
                 val connection = URL(RELEASES_URL).openConnection() as HttpURLConnection
@@ -41,9 +44,9 @@ object UpdateChecker {
                     if (release.optBoolean("draft", false)) continue
 
                     val tag = release.optString("tag_name", "").trim()
-                    if (!tag.matches(Regex("^main-v\\d+$"))) continue
+                    if (!tag.matches(Regex("^" + tagPrefix + "\\d+$"))) continue
 
-                    val version = tag.removePrefix("main-v").toIntOrNull() ?: continue
+                    val version = tag.removePrefix(tagPrefix).toIntOrNull() ?: continue
                     if (version <= bestVersion) continue
 
                     var assetUrl = ""
@@ -51,7 +54,7 @@ object UpdateChecker {
                     if (assets != null) {
                         for (j in 0 until assets.length()) {
                             val asset = assets.optJSONObject(j) ?: continue
-                            if (asset.optString("name") == ASSET_NAME) {
+                            if (asset.optString("name") == assetName) {
                                 assetUrl = asset.optString("browser_download_url", "")
                                 break
                             }

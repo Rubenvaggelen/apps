@@ -51,7 +51,7 @@ object MenuButtonHelper {
     }
 
     fun goToMenu(activity: Activity) {
-        val intent = Intent(activity, HomeActivity::class.java).apply {
+        val intent = Intent(activity, if (BuildConfig.IS_USER_APP) UserHomeActivity::class.java else HomeActivity::class.java).apply {
             flags = if (activity is MoviesActivity) {
                 Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
             } else {

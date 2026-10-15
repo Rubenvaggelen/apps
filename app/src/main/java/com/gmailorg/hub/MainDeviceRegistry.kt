@@ -41,7 +41,9 @@ data class MainRegisteredDevice(
     val online: Boolean,
     val lastSeen: Long,
     val familyPackage: String = "",
-    val personId: String = ""
+    val personId: String = "",
+    val userAppRights: Boolean = false,
+    val pendingUserApp: Boolean = false
 )
 
 data class MainAccessStatus(
@@ -68,6 +70,7 @@ data class MainPendingAccessRequest(
 
 
 object MainDeviceRegistry {
+    const val ACCESS_USER_APP = "the_one_user"
     const val ACCESS_MEDIA_PLAYER = "media_player"
     const val ACCESS_MIXES = "mixes"
     const val ACCESS_SHARED = "shared"
@@ -94,6 +97,7 @@ object MainDeviceRegistry {
     private const val KEY_THE_ONE = "the_one_profile"
 
     fun deviceId(context: Context): String {
+        if (BuildConfig.IS_USER_APP) return UserAppLicense.installationId()
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val existing = prefs.getString(KEY_DEVICE_ID, "").orEmpty()
         if (existing.isNotBlank()) return existing
@@ -107,7 +111,7 @@ object MainDeviceRegistry {
             .getBoolean(KEY_BLOCKED, false)
 
     fun isLocallyOwner(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        !BuildConfig.IS_USER_APP && context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_OWNER, false)
 
     fun hasMusicRights(context: Context): Boolean =
@@ -150,6 +154,7 @@ object MainDeviceRegistry {
             .optBoolean("the_one_registered", false)
 
     fun heartbeat(context: Context): Boolean {
+        if (BuildConfig.IS_USER_APP) return UserAppLicense.syncRights(context)
         val payload = JSONObject()
             .put("device_id", deviceId(context))
             .put("name", deviceName())
@@ -183,9 +188,11 @@ object MainDeviceRegistry {
     }
 
     fun isOwnerEligible(): Boolean =
+        !BuildConfig.IS_USER_APP &&
         Build.MODEL.equals("SM-S931B", ignoreCase = true)
 
     fun claimOwner(context: Context, pin: String): Boolean {
+        if (BuildConfig.IS_USER_APP) return false
         if (!isOwnerEligible()) return false
         val json = request(
             "claim_owner",
@@ -203,11 +210,13 @@ object MainDeviceRegistry {
     }
 
     fun claimInitialOwner(context: Context): Boolean {
+        if (BuildConfig.IS_USER_APP) return false
         if (!isOwnerEligible()) return false
-        return runCatching { claimOwner(context, "290114") }.getOrDefault(false)
+        return runCatching { claimOwner(context, BuildConfig.OWNER_BOOTSTRAP_PIN) }.getOrDefault(false)
     }
 
     fun ownerStatus(context: Context, pin: String): Boolean {
+        if (BuildConfig.IS_USER_APP) return false
         val json = request(
             "owner_status",
             JSONObject()
@@ -223,6 +232,7 @@ object MainDeviceRegistry {
     }
 
     fun recoverOwner(context: Context, pin: String, recoveryCode: String): Boolean {
+        if (BuildConfig.IS_USER_APP) return false
         val json = request(
             "recover_owner",
             JSONObject()
@@ -255,6 +265,8 @@ object MainDeviceRegistry {
                         name = item.optString("name", "Apparaat"),
                         personName = item.optString("person_name", "").trim(),
                         personId = item.optString("person_id", "").trim(),
+                        userAppRights = item.optJSONObject("access_rights")?.optBoolean(ACCESS_USER_APP, false) == true,
+                        pendingUserApp = item.optJSONObject("access_requests")?.has(ACCESS_USER_APP) == true,
                         familyPackage = item.optString("family_package", ""),
                         platform = item.optString("platform", ""),
                         version = item.optString("version", ""),
@@ -352,6 +364,9 @@ object MainDeviceRegistry {
     }
 
     fun refreshAccess(context: Context, scope: String): MainAccessStatus {
+        if (BuildConfig.IS_USER_APP && !UserAppLicense.checkAccess().allowed) {
+            return MainAccessStatus(false, false, false, scope)
+        }
         val json = request(
             "access_status",
             JSONObject()
@@ -373,6 +388,9 @@ object MainDeviceRegistry {
     }
 
     fun requestAccess(context: Context, scope: String): MainAccessStatus {
+        if (BuildConfig.IS_USER_APP && !UserAppLicense.checkAccess().allowed) {
+            return MainAccessStatus(false, false, false, scope)
+        }
         val json = request(
             "request_access",
             JSONObject()

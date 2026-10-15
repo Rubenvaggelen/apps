@@ -22,11 +22,11 @@ function call_api(string $base, string $action, array $payload = []): array {
     $code = isset($match[1]) ? (int)$match[1] : 0;
     return [$code, is_string($response) ? json_decode($response, true) : null];
 }
-function signed_payload(OpenSSLAsymmetricKey $key, string $verb, string $id, string $scope): array {
+function signed_payload(OpenSSLAsymmetricKey $key, string $verb, string $id, string $scope, string $package='com.theone.cinema'): array {
     $nonce = base64_encode(random_bytes(32));
     need(openssl_sign($verb.'|'.$id.'|'.$scope.'|'.$nonce, $signature, $key, OPENSSL_ALGO_SHA256),
         'Could not sign request');
-    return ['device_id'=>$id, 'package'=>'com.theone.cinema',
+    return ['device_id'=>$id, 'package'=>$package,
         'nonce'=>$nonce, 'signature'=>base64_encode($signature)];
 }
 function cleanup(string $path): void {
@@ -151,6 +151,58 @@ try {
     need($ownerCode===200 && count(array_filter($items,fn($row)=>
         ($row['device_id']??'')===$id && ($row['scope']??'')==='cinema_android'))===1,
         'Pending Family request not shown in owner Main inbox');
+    // The One user APK must create a signed, per-installation pending request.
+    // A matching person's name must NOT inherit any Cinema or Shared Media right.
+    $userKey=openssl_pkey_new(['private_key_type'=>OPENSSL_KEYTYPE_EC, 'curve_name'=>'prime256v1']);
+    need($userKey instanceof OpenSSLAsymmetricKey,'User app key generation failed');
+    $userPem=(string)openssl_pkey_get_details($userKey)['key'];
+    $userDer=base64_decode(preg_replace('~-----[^-]+-----|\\s+~','',$userPem),true);
+    need(is_string($userDer),'User app public key unavailable');
+    $userId='fam-'.substr(hash('sha256',$userDer),0,48);
+    $userReg=signed_payload($userKey,'register',$userId,'the_one_user','com.gmailorg.theoneuser');
+    $userReg['public_key']=base64_encode($userDer);
+    $userReg['person_name']='Anna Aanvrager';
+    $userReg['platform']='Android Pixel';
+    $userReg['device_name']='Google Pixel test';
+    [$userCode,$userCreated]=call_api($base,'family_register',$userReg);
+    need($userCode===200 && ($userCreated['pending']??false)===true &&
+        ($userCreated['allowed']??true)===false &&
+        ($userCreated['person_id']??'')===$personId,
+        'The One user installation must await approval under the existing person');
+    [$userCode,$userCheck]=call_api($base,'family_check',
+        signed_payload($userKey,'check',$userId,'the_one_user','com.gmailorg.theoneuser'));
+    need($userCode===200 && ($userCheck['allowed']??true)===false,
+        'Unapproved The One user installation gained access');
+    [$userCode,$userRights]=call_api($base,'access_status',
+        ['device_id'=>$userId,'scope'=>'shared']);
+    need($userCode===200 && ($userRights['allowed']??true)===false,
+        'User APK inherited media rights without explicit owner approval');
+    [$userCode,$ownerPending]=call_api($base,'pending_requests',['request_device_id'=>$ownerId]);
+    need($userCode===200 && count(array_filter($ownerPending['requests']??[],
+        fn($row)=>($row['device_id']??'')===$userId &&
+                    ($row['scope']??'')==='the_one_user'))===1,
+        'The One user APK request is missing from Main pending requests');
+    [$userCode,$missingPin]=call_api($base,'set_access_right',
+        ['request_device_id'=>$ownerId,'device_id'=>$userId,
+         'scope'=>'the_one_user','enabled'=>true]);
+    need($userCode===403,'The One user app approved without owner credential');
+    $userState=json_decode((string)file_get_contents($root.'/the-one-remote-data/main-devices.json'),true);
+    $userState['devices'][$userId]['access_rights']['the_one_user']=true;
+    $userState['devices'][$userId]['access_requests']=[];
+    file_put_contents($root.'/the-one-remote-data/main-devices.json',json_encode($userState));
+    [$userCode,$approvedUser]=call_api($base,'family_check',
+        signed_payload($userKey,'check',$userId,'the_one_user','com.gmailorg.theoneuser'));
+    need($userCode===200 && ($approvedUser['allowed']??false)===true,
+        'Approved The One user app did not unlock');
+    [$userCode,$mediaStillClosed]=call_api($base,'access_status',
+        ['device_id'=>$userId,'scope'=>'shared']);
+    need($userCode===200 && ($mediaStillClosed['allowed']??true)===false,
+        'Approval to enter The One unexpectedly granted Shared Media');
+    $userForged=signed_payload($userKey,'check',$userId,'the_one_user','com.gmailorg.theoneuser');
+    $userForged['package']='com.theone.cinema';
+    [$userCode,$userCross]=call_api($base,'family_check',$userForged);
+    need($userCode===404,'The One user license was incorrectly accepted for Cinema');
+
     [$strangerCode,$strangerBody]=call_api($base,'pending_requests',['request_device_id'=>'stranger']);
     need($strangerCode===403,'Non-owner may read the owner approval inbox');
 

@@ -8,9 +8,14 @@ android {
     compileSdk 34
 
     def appVersionCode = project.hasProperty('appVersionCode') ? project.property('appVersionCode').toString().toInteger() : 1
+    def isUserApp = project.findProperty('theOneUserBuild')?.toString() == 'true'
 
     defaultConfig {
-        applicationId "com.gmailorg.hub"
+        applicationId isUserApp ? "com.gmailorg.theoneuser" : "com.gmailorg.hub"
+        manifestPlaceholders = [appDisplayName: isUserApp ? "The One" : "@string/app_name"]
+        buildConfigField "boolean", "IS_USER_APP", isUserApp.toString()
+        buildConfigField "String", "OWNER_BOOTSTRAP_PIN",
+                isUserApp ? '""' : '"290114"'
         minSdk 26
         targetSdk 34
         versionCode appVersionCode

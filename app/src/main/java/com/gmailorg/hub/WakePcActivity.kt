@@ -38,6 +38,7 @@ class WakePcActivity : AppCompatActivity() {
         proceed: (String) -> Unit
     ) {
         if (scope !in setOf(
+                MainDeviceRegistry.ACCESS_USER_APP,
                 MainDeviceRegistry.ACCESS_CINEMA,
                 MainDeviceRegistry.ACCESS_SERIES,
                 MainDeviceRegistry.ACCESS_TV
@@ -138,6 +139,7 @@ class WakePcActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (BuildConfig.IS_USER_APP) { finish(); return }
         setContentView(R.layout.activity_wake_pc)
         MenuButtonHelper.attach(this)
 
@@ -568,7 +570,7 @@ class WakePcActivity : AppCompatActivity() {
                 card.addView(section)
             }
 
-            if (familyApp.isNotEmpty()) {
+            if (familyApp.isNotEmpty() && device.familyPackage != "com.gmailorg.theoneuser") {
                 when (device.familyPackage) {
                     "com.theone.cinema", "com.theone.cinema.tv" -> addAccessControl(
                         "Cinema", MainDeviceRegistry.ACCESS_CINEMA,
@@ -584,6 +586,10 @@ class WakePcActivity : AppCompatActivity() {
                     )
                 }
             } else {
+            if (device.familyPackage == "com.gmailorg.theoneuser") {
+                addAccessControl("The One", MainDeviceRegistry.ACCESS_USER_APP,
+                    device.userAppRights, device.pendingUserApp)
+            }
             addAccessControl(
                 "Media Player",
                 MainDeviceRegistry.ACCESS_MEDIA_PLAYER,
@@ -622,6 +628,7 @@ class WakePcActivity : AppCompatActivity() {
             )
             addAccessControl(
                 "Cinema",
+                MainDeviceRegistry.ACCESS_USER_APP,
                 MainDeviceRegistry.ACCESS_CINEMA,
                 device.cinemaRights,
                 device.pendingCinema

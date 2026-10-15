@@ -1,0 +1,291 @@
+name: The One User and Main independent APKs
+
+on:
+  push:
+    branches: [feature/the-one-user-standalone-20261015]
+    paths: ['.github/workflows/the-one-user-app-release.yml']
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  guarded-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Test isolated license contract
+        run: |
+          php -l the-one-remote-server/devices.php
+          php the-one-remote-server/tests/family-license-smoke.php
+      - name: Guarded merge and live deployment
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for v in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "$(printenv "$v")" || { echo "Missing $v"; exit 1; }
+          done
+          d=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$d"' EXIT
+          umask 077
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$d/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$d/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$d/askpass"
+          chmod 600 "$d/key" "$d/known_hosts"
+          chmod 700 "$d/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$d/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$d/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          o=(-i "$d/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$d/known_hosts" -o ConnectTimeout=20)
+          git fetch --no-tags origin main
+          git show origin/main:the-one-remote-server/devices.php > "$d/baseline.php"
+          base=$(sha256sum "$d/baseline.php" | cut -d ' ' -f1)
+          remote=$(ssh -p "$DEPLOY_PORT" "${o[@]}" "$DEPLOY_USER@$DEPLOY_HOST" 'test -f "$HOME/public_html/the-one-remote-api/devices.php" && php -l "$HOME/public_html/the-one-remote-api/devices.php" >/dev/null && sha256sum "$HOME/public_html/the-one-remote-api/devices.php" | cut -d " " -f1')
+          test "${#remote}" -eq 64
+          if [ "$remote" = "$base" ]; then
+            echo 'PREFLIGHT_RESULT=base-matches-live'
+          else
+            echo 'PREFLIGHT_RESULT=live-server-drift'
+            echo '::warning::Live PHP differs from repository baseline. Do not overwrite without reconciliation.'
+          fi
+          echo "LIVE_SHA256=$remote"
+          echo "BASELINE_SHA256=$base"
+          # Compare only function/action names and changed-line counts, never print live source.
+          ssh -p "$DEPLOY_PORT" "${o[@]}" "$DEPLOY_USER@$DEPLOY_HOST" 'cat "$HOME/public_html/the-one-remote-api/devices.php"' > "$d/live.php"
+          python3 - "$d/baseline.php" "$d/live.php" <<'PY'
+          import sys,re,difflib
+          old=open(sys.argv[1],encoding='utf-8').read().splitlines()
+          new=open(sys.argv[2],encoding='utf-8').read().splitlines()
+          changes=[x for x in difflib.SequenceMatcher(a=old,b=new,autojunk=False).get_opcodes() if x[0]!='equal']
+          print('DRIFT_HUNKS='+str(len(changes)))
+          print('DRIFT_LINES='+str(sum((a2-a1)+(b2-b1) for _,a1,a2,b1,b2 in changes)))
+          pats=r'function\s+[a-zA-Z_][a-zA-Z0-9_]*|\$action\s*===\s*[\x27\x22][a-zA-Z0-9_]+[\x27\x22]'
+          labels=set()
+          for _,a1,a2,b1,b2 in changes:
+              for seq,lo,hi in ((old,a1,a2),(new,b1,b2)):
+                  text='\n'.join(seq[max(0,lo-50):min(len(seq),hi+20)])
+                  labels.update(re.findall(pats,text))
+          print('DRIFT_SYMBOLS='+','.join(sorted(labels)[:35]))
+          PY
+
+          # Three-way merge: current live file + GitHub main baseline + new Family changes.
+          # The existing production server has independent changes.
+          # Apply only the new, validated user app scope to current live code.
+          python3 ci/user-app-live-merge.py "$d/live.php" the-one-remote-server/devices.php "$d/merged.php"
+          echo 'MERGE_RESULT=surgical-user-licensing'
+          php -l "$d/merged.php"
+          # The candidate is always smoke-tested again before any remote write.
+          python3 - "$d/live.php" "$d/merged.php" <<'CHECK'
+          import sys,re
+          def symbols(path):
+              code=open(path,encoding='utf-8').read()
+              return set(re.findall(r'function\s+([a-zA-Z_][\w]*)\s*\(',code)) | set(re.findall(r'\$action\s*===\s*[\x27\x22]([\w]+)[\x27\x22]',code))
+          missing=symbols(sys.argv[1])-symbols(sys.argv[2])
+          if missing:
+              raise SystemExit('MERGE_REJECTED: existing functions/actions would be lost: '+','.join(sorted(missing)))
+          print('MERGE_SYMBOLS_PRESERVED=true')
+          CHECK
+          cp "$d/merged.php" the-one-remote-server/devices.php
+          php the-one-remote-server/tests/family-license-smoke.php
+          echo 'MERGED_LICENSE_SMOKE=passed'
+          # Install only after a clean 3-way merge, signature-preserving backup,
+          # syntax validation, and the isolated Family HTTP contract test.
+          stage=$(ssh -p "$DEPLOY_PORT" "${o[@]}" "$DEPLOY_USER@$DEPLOY_HOST" 'umask 077; mktemp -d "$HOME/.the-one-family-stage.XXXXXXXX"')
+          scp -O -P "$DEPLOY_PORT" "${o[@]}" "$d/merged.php" "$DEPLOY_USER@$DEPLOY_HOST:$stage/devices.php"
+          ssh -p "$DEPLOY_PORT" "${o[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "bash -s -- '$stage' '$remote'" <<'REMOTE'
+          set -euo pipefail
+          umask 077
+          stage="$1"
+          expected="$2"
+          target="$HOME/public_html/the-one-remote-api/devices.php"
+          test -f "$target"
+          actual=$(sha256sum "$target" | cut -d ' ' -f1)
+          test "$actual" = "$expected" || { echo 'DEPLOY_ABORTED=live-changed'; exit 9; }
+          php -l "$stage/devices.php" >/dev/null
+          mkdir -p "$HOME/.the-one-family-backups"
+          backup=$(mktemp -d "$HOME/.the-one-family-backups/licensing.XXXXXXXX")
+          cp -p "$target" "$backup/devices.php"
+          for file in main-devices.json main-device-owner.json; do
+            if [ -f "$HOME/the-one-remote-data/$file" ]; then
+              cp -p "$HOME/the-one-remote-data/$file" "$backup/$file"
+            fi
+          done
+          candidate=$(mktemp "$target.new.XXXXXXXX")
+          cp "$stage/devices.php" "$candidate"
+          chmod 644 "$candidate"
+          mv "$candidate" "$target"
+          if ! curl -fsS --max-time 15 'https://rubenvanaggelen.com/the-one-remote-api/devices.php?action=health' | grep -q '"ok":true'; then
+            rollback=$(mktemp "$target.rollback.XXXXXXXX")
+            cp -p "$backup/devices.php" "$rollback"
+            mv "$rollback" "$target"
+            echo 'DEPLOY_RESULT=rolled-back-health-check'
+            exit 15
+          fi
+          rm -f "$stage/devices.php"
+          rmdir "$stage"
+          echo 'DEPLOY_RESULT=success'
+          echo 'BACKUP_RESULT=preserved'
+          REMOTE
+  build-and-release:
+    needs: guarded-deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+      - name: Restore fixed debug keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.android
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > ~/.android/debug.keystore
+          chmod 600 ~/.android/debug.keystore
+      - name: Set Main version code
+        shell: bash
+        run: echo "VERSION_CODE=1022" >> "$GITHUB_ENV"
+      - name: Verify YouTube key is configured
+        shell: bash
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: |
+          if [ -z "$YOUTUBE_API_KEY" ]; then
+            echo "::error::YOUTUBE_API_KEY secret is missing; Main release blocked."
+            exit 1
+          fi
+      - name: Restore and verify existing TMDB key
+        shell: bash
+        env:
+          TMDB_SECRET: ${{ secrets.TMDB_API_KEY }}
+        run: |
+          set -euo pipefail
+          tmdb_key="$TMDB_SECRET"
+          if [ -z "$tmdb_key" ]; then
+            tmdb_key="$(sed -n 's/^TMDB_API_KEY[[:space:]]*=[[:space:]]*//p' gradle.properties | head -n 1 | tr -d '\r')"
+          fi
+          if [ -z "$tmdb_key" ]; then
+            echo "::error::No TMDB key available in secret or existing project configuration."
+            exit 1
+          fi
+          echo "::add-mask::$tmdb_key"
+          echo "ORG_GRADLE_PROJECT_TMDB_API_KEY=$tmdb_key" >> "$GITHUB_ENV"
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' --connect-timeout 15 --max-time 30 "https://api.themoviedb.org/3/configuration?api_key=$tmdb_key")"
+          if [ "$status" != "200" ]; then
+            echo "::error::Existing TMDB key validation failed (HTTP $status)."
+            exit 1
+          fi
+          echo "TMDB key validated without displaying credentials."
+      - name: Restore the working Media Player source
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error --max-time 120 "https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2316/The-One-Media-Player-v2316.apk" -o /tmp/theone-media-source.apk
+          echo "2de34daf9ef65ed045a8c49bd337bd9283841a12d2c3047784f40c76e48c6cb8  /tmp/theone-media-source.apk" | sha256sum --check --status
+          python3 - <<'PY'
+          import zipfile,json,pathlib
+          with zipfile.ZipFile("/tmp/theone-media-source.apk") as apk:
+              config=json.loads(apk.read("assets/private_xtream.json"))
+          if not all(isinstance(config.get(key),str) and config[key].strip() for key in ("server","username","password")):
+              raise SystemExit("Working Media Player configuration unavailable; release blocked.")
+          target=pathlib.Path("app/src/main/assets/theone_media_source.json")
+          target.parent.mkdir(parents=True,exist_ok=True)
+          target.write_text(json.dumps(config))
+          print("Working Media Player source restored; credentials not displayed.")
+          PY
+      - name: Bundle verified offline NL supermarket map
+        run: python3 .github/scripts/supermarket-snapshot.py
+      - name: Build Main only
+        env:
+          ORG_GRADLE_PROJECT_YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon --no-build-cache -PappVersionCode=${VERSION_CODE}
+      - name: Verify TMDB key is included in Main
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re, json
+          files = list(pathlib.Path("app/build/generated").rglob("BuildConfig.java"))
+          expected = os.environ["ORG_GRADLE_PROJECT_TMDB_API_KEY"]
+          found = False
+          for path in files:
+              text = path.read_text()
+              match = re.search(r'TMDB_API_KEY\s*=\s*("(?:[^"\\]|\\.)*")', text)
+              if match and json.loads(match.group(1)) == expected:
+                  found = True
+          if not found:
+              raise SystemExit("TMDB key missing from generated Main configuration; release blocked.")
+          print("Existing TMDB key included in Main; value not displayed.")
+          PY
+      - name: Guard against Family license and registration regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l the-one-remote-server/devices.php
+          php the-one-remote-server/tests/family-license-smoke.php
+          grep -q 'selected.devices.forEach { renderManagedDevice(details, it) }' app/src/main/java/com/gmailorg/hub/WakePcActivity.kt
+          grep -q 'fun setPersonName(' app/src/main/java/com/gmailorg/hub/MainDeviceRegistry.kt
+          grep -q 'return if (normalized.isNotBlank()) "person:' app/src/main/java/com/gmailorg/hub/FamilyApplicantGroups.kt
+          echo "People group display and per-installation permissions verified."
+      - name: Preserve separately signed Main APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p builds
+          cp app/build/outputs/apk/debug/app-debug.apk builds/The-One-Main-v1022.apk
+      - name: Build separate The One user APK
+        env:
+          ORG_GRADLE_PROJECT_YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: gradle :app:clean :app:assembleDebug --no-daemon --no-build-cache -PappVersionCode=1001 -PtheOneUserBuild=true
+      - name: Verify signed packages are different and neither build replaces the other
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp app/build/outputs/apk/debug/app-debug.apk builds/The-One-Android-User.apk
+          bt=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          test -x "$bt/aapt"
+          test -x "$bt/apksigner"
+          "$bt/aapt" dump badging builds/The-One-Main-v1022.apk | grep -q "package: name='com.gmailorg.hub' versionCode='1022'"
+          "$bt/aapt" dump badging builds/The-One-Android-User.apk | grep -q "package: name='com.gmailorg.theoneuser' versionCode='1001'"
+          "$bt/apksigner" verify builds/The-One-Main-v1022.apk
+          "$bt/apksigner" verify builds/The-One-Android-User.apk
+          expected=$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | sed -n 's/^[[:space:]]*SHA256: //p' | head -1 | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          test -n "$expected"
+          for file in builds/The-One-Main-v1022.apk builds/The-One-Android-User.apk; do
+            signed=$("$bt/apksigner" verify --print-certs "$file" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1 | tr '[:upper:]' '[:lower:]')
+            test "$signed" = "$expected" || { echo "Unexpected signing identity for $file"; exit 1; }
+          done
+          echo "Signed, distinct Main and user APKs validated."
+          sha256sum builds/The-One-Main-v1022.apk builds/The-One-Android-User.apk
+      - name: Upload independently installable APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: the-one-main-and-user-separated-v1022-v1001
+          path: builds/*.apk
+          retention-days: 30
+      - name: Release owner Main with user rights management
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: main-v1022
+          name: "The One Main — v1022 (Gebruikers beheren)"
+          files: builds/The-One-Main-v1022.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Release standalone The One user APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: user-v1001
+          name: "The One Gebruiker — v1001"
+          files: builds/The-One-Android-User.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
