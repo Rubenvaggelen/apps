@@ -1,0 +1,149 @@
+name: RUTU Saturday verified current builds to Dev Hub
+on:
+  push:
+    branches: [feature/jade-orders]
+    paths: ['.github/workflows/publish-rutu-saturday-current-20261015.yml']
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  guarded-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate precisely identified 15 October approved files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile ci/patch-rutu-devhub-20261015.py
+          python3 ci/patch-rutu-devhub-20261015.py devhub-rutu/public/rutu.html /tmp/rutu-next.html
+          grep -q 'BUILD 937' /tmp/rutu-next.html
+          grep -q 'WINDOWS 0.4.39' /tmp/rutu-next.html
+          grep -q 'Rutu-BBQ-Android.apk' /tmp/rutu-next.html
+      - name: Apply only RUTU Dev Hub text and verified Windows installer
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for v in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "${!v}" || { echo "::error::Missing $v"; exit 1; }
+          done
+          umask 077
+          d="$(mktemp -d)"
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$d"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$d/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$d/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$d/askpass"
+          chmod 600 "$d/key" "$d/known_hosts"
+          chmod 700 "$d/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$d/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$d/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          opts=(-i "$d/key" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$d/known_hosts" -o ConnectTimeout=20)
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" \
+            'test -s "$HOME/dev.vanaggelen.com/rutu.html" &&
+             test -s "$HOME/public_html/rutu-updates/Rutu-BBQ-Windows.exe" &&
+             test -s "$HOME/public_html/rutu-updates/Rutu-BBQ-Android.apk" &&
+             test -s "$HOME/public_html/rutu-updates/Rutu-BBQ-Bedrijf-Android.apk"'
+          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" \
+            'cat "$HOME/dev.vanaggelen.com/rutu.html"' > "$d/live.html"
+          python3 ci/patch-rutu-devhub-20261015.py "$d/live.html" "$d/updated.html"
+          page_before=$(sha256sum "$d/live.html" | awk '{print $1}')
+          stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" \
+            'umask 077; mktemp -d "$HOME/.rutu-devhub-stage.XXXXXXXX"')
+          scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$d/updated.html" "$remote:$stage/rutu.html"
+          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" \
+            "bash -s -- '$stage' '$page_before'" <<'REMOTE'
+          set -euo pipefail
+          stage="$1"; original_sha="$2"
+          hub="$HOME/dev.vanaggelen.com"
+          updates="$HOME/public_html/rutu-updates"
+          windows="$hub/rutu-downloads/Rutu-BBQ-Bedrijf-Windows.exe"
+          page="$hub/rutu.html"
+          expect_customer="60d606b73aa44e3610902aad37df0b5e5f077f79b699589fbbd88c3699da534e"
+          expect_business="7029f0573851d1353686e554542b21986b00121e6712f2a57329af9587cf2aae"
+          expect_windows="44c28f81d0ef20e8f0f36b94437e342172e1490199817c7c899e97c27d8f3b5c"
+          for item in "$hub" "$updates" "$hub/rutu-downloads"; do
+            test -d "$item" && test ! -L "$item"
+          done
+          for item in "$page" "$windows" "$stage/rutu.html"; do
+            test -s "$item" && test ! -L "$item"
+          done
+          sha() { sha256sum "$1" | awk '{print $1}'; }
+          test "$(sha "$page")" = "$original_sha" || { echo 'RUTU_LIVE_CHANGED_ABORT'; exit 10; }
+          test "$(sha "$updates/Rutu-BBQ-Android.apk")" = "$expect_customer" || { echo 'RUTU_CUSTOMER_HASH_MISMATCH'; exit 11; }
+          test "$(sha "$updates/Rutu-BBQ-Bedrijf-Android.apk")" = "$expect_business" || { echo 'RUTU_BUSINESS_HASH_MISMATCH'; exit 12; }
+          test "$(sha "$hub/rutu-downloads/Rutu-BBQ-Bedrijf-Android.apk")" = "$expect_business" || { echo 'RUTU_DEVHUB_BUSINESS_HASH_MISMATCH'; exit 13; }
+          test "$(sha "$updates/Rutu-BBQ-Windows.exe")" = "$expect_windows" || { echo 'RUTU_LATEST_WINDOWS_HASH_MISMATCH'; exit 14; }
+          for spec in "android.json 937 $expect_customer" "business-android.json 937 $expect_business"; do
+            read -r filename version hash <<< "$spec"
+            grep -q '"versionCode":937' "$updates/$filename" || { echo "RUTU_METADATA_OLD=$filename"; exit 15; }
+            grep -q "$hash" "$updates/$filename" || { echo "RUTU_METADATA_HASH_MISMATCH=$filename"; exit 16; }
+          done
+          grep -q '"version":"0.4.39"' "$updates/windows.json" || { echo 'RUTU_WINDOWS_VERSION_MISMATCH'; exit 17; }
+          grep -q "$expect_windows" "$updates/windows.json" || exit 18
+
+          backup=""
+          changed=false
+          finish() {
+            result=$?
+            trap - EXIT
+            if [ "$result" -ne 0 ] && [ "$changed" = true ] && [ -n "$backup" ]; then
+              echo "RUTU_DEPLOY_ROLLBACK=restoring-page-and-Windows-copy"
+              cp -p "$backup/rutu.html" "$hub/.rutu.html.rollback.$$"
+              mv -f "$hub/.rutu.html.rollback.$$" "$page"
+              cp -p "$backup/Rutu-BBQ-Bedrijf-Windows.exe" "$hub/rutu-downloads/.rutu-windows.rollback.$$"
+              mv -f "$hub/rutu-downloads/.rutu-windows.rollback.$$" "$windows"
+            fi
+            rm -rf "$stage"
+            exit "$result"
+          }
+          trap finish EXIT
+          backup=$(mktemp -d "$HOME/.rutu-devhub-recovery-20261015.XXXXXXXX")
+          cp -p "$page" "$backup/rutu.html"
+          cp -p "$windows" "$backup/Rutu-BBQ-Bedrijf-Windows.exe"
+
+          cp -p "$updates/Rutu-BBQ-Windows.exe" "$hub/rutu-downloads/.rutu-windows.latest.$$"
+          chmod --reference="$windows" "$hub/rutu-downloads/.rutu-windows.latest.$$"
+          cp "$stage/rutu.html" "$hub/.rutu.html.latest.$$"
+          chmod --reference="$page" "$hub/.rutu.html.latest.$$"
+          changed=true
+          mv -f "$hub/rutu-downloads/.rutu-windows.latest.$$" "$windows"
+          mv -f "$hub/.rutu.html.latest.$$" "$page"
+          test "$(sha "$windows")" = "$expect_windows"
+          grep -q 'BUILD 937 • GESLAAGD' "$page"
+          grep -q 'WINDOWS 0.4.39 • GESLAAGD' "$page"
+          grep -q 'KLANT ANDROID • BUILD 937 • GESLAAGD' "$page"
+          grep -q 'https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Android.apk' "$page"
+          test "$(sha "$updates/Rutu-BBQ-Android.apk")" = "$expect_customer"
+          test "$(sha "$updates/Rutu-BBQ-Bedrijf-Android.apk")" = "$expect_business"
+          echo 'RUTU_DEVHUB_LATEST=published'
+          echo 'RUTU_WINDOWS_DEVHUB_MATCHES_LATEST=true'
+          echo 'RUTU_CUSTOMER_QR_FILE_UNCHANGED=true'
+          echo 'RUTU_SERVER_ORDERS_UNCHANGED=true'
+          echo 'RUTU_DEPLOY_BACKUP=stored-privately'
+          REMOTE
+      - name: Check stable customer QR download and Dev Hub HTTP availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          for url in \
+            'https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Android.apk' \
+            'https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Bedrijf-Android.apk' \
+            'https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Windows.exe'; do
+            code=$(curl -L -sS -I --connect-timeout 15 --max-time 25 -o /dev/null -w '%{http_code}' "$url")
+            test "$code" = 200 || { echo "RUTU_CUSTOMER_DOWNLOAD_HTTP_FAILURE=$code"; exit 21; }
+            echo "RUTU_PUBLIC_DOWNLOAD_HTTP=200"
+          done
+          code=$(curl -L -sS -I --connect-timeout 15 --max-time 25 -o /dev/null -w '%{http_code}' \
+            'https://dev.rubenvanaggelen.com/rutu.html')
+          case "$code" in 200|401|403) echo "RUTU_DEVHUB_HTTP=$code";; *) exit 22;; esac
