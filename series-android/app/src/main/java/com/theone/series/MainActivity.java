@@ -25,7 +25,7 @@ public class MainActivity extends Activity {
  private final PlaybackRecovery recovery=new PlaybackRecovery();private Runnable retryTask;private int playbackAttempt;private boolean recoveryPending,playbackFailed;private long stableSince;
  private Runnable stallTask,progressTask;private long bufferStarted;
  @Override public void onCreate(Bundle b){super.onCreate(b);
- if (BuildConfig.DEBUG && getIntent() != null && getIntent().getBooleanExtra("tv_test_mode", false)) {
+ if (BuildConfig.DEBUG && getIntent() != null && (getIntent().getBooleanExtra("series_test_mode", false) || getIntent().getBooleanExtra("starter_test_mode", false) || getIntent().getBooleanExtra("subtitle_test_mode", false))) {
    startLicensedApp(b);
  } else {
    familyLicense=new FamilyLicenseGate(this,"series_android",()->startLicensedApp(b));
