@@ -30,6 +30,7 @@ $csrf = $_SESSION['csrf'];
     <div class="download-version" id="releaseVersion">Release laden…</div>
     <a class="download-link" id="appDownload" aria-disabled="true">↓ The One APK</a>
     <a class="download-link" id="carDownload" aria-disabled="true">↓ The One Car APK</a>
+    <a class="download-link" id="theOneUserDownload" href="https://github.com/Rubenvaggelen/apps/releases/download/user-v1003/The-One-Android-User.apk">↓ The One Gebruiker APK • v1003</a>
     <a class="download-link" id="mediaDownload" href="https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2316/The-One-Media-Player-v2316.apk">↓ The One Media Player APK</a>
     <a class="download-link" id="tvDownload" href="https://github.com/Rubenvaggelen/apps/releases/download/media-player-tv-latest/The-One-Media-Player-TV.apk">↓ Media Player Android TV APK</a>
     <a class="download-link" id="djDownload" aria-disabled="true">↓ The One DJ APK</a>
@@ -95,6 +96,28 @@ async function pull(){try{const j=await api('pull',{method:'POST'});toast(j.data
 async function commitPush(){if(state.dirty){toast('Sla het geopende bestand eerst op.',true);return}const message=prompt('Commit message:','Update via The One Dev Hub');if(!message)return;try{const j=await api('commitpush',{method:'POST',body:{message}});toast(j.data.output||'Commit & push voltooid');loadStatus();clearTimeout(autoPollTimer);setTimeout(autoRefreshHub,1500)}catch(e){toast(e.message,true)}}
 function switchProject(project){if(state.dirty&&!confirm('Niet-opgeslagen wijzigingen weggooien?'))return;state={project,dir:'',file:'',original:'',dirty:false};document.querySelectorAll('.project').forEach(b=>b.classList.toggle('active',b.dataset.project===project));$('#editorWrap').className='empty';$('#editorWrap').textContent='Kies links een bestand om te bewerken.';$('#openPath').textContent='Geen bestand geopend';$('#saveBtn').disabled=true;$('#dirty').style.display='none';listFiles()}
 document.querySelectorAll('.project').forEach(b=>b.onclick=()=>switchProject(b.dataset.project));$('#upBtn').onclick=up;$('#saveBtn').onclick=saveFile;$('#pullBtn').onclick=pull;$('#pushBtn').onclick=commitPush;window.addEventListener('beforeunload',e=>{if(state.dirty){e.preventDefault();e.returnValue=''}});document.addEventListener('visibilitychange',()=>{if(!document.hidden){clearTimeout(autoPollTimer);autoRefreshHub()}});loadLatestRelease();listFiles();autoRefreshHub();
+</script>
+<script id="the-one-user-release-auto">
+(function(){
+  const target=document.getElementById('theOneUserDownload');
+  if(!target)return;
+  fetch('https://api.github.com/repos/Rubenvaggelen/apps/releases?per_page=100',{
+    cache:'no-store',headers:{Accept:'application/vnd.github+json'}
+  }).then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json()})
+    .then(items=>{
+      if(!Array.isArray(items))return;
+      const releases=items.filter(r=>!r.draft&&!r.prerelease&&/^user-v[0-9]+$/.test(r.tag_name||''))
+        .sort((a,b)=>Number(b.tag_name.slice(6))-Number(a.tag_name.slice(6)));
+      for(const release of releases){
+        const asset=(release.assets||[]).find(a=>a.name==='The-One-Android-User.apk'||/^The-One-Android-User-v[0-9]+\.apk$/.test(a.name||''));
+        if(asset&&asset.browser_download_url){
+          target.href=asset.browser_download_url;
+          target.textContent='⬇ The One Gebruiker APK • '+release.tag_name;
+          break;
+        }
+      }
+    }).catch(()=>{});
+})();
 </script>
 </body>
 </html>

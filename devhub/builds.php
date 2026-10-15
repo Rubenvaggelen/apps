@@ -136,6 +136,13 @@ $djDownload = $djTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releases/do
 
 
     <div class="card">
+      <h2>The One Gebruiker</h2>
+      <div class="big">User v1003</div>
+      <p class="muted">Eigen Android-app en updatekanaal voor gebruikers. Toegang en mediarechten worden in The One Main beheerd.</p>
+      <div class="download-row"><a class="btn ok" id="theOneUserDownload" href="https://github.com/Rubenvaggelen/apps/releases/download/user-v1003/The-One-Android-User.apk">⬇ The One Gebruiker APK • v1003</a></div>
+    </div>
+
+    <div class="card">
       <h2>The One Run</h2>
       <div class="big">Build 1008</div>
       <p class="muted">Zelfstandige Android-app • opgeslagen werkende versie.</p>
@@ -179,6 +186,28 @@ async function loadDownloads(){
   }catch(e){/* Keep independent server-rendered download links on connection failure. */}
 }
 loadLive().finally(loadDownloads);
+</script>
+<script id="the-one-user-release-auto">
+(function(){
+  const target=document.getElementById('theOneUserDownload');
+  if(!target)return;
+  fetch('https://api.github.com/repos/Rubenvaggelen/apps/releases?per_page=100',{
+    cache:'no-store',headers:{Accept:'application/vnd.github+json'}
+  }).then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json()})
+    .then(items=>{
+      if(!Array.isArray(items))return;
+      const releases=items.filter(r=>!r.draft&&!r.prerelease&&/^user-v[0-9]+$/.test(r.tag_name||''))
+        .sort((a,b)=>Number(b.tag_name.slice(6))-Number(a.tag_name.slice(6)));
+      for(const release of releases){
+        const asset=(release.assets||[]).find(a=>a.name==='The-One-Android-User.apk'||/^The-One-Android-User-v[0-9]+\.apk$/.test(a.name||''));
+        if(asset&&asset.browser_download_url){
+          target.href=asset.browser_download_url;
+          target.textContent='⬇ The One Gebruiker APK • '+release.tag_name;
+          break;
+        }
+      }
+    }).catch(()=>{});
+})();
 </script>
 </body>
 </html>

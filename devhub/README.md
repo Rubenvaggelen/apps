@@ -42,3 +42,12 @@ chmod +x devhub/deploy.sh
 The deployment script validates the PHP files, backs up an existing `index.html`, `index.php` and `api.php`, copies the Dev Hub into the web root, and then automatically switches the repository clone back to `main` and fast-forwards it.
 
 It does **not** alter `.htaccess`, `.well-known`, cPanel Directory Privacy, SSL or the Android projects.
+
+
+## The One Gebruiker (Android)
+- Losse gebruiker-APK: `com.gmailorg.theoneuser`, onafhankelijk van de Main-beheerapp.
+- Eigen releasekanaal: `user-v1003` en daarna `user-v###` (niet `main-v###`).
+- **Belangrijk voor OTA:** elke nieuwe user-release moet ook het asset `The-One-Android-User.apk` publiceren. Bestaande gebruikersversies zoeken die exacte naam.
+- Release v1003 stable asset: https://github.com/Rubenvaggelen/apps/releases/download/user-v1003/The-One-Android-User.apk
+- Dev Hub: zelfstandig download-item in `devhub/builds.php`, de startpagina, en de live catalogus `family-installaties.php`. De browser kan een nieuwe gebruikersrelease ophalen zonder de andere downloadkanalen te veranderen.
+- De daadwerkelijke live site kan afwijken van de repositoryversie. Gebruik daarom de bewaakte chirurgische toevoeging in `ci/patch-user-devhub-live.py`; overschrijf live pagina's niet blind.

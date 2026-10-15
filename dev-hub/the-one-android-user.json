@@ -1,0 +1,16 @@
+{
+  "id": "the-one-android-user",
+  "name": "The One Gebruiker",
+  "platform": "Android",
+  "projectPath": "app",
+  "applicationId": "com.gmailorg.theoneuser",
+  "buildArtifact": "The-One-Android-User.apk",
+  "updateTagPrefix": "user-v",
+  "releasedTag": "user-v1003",
+  "updateMode": "in-app",
+  "independentFromMain": true,
+  "requiresOwnerApproval": true,
+  "rightsManagedBy": "The One Main → Apparaten beheren",
+  "devHub": "builds.php and family-installaties.php",
+  "description": "Standalone Android app for users. Users register with their name; the owner grants app and media permissions. Releases never replace Main."
+}
