@@ -2,7 +2,7 @@ name: Sony Bravia audio candidate live-google-tv 1.0.9
 on:
   push:
     branches: [feature/sony-bravia-tv-audio-20261015]
-    paths: [live-google-tv/**, .github/workflows/sony-bravia-tv-audio-test.yml]
+    paths: [live-google-tv/**, ci/publish-sony-bravia-candidate.sh, .github/workflows/sony-bravia-tv-audio-test.yml]
 permissions:
   contents: read
 concurrency:
