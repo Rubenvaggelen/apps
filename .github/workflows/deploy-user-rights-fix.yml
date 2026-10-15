@@ -1,0 +1,106 @@
+name: The One User rights preservation guarded server deployment
+on:
+  push:
+    branches: [feature/license-user-integrity-audit-20261015]
+    paths: ['.github/workflows/deploy-user-rights-fix.yml']
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  guarded-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Test isolated license contract
+        run: |
+          php -l the-one-remote-server/devices.php
+          php the-one-remote-server/tests/family-license-smoke.php
+      - name: Surgical, guarded live-only permission fix
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for v in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "$(printenv "$v")" || { echo "Missing $v"; exit 1; }
+          done
+          d=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$d"' EXIT
+          umask 077
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$d/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$d/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$d/askpass"
+          chmod 600 "$d/key" "$d/known_hosts"
+          chmod 700 "$d/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$d/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$d/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          o=(-i "$d/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$d/known_hosts" -o ConnectTimeout=20)
+          remote=$(ssh -p "$DEPLOY_PORT" "${o[@]}" "$DEPLOY_USER@$DEPLOY_HOST" \
+            'test -f "$HOME/public_html/the-one-remote-api/devices.php" && php -l "$HOME/public_html/the-one-remote-api/devices.php" >/dev/null && sha256sum "$HOME/public_html/the-one-remote-api/devices.php" | cut -d " " -f1')
+          test "${#remote}" -eq 64
+          # Import live source privately; do not print PHP, credentials, or user records.
+          ssh -p "$DEPLOY_PORT" "${o[@]}" "$DEPLOY_USER@$DEPLOY_HOST" \
+            'cat "$HOME/public_html/the-one-remote-api/devices.php"' > "$d/live.php"
+          python3 ci/patch-user-music-rights-live.py "$d/live.php" \
+            the-one-remote-server/devices.php "$d/merged.php"
+          php -l "$d/merged.php"
+          # Isolated integration tests on EXACT live candidate, not only repo copy.
+          cp "$d/merged.php" the-one-remote-server/devices.php
+          php the-one-remote-server/tests/family-license-smoke.php
+          echo 'LIVE_CANDIDATE_ISOLATED_HTTP_TEST=passed'
+          # Only the legacy music rights block may change; test and back up before deployment.
+          stage=$(ssh -p "$DEPLOY_PORT" "${o[@]}" "$DEPLOY_USER@$DEPLOY_HOST" 'umask 077; mktemp -d "$HOME/.the-one-family-stage.XXXXXXXX"')
+          scp -O -P "$DEPLOY_PORT" "${o[@]}" "$d/merged.php" "$DEPLOY_USER@$DEPLOY_HOST:$stage/devices.php"
+          ssh -p "$DEPLOY_PORT" "${o[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "bash -s -- '$stage' '$remote'" <<'REMOTE'
+          set -euo pipefail
+          umask 077
+          stage="$1"
+          expected="$2"
+          target="$HOME/public_html/the-one-remote-api/devices.php"
+          test -f "$target"
+          actual=$(sha256sum "$target" | cut -d ' ' -f1)
+          test "$actual" = "$expected" || { echo 'DEPLOY_ABORTED=live-changed'; exit 9; }
+          php -l "$stage/devices.php" >/dev/null
+          mkdir -p "$HOME/.the-one-family-backups"
+          backup=$(mktemp -d "$HOME/.the-one-family-backups/licensing.XXXXXXXX")
+          cp -p "$target" "$backup/devices.php"
+          registry="$HOME/the-one-remote-data/main-devices.json"
+          test -s "$registry"
+          registryBefore=$(sha256sum "$registry" | cut -d ' ' -f1)
+          for file in main-devices.json main-device-owner.json; do
+            if [ -f "$HOME/the-one-remote-data/$file" ]; then
+              cp -p "$HOME/the-one-remote-data/$file" "$backup/$file"
+            fi
+          done
+          candidate=$(mktemp "$target.new.XXXXXXXX")
+          cp "$stage/devices.php" "$candidate"
+          chmod 644 "$candidate"
+          mv "$candidate" "$target"
+          if ! curl -fsS --max-time 15 'https://rubenvanaggelen.com/the-one-remote-api/devices.php?action=health' | grep -q '"ok":true'; then
+            rollback=$(mktemp "$target.rollback.XXXXXXXX")
+            cp -p "$backup/devices.php" "$rollback"
+            mv "$rollback" "$target"
+            echo 'DEPLOY_RESULT=rolled-back-health-check'
+            exit 15
+          fi
+          test "$(sha256sum "$registry" | cut -d ' ' -f1)" = "$registryBefore" || {
+            rollback=$(mktemp "$target.rollback.XXXXXXXX")
+            cp -p "$backup/devices.php" "$rollback"
+            mv "$rollback" "$target"
+            echo 'DEPLOY_ABORTED=registry-changed-during-deploy'
+            exit 20
+          }
+          grep -q 'Preserve all independent' "$target"
+          rm -f "$stage/devices.php"
+          rmdir "$stage"
+          echo 'DEPLOY_RESULT=success'
+          echo 'LIVE_REGISTRY_UNCHANGED=true'
+          echo 'BACKUP_RESULT=preserved'
+          REMOTE
