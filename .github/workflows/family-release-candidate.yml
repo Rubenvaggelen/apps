@@ -107,7 +107,7 @@ jobs:
           OWNER_SHA=$(sha256sum /tmp/cinema-owner.der | cut -d " " -f1)
           grep -i "certificate SHA-256 digest: $OWNER_SHA" /tmp/cinema-signature.txt
           "$BT/aapt" dump badging "$APK" > /tmp/cinema-badging.txt
-          grep "package: name='com.theone.series' versionCode='119'" /tmp/cinema-badging.txt
+          grep "package: name='com.theone.series' versionCode='120'" /tmp/cinema-badging.txt
           grep 'launchable-activity' /tmp/cinema-badging.txt
           python3 - <<'PY_ASSETS'
           import zipfile,gzip,json
@@ -116,8 +116,8 @@ jobs:
                   assert len(json.loads(gzip.decompress(z.read('assets/bootstrap-series.bin'))))==256
           PY_ASSETS
           mkdir -p deliverable
-          cp "$APK" deliverable/The-One-Series-Android-v1.1.9.apk
-          sha256sum deliverable/The-One-Series-Android-v1.1.9.apk > deliverable/SHA256SUMS.txt
+          cp "$APK" deliverable/The-One-Series-Android-v1.2.0.apk
+          sha256sum deliverable/The-One-Series-Android-v1.2.0.apk > deliverable/SHA256SUMS.txt
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -141,7 +141,7 @@ jobs:
           umask 077
           mkdir -p protected-deliverable
           openssl rand -hex 32 > /tmp/cinema-artifact-key
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/cinema-artifact-key -in deliverable/The-One-Series-Android-v1.1.9.apk -out protected-deliverable/The-One-Series-Android-v1.1.9.apk.enc
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/cinema-artifact-key -in deliverable/The-One-Series-Android-v1.2.0.apk -out protected-deliverable/The-One-Series-Android-v1.2.0.apk.enc
           openssl pkeyutl -encrypt -pubin -inkey owner-artifact-public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in /tmp/cinema-artifact-key -out protected-deliverable/key.enc
           cp deliverable/SHA256SUMS.txt protected-deliverable/SHA256SUMS.txt
           rm /tmp/cinema-artifact-key
@@ -149,7 +149,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: the-one-series-android-v119
+          name: the-one-series-android-v120
           path: series-android/protected-deliverable/
           retention-days: 7
       - name: Verify private update service is deployed
@@ -166,8 +166,8 @@ jobs:
           DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           BUILD_APP_ID: series-phone
-          BUILD_APK_PATH: series-android/deliverable/The-One-Series-Android-v1.1.9.apk
-          BUILD_VERSION_NAME: 1.1.9
+          BUILD_APK_PATH: series-android/deliverable/The-One-Series-Android-v1.2.0.apk
+          BUILD_VERSION_NAME: 1.2.0
         run: bash ci/publish-family-private.sh
       - name: Save test reports
         if: always()
