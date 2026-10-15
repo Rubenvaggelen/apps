@@ -22,8 +22,12 @@ public class MainActivity extends Activity {
  private List<CatalogEntry> playSources;private int sourceIndex,retries;private long resumePosition;private boolean userPaused=false;
  private Runnable stallTask,progressTask;private long bufferStarted;
  @Override public void onCreate(Bundle b){super.onCreate(b);
- familyLicense=new FamilyLicenseGate(this,"tv_android",()->startLicensedApp(b));
- familyLicense.begin();}
+ if (BuildConfig.DEBUG && getIntent() != null && getIntent().getBooleanExtra("tv_test_mode", false)) {
+   startLicensedApp(b);
+ } else {
+   familyLicense=new FamilyLicenseGate(this,"tv_android",()->startLicensedApp(b));
+ familyLicense.begin();
+ }}
  private void startLicensedApp(Bundle b){
   appUpdater = new FamilyUpdateNotice(this);
   appUpdater.checkOnOpen();prefs=getSharedPreferences("the_one_live_tv",MODE_PRIVATE);favorites=new HashSet<>(prefs.getStringSet("favorites",Collections.emptySet()));preferredLanguage=prefs.getString("preferred_language","en");testMode=BuildConfig.DEBUG&&getIntent().getBooleanExtra("tv_test_mode",false);try{if(!testMode)repo=new MediaRepository(this);}catch(Exception e){showFatal();return;}if(testMode){List<CatalogEntry> samples=new ArrayList<>();for(int i=1;i<=(getIntent().getIntExtra("tv_test_count",12));i++){String country=i<=4?"NL":i<=8?"US":"GB";CatalogEntry entry=new CatalogEntry(i,country+" - Testkanaal "+i,"m3u8","",""+country,"live",0);samples.add(entry);variants.put(entry.key(),Arrays.asList(entry,new CatalogEntry(1000000000+i,country+" - Testkanaal "+i+" HD","ts","",country,"live",0)));}samples.sort(CatalogEntry.CHANNEL_ORDER);catalogs.put("live",samples);}showCatalog();}
