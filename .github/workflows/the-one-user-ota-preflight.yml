@@ -112,6 +112,26 @@ jobs:
                           "The One Dev Hub", "user-v1003"
                       ]
                   ))
+          for folder in matched:
+              for filename in ["builds.php", "index.php"]:
+                  f=folder/filename
+                  if not f.is_file(): continue
+                  lines=f.read_text(encoding="utf-8").splitlines()
+                  tokens=["download-row","download-panel","appDownload","carDownload",
+                          "The One APK","The One DJ","laatste afgeronde","Laatste downloads",
+                          "function loadLatestRelease","function loadDownloads", "runDownload"]
+                  found=0
+                  for line_no,line in enumerate(lines,1):
+                      matched_tokens=[tok for tok in tokens if tok.lower() in line.lower()]
+                      if not matched_tokens:continue
+                      if found >= 24:break
+                      # Output only HTML/JS UI fragments; never emit config or PHP auth.
+                      if "secret" in line.lower() or "password" in line.lower(): continue
+                      start=min((line.lower().find(tok.lower()) for tok in matched_tokens))
+                      excerpt=line[max(0,start-90):start+280].replace("\\n"," ").replace("\\r"," ")
+                      print("DEVHUB_UI_CONTEXT_"+filename+"_"+str(line_no)+":"+
+                            ",".join(matched_tokens)+":"+excerpt)
+                      found+=1
           if not matched:
               raise SystemExit("No deployed Dev Hub builds.php found in expected roots")
           PY
