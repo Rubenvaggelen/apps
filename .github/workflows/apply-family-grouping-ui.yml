@@ -1,0 +1,29 @@
+name: Apply one-person Family management UI
+on:
+  push:
+    branches: [feature/main-android-app-tiles-license-prep-20261014]
+    paths:
+      - ci/group-family-requests-main.py
+      - .github/workflows/apply-family-grouping-ui.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Combine applications per person in Main
+        run: |
+          python3 ci/group-family-requests-main.py
+          git diff --check
+          git diff --stat
+      - name: Save only Main management UI changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/gmailorg/hub/WakePcActivity.kt
+          git commit -m "Group Cinema Series and TV by applicant in one management window"
+          git push origin HEAD:feature/main-android-app-tiles-license-prep-20261014
