@@ -51,6 +51,8 @@ $port=random_int(20000,48000);
 $base="http://127.0.0.1:$port/the-one-remote-api/devices.php";
 mkdir($api, 0700, true);
 copy(dirname(__DIR__).'/devices.php',$api.'/devices.php');
+copy(dirname(__DIR__).'/family-updates.php',$api.'/family-updates.php');
+$updateBase="http://127.0.0.1:$port/the-one-remote-api/family-updates.php";
 $proc=proc_open(escapeshellarg(PHP_BINARY).' -S 127.0.0.1:'.$port.' -t '.escapeshellarg($www),
     [['pipe','r'],['file',$root.'/server.log','w'],['file',$root.'/error.log','w']],
     $pipes);
@@ -80,6 +82,29 @@ try {
     [$code,$body]=call_api($base,'family_check',signed_payload($key,'check',$id,'cinema_android'));
     need($code===200 && ($body['allowed']??false)===true && ($body['valid_seconds']??0)===86400,
         'Approved installation did not receive a 24h online grant');
+
+    // The update manifest and APK are private; only approved signing keys may read them.
+    $rootBuild=$root.'/the-one-private-builds/2026-10-13';
+    mkdir($rootBuild.'/apks',0700,true);
+    $apkName='The-One-Cinema-Android-v1.3.8.apk';
+    $dummyApk="isolated-unit-test-only-apk\n";
+    file_put_contents($rootBuild.'/apks/'.$apkName,$dummyApk);
+    $buildInfo=[[
+        'id'=>'cinema-phone',
+        'apk'=>$apkName,
+        'version_name'=>'1.3.8',
+        'sha256'=>hash('sha256',$dummyApk),
+        'package_badging'=>"package: name='com.theone.cinema' versionCode='138' versionName='1.3.8'",
+        'dev_hub_status'=>'published'
+    ]];
+    file_put_contents($rootBuild.'/manifest.json',json_encode($buildInfo));
+    [$code,$body]=call_api($updateBase,'check',signed_payload($key,'check',$id,'cinema_android'));
+    need($code===200 && ($body['version_code']??0)===138,'Approved app cannot check private update');
+    $fake=signed_payload($key,'check',$id,'cinema_android');
+    $fake['signature']=base64_encode(random_bytes(72));
+    [$code,$body]=call_api($updateBase,'check',$fake);
+    need($code===403,'Update endpoint accepted forged signature');
+    // No signed token may read an APK of an unapproved installation.
     $invalid=signed_payload($key,'check',$id,'cinema_android');
     $invalid['signature']=base64_encode(random_bytes(72));
     [$code,$body]=call_api($base,'family_check',$invalid);
@@ -88,13 +113,15 @@ try {
     file_put_contents($jsonPath,json_encode($state));
     [$code,$body]=call_api($base,'family_check',signed_payload($key,'check',$id,'cinema_android'));
     need($code===200 && ($body['allowed']??true)===false,'Blocked device still has access');
+    [$updateCode,$updateBody]=call_api($updateBase,'check',signed_payload($key,'check',$id,'cinema_android'));
+    need($updateCode===403,'Blocked installation can still check private builds');
     $state['devices'][$id]['blocked']=false;
     $state['devices'][$id]['access_rights']['cinema_android']=false;
     $state['devices'][$id]['family_denied_scopes']['cinema_android']=gmdate('c');
     file_put_contents($jsonPath,json_encode($state));
     [$code,$body]=call_api($base,'family_register',$reg);
     need($code===200 && ($body['pending']??true)===false,'Denied request was recreated automatically');
-    echo "Family license HTTP contract: 6 checks passed\n";
+    echo "Family license and private update HTTP contract: checks passed\n";
 } finally {
     proc_terminate($proc);
     proc_close($proc);
