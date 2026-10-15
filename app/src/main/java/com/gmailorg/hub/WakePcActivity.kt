@@ -628,7 +628,6 @@ class WakePcActivity : AppCompatActivity() {
             )
             addAccessControl(
                 "Cinema",
-                MainDeviceRegistry.ACCESS_USER_APP,
                 MainDeviceRegistry.ACCESS_CINEMA,
                 device.cinemaRights,
                 device.pendingCinema

@@ -3,7 +3,11 @@ name: The One User and Main independent APKs
 on:
   push:
     branches: [feature/the-one-user-standalone-20261015]
-    paths: ['.github/workflows/the-one-user-app-release.yml']
+    paths:
+      - '.github/workflows/the-one-user-app-release.yml'
+      - 'app/**'
+      - 'the-one-remote-server/**'
+      - 'ci/user-app-live-merge.py'
   workflow_dispatch: {}
 
 permissions:
