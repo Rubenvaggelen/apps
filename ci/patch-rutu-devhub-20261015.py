@@ -52,8 +52,9 @@ replace_one("De bestaande klantomgeving blijft ongewijzigd.",
             "Customer QR and update note")
 page=re.sub(r"Bijgewerkt \d{1,2} [A-Za-z]+(?: \d{4})?",
             "Bijgewerkt 15 oktober 2026",page,count=1)
-for text in ("BUILD 937 • GESLAAGD","WINDOWS 0.4.39 • GESLAAGD",
-             "KLANT ANDROID • BUILD 937 • GESLAAGD"):
+for text in ('<span class="ok">BUILD 937 • GESLAAGD</span>',
+             '<span class="ok">WINDOWS 0.4.39 • GESLAAGD</span>',
+             '<span class="ok">KLANT ANDROID • BUILD 937 • GESLAAGD</span>'):
     if page.count(text)!=1:raise SystemExit("DUPLICATE_OR_MISSING_LABEL="+text)
 if page.count("Rutu-BBQ-Android.apk")!=1 or page.count("Rutu-BBQ-Bedrijf-Windows.exe")!=1:
     raise SystemExit("DOWNLOAD_LINK_DUPLICATED")
