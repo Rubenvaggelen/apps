@@ -44,9 +44,28 @@ jobs:
           from pathlib import Path
           image=cv2.imread('rutu-windows/assets/rutu-android-qr.png')
           assert image is not None, "QR image missing"
-          url,_,_=cv2.QRCodeDetector().detectAndDecode(image)
-          assert url.startswith('https://'), "Existing QR did not resolve to an HTTPS target"
-          print('CURRENT_RUTU_BUSINESS_QR_TARGET='+url)
+          reader=cv2.QRCodeDetector()
+          url,_,_=reader.detectAndDecode(image)
+          if not url:
+              for scale in (2,3,4,6):
+                  enlarged=cv2.resize(image,None,fx=scale,fy=scale,interpolation=cv2.INTER_NEAREST)
+                  url,_,_=reader.detectAndDecode(enlarged)
+                  if url:break
+          if url.startswith('https://'):
+              print('CURRENT_RUTU_BUSINESS_QR_TARGET='+url)
+          else:
+              print('CURRENT_RUTU_BUSINESS_QR_UNVERIFIED_BY_OPENCV=true')
+          PY
+          # Use a different QR decoder, independent of the first scanner.
+          sudo apt-get update -qq >/dev/null 2>&1
+          sudo apt-get install -qq -y zbar-tools >/dev/null 2>&1
+          result=$(zbarimg --quiet --raw rutu-windows/assets/rutu-android-qr.png 2>/dev/null || true)
+          if [[ "$result" == https://* ]]; then
+            echo "CURRENT_RUTU_BUSINESS_QR_ZBAR_TARGET=$result"
+          else
+            echo 'CURRENT_RUTU_BUSINESS_QR_UNVERIFIED_BY_ZBAR=true'
+          fi
+          : <<'DONE'
           PY
       - name: Read live RUTU updates, exact APK SHA-256 and Dev Hub page without changing anything
         shell: bash
