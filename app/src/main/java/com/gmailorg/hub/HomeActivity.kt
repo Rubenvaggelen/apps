@@ -148,9 +148,10 @@ class HomeActivity : AppCompatActivity() {
             // Vaste snelkoppelingen naar apps (WhatsApp, Google Home) alleen
             // tonen als die app ook daadwerkelijk geïnstalleerd staat —
             // anders zie je een leeg "+"-icoontje voor een niet-bestaande app.
-            (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") || tile.id in licensedAppScopes || tile.packageName == null || isPackageInstalled(tile.packageName)) &&
+            (tile.id in fixedStandaloneAppIds || tile.packageName == null || isPackageInstalled(tile.packageName)) &&
                 (tile.id != "remote_pc" || MainDeviceRegistry.isLocallyOwner(this)) &&
-                (if (tile.id in licensedAppScopes) LicensedTileVisibility.isVisible(this, tile.id) else tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") || !HiddenTilesStore.isHidden(tile.id))
+                !HiddenTilesStore.isHidden(tile.id) &&
+                (tile.id !in licensedAppScopes || LicensedTileVisibility.isVisible(this, tile.id))
         }
         val userApps = ShortcutStore.getAll().filter {
             !HiddenTilesStore.isHidden(it.id) && it.packageName !in (setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") + licensedAppScopes.keys)
@@ -166,6 +167,9 @@ class HomeActivity : AppCompatActivity() {
         "com.theone.series" to "series_android",
         "com.theone.tv.phone" to "tv_android",
     )
+
+    private val fixedStandaloneAppIds = licensedAppScopes.keys +
+        setOf("com.gmailorg.thedj", "com.gmailorg.runcoach")
 
     private fun showMissingFamilyApp(packageName: String) {
         val label = when (packageName) {
@@ -259,21 +263,17 @@ class HomeActivity : AppCompatActivity() {
 
     private fun handleTileLongClick(tile: HomeTile): Boolean {
         if (tile.type == TileType.ADD_BUTTON) return false
-        if (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach")) return true
-        if (tile.id in licensedAppScopes) {
-            if (!MainDeviceRegistry.isLocallyOwner(this)) {
-                LicensedTileVisibility.setVisible(this, tile.id, false)
-                refreshTiles()
-                Toast.makeText(this, "${tile.label} verborgen; terugzetten via Instellingen.", Toast.LENGTH_SHORT).show()
-            }
-            return true
-        }
 
+        // All fixed Family tiles, including Cinema/Series/TV/DJ/Run, are hideable.
+        // Tile visibility is local only and never changes any app license.
         AlertDialog.Builder(this)
             .setTitle("Tegel verbergen?")
             .setMessage("\"${tile.label}\" wordt van het startscherm verwijderd. Je kunt 'm later terugzetten via Instellingen.")
             .setPositiveButton("Verbergen") { _, _ ->
-                if (tile.type == TileType.APP && tile.packageName != null && tile.packageName !in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach") &&
+                if (tile.id in licensedAppScopes) {
+                    LicensedTileVisibility.setVisible(this, tile.id, false)
+                } else if (tile.type == TileType.APP && tile.packageName != null &&
+                    tile.id !in fixedStandaloneAppIds &&
                     ShortcutStore.getAll().any { it.packageName == tile.packageName }
                 ) {
                     // Zelf toegevoegde app-snelkoppeling: gewoon volledig verwijderen,

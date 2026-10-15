@@ -355,6 +355,8 @@ class SettingsActivity : AppCompatActivity() {
         "currency" to "Koers (EUR / SRD / USD)",
         "lifestyle" to "Lifestyle",
         "remote_pc" to "Laptop",
+        "com.gmailorg.thedj" to "The One DJ",
+        "com.gmailorg.runcoach" to "The One Run",
         "whatsapp" to "WhatsApp",
         "googlehome" to "Google Home"
     )
