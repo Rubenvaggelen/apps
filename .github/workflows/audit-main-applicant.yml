@@ -1,4 +1,4 @@
-name: Check missing Main applicant (read-only)
+name: Check Main registration and missing applicant (read-only)
 on:
   push:
     branches: [feature/main-android-app-tiles-license-prep-20261014]
