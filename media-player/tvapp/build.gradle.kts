@@ -10,8 +10,8 @@ android {
         applicationId = "com.theone.mediaplayer.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1005
-        versionName = "1.0.5-live-tv"
+        versionCode = 1006
+        versionName = "1.0.6-back-navigation"
     }
 
     buildTypes {
