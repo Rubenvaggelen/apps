@@ -302,7 +302,15 @@ public class XtreamCatalogActivity extends Activity {
                 merged.ids.add(source.id);
             }
         }
-        for (Category category : combined.values()) {
+        // Keep provider order for all other categories; lift the requested 2026
+        // multilingual movie collection ahead of every film category.
+        java.util.List<Category> orderedCategories = new java.util.ArrayList<>(combined.values());
+        if ("movie".equals(mode) && !adultOnly) {
+            orderedCategories.sort((first, second) -> Boolean.compare(
+                    !ChannelGuide.isTop2026MultiLang(first.name),
+                    !ChannelGuide.isTop2026MultiLang(second.name)));
+        }
+        for (Category category : orderedCategories) {
             Button b = PremiumUi.chipButton(this, category.name);
             b.setOnClickListener(v -> loadItems(category));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
