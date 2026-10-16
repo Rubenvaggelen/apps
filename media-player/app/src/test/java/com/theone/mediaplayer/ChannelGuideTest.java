@@ -14,6 +14,18 @@ public class ChannelGuideTest {
         assertEquals(2,ChannelGuide.videoTier("Test 8K"));
         assertEquals(3,ChannelGuide.videoTier("Test 16K"));
     }
+    @Test public void netherlandsCountryRequiresExplicitNlChannelPrefix() {
+        assertTrue(ChannelGuide.hasNlPrefix("NL: NPO 1 HD"));
+        assertTrue(ChannelGuide.hasNlPrefix(" NL | Ziggo Sport 2 HD"));
+        assertTrue(ChannelGuide.hasNlPrefix("nl Cartoon Network"));
+        assertTrue(ChannelGuide.hasNlPrefix("NL-NPO 2"));
+        assertFalse(ChannelGuide.hasNlPrefix("NPO 1 HD"));
+        assertFalse(ChannelGuide.hasNlPrefix("DE | Cartoon Network NL"));
+        assertFalse(ChannelGuide.hasNlPrefix("NLSPORT"));
+        assertFalse(ChannelGuide.hasNlPrefix("Belgium NL: RTL"));
+        assertFalse(ChannelGuide.hasNlPrefix(null));
+    }
+
     @Test public void countryLabelsAndNoProviderLabels() {
         assertEquals("Nederland",ChannelGuide.country("NPO 1 HD",""));
         assertEquals("Duitsland",ChannelGuide.country("DE: ARD HD","DE | Nachrichten"));
