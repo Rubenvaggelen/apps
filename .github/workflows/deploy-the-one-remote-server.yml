@@ -87,9 +87,6 @@ jobs:
           # Deployment is limited to API files. Do not touch Shared Media caches,
           # stored licenses, device registrations, or any other server data.
           stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'mktemp -d "$HOME/.the-one-remote-stage.XXXXXXXX"')
-          scp -O -P "$DEPLOY_PORT" "${opts[@]}" the-one-remote-server/dedupe-cache.php "$remote:$stage/dedupe-cache.php"
-          scp -O -P "$DEPLOY_PORT" "${opts[@]}" the-one-remote-server/adopt-hub.php "$remote:$stage/adopt-hub.php"
-          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "php '$stage/dedupe-cache.php'; php '$stage/adopt-hub.php'; echo '=== SPACE AFTER DEDUPE/HUB ADOPT ==='; df -h \"\$HOME\" || true; du -sh \"\$HOME/the-one-music-cache\" 2>/dev/null || true"
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" the-one-remote-server/index.php "$remote:$stage/index.php"
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" the-one-remote-server/music.php "$remote:$stage/music.php"
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" the-one-remote-server/devices.php "$remote:$stage/devices.php"
@@ -104,12 +101,16 @@ jobs:
           php -l "$stage/index.php" >/dev/null
           php -l "$stage/music.php" >/dev/null
           php -l "$stage/devices.php" >/dev/null
-          if [ -f "$target" ] || [ -f "$music_target" ] || [ -f "$devices_target" ]; then
-            backup=$(mktemp -d "$HOME/.the-one-remote-backups/api.XXXXXXXX")
-            [ -f "$target" ] && cp -p "$target" "$backup/index.php" || true
-            [ -f "$music_target" ] && cp -p "$music_target" "$backup/music.php" || true
-            [ -f "$devices_target" ] && cp -p "$devices_target" "$backup/devices.php" || true
-          fi
+          # Fail closed if any existing target or recoverable snapshot cannot be verified.
+          for name in index.php music.php devices.php; do
+            test -s "$target_dir/$name"
+          done
+          backup=$(mktemp -d "$HOME/.the-one-remote-backups/api.XXXXXXXX")
+          for name in index.php music.php devices.php; do
+            cp -p "$target_dir/$name" "$backup/$name"
+            cmp -s "$backup/$name" "$target_dir/$name"
+          done
+          echo "RECOVERY_SNAPSHOT=$backup"
           # Roll back all three PHP files on any failed atomic swap or smoke check.
           rollback() {
             trap - ERR
