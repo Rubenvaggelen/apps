@@ -50,7 +50,7 @@ public final class ChannelGuide {
         String n=normalize(category+" "+title);
         if(raw.contains("[nl]")||raw.contains("|nl|")||raw.contains("nl:")||
           includes(n,"nederland")||includes(n,"netherlands")||includes(n,"dutch")||
-          includes(n,"nl")||ziggoOrder(title)<10000)return "Nederland";
+          includes(n,"nl"))return "Nederland";
         if(raw.contains("[be]")||includes(n,"be")||includes(n,"belgie")||includes(n,"belgium")||includes(n,"vlaanderen"))return "België";
         if(raw.contains("[de]")||includes(n,"de")||includes(n,"germany")||includes(n,"deutschland")||includes(n,"duitsland"))return "Duitsland";
         if(raw.contains("[uk]")||includes(n,"uk")||includes(n,"england")||includes(n,"united kingdom"))return "Verenigd Koninkrijk";
@@ -61,6 +61,7 @@ public final class ChannelGuide {
         if(raw.contains("[it]")||includes(n,"it")||includes(n,"italy")||includes(n,"italia"))return "Italië";
         if(raw.contains("[pt]")||includes(n,"pt")||includes(n,"portugal"))return "Portugal";
         if(raw.contains("[sr]")||includes(n,"sr")||includes(n,"suriname"))return "Suriname";
+        if(ziggoOrder(title)<10000)return "Nederland";
         return "Overige";
     }
 }
