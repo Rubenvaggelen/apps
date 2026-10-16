@@ -71,10 +71,7 @@ public final class AdultTvKeyboard {
             for(int i=0;i<rowText.length();i++){
                 final char character=rowText.charAt(i);
                 Button letter=key(activity,String.valueOf(character));
-                letter.setOnClickListener(v->{
-                    int start=Math.max(0,field.getSelectionStart());
-                    field.getText().insert(start,Character.toString(character));
-                });
+                letter.setOnClickListener(v->field.append(Character.toString(character)));
                 row.addView(letter,new LinearLayout.LayoutParams(0,dp(activity,46),1f));
             }
             body.addView(row);
@@ -82,15 +79,12 @@ public final class AdultTvKeyboard {
         LinearLayout actions=new LinearLayout(activity);
         actions.setOrientation(LinearLayout.HORIZONTAL);
         Button space=key(activity,"Spatie");
-        space.setOnClickListener(v->{
-            int start=Math.max(0,field.getSelectionStart());
-            field.getText().insert(start," ");
-        });
+        space.setOnClickListener(v->field.append(" "));
         actions.addView(space,new LinearLayout.LayoutParams(0,dp(activity,52),1f));
         Button erase=key(activity,"⌫");
         erase.setOnClickListener(v->{
-            int start=field.getSelectionStart();
-            if(start>0)field.getText().delete(start-1,start);
+            int len=field.length();
+            if(len>0)field.getText().delete(len-1,len);
         });
         actions.addView(erase,new LinearLayout.LayoutParams(0,dp(activity,52),1f));
         Button clear=key(activity,"Wissen");
