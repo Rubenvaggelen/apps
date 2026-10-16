@@ -1275,22 +1275,28 @@ public class XtreamCatalogActivity extends Activity {
         new Thread(() -> {
             List<XtreamItem> episodes = new ArrayList<>();
 
-            for (int attempt = 0; attempt < 2 && episodes.isEmpty(); attempt++) {
-                try {
-                    String raw = get(config.api("get_series_info", "series_id", series.id));
-                    Object data = new org.json.JSONTokener(raw).nextValue();
-                    collectEpisodes(data, "", episodes);
-                } catch (Throwable ignored) {
-                }
-
-                if (episodes.isEmpty() && attempt == 0) {
+            java.util.LinkedHashMap<String, XtreamItem> merged=new java.util.LinkedHashMap<>();
+            java.util.List<String> seriesIds=new java.util.ArrayList<>();
+            seriesIds.add(series.id);
+            seriesIds.addAll(series.alternatives);
+            for (String seriesId : seriesIds) {
+                List<XtreamItem> fetched=new ArrayList<>();
+                for (int attempt=0;attempt<2&&fetched.isEmpty();attempt++) {
                     try {
-                        Thread.sleep(450);
-                    } catch (InterruptedException ignored) {
-                        Thread.currentThread().interrupt();
-                    }
+                        String raw=get(config.api("get_series_info","series_id",seriesId));
+                        Object data=new org.json.JSONTokener(raw).nextValue();
+                        collectEpisodes(data,"",fetched);
+                    }catch(Throwable ignored) {}
+                }
+                for (XtreamItem episode : fetched) {
+                    String episodeLabel=episode.name.split(" • ",2)[0];
+                    String key=ChannelGuide.normalize(episodeLabel);
+                    XtreamItem existing=merged.get(key);
+                    if(existing==null)merged.put(key,episode);
+                    else if(!existing.id.equals(episode.id))existing.alternatives.add(episode.id);
                 }
             }
+            episodes.addAll(merged.values());
 
             episodes.sort((a, b) -> compareEpisodeNames(a.name, b.name));
             List<XtreamItem> result = new ArrayList<>(episodes);
