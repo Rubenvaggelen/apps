@@ -17,6 +17,7 @@ import java.util.Locale;
 final class XtreamCatalog {
     static final class Entry {
         final String source, kind, title, category, streamId, extension;
+        final List<Entry> alternatives = new ArrayList<>();
         Entry(String source, String kind, String title, String category, String streamId, String extension) {
             this.source=source; this.kind=kind; this.title=title; this.category=category; this.streamId=streamId; this.extension=extension;
         }
@@ -46,7 +47,9 @@ final class XtreamCatalog {
                     if("null".equals(id)||id.isEmpty())continue;
                     String title=item.optString("name","Zonder titel");
                     String key=kind+":"+title.toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]+"," ").trim();
-                    if (!unique.containsKey(key)) unique.put(key,new Entry(name,kind,title,item.optString("category_id",""),id,item.optString("container_extension","mp4")));
+                    Entry candidate=new Entry(name,kind,title,item.optString("category_id",""),id,item.optString("container_extension","mp4"));
+                    if (!unique.containsKey(key)) unique.put(key,candidate);
+                    else unique.get(key).alternatives.add(candidate);
                 }
             } catch(Exception e) { result.errors.add(name+": catalogus kon niet worden geladen ("+e.getClass().getSimpleName()+")"); }
         }
@@ -62,9 +65,57 @@ final class XtreamCatalog {
             String pass=prefs.getString(prefix+"pass",i==1?prefs.getString("xtream_pass",""):"");
             if("series".equals(entry.kind))return "";
             String extension="live".equals(entry.kind)?"ts":entry.extension.replaceAll("[^a-zA-Z0-9]","");
-            return server.replaceAll("/+$","")+"/"+("live".equals(entry.kind)?"live":"movie")+"/"+encode(user)+"/"+encode(pass)+"/"+entry.streamId+"."+extension;
+            return server.replaceAll("/+$","")+"/"+("live".equals(entry.kind)?"live":"episode".equals(entry.kind)?"series":"movie")+"/"+encode(user)+"/"+encode(pass)+"/"+entry.streamId+"."+extension;
         }
         return "";
+    }
+    static List<String> playbackUrls(SharedPreferences prefs, Entry entry) {
+        List<String> urls = new ArrayList<>();
+        String first=streamUrl(prefs,entry);
+        if(!first.isEmpty())urls.add(first);
+        for(Entry alternative:entry.alternatives) {
+            String next=streamUrl(prefs,alternative);
+            if(!next.isEmpty()&&!urls.contains(next))urls.add(next);
+        }
+        return urls;
+    }
+    static List<Entry> episodes(SharedPreferences prefs, Entry entry) throws Exception {
+        List<Entry> result=new ArrayList<>();
+        List<Entry> options=new ArrayList<>();
+        options.add(entry);
+        options.addAll(entry.alternatives);
+        for(Entry option:options) {
+            for(int i=1;i<=2;i++) {
+                String p="xtream_"+i+"_";
+                if(!option.source.equals(prefs.getString(p+"name","Bron "+i)))continue;
+                String server=prefs.getString(p+"server",i==1?prefs.getString("xtream_server",""):"");
+                String user=prefs.getString(p+"user",i==1?prefs.getString("xtream_user",""):"");
+                String pass=prefs.getString(p+"pass",i==1?prefs.getString("xtream_pass",""):"");
+                if(server.isEmpty()||user.isEmpty()||pass.isEmpty())continue;
+                String endpoint=server.replaceAll("/+$","")+"/player_api.php?username="+encode(user)+"&password="+encode(pass)+"&action=get_series_info&series_id="+encode(option.streamId);
+                JSONObject info=new JSONObject(fetch(endpoint));
+                JSONObject seasons=info.optJSONObject("episodes");
+                if(seasons==null)continue;
+                java.util.Iterator<String> keys=seasons.keys();
+                while(keys.hasNext()) {
+                    String season=keys.next();
+                    JSONArray eps=seasons.optJSONArray(season);
+                    if(eps==null)continue;
+                    for(int j=0;j<eps.length();j++){
+                        JSONObject ep=eps.optJSONObject(j);
+                        if(ep==null)continue;
+                        String id=ep.optString("id","");
+                        if(id.isEmpty())continue;
+                        String title="S"+season+" · "+ep.optString("title","Aflevering "+(j+1));
+                        Entry candidate=new Entry(option.source,"episode",title,season,id,ep.optString("container_extension","mp4"));
+                        boolean found=false;
+                        for(Entry existing:result)if(existing.title.equalsIgnoreCase(title)){existing.alternatives.add(candidate);found=true;break;}
+                        if(!found)result.add(candidate);
+                    }
+                }
+            }
+        }
+        return result;
     }
     static String fetch(String address) throws Exception {
         HttpURLConnection c=(HttpURLConnection)new URL(address).openConnection();
