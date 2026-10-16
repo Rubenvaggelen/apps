@@ -1010,9 +1010,7 @@ try {
         ScrollView scroll = new ScrollView(this);
         LinearLayout box = baseBox("Instellingen", "Beheer je bron of test een losse stream-URL.");
 
-        Button source = button("Bron instellen: Stalker / Xtream / M3U");
-        source.setOnClickListener(v -> startActivity(new Intent(this, SourceConfigActivity.class)));
-        box.addView(source);
+        addInfo(box, "Je mediabibliotheek wordt automatisch samengesteld. Je hoeft geen bron of account in te stellen.");
 
         Button updates = button("Zoeken naar updates");
         updates.setOnClickListener(v -> MediaPlayerUpdateChecker.checkForUpdateManual(this));
@@ -1023,9 +1021,7 @@ try {
         updateLp.topMargin = dp(12);
         box.addView(updates, updateLp);
 
-        TextView sourceInfo = text("Server voorgeladen: http://line.liondnscloud.ru:80", 14, MUTED, false);
-        sourceInfo.setPadding(0, dp(8), 0, dp(18));
-        box.addView(sourceInfo);
+
 
         EditText url = PremiumUi.searchField(this, "Losse test-stream URL");
         url.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
