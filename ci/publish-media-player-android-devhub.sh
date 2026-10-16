@@ -2,7 +2,7 @@
 # Deliver only signed Android Media Player to the authenticated Dev Hub.
 set -euo pipefail
 APK=media-player/app/build/outputs/apk/release/app-release.apk
-NAME=The-One-Media-Player-Android-v2402.apk
+NAME=The-One-Media-Player-Android-v2403.apk
 test -s "$APK"
 for variable in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
   test -n "$(printenv "$variable")" || { echo "::error::Missing $variable"; exit 1; }
@@ -74,7 +74,7 @@ with open(manifest,encoding="utf-8") as f: rows=json.load(f)
 matches=[x for x in rows if isinstance(x,dict) and "media player" in str(x.get("app_name","")).lower() and "android" in str(x.get("platform","")).lower() and "tv" not in str(x.get("platform","")).lower()]
 if len(matches)!=1: raise SystemExit("Concurrent card change detected")
 item=matches[0]
-item.update(apk=name,version_name="2.4.02-unified",version_code=2402,size_bytes=os.path.getsize(apk),sha256=sha)
+item.update(apk=name,version_name="2.4.03-navigation",version_code=2403,size_bytes=os.path.getsize(apk),sha256=sha)
 fd,tmp=tempfile.mkstemp(prefix=".media-player-manifest-",dir=os.path.dirname(manifest))
 try:
  with os.fdopen(fd,"w",encoding="utf-8") as f:
@@ -86,7 +86,7 @@ finally:
  if os.path.exists(tmp):os.unlink(tmp)
 with open(manifest,encoding="utf-8") as f: reloaded=json.load(f)
 if not any(x.get("apk")==name and x.get("sha256")==sha for x in reloaded):raise SystemExit("Manifest verification failed")
-print("MEDIA_PLAYER_ANDROID_2402_PUBLISHED_TO_PRIVATE_DEVHUB")
+print("MEDIA_PLAYER_ANDROID_2403_PUBLISHED_TO_PRIVATE_DEVHUB")
 PY
 rm -rf -- "$stage"
 REMOTE
