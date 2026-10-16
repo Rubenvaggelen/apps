@@ -48,6 +48,12 @@ public class XtreamCatalogActivity extends Activity {
     private boolean adultOnly = false;
     private LinearLayout root;
     private LinearLayout content;
+    // Keep the existing channel list alive while MainActivity plays a stream.
+    // This preserves loaded cards, filter text, current page, scroll and TV focus.
+    private ScrollView catalogScroll;
+    private Button lastPlayedChannelButton;
+    private int channelListScrollY;
+    private boolean restoreChannelFocusOnResume;
 
     private final List<XtreamItem> categoryItems = new ArrayList<>();
     private final List<XtreamItem> globalItems = new ArrayList<>();
@@ -79,6 +85,7 @@ public class XtreamCatalogActivity extends Activity {
 
     private void renderShell() {
         ScrollView scroll = new ScrollView(this);
+        catalogScroll = scroll;
         scroll.setBackgroundColor(PremiumUi.BG);
 
         root = new LinearLayout(this);
@@ -1153,8 +1160,17 @@ public class XtreamCatalogActivity extends Activity {
 
             Button open = button("series".equals(mode) ? "Afleveringen" : "▶  Afspelen");
             open.setOnClickListener(v -> {
-                if ("series".equals(mode)) loadSeriesEpisodes(item);
-                else play(item);
+                if ("series".equals(mode)) {
+                    loadSeriesEpisodes(item);
+                } else {
+                    // Start playback in a separate Activity WITHOUT replacing the
+                    // original list. The TV remote BACK and on-screen Back both
+                    // return here with the same channel selected.
+                    lastPlayedChannelButton = open;
+                    channelListScrollY = catalogScroll == null ? 0 : catalogScroll.getScrollY();
+                    restoreChannelFocusOnResume = true;
+                    play(item);
+                }
             });
             LinearLayout.LayoutParams openLp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1247,7 +1263,9 @@ public class XtreamCatalogActivity extends Activity {
         // media connection briefly if the provider has not released the old
         // session yet. That makes switching deterministic without trusting a
         // stale account-status counter.
-        showLoading("Stream starten…");
+        // Never showLoading() here: it clears the selected channel list.
+        // MainActivity owns playback/loading and finish() returns to this
+        // exact Activity with its existing cards and scroll position.
         launchPlayback(queue, kind);
     }
 
@@ -1680,6 +1698,23 @@ public class XtreamCatalogActivity extends Activity {
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (!restoreChannelFocusOnResume || catalogScroll == null) return;
+        restoreChannelFocusOnResume = false;
+        final Button selected = lastPlayedChannelButton;
+        final int savedY = channelListScrollY;
+        catalogScroll.post(() -> {
+            if (isFinishing() || catalogScroll == null) return;
+            if (selected != null && selected.getParent() != null) {
+                selected.requestFocus();
+            }
+            // Focus changes can scroll a TV list; restore the user's exact spot.
+            catalogScroll.scrollTo(0, savedY);
+        });
     }
 
     @Override
