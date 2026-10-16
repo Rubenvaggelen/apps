@@ -392,6 +392,7 @@ try {
         addNavButton(nav, "Live TV", () -> openXtreamCatalog("live"));
         addNavButton(nav, "Films", () -> openXtreamCatalog("movie"));
         addNavButton(nav, "Series", () -> openXtreamCatalog("series"));
+        addNavButton(nav, "XXX 🔒", () -> startActivity(new Intent(this, AdultHubActivity.class)));
         addNavButton(nav, "Verder kijken", () -> showSection("Verder kijken", "Je kijkvoortgang verschijnt hier."));
         addNavButton(nav, "Favorieten", () -> showSection("Favorieten", "Je favoriete zenders, films en series verschijnen hier."));
         if (!isTvBuild()) {
@@ -445,6 +446,8 @@ try {
         Button live = PremiumUi.primaryButton(this, "Live TV");
         Button films = PremiumUi.primaryButton(this, "Films");
         Button series = PremiumUi.primaryButton(this, "Series");
+        Button xxx = PremiumUi.primaryButton(this, "XXX 🔒");
+        xxx.setOnClickListener(v -> startActivity(new Intent(this, AdultHubActivity.class)));
 
         live.setOnClickListener(v -> openXtreamCatalog("live"));
         films.setOnClickListener(v -> openXtreamCatalog("movie"));
@@ -459,6 +462,7 @@ try {
         row.addView(films, item2);
 
         row.addView(series, new LinearLayout.LayoutParams(0, dp(70), 1f));
+        row.addView(xxx, new LinearLayout.LayoutParams(0, dp(70), 1f));
         root.addView(row);
 
         TextView castReady = text(
@@ -1006,9 +1010,7 @@ try {
         ScrollView scroll = new ScrollView(this);
         LinearLayout box = baseBox("Instellingen", "Beheer je bron of test een losse stream-URL.");
 
-        Button source = button("Bron instellen: Stalker / Xtream / M3U");
-        source.setOnClickListener(v -> startActivity(new Intent(this, SourceConfigActivity.class)));
-        box.addView(source);
+        addInfo(box, "Je mediabibliotheek wordt automatisch samengesteld. Je hoeft geen bron of account in te stellen.");
 
         Button updates = button("Zoeken naar updates");
         updates.setOnClickListener(v -> MediaPlayerUpdateChecker.checkForUpdateManual(this));
@@ -1019,9 +1021,7 @@ try {
         updateLp.topMargin = dp(12);
         box.addView(updates, updateLp);
 
-        TextView sourceInfo = text("Server voorgeladen: http://line.liondnscloud.ru:80", 14, MUTED, false);
-        sourceInfo.setPadding(0, dp(8), 0, dp(18));
-        box.addView(sourceInfo);
+
 
         EditText url = PremiumUi.searchField(this, "Losse test-stream URL");
         url.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
@@ -1157,36 +1157,55 @@ try {
         playbackRetryHandler.removeCallbacksAndMessages(null);
 
         if (retryXtreamPlayback) {
+            final boolean isLive="live".equals(playKind);
             player.addListener(new Player.Listener() {
+                private void advanceOrReport() {
+                    if(player==null)return;
+                    if(isLive&&player.hasNextMediaItem()){
+                        playbackRetryCount=0;
+                        player.seekToNextMediaItem();
+                        player.prepare();
+                        player.play();
+                    } else {
+                        Toast.makeText(MainActivity.this,
+                            "Deze stream is niet beschikbaar bij de ingestelde bronnen.",
+                            Toast.LENGTH_LONG).show();
+                    }
+                }
                 @Override
                 public void onPlayerError(PlaybackException error) {
-                    if (player == null || playbackRetryCount >= MAX_PLAYBACK_RETRIES) return;
-
-                    playbackRetryCount++;
-                    long delayMs = playbackRetryCount <= 3 ? 700L : 1000L;
-                    Log.w(
-                            "TheOneMediaPlayer",
-                            "Xtream stream not ready yet; retry " + playbackRetryCount
-                                    + "/" + MAX_PLAYBACK_RETRIES,
-                            error
-                    );
-
-                    playbackRetryHandler.postDelayed(() -> {
-                        if (player == null) return;
-                        try {
-                            player.prepare();
-                            player.play();
-                        } catch (Throwable retryError) {
-                            Log.w("TheOneMediaPlayer", "Xtream retry failed", retryError);
-                        }
-                    }, delayMs);
-                }
-
-                @Override
-                public void onPlaybackStateChanged(int playbackState) {
-                    if (playbackState == Player.STATE_READY) {
-                        playbackRetryCount = 0;
+                    if(player==null)return;
+                    int maxTries=isLive?1:MAX_PLAYBACK_RETRIES;
+                    if(playbackRetryCount>=maxTries) {
                         playbackRetryHandler.removeCallbacksAndMessages(null);
+                        advanceOrReport();
+                        return;
+                    }
+                    playbackRetryCount++;
+                    Log.w("TheOneMediaPlayer",
+                        "Media source unavailable, retry "+playbackRetryCount+"/"+maxTries+
+                        " (candidate "+player.getCurrentMediaItemIndex()+")",error);
+                    playbackRetryHandler.removeCallbacksAndMessages(null);
+                    playbackRetryHandler.postDelayed(()->{
+                        if(player==null)return;
+                        try {player.prepare();player.play();}
+                        catch(Throwable ignored){advanceOrReport();}
+                    },isLive?600:1000);
+                }
+                @Override
+                public void onPlaybackStateChanged(int state) {
+                    if(player==null)return;
+                    playbackRetryHandler.removeCallbacksAndMessages(null);
+                    if(state==Player.STATE_READY){
+                        playbackRetryCount=0;
+                    }else if(isLive&&state==Player.STATE_BUFFERING){
+                        final int startingIndex=player.getCurrentMediaItemIndex();
+                        playbackRetryHandler.postDelayed(()->{
+                            if(player==null||player.getPlaybackState()!=Player.STATE_BUFFERING
+                               ||player.getCurrentMediaItemIndex()!=startingIndex)return;
+                            Log.w("TheOneMediaPlayer","Live TV buffering timed out; trying the next provider/transport");
+                            advanceOrReport();
+                        },14000);
                     }
                 }
             });
@@ -1213,7 +1232,42 @@ try {
         // De lijst blijft mutabel zodat ook The One TV later kan worden toegevoegd.
         final ArrayList<View> autoHidePlayerButtons = new ArrayList<>();
 
+        // The same Media3 controls work for touch screens, Android TV and Google TV.
+        // Back and subtitles follow controller visibility; no permanent overlays
+        // during playback, and a tap/OK reveals controls again.
+        activePlayerView.setControllerAutoShow(false);
+        activePlayerView.setControllerShowTimeoutMs(4000);
+        activePlayerView.setControllerVisibilityListener(
+                (androidx.media3.ui.PlayerView.ControllerVisibilityListener) visibility -> {
+            boolean visible = visibility == View.VISIBLE;
+            for (View overlay : autoHidePlayerButtons) {
+                overlay.setVisibility(visible ? View.VISIBLE : View.GONE);
+            }
+        });
+
         try {
+            if ("live".equals(playKind)) {
+                Button goBack = PremiumUi.chipButton(this, "← Terug naar zenders");
+                goBack.setFocusable(true);
+                goBack.setOnClickListener(v -> {
+                    if (playerFullscreen) {
+                        releasePlayer();
+                        finish();
+                    } else {
+                        onBackPressed();
+                    }
+                });
+                FrameLayout.LayoutParams backLp = new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        Gravity.TOP | Gravity.START
+                );
+                backLp.topMargin = dp(14);
+                backLp.leftMargin = dp(14);
+                root.addView(goBack, backLp);
+                autoHidePlayerButtons.add(goBack);
+                activePlayerView.showController();
+            }
             Button subtitles = PremiumUi.chipButton(this, "CC  Ondertiteling");
             subtitles.setOnClickListener(v -> showSubtitleSelector());
             FrameLayout.LayoutParams subtitleLp = new FrameLayout.LayoutParams(
@@ -1247,13 +1301,7 @@ try {
                 activePlayerView.setControllerAutoShow(false);
                 activePlayerView.hideController();
 
-                activePlayerView.setControllerVisibilityListener(
-                        (androidx.media3.ui.PlayerView.ControllerVisibilityListener) visibility -> {
-                    boolean showControls = visibility == View.VISIBLE;
-                    for (View overlay : autoHidePlayerButtons) {
-                        overlay.setVisibility(showControls ? View.VISIBLE : View.GONE);
-                    }
-                });
+
             }
         } catch (Throwable subtitleUiError) {
             Log.w("TheOneMediaPlayer", "Subtitle controls unavailable; playback continues", subtitleUiError);

@@ -8,6 +8,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.util.Log;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.ViewGroup;
@@ -40,13 +41,25 @@ import java.util.concurrent.Executors;
 public class XtreamCatalogActivity extends Activity {
     private static final int BLUE = Color.rgb(32, 184, 255);
     private static final int BG = Color.rgb(5, 7, 11);
+    // Inflating hundreds/thousands of provider category buttons on the UI thread
+    // can cause a TV ANR/process termination when Live TV first loads.
+    private static final int CATEGORY_PAGE_SIZE = 42;
+    private int categoryPageHeaderChildCount = 0;
+    private static final String LOG_TAG = "TheOneCatalog";
     private static final int PANEL = Color.rgb(17, 23, 34);
     private static final int MUTED = Color.rgb(154, 166, 178);
 
     private XtreamConfig config;
     private String mode;
+    private boolean adultOnly = false;
     private LinearLayout root;
     private LinearLayout content;
+    // Keep the existing channel list alive while MainActivity plays a stream.
+    // This preserves loaded cards, filter text, current page, scroll and TV focus.
+    private ScrollView catalogScroll;
+    private Button lastPlayedChannelButton;
+    private int channelListScrollY;
+    private boolean restoreChannelFocusOnResume;
 
     private final List<XtreamItem> categoryItems = new ArrayList<>();
     private final List<XtreamItem> globalItems = new ArrayList<>();
@@ -61,6 +74,11 @@ public class XtreamCatalogActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         config = XtreamConfig.load(this);
+        adultOnly = getIntent().getBooleanExtra("adult_only", false);
+        if (adultOnly && !MediaPlayerAdultGate.isUnlocked()) {
+            finish();
+            return;
+        }
         mode = getIntent().getStringExtra("mode");
         if (!"movie".equals(mode) && !"series".equals(mode)) mode = "live";
         renderShell();
@@ -73,6 +91,7 @@ public class XtreamCatalogActivity extends Activity {
 
     private void renderShell() {
         ScrollView scroll = new ScrollView(this);
+        catalogScroll = scroll;
         scroll.setBackgroundColor(PremiumUi.BG);
 
         root = new LinearLayout(this);
@@ -97,7 +116,7 @@ public class XtreamCatalogActivity extends Activity {
         root.addView(top);
 
         TextView sub = text(
-                "Rechtstreeks uit jouw privé Xtream-bron.",
+                "Live TV, films en series uit jouw gekoppelde Xtream-bronnen.",
                 15,
                 MUTED,
                 false
@@ -113,6 +132,7 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private String heading() {
+        if (adultOnly) return "XXX • " + ("movie".equals(mode) ? "Films" : "series".equals(mode) ? "Series" : "Live TV");
         if ("movie".equals(mode)) return "Films";
         if ("series".equals(mode)) return "Series";
         return "Live TV";
@@ -168,27 +188,33 @@ public class XtreamCatalogActivity extends Activity {
             List<Category> result = new ArrayList<>(fresh);
             runOnUiThread(() -> {
                 categoriesLoading = false;
+                if (isFinishing() || isDestroyed() || content == null) return;
+                try {
+                    if (!result.isEmpty()) {
+                        categoryCache.clear();
+                        categoryCache.addAll(result);
+                        saveCachedCategories(result);
+                        renderCategories(new ArrayList<>(result));
+                        return;
+                    }
 
-                if (!result.isEmpty()) {
-                    categoryCache.clear();
-                    categoryCache.addAll(result);
-                    saveCachedCategories(result);
-                    renderCategories(new ArrayList<>(result));
-                    return;
+                    if (!categoryCache.isEmpty()) {
+                        renderCategories(new ArrayList<>(categoryCache));
+                        return;
+                    }
+
+                    showCategoriesRetry();
+                } catch (RuntimeException renderError) {
+                    // Degraded-but-alive screen beats crashing back to Android TV home.
+                    Log.e(LOG_TAG, "Live TV category rendering failed", renderError);
+                    showCategoriesRetry();
                 }
-
-                if (!categoryCache.isEmpty()) {
-                    renderCategories(new ArrayList<>(categoryCache));
-                    return;
-                }
-
-                showCategoriesRetry();
             });
         }).start();
     }
 
     private String categoryCacheKey() {
-        return "xtream_categories_" + mode;
+        return "xtream_categories_multisource_v1_" + mode;
     }
 
     private List<Category> loadCachedCategories() {
@@ -265,16 +291,93 @@ public class XtreamCatalogActivity extends Activity {
             return;
         }
 
-        for (Category category : categories) {
+        if ("live".equals(mode) && !adultOnly) {
+            TextView selector = text("Selecteer een land", 21, Color.WHITE, true);
+            selector.setPadding(0, 0, 0, dp(12));
+            content.addView(selector);
+            for (String country : new String[]{"Nederland", "België", "Duitsland",
+                    "Verenigd Koninkrijk", "Verenigde Staten", "Frankrijk",
+                    "Turkije", "Spanje", "Italië", "Portugal", "Suriname", "Overige", "Alle landen"}) {
+                Button b = PremiumUi.chipButton(this,
+                    "Nederland".equals(country) ? "🇳🇱 Nederland • Ziggo-volgorde" : country);
+                b.setOnClickListener(v -> loadCountry(country));
+                content.addView(b);
+            }
+            TextView other = text("Zendercategorieën", 19, BLUE, true);
+            other.setPadding(0, dp(18), 0, dp(10));
+            content.addView(other);
+        }
+        java.util.LinkedHashMap<String, Category> combined = new java.util.LinkedHashMap<>();
+        for (Category source : categories) {
+            if (ChannelGuide.isAdult(source.name, "") != adultOnly) continue;
+            String display = source.name.replaceAll("(?i)\\s*[•·-]\\s*bron\\s*2\\s*$", "").trim();
+            String key = ChannelGuide.normalize(display);
+            if (key.isEmpty()) continue;
+            Category merged = combined.get(key);
+            if (merged == null) {
+                merged = new Category(source.id, display);
+                combined.put(key, merged);
+            } else if (!merged.ids.contains(source.id)) {
+                merged.ids.add(source.id);
+            }
+        }
+        // Keep provider order for all other categories; lift the requested 2026
+        // multilingual movie collection ahead of every film category.
+        java.util.List<Category> orderedCategories = new java.util.ArrayList<>(combined.values());
+        if ("movie".equals(mode) && !adultOnly) {
+            orderedCategories.sort((first, second) -> Boolean.compare(
+                    !ChannelGuide.isTop2026MultiLang(first.name),
+                    !ChannelGuide.isTop2026MultiLang(second.name)));
+        }
+        // Keep the first frame responsive on budget Android TV devices.
+        // Keep every category reachable but inflate only one page at a time.
+        categoryPageHeaderChildCount = content.getChildCount();
+        appendCategoryPage(orderedCategories, 0);
+    }
+
+    private void appendCategoryPage(List<Category> categories, int offset) {
+        // Recycle the previous screen rather than gradually adding thousands of
+        // views to the same ScrollView and exhausting a low-memory Google TV.
+        while (content.getChildCount() > categoryPageHeaderChildCount) {
+            content.removeViewAt(content.getChildCount()-1);
+        }
+        int safeOffset = Math.max(0, Math.min(offset, Math.max(0, categories.size()-1)));
+        safeOffset = (safeOffset / CATEGORY_PAGE_SIZE) * CATEGORY_PAGE_SIZE;
+        int end = Math.min(categories.size(), safeOffset + CATEGORY_PAGE_SIZE);
+        if (categories.isEmpty()) return;
+        TextView position = text("Categorieën " + (safeOffset+1) + "–" + end +
+            " van " + categories.size(), 14, MUTED, false);
+        position.setPadding(0,dp(8),0,dp(12));
+        content.addView(position);
+        for (int i=safeOffset; i<end; i++) {
+            Category category = categories.get(i);
             Button b = PremiumUi.chipButton(this, category.name);
             b.setOnClickListener(v -> loadItems(category));
-
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-            );
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             lp.bottomMargin = dp(8);
             content.addView(b, lp);
+        }
+        if (safeOffset > 0) {
+            Button back = PremiumUi.chipButton(this, "← Vorige categorieën");
+            back.setFocusable(true);
+            int previousOffset = safeOffset - CATEGORY_PAGE_SIZE;
+            back.setOnClickListener(v -> {
+                appendCategoryPage(categories, previousOffset);
+                catalogScroll.post(() -> catalogScroll.scrollTo(0, 0));
+            });
+            content.addView(back);
+        }
+        if (end < categories.size()) {
+            Button more = PremiumUi.chipButton(this,
+                "Volgende categorieën (" + end + " / " + categories.size() + ") →");
+            more.setFocusable(true);
+            int nextOffset = end;
+            more.setOnClickListener(v -> {
+                appendCategoryPage(categories, nextOffset);
+                catalogScroll.post(() -> catalogScroll.scrollTo(0, 0));
+            });
+            content.addView(more);
         }
     }
 
@@ -336,7 +439,7 @@ public class XtreamCatalogActivity extends Activity {
                     if (o == null) continue;
 
                     XtreamItem item = parseItem(o);
-                    if (item != null) all.add(item);
+                    if (item != null && allowItem(o)) all.add(item);
                 }
 
                 runOnUiThread(() -> {
@@ -656,6 +759,81 @@ public class XtreamCatalogActivity extends Activity {
         return s;
     }
 
+    private String categoryNameFor(String id) {
+        for (Category category : categoryCache) {
+            if (category.id.equals(id)) return category.name;
+        }
+        return "";
+    }
+
+    private boolean allowItem(JSONObject row) {
+        String category = categoryNameFor(row.optString("category_id", ""));
+        String name = firstNonEmpty(row.optString("name", ""), row.optString("title", ""));
+        return ChannelGuide.isAdult(category, name) == adultOnly;
+    }
+
+    private void loadCountry(String country) {
+        // Returning from a stream or revisiting a country must never refetch the full
+        // list unnecessarily. The provider catalog also has a short disk cache.
+        List<XtreamItem> cached=categoryItemCache.get("country:"+country);
+        if(cached!=null&&!cached.isEmpty()) {
+            renderItems(new Category("country:"+country,country),new ArrayList<>(cached));
+            return;
+        }
+        showLoading(country + " • zenders laden…");
+        new Thread(() -> {
+            List<XtreamItem> channels = new ArrayList<>();
+            try {
+                JSONArray rows = new JSONArray(get(config.api("get_live_streams")));
+                java.util.LinkedHashMap<String, XtreamItem> unique = new java.util.LinkedHashMap<>();
+                for (int i=0; i<rows.length(); i++) {
+                    JSONObject row=rows.optJSONObject(i);
+                    if (row == null || !allowItem(row)) continue;
+                    XtreamItem item=parseItem(row);
+                    if (item == null) continue;
+                    // Dutch country view: only explicit NL-prefixed channel
+                    // names. The provider category may contain other countries.
+                    if ("Nederland".equals(country)) {
+                        if (!ChannelGuide.hasNlPrefix(item.name)) continue;
+                    } else if (!"Alle landen".equals(country)) {
+                        String detected=ChannelGuide.country(item.name,categoryNameFor(row.optString("category_id","")));
+                        if (!country.equals(detected)) continue;
+                    }
+                    String key=ChannelGuide.channelIdentity(item.name);
+                    XtreamItem current=unique.get(key);
+                    if(current == null)unique.put(key,item);
+                    else addAlternative(current,item);
+                }
+                channels.addAll(unique.values());
+                channels.sort((left,right)->{
+                    int a=ChannelGuide.videoTier(left.name),b=ChannelGuide.videoTier(right.name);
+                    if(a!=b)return Integer.compare(a,b);
+                    if("Nederland".equals(country)){
+                        a=ChannelGuide.ziggoOrder(left.name);b=ChannelGuide.ziggoOrder(right.name);
+                        if(a!=b)return Integer.compare(a,b);
+                    }
+                    return left.name.compareToIgnoreCase(right.name);
+                });
+            } catch(Exception ignored){}
+            runOnUiThread(()->{
+                if(isFinishing())return;
+                if(!channels.isEmpty())categoryItemCache.put("country:"+country,new ArrayList<>(channels));
+                renderItems(new Category("country:"+country,country),channels);
+            });
+        }).start();
+    }
+
+    private void addAlternative(XtreamItem current,XtreamItem candidate) {
+        if(current.id.equals(candidate.id) || current.alternatives.contains(candidate.id))return;
+        current.alternatives.add(candidate.id);
+        try {
+            // Resolve the candidate with its own provider and extension, not the
+            // primary item's extension (which may differ between providers).
+            String url=config.stream(mode,candidate.id,candidate.extension);
+            if(!current.alternativeUrls.contains(url))current.alternativeUrls.add(url);
+        } catch (Exception ignored) {}
+    }
+
     private void loadItems(Category category) {
         List<XtreamItem> cached = categoryItemCache.get(category.id);
         List<XtreamItem> fallback = cached == null
@@ -678,10 +856,23 @@ public class XtreamCatalogActivity extends Activity {
 
             for (int attempt = 0; attempt < 2 && fresh.isEmpty(); attempt++) {
                 try {
-                    JSONArray arr = new JSONArray(
-                            get(config.api(action, "category_id", category.id))
-                    );
-                    fresh = parseItems(arr);
+                    java.util.LinkedHashMap<String, XtreamItem> unique=new java.util.LinkedHashMap<>();
+                    for (String sourceId : category.ids) {
+                        try {
+                            JSONArray arr = new JSONArray(get(config.api(action, "category_id", sourceId)));
+                            for (int j=0;j<arr.length();j++) {
+                                JSONObject row=arr.optJSONObject(j);
+                                if(row==null || !allowItem(row))continue;
+                                XtreamItem item=parseItem(row);
+                                if(item==null)continue;
+                                String key="live".equals(mode) ? ChannelGuide.channelIdentity(item.name) : ChannelGuide.normalize(item.name);
+                                XtreamItem existing=unique.get(key);
+                                if(existing==null)unique.put(key,item);
+                                else addAlternative(existing,item);
+                            }
+                        } catch(Exception ignored) { /* one provider may be unavailable */ }
+                    }
+                    fresh = new ArrayList<>(unique.values());
                 } catch (Throwable ignored) {
                 }
 
@@ -904,7 +1095,8 @@ public class XtreamCatalogActivity extends Activity {
             content.addView(hint);
         }
 
-        renderCards(items, 150);
+        // TV remotes should not have to inflate 150 posters/channel tiles at once.
+        renderCards(items, "live".equals(mode) ? 48 : 150);
     }
 
     private void addLiveCategorySearch(Category category) {
@@ -950,10 +1142,12 @@ public class XtreamCatalogActivity extends Activity {
             content.addView(text("Geen resultaten.", 16, MUTED, false));
             return;
         }
+        appendCards(items,0,max);
+    }
 
-        int limit = Math.min(max, items.size());
-
-        for (int i = 0; i < limit; i++) {
+    private void appendCards(List<XtreamItem> items,int start,int pageSize) {
+        int limit=Math.min(start+pageSize,items.size());
+        for (int i=start; i<limit; i++) {
             XtreamItem item = items.get(i);
 
             LinearLayout card = new LinearLayout(this);
@@ -1026,8 +1220,17 @@ public class XtreamCatalogActivity extends Activity {
 
             Button open = button("series".equals(mode) ? "Afleveringen" : "▶  Afspelen");
             open.setOnClickListener(v -> {
-                if ("series".equals(mode)) loadSeriesEpisodes(item);
-                else play(item);
+                if ("series".equals(mode)) {
+                    loadSeriesEpisodes(item);
+                } else {
+                    // Start playback in a separate Activity WITHOUT replacing the
+                    // original list. The TV remote BACK and on-screen Back both
+                    // return here with the same channel selected.
+                    lastPlayedChannelButton = open;
+                    channelListScrollY = catalogScroll == null ? 0 : catalogScroll.getScrollY();
+                    restoreChannelFocusOnResume = true;
+                    play(item);
+                }
             });
             LinearLayout.LayoutParams openLp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1045,13 +1248,12 @@ public class XtreamCatalogActivity extends Activity {
         }
 
         if (items.size() > limit) {
-            TextView more = text(
-                    "Eerste " + limit + " resultaten getoond. Gebruik de zoekbalk om sneller te vinden.",
-                    14,
-                    MUTED,
-                    false
-            );
-            more.setPadding(0, dp(6), 0, dp(10));
+            Button more=button("Meer laden • " + Math.min(pageSize,items.size()-limit) +
+                " van " + (items.size()-limit) + " resterende");
+            more.setOnClickListener(v -> {
+                content.removeView(more);
+                appendCards(items,limit,pageSize);
+            });
             content.addView(more);
         }
     }
@@ -1081,6 +1283,32 @@ public class XtreamCatalogActivity extends Activity {
     private void play(XtreamItem item) {
         ArrayList<String> queue = new ArrayList<>();
         queue.add(config.stream(mode, item.id, item.extension));
+        // Some Xtream Live channels expose HLS but not MPEG-TS (or vice versa).
+        // Only fall back to the other transport if the original fails.
+        if ("live".equals(mode)) {
+            String opposite="m3u8".equalsIgnoreCase(item.extension) ? "ts" : "m3u8";
+            try {
+                String transport=config.stream(mode,item.id,opposite);
+                if(!queue.contains(transport))queue.add(transport);
+            } catch(Exception ignored) {}
+        }
+        for(String url:item.alternativeUrls) {
+            if(!queue.contains(url))queue.add(url);
+            if("live".equals(mode)) {
+                // Preserve source identity; do not use the first source's stream ID.
+                String other=url.endsWith(".m3u8") ? url.substring(0,url.length()-6)+".ts" :
+                    url.endsWith(".ts") ? url.substring(0,url.length()-3)+".m3u8" : "";
+                if(!other.isEmpty()&&!queue.contains(other))queue.add(other);
+            }
+        }
+        for(String id:item.alternatives) {
+            // Older cached entries may not have per-source URL extensions.
+            if(!item.alternativeUrls.isEmpty())break;
+            try {
+                String fallback=config.stream(mode,id,item.extension);
+                if(!queue.contains(fallback))queue.add(fallback);
+            } catch(Exception ignored){}
+        }
         startPlaybackWhenLineFree(queue, mode);
     }
 
@@ -1095,7 +1323,9 @@ public class XtreamCatalogActivity extends Activity {
         // media connection briefly if the provider has not released the old
         // session yet. That makes switching deterministic without trusting a
         // stale account-status counter.
-        showLoading("Stream starten…");
+        // Never showLoading() here: it clears the selected channel list.
+        // MainActivity owns playback/loading and finish() returns to this
+        // exact Activity with its existing cards and scroll position.
         launchPlayback(queue, kind);
     }
 
@@ -1172,22 +1402,28 @@ public class XtreamCatalogActivity extends Activity {
         new Thread(() -> {
             List<XtreamItem> episodes = new ArrayList<>();
 
-            for (int attempt = 0; attempt < 2 && episodes.isEmpty(); attempt++) {
-                try {
-                    String raw = get(config.api("get_series_info", "series_id", series.id));
-                    Object data = new org.json.JSONTokener(raw).nextValue();
-                    collectEpisodes(data, "", episodes);
-                } catch (Throwable ignored) {
-                }
-
-                if (episodes.isEmpty() && attempt == 0) {
+            java.util.LinkedHashMap<String, XtreamItem> merged=new java.util.LinkedHashMap<>();
+            java.util.List<String> seriesIds=new java.util.ArrayList<>();
+            seriesIds.add(series.id);
+            seriesIds.addAll(series.alternatives);
+            for (String seriesId : seriesIds) {
+                List<XtreamItem> fetched=new ArrayList<>();
+                for (int attempt=0;attempt<2&&fetched.isEmpty();attempt++) {
                     try {
-                        Thread.sleep(450);
-                    } catch (InterruptedException ignored) {
-                        Thread.currentThread().interrupt();
-                    }
+                        String raw=get(config.api("get_series_info","series_id",seriesId));
+                        Object data=new org.json.JSONTokener(raw).nextValue();
+                        collectEpisodes(data,"",fetched);
+                    }catch(Throwable ignored) {}
+                }
+                for (XtreamItem episode : fetched) {
+                    String episodeLabel=episode.name.split(" • ",2)[0];
+                    String key=ChannelGuide.normalize(episodeLabel);
+                    XtreamItem existing=merged.get(key);
+                    if(existing==null)merged.put(key,episode);
+                    else if(!existing.id.equals(episode.id))existing.alternatives.add(episode.id);
                 }
             }
+            episodes.addAll(merged.values());
 
             episodes.sort((a, b) -> compareEpisodeNames(a.name, b.name));
             List<XtreamItem> result = new ArrayList<>(episodes);
@@ -1462,6 +1698,7 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private String get(String urlValue) throws Exception {
+        if (urlValue.startsWith("theone-xtream://")) return config.fetchCatalog(urlValue);
         HttpURLConnection conn = null;
 
         try {
@@ -1524,6 +1761,23 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        if (!restoreChannelFocusOnResume || catalogScroll == null) return;
+        restoreChannelFocusOnResume = false;
+        final Button selected = lastPlayedChannelButton;
+        final int savedY = channelListScrollY;
+        catalogScroll.post(() -> {
+            if (isFinishing() || catalogScroll == null) return;
+            if (selected != null && selected.getParent() != null) {
+                selected.requestFocus();
+            }
+            // Focus changes can scroll a TV list; restore the user's exact spot.
+            catalogScroll.scrollTo(0, savedY);
+        });
+    }
+
+    @Override
     protected void onDestroy() {
         imagePool.shutdownNow();
         super.onDestroy();
@@ -1532,10 +1786,12 @@ public class XtreamCatalogActivity extends Activity {
     private static class Category {
         final String id;
         final String name;
+        final java.util.List<String> ids = new java.util.ArrayList<>();
 
         Category(String id, String name) {
             this.id = id;
             this.name = name;
+            this.ids.add(id);
         }
     }
 
@@ -1557,6 +1813,8 @@ public class XtreamCatalogActivity extends Activity {
         final String id;
         final String name;
         final String extension;
+        final java.util.List<String> alternatives=new java.util.ArrayList<>();
+        final java.util.List<String> alternativeUrls=new java.util.ArrayList<>();
         final String rating;
         final String imageUrl;
         final String year;

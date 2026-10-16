@@ -1,0 +1,35 @@
+name: Publish The One DJ and Studio Windows to Dev Hub
+
+on:
+  push:
+    branches: [feature/media-player-second-source-20261013]
+    paths:
+      - 'devhub/windows-dj-studio-20261016.php'
+      - 'ci/publish-dj-studio-windows-devhub.sh'
+      - '.github/workflows/publish-dj-studio-windows-devhub.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  publish-windows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Windows release assets exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(curl -L -sS -o /dev/null -w '%{http_code}' --max-time 30 -I 'https://github.com/Rubenvaggelen/apps/releases/download/dj-windows-v240/The-One-DJ-Windows.zip')" = "200"
+          test "$(curl -L -sS -o /dev/null -w '%{http_code}' --max-time 30 -I 'https://github.com/Rubenvaggelen/apps/releases/download/studio-v1.1.0/The-One-Studio-1.1.0-Windows.exe')" = "200"
+      - name: Publish DJ and Studio Windows buttons safely
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: bash ci/publish-dj-studio-windows-devhub.sh

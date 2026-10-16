@@ -2,6 +2,7 @@ name: Fast Media Player APK
 
 on:
   push:
+    branches: [media-player-stable-v2316]
     paths:
       - 'media-player/**'
       - '.github/workflows/fast-media-player.yml'

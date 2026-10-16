@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2400
-        versionName = "2.4.00-authorization-update-fix"
+        versionCode = 2407
+        versionName = "2.4.07-live-tv-stability"
     }
 
     signingConfigs {
@@ -51,6 +51,8 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     implementation("androidx.media3:media3-exoplayer:1.11.0")
     implementation("androidx.media3:media3-exoplayer-hls:1.11.0")
     implementation("androidx.media3:media3-exoplayer-dash:1.11.0")
