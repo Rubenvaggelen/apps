@@ -25,6 +25,15 @@ public class ChannelGuideTest {
         assertFalse(ChannelGuide.isTop2026MultiLang("TOP 2026 NL"));
     }
 
+    @Test public void providerNamesForTheSameChannelMerge() {
+        assertEquals(ChannelGuide.channelIdentity("NL Cartoon Network HD"),
+                     ChannelGuide.channelIdentity("Cartoon Network NL FHD"));
+        assertEquals(ChannelGuide.channelIdentity("NL Ziggo Sport 2 HD"),
+                     ChannelGuide.channelIdentity("Ziggo Sport 2 FHD"));
+        assertFalse(ChannelGuide.channelIdentity("Ziggo Sport 2")
+                     .equals(ChannelGuide.channelIdentity("Ziggo Sport 3")));
+    }
+
     @Test public void explicitAdultLabelsAreSeparate() {
         assertTrue(ChannelGuide.isAdult("NL XXX","Film"));
         assertTrue(ChannelGuide.isAdult("Adult Movies","Film"));
