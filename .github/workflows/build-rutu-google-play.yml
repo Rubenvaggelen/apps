@@ -1,0 +1,101 @@
+name: Prepare RUTU Klant Google Play AAB (isolated)
+
+on:
+  push:
+    branches: [feature/rutu-google-play-20261016]
+    paths:
+      - 'jadeorders/**'
+      - '.github/workflows/build-rutu-google-play.yml'
+      - 'play-store-rutu/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  play-aab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+      - name: Prepare Android 16 SDK
+        run: |
+          yes | sdkmanager 'platforms;android-36' 'build-tools;36.0.0' >/dev/null || true
+          test -s "$ANDROID_SDK_ROOT/platforms/android-36/android.jar"
+      - name: Verify Play-only isolation and unchanged printed QR
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re,xml.etree.ElementTree as ET
+          from pathlib import Path
+          gradle=Path('jadeorders/build.gradle').read_text()
+          manifest=Path('jadeorders/src/main/AndroidManifest.xml').read_text()
+          updater=Path('jadeorders/src/main/java/com/vanaggelen/jadeorders/RutuUpdateChecker.kt').read_text()
+          assert re.search(r'compileSdk\\s+36', gradle)
+          assert re.search(r'targetSdk\\s+36', gradle)
+          assert 'applicationId "com.vanaggelen.jadeorders"' in gradle
+          assert 'REQUEST_INSTALL_PACKAGES' not in manifest
+          assert 'No external APK download' in updater
+          doc=ET.fromstring(manifest)
+          tag='{http://schemas.android.com/apk/res/android}'
+          assert any(data.attrib.get(tag+'path')=='/rutu-updates/Rutu-BBQ-Android.apk' for data in doc.iter('data'))
+          assert Path('rutu-windows/assets/rutu-android-qr.png').is_file()
+          print('RUTU_PLAY_SEPARATE_BUILD_QR_UNCHANGED_AND_API36')
+          PY
+      - name: Optional dedicated Play upload key
+        shell: bash
+        env:
+          PLAY_KEY_BASE64: ${{ secrets.RUTU_PLAY_UPLOAD_KEYSTORE_BASE64 }}
+          PLAY_KEY_PASSWORD: ${{ secrets.RUTU_PLAY_UPLOAD_KEYSTORE_PASSWORD }}
+          PLAY_KEY_ALIAS: ${{ secrets.RUTU_PLAY_UPLOAD_KEY_ALIAS }}
+          PLAY_KEY_PASS: ${{ secrets.RUTU_PLAY_UPLOAD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -n "$PLAY_KEY_BASE64" ]; then
+            test -n "$PLAY_KEY_PASSWORD" && test -n "$PLAY_KEY_ALIAS" && test -n "$PLAY_KEY_PASS"
+            install -d -m 0700 "$HOME/.rutu-play"
+            printf '%s' "$PLAY_KEY_BASE64" | base64 --decode > "$HOME/.rutu-play/upload.jks"
+            chmod 600 "$HOME/.rutu-play/upload.jks"
+            echo "RUTU_PLAY_SIGNING_CONFIGURED=true" >> "$GITHUB_ENV"
+            echo "RUTU_PLAY_UPLOAD_KEYSTORE_PATH=$HOME/.rutu-play/upload.jks" >> "$GITHUB_ENV"
+            echo "RUTU_PLAY_UPLOAD_KEYSTORE_PASSWORD=$PLAY_KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "RUTU_PLAY_UPLOAD_KEY_ALIAS=$PLAY_KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "RUTU_PLAY_UPLOAD_KEY_PASSWORD=$PLAY_KEY_PASS" >> "$GITHUB_ENV"
+          else
+            echo "RUTU_PLAY_SIGNING_CONFIGURED=false" >> "$GITHUB_ENV"
+            echo "Play upload key absent. Only unsigned technical test bundle will be produced."
+          fi
+      - name: Compile standalone Play Android App Bundle
+        shell: bash
+        run: gradle :jadeorders:bundleRelease --no-daemon -PappVersionCode=938
+      - name: Validate AAB and signing state
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="jadeorders/build/outputs/bundle/release/jadeorders-release.aab"
+          test -s "$bundle"
+          unzip -t "$bundle" | tail -1
+          unzip -Z1 "$bundle" | grep -q 'base/manifest/AndroidManifest.xml'
+          if [ "$RUTU_PLAY_SIGNING_CONFIGURED" = true ]; then
+            jarsigner -verify -strict "$bundle" >/dev/null
+            echo 'RUTU_PLAY_BUNDLE_SIGNED=true'
+          else
+            echo 'RUTU_PLAY_BUNDLE_SIGNED=false; not ready to submit'
+          fi
+          sha256sum "$bundle" | sed 's@ .*@  RUTU-Klant-Google-Play-v938.aab@'
+      - name: Upload technical preview (no production deployment)
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUTU-Klant-Play-v938-preview
+          path: jadeorders/build/outputs/bundle/release/jadeorders-release.aab
+          if-no-files-found: error
+          retention-days: 14
