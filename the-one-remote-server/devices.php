@@ -109,7 +109,7 @@ function clean_device_id(string $value): string {
 
 function clean_access_scope(string $value): string {
     $scope = strtolower(trim($value));
-    if (!in_array($scope, ['media_player', 'media_player_xxx', 'mixes', 'shared', 'favorites', 'dj', 'run', 'downloads', 'download_files'], true)) {
+    if (!in_array($scope, ['the_one_user', 'media_player', 'media_player_xxx', 'mixes', 'shared', 'favorites', 'dj', 'run', 'downloads', 'download_files', 'cinema_android', 'series_android', 'tv_android'], true)) {
         respond_devices(400, ['ok' => false, 'error' => 'Invalid access scope']);
     }
     return $scope;
@@ -119,6 +119,7 @@ function device_access_rights(array $device): array {
     $legacy = (bool)($device['music_rights'] ?? false);
     $stored = is_array($device['access_rights'] ?? null) ? $device['access_rights'] : [];
     return [
+        'the_one_user' => (bool)($stored['the_one_user'] ?? false),
         'media_player' => (bool)($stored['media_player'] ?? false),
         'media_player_xxx' => (bool)($stored['media_player_xxx'] ?? false),
         'mixes' => (bool)($stored['mixes'] ?? $legacy),
@@ -131,14 +132,17 @@ function device_access_rights(array $device): array {
         'downloads' => (bool)($stored['downloads'] ?? false),
         // Los recht om bestanden echt naar het toestel te downloaden.
         // Standaard altijd uit, ook als iemand legacy muziekrechten heeft.
-        'download_files' => (bool)($stored['download_files'] ?? false)
+        'download_files' => (bool)($stored['download_files'] ?? false),
+        'cinema_android' => (bool)($stored['cinema_android'] ?? false),
+        'series_android' => (bool)($stored['series_android'] ?? false),
+        'tv_android' => (bool)($stored['tv_android'] ?? false)
     ];
 }
 
 function device_access_requests(array $device): array {
     $stored = is_array($device['access_requests'] ?? null) ? $device['access_requests'] : [];
     $result = [];
-    foreach (['media_player', 'media_player_xxx', 'mixes', 'shared', 'favorites', 'dj', 'run', 'downloads', 'download_files'] as $scope) {
+    foreach (['the_one_user', 'media_player', 'media_player_xxx', 'mixes', 'shared', 'favorites', 'dj', 'run', 'downloads', 'download_files', 'cinema_android', 'series_android', 'tv_android'] as $scope) {
         $row = is_array($stored[$scope] ?? null) ? $stored[$scope] : [];
         if (($row['status'] ?? '') === 'pending') {
             $result[$scope] = [
@@ -169,6 +173,7 @@ if ($action === 'heartbeat') {
     $deviceId = clean_device_id((string)($body['device_id'] ?? ''));
     $state = devices_load($devicesFile);
     $old = is_array($state['devices'][$deviceId] ?? null) ? $state['devices'][$deviceId] : [];
+    if (isset($old['family_public_key'])) respond_devices(403, ['ok' => false, 'error' => 'Family identities require signatures']);
     $name = trim((string)($body['name'] ?? 'Android apparaat'));
     $personName = trim((string)($body['person_name'] ?? ''));
     $platform = trim((string)($body['platform'] ?? 'Android'));
@@ -215,7 +220,7 @@ if ($action === 'heartbeat') {
     $owner = $ownerId !== '' && hash_equals($ownerId, $deviceId);
     $rights = device_access_rights($state['devices'][$deviceId]);
     if ($owner) {
-        $rights = ['media_player' => true, 'mixes' => true, 'shared' => true, 'favorites' => true, 'dj' => true, 'run' => true, 'downloads' => true, 'download_files' => true];
+        $rights = ['media_player' => true, 'mixes' => true, 'shared' => true, 'favorites' => true, 'dj' => true, 'run' => true, 'downloads' => true, 'download_files' => true, 'cinema_android' => true, 'series_android' => true, 'tv_android' => true];
     }
     respond_devices(200, [
         'ok' => true,
@@ -323,6 +328,7 @@ if ($action === 'pending_requests') {
             $requests[] = [
                 'device_id' => (string)$deviceId,
                 'person_name' => $personName,
+                'person_id' => (string)($d['person_id'] ?? ''),
                 'device_name' => $deviceName,
                 'scope' => (string)$scope,
                 'requested_at' => (string)($row['requested_at'] ?? '')
@@ -360,6 +366,166 @@ if ($action === 'connection_status') {
         ];
     }
     respond_devices(200, ['ok' => true, 'devices' => $devices]);
+}
+
+
+/** User-facing people are names; app rights still belong to signed installations. */
+function family_person_key(string $name): string {
+    $normalized = preg_replace('/\\s+/u', ' ', trim($name));
+    return mb_strtolower(is_string($normalized) ? $normalized : '', 'UTF-8');
+}
+
+/** Reuse or create a person's grouping ID without granting any app permissions. */
+function family_link_person(array &$state, string $name, string $currentId): array {
+    $key = family_person_key($name);
+    $id = '';
+    $exists = false;
+    foreach ($state['devices'] as $deviceId => $record) {
+        if (!is_array($record) || family_person_key((string)($record['person_name'] ?? '')) !== $key) continue;
+        if ((string)$deviceId !== $currentId) $exists = true;
+        if ($id === '' && trim((string)($record['person_id'] ?? '')) !== '') {
+            $id = trim((string)$record['person_id']);
+        }
+    }
+    if ($id === '') $id = 'person-' . bin2hex(random_bytes(12));
+    // Backfill only a grouping label. Never copy any authorization bits.
+    foreach ($state['devices'] as &$record) {
+        if (!is_array($record)) continue;
+        if (family_person_key((string)($record['person_name'] ?? '')) !== $key) continue;
+        if (trim((string)($record['person_id'] ?? '')) === '') $record['person_id'] = $id;
+    }
+    unset($record);
+    return [$id, $exists];
+}
+
+/** The One Family: app-install identities are SHA-256 fingerprints of their public keys. */
+function family_scope_for_package(string $package): string {
+    $packages = [
+        'com.theone.cinema' => 'cinema_android',
+        'com.theone.cinema.tv' => 'cinema_android',
+        'com.theone.series' => 'series_android',
+        'com.theone.series.tv' => 'series_android',
+        'com.theone.tv.phone' => 'tv_android',
+        'com.theone.tv' => 'tv_android',
+        'com.gmailorg.theoneuser' => 'the_one_user'
+    ];
+    return $packages[$package] ?? '';
+}
+
+function family_public_key(string $encoded): array {
+    $der = base64_decode($encoded, true);
+    if ($der === false || strlen($der) < 70 || strlen($der) > 2048) {
+        respond_devices(400, ['ok' => false, 'error' => 'Invalid public key']);
+    }
+    $pem = "-----BEGIN PUBLIC KEY-----\n" . chunk_split(base64_encode($der), 64, "\n") . "-----END PUBLIC KEY-----\n";
+    $key = openssl_pkey_get_public($pem);
+    $details = $key === false ? false : openssl_pkey_get_details($key);
+    if ($details === false || ($details['type'] ?? -1) !== OPENSSL_KEYTYPE_EC
+        || ($details['bits'] ?? 0) !== 256) {
+        respond_devices(400, ['ok' => false, 'error' => 'P-256 public key required']);
+    }
+    return [$pem, 'fam-' . substr(hash('sha256', $der), 0, 48)];
+}
+
+function family_signed_request(array $data, string $pem, string $action, string $deviceId, string $scope): void {
+    $nonce = (string)($data['nonce'] ?? '');
+    $encodedSignature = (string)($data['signature'] ?? '');
+    $binaryNonce = base64_decode($nonce, true);
+    $signature = base64_decode($encodedSignature, true);
+    if ($binaryNonce === false || strlen($binaryNonce) !== 32 ||
+        $signature === false || strlen($signature) < 60 || strlen($signature) > 256) {
+        respond_devices(400, ['ok' => false, 'error' => 'Invalid signed challenge']);
+    }
+    $message = $action . '|' . $deviceId . '|' . $scope . '|' . $nonce;
+    if (openssl_verify($message, $signature, $pem, OPENSSL_ALGO_SHA256) !== 1) {
+        respond_devices(403, ['ok' => false, 'error' => 'Device signature rejected']);
+    }
+}
+
+if ($action === 'family_register') {
+    $package = trim((string)($body['package'] ?? ''));
+    $scope = family_scope_for_package($package);
+    if ($scope === '') respond_devices(400, ['ok' => false, 'error' => 'Unknown app']);
+    [$publicKey, $derivedId] = family_public_key((string)($body['public_key'] ?? ''));
+    family_signed_request($body, $publicKey, 'register', $derivedId, $scope);
+    $personName = preg_replace('/\\s+/u', ' ', trim((string)($body['person_name'] ?? '')));
+    if (!is_string($personName) || mb_strlen($personName) < 2 ||
+        mb_strlen($personName) > 80 || preg_match('/[\\x00-\\x1F\\x7F]/u', $personName)) {
+        respond_devices(400, ['ok' => false, 'name_required' => true,
+            'error' => 'Applicant name must contain 2 to 80 characters']);
+    }
+    $state = devices_load($devicesFile);
+    $existing = $state['devices'][$derivedId] ?? null;
+    if ($existing !== null && (!is_array($existing)
+        || !hash_equals((string)($existing['family_public_key'] ?? ''), $publicKey)
+        || (string)($existing['family_package'] ?? '') !== $package)) {
+        respond_devices(409, ['ok' => false, 'error' => 'Installation conflict']);
+    }
+    $device = is_array($existing) ? $existing : [
+        'device_id' => $derivedId,
+        'name' => mb_substr($package . ' (' . trim((string)($body['device_name'] ?? ($body['platform'] ?? 'Android'))) . ')', 0, 100),
+        'device_role' => 'family',
+        'person_name' => mb_substr($personName, 0, 80),
+        'platform' => mb_substr((string)($body['platform'] ?? 'Android'), 0, 40),
+        'family_public_key' => $publicKey,
+        'family_package' => $package,
+        'music_rights' => false,
+        'access_rights' => [],
+        'access_requests' => [],
+        'blocked' => false,
+        'registered' => gmdate('c')
+    ];
+    if ((bool)($device['blocked'] ?? false)) respond_devices(403, ['ok' => false, 'error' => 'Device blocked']);
+    $rights = device_access_rights($device);
+    $requests = device_access_requests($device);
+    // Refresh a still-pending request with the name actually typed by the
+    // applicant. Never rewrite the name of an already approved installation.
+    if (isset($requests[$scope]) && !(bool)($rights[$scope] ?? false)) {
+        $device['person_name'] = $personName;
+    }
+    if (!(bool)($rights[$scope] ?? false) && !isset($requests[$scope])
+        && !isset($device['family_denied_scopes'][$scope])) {
+        $requests[$scope] = ['status' => 'pending', 'requested_at' => gmdate('c')];
+    }
+    $device['access_requests'] = $requests;
+    // Approved/denied installations cannot silently change their owner name.
+    // However, an old installation without a name can be named by its applicant.
+    if (trim((string)($device['person_name'] ?? '')) === '') {
+        $device['person_name'] = $personName;
+    }
+    [$personId, $existingPerson] = family_link_person(
+        $state, (string)$device['person_name'], $derivedId
+    );
+    $device['person_id'] = $personId;
+    $device['last_seen'] = time();
+    $state['devices'][$derivedId] = $device;
+    devices_save($devicesFile, $state);
+    respond_devices(200, ['ok' => true, 'device_id' => $derivedId,
+        'allowed' => (bool)($rights[$scope] ?? false), 'pending' => isset($requests[$scope]),
+        'person_id' => $personId, 'person_exists' => $existingPerson]);
+}
+
+if ($action === 'family_check') {
+    $deviceId = clean_device_id((string)($body['device_id'] ?? ''));
+    $package = trim((string)($body['package'] ?? ''));
+    $scope = family_scope_for_package($package);
+    if ($scope === '') respond_devices(400, ['ok' => false, 'error' => 'Unknown app']);
+    $state = devices_load($devicesFile);
+    $device = $state['devices'][$deviceId] ?? null;
+    if (!is_array($device) || !isset($device['family_public_key'])
+        || (string)($device['family_package'] ?? '') !== $package) {
+        respond_devices(404, ['ok' => false, 'error' => 'Installation not registered']);
+    }
+    family_signed_request($body, (string)$device['family_public_key'], 'check', $deviceId, $scope);
+    $rights = device_access_rights($device);
+    $requests = device_access_requests($device);
+    $allowed = !(bool)($device['blocked'] ?? false) && (bool)($rights[$scope] ?? false);
+    $device['last_seen'] = time();
+    $state['devices'][$deviceId] = $device;
+    devices_save($devicesFile, $state);
+    respond_devices(200, ['ok' => true, 'allowed' => $allowed,
+        'pending' => isset($requests[$scope]), 'server_time' => time(),
+        'valid_seconds' => $allowed ? 86400 : 0]);
 }
 
 if ($action === 'access_status') {
@@ -450,9 +616,8 @@ if ($action === 'list') {
         $owner = $ownerId !== '' && $deviceId !== '' && hash_equals($ownerId, $deviceId);
         $personName = trim((string)($d['person_name'] ?? ''));
 
-        // Oude installaties zonder naam blijven uit de beheerweergave. Zodra
-        // dat apparaat de nieuwe versie opent, wordt eerst om een naam gevraagd.
-        if (!$owner && $personName === '') continue;
+        // Unnamed legacy installs remain visible for owner-assisted naming.
+        // An unnamed row never inherits an existing person's permissions.
 
         $d['online'] = $lastSeen > 0 && ($now - $lastSeen) <= 90;
         $d['owner'] = $owner;
@@ -462,13 +627,45 @@ if ($action === 'list') {
             : device_access_rights($d);
         $d['access_requests'] = device_access_requests($d);
         $d['person_name'] = $personName;
+        $d['person_id'] = trim((string)($d['person_id'] ?? ''));
         $devices[] = $d;
     }
     usort($devices, fn($a, $b) => ((int)($b['last_seen'] ?? 0)) <=> ((int)($a['last_seen'] ?? 0)));
     respond_devices(200, ['ok' => true, 'devices' => $devices]);
 }
 
+if ($action === 'set_person_name') {
+    // The existing owner PIN is required to attach an old installation to a person.
+    if (!devices_admin($body)) {
+        respond_devices(403, ['ok' => false, 'error' => 'Owner PIN required']);
+    }
+    $deviceId = clean_device_id((string)($body['device_id'] ?? ''));
+    $personName = preg_replace('/\\s+/u', ' ', trim((string)($body['person_name'] ?? '')));
+    if (!is_string($personName) || mb_strlen($personName) < 2 ||
+        mb_strlen($personName) > 80 || preg_match('/[\\x00-\\x1F\\x7F]/u', $personName)) {
+        respond_devices(400, ['ok' => false, 'name_required' => true]);
+    }
+    if (!isset($state['devices'][$deviceId]) || !is_array($state['devices'][$deviceId])) {
+        respond_devices(404, ['ok' => false, 'error' => 'Device not found']);
+    }
+    $ownerTarget = devices_owner_id($ownerFile) === $deviceId;
+    if ($ownerTarget && trim((string)($state['devices'][$deviceId]['person_name'] ?? '')) !== '') {
+        respond_devices(409, ['ok' => false, 'error' => 'Owner name cannot be changed here']);
+    }
+    [$personId, $existingPerson] = family_link_person($state, $personName, $deviceId);
+    $state['devices'][$deviceId]['person_name'] = $personName;
+    $state['devices'][$deviceId]['person_id'] = $personId;
+    $state['devices'][$deviceId]['person_name_updated'] = gmdate('c');
+    devices_save($devicesFile, $state);
+    respond_devices(200, ['ok' => true, 'device_id' => $deviceId,
+        'person_name' => $personName, 'person_id' => $personId, 'person_exists' => $existingPerson]);
+}
+
 if ($action === 'set_access_right') {
+    // New Family permissions need the authenticated owner *and* the existing admin credential.
+    if (in_array((string)($body['scope'] ?? ''), ['the_one_user','cinema_android','series_android','tv_android'], true) && !devices_admin($body)) {
+        respond_devices(403, ['ok' => false, 'error' => 'Owner PIN required for Family rights']);
+    }
     $deviceId = clean_device_id((string)($body['device_id'] ?? ''));
     $scope = clean_access_scope((string)($body['scope'] ?? ''));
     if (!isset($state['devices'][$deviceId]) || !is_array($state['devices'][$deviceId])) {
@@ -485,6 +682,17 @@ if ($action === 'set_access_right') {
     $rights = device_access_rights($state['devices'][$deviceId]);
     $rights[$scope] = $ownerTarget ? true : $enabled;
     $state['devices'][$deviceId]['access_rights'] = $rights;
+    // Een expliciete afwijzing mag niet automatisch telkens een nieuwe aanvraag worden.
+    // De eigenaar kan het recht later alsnog handmatig inschakelen.
+    if (isset($state['devices'][$deviceId]['family_public_key'])
+        && in_array($scope, ['the_one_user', 'cinema_android', 'series_android', 'tv_android'], true)) {
+        $denials = is_array($state['devices'][$deviceId]['family_denied_scopes'] ?? null)
+            ? $state['devices'][$deviceId]['family_denied_scopes'] : [];
+        if ($enabled) unset($denials[$scope]);
+        else $denials[$scope] = gmdate('c');
+        $state['devices'][$deviceId]['family_denied_scopes'] = $denials;
+    }
+
 
     $requests = is_array($state['devices'][$deviceId]['access_requests'] ?? null)
         ? $state['devices'][$deviceId]['access_requests']
@@ -517,18 +725,18 @@ if ($action === 'set_music_rights') {
 
     $state['devices'][$deviceId]['music_rights'] = $ownerTarget ? true : $enabled;
     $existingScoped = device_access_rights($state['devices'][$deviceId]);
-    $state['devices'][$deviceId]['access_rights'] = [
-        'media_player' => $ownerTarget ? true : (bool)($existingScoped['media_player'] ?? false),
-        'media_player_xxx' => $ownerTarget ? true : (bool)($existingScoped['media_player_xxx'] ?? false),
-        'mixes' => $ownerTarget ? true : $enabled,
-        'shared' => $ownerTarget ? true : $enabled,
-        'favorites' => $ownerTarget ? true : $enabled,
-        'dj' => false,
-        'run' => $ownerTarget ? true : (bool)($existingScoped['run'] ?? false),
-        'downloads' => $ownerTarget ? true : false,
-        'download_files' => $ownerTarget ? true : false
-    ];
-    $state['devices'][$deviceId]['access_requests'] = [];
+    // Only the legacy music bundle is changed here. Preserve all independent
+    // rights (including the_one_user, DJ, Run, downloads, Cinema, Series, TV)
+    // and all unrelated pending approval requests.
+    foreach (['mixes', 'shared', 'favorites'] as $musicScope) {
+        $existingScoped[$musicScope] = $ownerTarget ? true : $enabled;
+    }
+    $state['devices'][$deviceId]['access_rights'] = $existingScoped;
+    $pendingRequests = device_access_requests($state['devices'][$deviceId]);
+    foreach (['mixes', 'shared', 'favorites'] as $musicScope) {
+        unset($pendingRequests[$musicScope]);
+    }
+    $state['devices'][$deviceId]['access_requests'] = $pendingRequests;
     $state['devices'][$deviceId]['music_rights_updated'] = gmdate('c');
     devices_save($devicesFile, $state);
     respond_devices(200, [

@@ -36,6 +36,16 @@ jobs:
           php -l the-one-remote-server/dedupe-cache.php
           php -l the-one-remote-server/adopt-hub.php
 
+      - name: Protect family license endpoints
+        run: |
+          grep -Fq "if (\$action === 'family_register')" the-one-remote-server/devices.php
+          grep -Fq "if (\$action === 'family_check')" the-one-remote-server/devices.php
+          grep -Fq "family_signed_request" the-one-remote-server/devices.php
+          grep -Fq "the_one_user" the-one-remote-server/devices.php
+          grep -Fq "cinema_android" the-one-remote-server/devices.php
+          grep -Fq "series_android" the-one-remote-server/devices.php
+          grep -Fq "tv_android" the-one-remote-server/devices.php
+
       - name: Deploy relay
         shell: bash
         env:
@@ -87,7 +97,7 @@ jobs:
             find "$HOME/the-one-music-cache/meta" -maxdepth 1 -type f -name "*.sync.json" -delete 2>/dev/null || true
             find "$HOME/the-one-music-cache/meta" -maxdepth 1 -type f -name "*.tmp.*" -delete 2>/dev/null || true
             rm -rf "$HOME"/.the-one-remote-stage.* 2>/dev/null || true
-            rm -rf "$HOME"/.the-one-remote-backups/api.* 2>/dev/null || true
+            # Keep server API backups for license recovery; do not remove historical snapshots.
             echo "=== SPACE AFTER ==="
             df -h "$HOME" || true
             du -sh "$HOME/the-one-music-cache" "$HOME/the-one-music-cache/files" "$HOME/the-one-music-cache/meta" 2>/dev/null || true
