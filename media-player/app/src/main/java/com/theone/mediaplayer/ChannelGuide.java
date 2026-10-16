@@ -8,8 +8,9 @@ public final class ChannelGuide {
     private static final String[] ZIGGO = {
         "npo 1","npo 2","npo 3","rtl 4","rtl 5","sbs 6","rtl 7",
         "veronica","net 5","rtl 8","star channel","rtl z","viaplay tv",
-        "ziggo sport","espn","discovery","national geographic","tlc","eurosport",
-        "animal planet","history","comedy central","mtv","nickelodeon","cartoon network",
+        "ziggo sport","comedy central","paramount network","discovery","espn",
+        "sbs9","id","tlc","bbc nl","mtv","24 kitchen","eurosport 1","hgtv",
+        "national geographic","animal planet","history","nickelodeon","cartoon network",
         "bbc first","bbc one","bbc two","ard","zdf","canvas","een"
     };
     private ChannelGuide() {}
