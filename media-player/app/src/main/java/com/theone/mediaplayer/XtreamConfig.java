@@ -147,7 +147,7 @@ public final class XtreamConfig {
         for(int i=0;i<rows.length();i++) {
             JSONObject row=rows.optJSONObject(i); if(row==null)continue;
             for(String key:new String[]{"stream_id","series_id","category_id"}) prefixId(row,key);
-            if(categories) row.put("category_name",row.optString("category_name","Categorie")+" · Bron 2");
+            // Provider is internal; never append source labels to category titles.
             for(String key:new String[]{"stream_icon","cover","cover_big","movie_image"}) {
                 String value=row.optString(key,"");
                 if(value.startsWith("/")) row.put(key,secondary.server+value);
