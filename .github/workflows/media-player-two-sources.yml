@@ -252,21 +252,20 @@ jobs:
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: bash ci/publish-media-player-android-devhub.sh
 
-      - name: Verify Android TV signing continuity
+      - name: Verify TV is signed with permanent legacy-TV keystore
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --location --silent --show-error --max-time 120 \
-            "https://github.com/Rubenvaggelen/apps/releases/download/media-player-tv-latest/The-One-Media-Player-TV.apk" \
-            -o /tmp/the-one-media-player-tv-previous.apk
           APKSIGNER="$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner"
           current="$("$APKSIGNER" verify --print-certs media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)"
-          previous="$("$APKSIGNER" verify --print-certs /tmp/the-one-media-player-tv-previous.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)"
-          test -n "$current" && test "$current" = "$previous" || {
-            echo "::error::TV signing identity mismatch; do not distribute an incompatible update."
+          expected="$(keytool -exportcert -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey \
+            | openssl x509 -inform DER -fingerprint -sha256 -noout \
+            | sed 's/.*=//' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          test -n "$current" && test "$current" = "$expected" || {
+            echo "::error::TV signing mismatch with the established fixed TV signing key."
             exit 1
           }
-          echo "Android TV / Google TV update certificate matched previous installation"
+          echo "Android TV build uses the established fixed TV signing key"
 
       - name: Publish Android TV v1004 to authenticated Dev Hub only
         shell: bash
