@@ -1,0 +1,69 @@
+name: Export installed-safe Media Player Android v2408 for handover
+
+on:
+  push:
+    branches: [feature/media-player-adult-5min-20261016]
+    paths: ['.github/workflows/media-player-adult-apk-handover.yml']
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  export-signed-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+    steps:
+      - name: Fetch exact signed v2408 from authenticated private Dev Hub
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          for key in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS; do
+            test -n "${!key}" || { echo "Missing deploy identity"; exit 1; }
+          done
+          keydir=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$keydir"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$keydir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$keydir/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$keydir/askpass"
+          chmod 600 "$keydir/key" "$keydir/known_hosts"
+          chmod 700 "$keydir/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$keydir/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$keydir/key" </dev/null
+          opts=(-i "$keydir/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$keydir/known_hosts" -o ConnectTimeout=15)
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          printf '%s\n' "Reading authenticated Dev Hub release metadata (no URL or credentials logged)"
+          manifest=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'cat "$HOME/the-one-private-builds/2026-10-13/manifest.json"')
+          metadata=$(printf '%s' "$manifest" | python3 -c '
+          import json,sys,re
+          rows=json.load(sys.stdin)
+          a=[r for r in rows if isinstance(r,dict) and "media player" in str(r.get("app_name","")).lower() and "android" in str(r.get("platform","")).lower() and "tv" not in str(r.get("platform","")).lower()]
+          assert len(a)==1,"Unexpected app match"
+          x=a[0]
+          assert int(x.get("version_code",0))==2408,"Dev Hub is not on approved version"
+          name=x["apk"]; sha=x["sha256"]
+          assert re.fullmatch(r"The-One-Media-Player-Android-v2408-[0-9a-f]{12}[.]apk",name),"Unexpected filename"
+          assert re.fullmatch(r"[0-9a-f]{64}",sha),"Invalid SHA256"
+          print(name+" "+sha)
+          ')
+          read -r name expected <<<"$metadata"
+          mkdir -p handover
+          scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$remote:the-one-private-builds/2026-10-13/apks/$name" handover/The-One-Media-Player-Android-v2408.apk
+          actual=$(sha256sum handover/The-One-Media-Player-Android-v2408.apk | cut -d' ' -f1)
+          test "$actual" = "$expected"
+          echo "MEDIA_PLAYER_ANDROID_V2408_PRIVATE_SHA256_VERIFIED"
+      - name: Keep handover in authenticated GitHub artifact (1 day)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Media-Player-Android-v2408-signed-for-chat
+          path: handover/The-One-Media-Player-Android-v2408.apk
+          if-no-files-found: error
+          retention-days: 1
