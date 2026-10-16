@@ -278,6 +278,12 @@ public final class MediaPlayerAuthorization {
         return value == null ? "" : value.trim();
     }
 
+    /** Reuse the already registered Media Player device identity for the XXX request. */
+    public static String registeredDeviceId(Context context) {
+        SharedPreferences prefs=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
+        return prefs.getString(KEY_DEVICE_ID,"");
+    }
+
     private static String deviceId(Context context) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         String current = prefs.getString(KEY_DEVICE_ID, "");
