@@ -18,7 +18,8 @@ internal object FamilyAccessRequestGrouping {
             MainDeviceRegistry.ACCESS_CINEMA,
             MainDeviceRegistry.ACCESS_SERIES,
             MainDeviceRegistry.ACCESS_TV,
-            MainDeviceRegistry.ACCESS_USER_APP
+            MainDeviceRegistry.ACCESS_USER_APP,
+            MainDeviceRegistry.ACCESS_MEDIA_PLAYER_XXX
         )
         for (request in requests) {
             val isFamily = request.deviceId.startsWith("fam-") &&
@@ -43,6 +44,7 @@ internal object FamilyAccessRequestGrouping {
                     MainDeviceRegistry.ACCESS_CINEMA -> "Cinema"
                     MainDeviceRegistry.ACCESS_SERIES -> "Series"
                     MainDeviceRegistry.ACCESS_TV -> "TV"
+                    MainDeviceRegistry.ACCESS_MEDIA_PLAYER_XXX -> "Media Player XXX 🔒"
                     MainDeviceRegistry.ACCESS_MIXES -> "The One Mixes"
                     MainDeviceRegistry.ACCESS_SHARED -> "Shared Media"
                     MainDeviceRegistry.ACCESS_DJ -> "The One DJ"
