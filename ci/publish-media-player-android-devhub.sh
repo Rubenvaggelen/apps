@@ -2,7 +2,6 @@
 # Deliver only signed Android Media Player to the authenticated Dev Hub.
 set -euo pipefail
 APK=media-player/app/build/outputs/apk/release/app-release.apk
-NAME=The-One-Media-Player-Android-v2403.apk
 test -s "$APK"
 for variable in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
   test -n "$(printenv "$variable")" || { echo "::error::Missing $variable"; exit 1; }
@@ -27,6 +26,7 @@ unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
 opts=(-i "$keydir/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$keydir/known_hosts" -o ConnectTimeout=20)
 remote="$DEPLOY_USER@$DEPLOY_HOST"
 sha=$(sha256sum "$APK" | awk '{print $1}')
+NAME=The-One-Media-Player-Android-v2403-${sha:0:12}.apk
 stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'mktemp -d "$HOME/.the-one-player-stage.XXXXXXXX"')
 scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$APK" "$remote:$stage/$NAME"
 ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "bash -s -- '$stage' '$NAME' '$sha'" <<'REMOTE'
