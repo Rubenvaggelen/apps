@@ -45,6 +45,7 @@ public final class ChannelGuide {
         // Prefixes such as "NL | Cartoon Network" must not block provider fallback.
         text = text.replaceAll("^(nl|nederland|netherlands|be|belgie|de|uk|us|fr)\\s+", "");
         text = text.replaceAll("\\b(hd|fhd|sd|fullhd|1080p|720p|50fps|60fps|hevc|h265|h264)\\b", " ");
+        text = text.replaceAll("\\b(nl|nederland|netherlands)\\s*$", "").trim();
         text = text.replaceAll("\\s+", " ").trim();
         return text.isEmpty() ? normalize(name) : text;
     }
