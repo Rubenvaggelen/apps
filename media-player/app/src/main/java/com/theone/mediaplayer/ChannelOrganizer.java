@@ -48,13 +48,13 @@ final class ChannelOrganizer {
     }
     static int qualityGroup(String title) {
         String t=normalize(title);
-        if(t.matches(".*(?:^| )16k(?: |$).*"))return 3;
-        if(t.matches(".*(?:^| )8k(?: |$).*"))return 2;
-        if(t.matches(".*(?:^| )4k(?: |$).*")||t.contains(" uhd "))return 1;
+        if(t.matches(".*\\b16k\\b.*"))return 3;
+        if(t.matches(".*\\b8k\\b.*"))return 2;
+        if(t.matches(".*\\b4k\\b.*")||t.matches(".*\\buhd\\b.*"))return 1;
         return 0;
     }
     private static int ziggoPosition(String title) {
-        String normalized=normalize(title).replaceAll("\\b(?:nl|netherlands|nederland|hd|fhd|sd|hevc|h265|50fps|60fps)\\b"," ").replaceAll(" +"," ").trim();
+        String normalized=normalize(title).trim().replaceAll("\\b(?:nl|netherlands|nederland|hd|fhd|sd|hevc|h265|50fps|60fps)\\b"," ").replaceAll(" +"," ").trim();
         for(int i=0;i<NL_ORDER.length;i++) {
             String name=NL_ORDER[i];
             if(normalized.equals(name)||normalized.startsWith(name+" ")||normalized.endsWith(" "+name))return i+1;
@@ -63,7 +63,7 @@ final class ChannelOrganizer {
     }
     private static String normalize(String raw) {
         String t=Normalizer.normalize(raw.toLowerCase(Locale.ROOT),Normalizer.Form.NFD).replaceAll("\\p{M}","");
-        return " "+t.replaceAll("[^a-z0-9]+"," ").trim()+" ";
+        return t.replaceAll("[^a-z0-9]+"," ").trim();
     }
     private static boolean matches(String t,String... parts) {
         for(String p:parts)if(t.contains(p))return true;
