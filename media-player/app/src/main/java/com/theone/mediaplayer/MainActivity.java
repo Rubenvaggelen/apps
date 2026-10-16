@@ -392,6 +392,7 @@ try {
         addNavButton(nav, "Live TV", () -> openXtreamCatalog("live"));
         addNavButton(nav, "Films", () -> openXtreamCatalog("movie"));
         addNavButton(nav, "Series", () -> openXtreamCatalog("series"));
+        addNavButton(nav, "XXX 🔒", () -> startActivity(new Intent(this, AdultHubActivity.class)));
         addNavButton(nav, "Verder kijken", () -> showSection("Verder kijken", "Je kijkvoortgang verschijnt hier."));
         addNavButton(nav, "Favorieten", () -> showSection("Favorieten", "Je favoriete zenders, films en series verschijnen hier."));
         if (!isTvBuild()) {
@@ -445,6 +446,8 @@ try {
         Button live = PremiumUi.primaryButton(this, "Live TV");
         Button films = PremiumUi.primaryButton(this, "Films");
         Button series = PremiumUi.primaryButton(this, "Series");
+        Button xxx = PremiumUi.primaryButton(this, "XXX 🔒");
+        xxx.setOnClickListener(v -> startActivity(new Intent(this, AdultHubActivity.class)));
 
         live.setOnClickListener(v -> openXtreamCatalog("live"));
         films.setOnClickListener(v -> openXtreamCatalog("movie"));
@@ -459,6 +462,7 @@ try {
         row.addView(films, item2);
 
         row.addView(series, new LinearLayout.LayoutParams(0, dp(70), 1f));
+        row.addView(xxx, new LinearLayout.LayoutParams(0, dp(70), 1f));
         root.addView(row);
 
         TextView castReady = text(
