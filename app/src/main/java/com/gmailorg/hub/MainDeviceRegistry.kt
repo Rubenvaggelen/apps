@@ -17,6 +17,7 @@ data class MainRegisteredDevice(
     val owner: Boolean,
     val musicRights: Boolean,
     val mediaPlayerRights: Boolean,
+    val mediaPlayerXxxRights: Boolean,
     val mixesRights: Boolean,
     val sharedRights: Boolean,
     val favoritesRights: Boolean,
@@ -28,6 +29,7 @@ data class MainRegisteredDevice(
     val downloadsRights: Boolean,
     val fileDownloadsRights: Boolean,
     val pendingMediaPlayer: Boolean,
+    val pendingMediaPlayerXxx: Boolean,
     val pendingMixes: Boolean,
     val pendingShared: Boolean,
     val pendingFavorites: Boolean,
@@ -72,6 +74,7 @@ data class MainPendingAccessRequest(
 object MainDeviceRegistry {
     const val ACCESS_USER_APP = "the_one_user"
     const val ACCESS_MEDIA_PLAYER = "media_player"
+    const val ACCESS_MEDIA_PLAYER_XXX = "media_player_xxx"
     const val ACCESS_MIXES = "mixes"
     const val ACCESS_SHARED = "shared"
     const val ACCESS_FAVORITES = "favorites"
@@ -276,6 +279,9 @@ object MainDeviceRegistry {
                         mediaPlayerRights = item.optJSONObject("access_rights")
                             ?.optBoolean(ACCESS_MEDIA_PLAYER, item.optBoolean("owner", false))
                             ?: item.optBoolean("owner", false),
+                        // Distinct adult entitlement: never inherit standard Media Player rights.
+                        mediaPlayerXxxRights = item.optJSONObject("access_rights")
+                            ?.optBoolean(ACCESS_MEDIA_PLAYER_XXX, false) == true,
                         mixesRights = item.optJSONObject("access_rights")
                             ?.optBoolean(ACCESS_MIXES, item.optBoolean("music_rights", false))
                             ?: item.optBoolean("music_rights", item.optBoolean("owner", false)),
@@ -301,6 +307,7 @@ object MainDeviceRegistry {
                             ?.optBoolean(ACCESS_FILE_DOWNLOADS, item.optBoolean("owner", false))
                             ?: item.optBoolean("owner", false),
                         pendingMediaPlayer = item.optJSONObject("access_requests")?.has(ACCESS_MEDIA_PLAYER) == true,
+                        pendingMediaPlayerXxx = item.optJSONObject("access_requests")?.has(ACCESS_MEDIA_PLAYER_XXX) == true,
                         pendingMixes = item.optJSONObject("access_requests")?.has(ACCESS_MIXES) == true,
                         pendingShared = item.optJSONObject("access_requests")?.has(ACCESS_SHARED) == true,
                         pendingFavorites = item.optJSONObject("access_requests")?.has(ACCESS_FAVORITES) == true,
