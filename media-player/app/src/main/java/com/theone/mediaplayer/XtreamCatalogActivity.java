@@ -44,6 +44,7 @@ public class XtreamCatalogActivity extends Activity {
     // Inflating hundreds/thousands of provider category buttons on the UI thread
     // can cause a TV ANR/process termination when Live TV first loads.
     private static final int CATEGORY_PAGE_SIZE = 42;
+    private int categoryPageHeaderChildCount = 0;
     private static final String LOG_TAG = "TheOneCatalog";
     private static final int PANEL = Color.rgb(17, 23, 34);
     private static final int MUTED = Color.rgb(154, 166, 178);
@@ -329,13 +330,26 @@ public class XtreamCatalogActivity extends Activity {
                     !ChannelGuide.isTop2026MultiLang(second.name)));
         }
         // Keep the first frame responsive on budget Android TV devices.
-        // The user can still reach every category via the More button.
+        // Keep every category reachable but inflate only one page at a time.
+        categoryPageHeaderChildCount = content.getChildCount();
         appendCategoryPage(orderedCategories, 0);
     }
 
     private void appendCategoryPage(List<Category> categories, int offset) {
-        int end = Math.min(categories.size(), offset + CATEGORY_PAGE_SIZE);
-        for (int i = offset; i < end; i++) {
+        // Recycle the previous screen rather than gradually adding thousands of
+        // views to the same ScrollView and exhausting a low-memory Google TV.
+        while (content.getChildCount() > categoryPageHeaderChildCount) {
+            content.removeViewAt(content.getChildCount()-1);
+        }
+        int safeOffset = Math.max(0, Math.min(offset, Math.max(0, categories.size()-1)));
+        safeOffset = (safeOffset / CATEGORY_PAGE_SIZE) * CATEGORY_PAGE_SIZE;
+        int end = Math.min(categories.size(), safeOffset + CATEGORY_PAGE_SIZE);
+        if (categories.isEmpty()) return;
+        TextView position = text("Categorieën " + (safeOffset+1) + "–" + end +
+            " van " + categories.size(), 14, MUTED, false);
+        position.setPadding(0,dp(8),0,dp(12));
+        content.addView(position);
+        for (int i=safeOffset; i<end; i++) {
             Category category = categories.get(i);
             Button b = PremiumUi.chipButton(this, category.name);
             b.setOnClickListener(v -> loadItems(category));
@@ -344,13 +358,25 @@ public class XtreamCatalogActivity extends Activity {
             lp.bottomMargin = dp(8);
             content.addView(b, lp);
         }
-        if (end < categories.size()) {
-            Button more = button("Meer categorieën (" + end + " / " + categories.size() + ")");
-            more.setOnClickListener(v -> {
-                content.removeView(more);
-                appendCategoryPage(categories, end);
+        if (safeOffset > 0) {
+            Button back = PremiumUi.chipButton(this, "← Vorige categorieën");
+            back.setFocusable(true);
+            int previousOffset = safeOffset - CATEGORY_PAGE_SIZE;
+            back.setOnClickListener(v -> {
+                appendCategoryPage(categories, previousOffset);
+                catalogScroll.post(() -> catalogScroll.scrollTo(0, 0));
             });
+            content.addView(back);
+        }
+        if (end < categories.size()) {
+            Button more = PremiumUi.chipButton(this,
+                "Volgende categorieën (" + end + " / " + categories.size() + ") →");
             more.setFocusable(true);
+            int nextOffset = end;
+            more.setOnClickListener(v -> {
+                appendCategoryPage(categories, nextOffset);
+                catalogScroll.post(() -> catalogScroll.scrollTo(0, 0));
+            });
             content.addView(more);
         }
     }
