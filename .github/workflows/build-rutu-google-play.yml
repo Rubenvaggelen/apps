@@ -42,8 +42,8 @@ jobs:
           gradle=Path('jadeorders/build.gradle').read_text()
           manifest=Path('jadeorders/src/main/AndroidManifest.xml').read_text()
           updater=Path('jadeorders/src/main/java/com/vanaggelen/jadeorders/RutuUpdateChecker.kt').read_text()
-          assert re.search(r'compileSdk\\s+36', gradle)
-          assert re.search(r'targetSdk\\s+36', gradle)
+          assert 'compileSdk 36' in gradle
+          assert 'targetSdk 36' in gradle
           assert 'applicationId "com.vanaggelen.jadeorders"' in gradle
           assert 'REQUEST_INSTALL_PACKAGES' not in manifest
           assert 'No external APK download' in updater
