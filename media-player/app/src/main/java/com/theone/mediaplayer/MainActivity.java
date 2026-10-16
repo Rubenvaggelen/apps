@@ -182,41 +182,70 @@ public class MainActivity extends Activity {
                 if (result.entries.isEmpty()) {
                     addInfo(box, "Geen items gevonden. Controleer de accounts via Instellingen.");
                 }
-                if("live".equals(kind)) {
-                    android.widget.Spinner countries=new android.widget.Spinner(this);
-                    List<String> options=new ArrayList<>();options.add("Alle landen");options.addAll(ChannelOrganizer.countries(result.entries));
-                    android.widget.ArrayAdapter<String> adapter=new android.widget.ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,options);
+                if ("live".equals(kind)) {
+                    android.widget.Spinner countries = new android.widget.Spinner(this);
+                    List<String> options = new ArrayList<>();
+                    options.add("Alle landen");
+                    options.addAll(ChannelOrganizer.countries(result.entries));
+                    android.widget.ArrayAdapter<String> adapter = new android.widget.ArrayAdapter<>(
+                        this, android.R.layout.simple_spinner_dropdown_item, options);
                     countries.setAdapter(adapter);
-                    int selected=options.indexOf(selectedCountry);
-                    countries.setSelection(selected>=0?selected:0);
-                    countries.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
-                        @Override public void onNothingSelected(android.widget.AdapterView<?> parent){}
-                        @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view,int position,long id){
-                            String value=options.get(position);
-                            if(!value.equals(selectedCountry)){selectedCountry=value;showCatalog("live");}
+                    int selected = options.indexOf(selectedCountry);
+                    if (selected < 0) {
+                        selectedCountry = "Alle landen";
+                        selected = 0;
+                    }
+                    countries.setSelection(selected);
+                    box.addView(countries);
+                    LinearLayout channels = new LinearLayout(this);
+                    channels.setOrientation(LinearLayout.VERTICAL);
+                    box.addView(channels);
+                    countries.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+                        @Override public void onNothingSelected(android.widget.AdapterView<?> parent) {}
+                        @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                            selectedCountry = options.get(position);
+                            renderChannelList(channels, result.entries);
                         }
                     });
-                    box.addView(countries);
+                } else {
+                    renderMediaEntries(box, result.entries, kind);
                 }
-                int displayed = 0;
-                List<XtreamCatalog.Entry> visible = "live".equals(kind)?ChannelOrganizer.forCountry(result.entries,selectedCountry):result.entries;
-                for (XtreamCatalog.Entry entry : visible) {
-                    if (displayed++ >= 400) break;
-                    if ("series".equals(kind)) {
-                        LinearLayout card=cardContainer();
-                        card.addView(text(entry.title,20,Color.WHITE,true));
-                        Button episodes=button("Seizoenen en afleveringen");
-                        episodes.setOnClickListener(v -> showEpisodes(entry));
-                        card.addView(episodes);
-                        addCard(box,card);
-                    } else {
-                        List<String> urls=XtreamCatalog.playbackUrls(prefs,entry);
-                        if(!urls.isEmpty())addPlayableCardWithFallback(box,entry.title,urls);
-                    }
-                }
-                if(result.entries.size()>400) addInfo(box,"Eerste 400 resultaten getoond; zoeken en paginering volgen.");
             });
         }).start();
+    }
+
+    private void renderChannelList(LinearLayout container, List<XtreamCatalog.Entry> entries) {
+        container.removeAllViews();
+        List<XtreamCatalog.Entry> visible = ChannelOrganizer.forCountry(entries, selectedCountry);
+        if (visible.isEmpty()) {
+            addInfo(container, "Geen zenders voor dit land. Kies Alle landen om de overige kanalen te zien.");
+            return;
+        }
+        renderMediaEntries(container, visible, "live");
+    }
+
+    private void renderMediaEntries(LinearLayout container, List<XtreamCatalog.Entry> entries, String kind) {
+        int shown = 0;
+        for (XtreamCatalog.Entry entry : entries) {
+            if (shown >= 400) break;
+            if ("series".equals(kind)) {
+                LinearLayout card = cardContainer();
+                card.addView(text(entry.title, 20, Color.WHITE, true));
+                Button episodes = button("Seizoenen en afleveringen");
+                episodes.setOnClickListener(v -> showEpisodes(entry));
+                card.addView(episodes);
+                addCard(container, card);
+            } else {
+                List<String> urls = XtreamCatalog.playbackUrls(prefs, entry);
+                if (urls.isEmpty()) continue;
+                addPlayableCardWithFallback(container, entry.title, urls);
+            }
+            shown++;
+        }
+        if (entries.size() > shown) {
+            addInfo(container, "Er worden " + shown + " van " + entries.size() +
+                " titels getoond. Uitgebreid zoeken en paginering volgen.");
+        }
     }
 
     private void openAdultSection() {
