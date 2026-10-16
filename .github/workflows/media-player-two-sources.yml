@@ -186,6 +186,8 @@ jobs:
           grep -q 'appendCards' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
           grep -q 'loadCountry' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
           grep -q 'hasNlPrefix(item.name)' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
+          grep -q 'categoryPageHeaderChildCount' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
+          grep -q 'Volgende categorieën' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
           grep -q 'Terug naar zenders' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
           # Regression guard: leaving the player must NEVER clear the existing
           # catalog with the previous "Stream starten…" progress screen.
@@ -240,7 +242,7 @@ jobs:
           APK="media-player/app/build/outputs/apk/release/app-release.apk"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" > /tmp/package.txt
-          grep -q "name='com.theone.mediaplayer'.*versionCode='2406'" /tmp/package.txt
+          grep -q "name='com.theone.mediaplayer'.*versionCode='2407'" /tmp/package.txt
           python3 - <<'PY'
           import zipfile,json
           with zipfile.ZipFile("media-player/app/build/outputs/apk/release/app-release.apk") as z:
@@ -258,28 +260,28 @@ jobs:
           TV_APK="media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$TV_APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$TV_APK" >/tmp/tv-package.txt
-          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1007'" /tmp/tv-package.txt
+          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1008'" /tmp/tv-package.txt
 
       - name: Encrypt personal APK artifact
         run: |
           set -euo pipefail
           umask 077
           mkdir -p personal-out
-          cp media-player/app/build/outputs/apk/release/app-release.apk /tmp/The-One-Media-Player-v2406.apk
-          (cd /tmp && sha256sum The-One-Media-Player-v2406.apk) > personal-out/SHA256SUMS.txt
+          cp media-player/app/build/outputs/apk/release/app-release.apk /tmp/The-One-Media-Player-v2407.apk
+          (cd /tmp && sha256sum The-One-Media-Player-v2407.apk) > personal-out/SHA256SUMS.txt
           openssl rand -hex 32 > /tmp/artifact-password
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in /tmp/The-One-Media-Player-v2406.apk -out personal-out/The-One-Media-Player-v2406.apk.enc -pass file:/tmp/artifact-password
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in /tmp/The-One-Media-Player-v2407.apk -out personal-out/The-One-Media-Player-v2407.apk.enc -pass file:/tmp/artifact-password
           (cd media-player/tvapp/build/outputs/apk/debug && sha256sum tvapp-debug.apk) >> personal-out/SHA256SUMS.txt
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk -out personal-out/The-One-Media-Player-TV-v1007.apk.enc -pass file:/tmp/artifact-password
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk -out personal-out/The-One-Media-Player-TV-v1008.apk.enc -pass file:/tmp/artifact-password
           openssl pkeyutl -encrypt -pubin -inkey .github/media-player-owner-artifact-public.pem -in /tmp/artifact-password -out personal-out/key.enc -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
-          rm -f /tmp/artifact-password /tmp/The-One-Media-Player-v2406.apk
+          rm -f /tmp/artifact-password /tmp/The-One-Media-Player-v2407.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: the-one-media-player-v2406-and-tv-v1007-personal
+          name: the-one-media-player-v2407-and-tv-v1008-personal
           path: personal-out/
 
-      - name: Publish Android v2406 to authenticated Dev Hub only
+      - name: Publish Android v2407 to authenticated Dev Hub only
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -305,7 +307,7 @@ jobs:
           }
           echo "Android TV build uses the established fixed TV signing key"
 
-      - name: Publish Android TV v1007 to authenticated Dev Hub only
+      - name: Publish Android TV v1008 to authenticated Dev Hub only
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
