@@ -186,6 +186,23 @@ jobs:
           grep -q 'appendCards' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
           grep -q 'loadCountry' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
           grep -q 'Terug naar zenders' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
+          # Regression guard: leaving the player must NEVER clear the existing
+          # catalog with the previous "Stream starten…" progress screen.
+          python3 - <<'PY'
+          from pathlib import Path
+          source=Path("media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java").read_text()
+          method=source.split("private void startPlaybackWhenLineFree(",1)[1].split("private int parseConnectionCount(",1)[0]
+          assert 'showLoading("Stream starten…")' not in method, "Playback destroys the channel list"
+          assert 'launchPlayback(queue, kind);' in method
+          assert 'restoreChannelFocusOnResume' in source
+          assert 'catalogScroll.scrollTo(0, savedY);' in source
+          assert 'lastPlayedChannelButton = open;' in source
+          player=Path("media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java").read_text()
+          back=player.split("public void onBackPressed()",1)[1].split("private void addNavButton(",1)[0]
+          assert "releasePlayer();" in back and "finish();" in back
+          assert 'Terug naar zenders' in player
+          print("Back button, remote Back, focus and scroll restoration guards passed")
+          PY
           grep -q 'isTop2026MultiLang' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
           grep -q 'org.json:json:20240303' media-player/app/build.gradle.kts
           grep -q 'channelIdentity' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
@@ -222,7 +239,7 @@ jobs:
           APK="media-player/app/build/outputs/apk/release/app-release.apk"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" > /tmp/package.txt
-          grep -q "name='com.theone.mediaplayer'.*versionCode='2404'" /tmp/package.txt
+          grep -q "name='com.theone.mediaplayer'.*versionCode='2405'" /tmp/package.txt
           python3 - <<'PY'
           import zipfile,json
           with zipfile.ZipFile("media-player/app/build/outputs/apk/release/app-release.apk") as z:
@@ -240,28 +257,28 @@ jobs:
           TV_APK="media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$TV_APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$TV_APK" >/tmp/tv-package.txt
-          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1005'" /tmp/tv-package.txt
+          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1006'" /tmp/tv-package.txt
 
       - name: Encrypt personal APK artifact
         run: |
           set -euo pipefail
           umask 077
           mkdir -p personal-out
-          cp media-player/app/build/outputs/apk/release/app-release.apk /tmp/The-One-Media-Player-v2404.apk
-          (cd /tmp && sha256sum The-One-Media-Player-v2404.apk) > personal-out/SHA256SUMS.txt
+          cp media-player/app/build/outputs/apk/release/app-release.apk /tmp/The-One-Media-Player-v2405.apk
+          (cd /tmp && sha256sum The-One-Media-Player-v2405.apk) > personal-out/SHA256SUMS.txt
           openssl rand -hex 32 > /tmp/artifact-password
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in /tmp/The-One-Media-Player-v2404.apk -out personal-out/The-One-Media-Player-v2404.apk.enc -pass file:/tmp/artifact-password
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in /tmp/The-One-Media-Player-v2405.apk -out personal-out/The-One-Media-Player-v2405.apk.enc -pass file:/tmp/artifact-password
           (cd media-player/tvapp/build/outputs/apk/debug && sha256sum tvapp-debug.apk) >> personal-out/SHA256SUMS.txt
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk -out personal-out/The-One-Media-Player-TV-v1005.apk.enc -pass file:/tmp/artifact-password
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk -out personal-out/The-One-Media-Player-TV-v1006.apk.enc -pass file:/tmp/artifact-password
           openssl pkeyutl -encrypt -pubin -inkey .github/media-player-owner-artifact-public.pem -in /tmp/artifact-password -out personal-out/key.enc -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
-          rm -f /tmp/artifact-password /tmp/The-One-Media-Player-v2404.apk
+          rm -f /tmp/artifact-password /tmp/The-One-Media-Player-v2405.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: the-one-media-player-v2404-and-tv-v1005-personal
+          name: the-one-media-player-v2405-and-tv-v1006-personal
           path: personal-out/
 
-      - name: Publish Android v2404 to authenticated Dev Hub only
+      - name: Publish Android v2405 to authenticated Dev Hub only
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -287,7 +304,7 @@ jobs:
           }
           echo "Android TV build uses the established fixed TV signing key"
 
-      - name: Publish Android TV v1005 to authenticated Dev Hub only
+      - name: Publish Android TV v1006 to authenticated Dev Hub only
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
