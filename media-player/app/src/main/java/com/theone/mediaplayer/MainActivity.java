@@ -87,6 +87,7 @@ public class MainActivity extends Activity {
         addNavButton(nav, "Live TV", this::showLiveTv);
         addNavButton(nav, "Films", this::showFilms);
         addNavButton(nav, "Series", () -> showCatalog("series"));
+        addNavButton(nav, "XXX 🔒", this::openAdultSection);
         addNavButton(nav, "Test M3U", this::showDemoM3u);
         addNavButton(nav, "Verder kijken", () -> showSection("Verder kijken", "Je kijkvoortgang verschijnt hier."));
         addNavButton(nav, "Favorieten", () -> showSection("Favorieten", "Je favoriete zenders, films en series verschijnen hier."));
@@ -196,6 +197,128 @@ public class MainActivity extends Activity {
                     }
                 }
                 if(result.entries.size()>400) addInfo(box,"Eerste 400 resultaten getoond; zoeken en paginering volgen.");
+            });
+        }).start();
+    }
+
+    private void openAdultSection() {
+        String deviceId=prefs.getString("licensed_device_id","");
+        if(deviceId.isEmpty()) {
+            new android.app.AlertDialog.Builder(this).setTitle("XXX — aparte toestemming vereist")
+                .setMessage("XXX is geblokkeerd totdat dit apparaat afzonderlijk via The One Main is geregistreerd en goedgekeurd.")
+                .setPositiveButton("OK",null).show();
+            return;
+        }
+        new Thread(() -> {
+            boolean allowed=false;
+            boolean requested=false;
+            try {
+                org.json.JSONObject body=new org.json.JSONObject();
+                body.put("device_id",deviceId);
+                body.put("scope","media_player_xxx");
+                org.json.JSONObject status=postAccess("access_status",body);
+                allowed=status.optBoolean("allowed",false);
+                if(!allowed) {
+                    org.json.JSONObject response=postAccess("request_access",body);
+                    requested=response.optBoolean("ok",false);
+                }
+            } catch(Exception ignored) { }
+            final boolean granted=allowed;
+            final boolean pending=requested;
+            runOnUiThread(() -> {
+                if(!granted) {
+                    new android.app.AlertDialog.Builder(this).setTitle("XXX — toestemming nodig")
+                        .setMessage(pending?"Een afzonderlijk XXX-toegangsverzoek is ingediend. Alleen de eigenaar kan dit in Main goedkeuren.":"XXX is vergrendeld. De afzonderlijke toestemming kon niet worden gecontroleerd.")
+                        .setPositiveButton("OK",null).show();
+                    return;
+                }
+                askAdultPin();
+            });
+        }).start();
+    }
+    private org.json.JSONObject postAccess(String action, org.json.JSONObject body) throws Exception {
+        java.net.HttpURLConnection connection=(java.net.HttpURLConnection)new java.net.URL("https://rubenvanaggelen.com/the-one-remote-api/devices.php?action="+action).openConnection();
+        connection.setConnectTimeout(10000);
+        connection.setReadTimeout(10000);
+        connection.setRequestMethod("POST");
+        connection.setDoOutput(true);
+        connection.setRequestProperty("Content-Type","application/json; charset=utf-8");
+        try {
+            connection.getOutputStream().write(body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            if(connection.getResponseCode()!=200)throw new java.io.IOException("Access verification unavailable");
+            java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
+            byte[] buffer=new byte[4096];int n;
+            try(java.io.InputStream in=connection.getInputStream()){
+                while((n=in.read(buffer))!=-1){out.write(buffer,0,n);if(out.size()>65536)throw new java.io.IOException("Response too large");}
+            }
+            return new org.json.JSONObject(out.toString("UTF-8"));
+        } finally {connection.disconnect();}
+    }
+    private void askAdultPin() {
+        EditText pin=new EditText(this);
+        pin.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+        pin.setHint("PIN");
+        new android.app.AlertDialog.Builder(this).setTitle("XXX — PIN")
+            .setMessage(AdultPin.isConfigured(prefs)?"Voer je persoonlijke PIN in.":"Eenmalige tijdelijke PIN: 1306. Daarna kies je een nieuwe PIN.")
+            .setView(pin).setNegativeButton("Annuleren",null)
+            .setPositiveButton("Verder",(dialog,which)->{
+                String entered=pin.getText().toString();
+                if(!AdultPin.isConfigured(prefs)) {
+                    if("1306".equals(entered))changeAdultPin();
+                    else Toast.makeText(this,"Onjuiste PIN",Toast.LENGTH_SHORT).show();
+                } else if(AdultPin.check(prefs,entered))showAdultSection();
+                else Toast.makeText(this,"Onjuiste PIN",Toast.LENGTH_SHORT).show();
+            }).show();
+    }
+    private void changeAdultPin() {
+        LinearLayout layout=new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(dp(18),0,dp(18),0);
+        EditText first=new EditText(this);
+        first.setHint("Nieuwe PIN (4-8 cijfers)");
+        first.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+        layout.addView(first);
+        EditText second=new EditText(this);
+        second.setHint("Herhaal nieuwe PIN");
+        second.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+        layout.addView(second);
+        new android.app.AlertDialog.Builder(this).setTitle("Stel je persoonlijke XXX-PIN in")
+            .setView(layout).setNegativeButton("Annuleren",null)
+            .setPositiveButton("Opslaan",(d,w)->{
+                String candidate=first.getText().toString();
+                if(!candidate.equals(second.getText().toString())||!AdultPin.validate(candidate)){
+                    Toast.makeText(this,"PIN moet 4-8 cijfers bevatten, verschillen van 1306 en overeenkomen",Toast.LENGTH_LONG).show();
+                    return;
+                }
+                try {AdultPin.save(prefs,candidate);showAdultSection();}
+                catch(Exception e){Toast.makeText(this,"PIN opslaan mislukt",Toast.LENGTH_LONG).show();}
+            }).show();
+    }
+    private void showAdultSection() {
+        content.removeAllViews();
+        ScrollView scroll=new ScrollView(this);
+        LinearLayout box=baseBox("XXX","Afgeschermde bibliotheek");
+        box.addView(text("Catalogus laden…",16,MUTED,false));
+        scroll.addView(box);content.addView(scroll);
+        new Thread(() -> {
+            List<XtreamCatalog.Entry> all=new ArrayList<>();
+            for(String kind:new String[]{"live","movie","series"})all.addAll(XtreamCatalog.load(prefs,kind,true).entries);
+            runOnUiThread(() -> {
+                if(content.indexOfChild(scroll)<0)return;
+                box.removeAllViews();
+                box.addView(text("XXX",28,Color.WHITE,true));
+                for(XtreamCatalog.Entry entry:all) {
+                    if("series".equals(entry.kind)){
+                        LinearLayout card=cardContainer();
+                        card.addView(text(entry.title,20,Color.WHITE,true));
+                        Button open=button("Afleveringen");
+                        open.setOnClickListener(v -> showEpisodes(entry));card.addView(open);addCard(box,card);
+                    }else {
+                        List<String> urls=XtreamCatalog.playbackUrls(prefs,entry);
+                        if(!urls.isEmpty())addPlayableCardWithFallback(box,entry.title,urls);
+                    }
+                }
+                if(all.isEmpty())addInfo(box,"Geen XXX-content beschikbaar");
             });
         }).start();
     }
