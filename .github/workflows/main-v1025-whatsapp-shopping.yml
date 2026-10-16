@@ -1,0 +1,215 @@
+name: The One Main v1025 - WhatsApp boodschappenlijst
+
+on:
+  push:
+    branches: [feature/main-v1025-shopping-whatsapp-20261016]
+    paths: ['.github/workflows/main-v1025-whatsapp-shopping.yml']
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build-main:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+      - name: Restore fixed debug keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.android
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > ~/.android/debug.keystore
+          chmod 600 ~/.android/debug.keystore
+      - name: Set Main version code
+        shell: bash
+        run: echo "VERSION_CODE=1025" >> "$GITHUB_ENV"
+      - name: Verify YouTube key is configured
+        shell: bash
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: |
+          if [ -z "$YOUTUBE_API_KEY" ]; then
+            echo "::error::YOUTUBE_API_KEY secret is missing; Main release blocked."
+            exit 1
+          fi
+      - name: Restore and verify existing TMDB key
+        shell: bash
+        env:
+          TMDB_SECRET: ${{ secrets.TMDB_API_KEY }}
+        run: |
+          set -euo pipefail
+          tmdb_key="$TMDB_SECRET"
+          if [ -z "$tmdb_key" ]; then
+            tmdb_key="$(sed -n 's/^TMDB_API_KEY[[:space:]]*=[[:space:]]*//p' gradle.properties | head -n 1 | tr -d '\r')"
+          fi
+          if [ -z "$tmdb_key" ]; then
+            echo "::error::No TMDB key available in secret or existing project configuration."
+            exit 1
+          fi
+          echo "::add-mask::$tmdb_key"
+          echo "ORG_GRADLE_PROJECT_TMDB_API_KEY=$tmdb_key" >> "$GITHUB_ENV"
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' --connect-timeout 15 --max-time 30 "https://api.themoviedb.org/3/configuration?api_key=$tmdb_key")"
+          if [ "$status" != "200" ]; then
+            echo "::error::Existing TMDB key validation failed (HTTP $status)."
+            exit 1
+          fi
+          echo "TMDB key validated without displaying credentials."
+      - name: Restore the working Media Player source
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error --max-time 120 "https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2316/The-One-Media-Player-v2316.apk" -o /tmp/theone-media-source.apk
+          echo "2de34daf9ef65ed045a8c49bd337bd9283841a12d2c3047784f40c76e48c6cb8  /tmp/theone-media-source.apk" | sha256sum --check --status
+          python3 - <<'PY'
+          import zipfile,json,pathlib
+          with zipfile.ZipFile("/tmp/theone-media-source.apk") as apk:
+              config=json.loads(apk.read("assets/private_xtream.json"))
+          if not all(isinstance(config.get(key),str) and config[key].strip() for key in ("server","username","password")):
+              raise SystemExit("Working Media Player configuration unavailable; release blocked.")
+          target=pathlib.Path("app/src/main/assets/theone_media_source.json")
+          target.parent.mkdir(parents=True,exist_ok=True)
+          target.write_text(json.dumps(config))
+          print("Working Media Player source restored; credentials not displayed.")
+          PY
+      - name: Bundle verified offline NL supermarket map
+        run: python3 .github/scripts/supermarket-snapshot.py
+      - name: Guard standalone app tile visibility and recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'return stored ?: isOwner' app/src/main/java/com/gmailorg/hub/LicensedTileVisibility.kt
+          grep -q 'tile.id in licensedAppScopes' app/src/main/java/com/gmailorg/hub/HomeActivity.kt
+          grep -q 'LicensedTileVisibility.setVisible(this, tile.id, false)' app/src/main/java/com/gmailorg/hub/HomeActivity.kt
+          grep -q '!HiddenTilesStore.isHidden(tile.id)' app/src/main/java/com/gmailorg/hub/HomeActivity.kt
+          grep -q '"com.gmailorg.thedj" to "The One DJ"' app/src/main/java/com/gmailorg/hub/SettingsActivity.kt
+          grep -q '"com.gmailorg.runcoach" to "The One Run"' app/src/main/java/com/gmailorg/hub/SettingsActivity.kt
+          test -f app/src/test/java/com/gmailorg/hub/LicensedTileVisibilityTest.kt
+          if grep -q 'if (tile.id in setOf("com.gmailorg.thedj", "com.gmailorg.runcoach")) return true' app/src/main/java/com/gmailorg/hub/HomeActivity.kt; then
+            echo "::error::DJ/Run long-press block is still present"
+            exit 1
+          fi
+      - name: Validate WhatsApp sharing and preserved household list
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'R.id.shareWhatsAppButton' app/src/main/java/com/gmailorg/hub/HouseholdActivity.kt
+          grep -q 'ShoppingListShareFormatter.format' app/src/main/java/com/gmailorg/hub/HouseholdActivity.kt
+          grep -q 'setPackage(target)' app/src/main/java/com/gmailorg/hub/HouseholdActivity.kt
+          grep -q 'android:id="@+id/shareWhatsAppButton"' app/src/main/res/layout/activity_household.xml
+          grep -q 'Versturen via WhatsApp' app/src/main/res/layout/activity_household.xml
+          test -f app/src/test/java/com/gmailorg/hub/ShoppingListShareFormatterTest.kt
+          grep -q 'ShoppingListStore.add' app/src/main/java/com/gmailorg/hub/HouseholdActivity.kt
+          grep -q 'ShoppingListStore.toggleDone' app/src/main/java/com/gmailorg/hub/HouseholdActivity.kt
+          echo 'WHATSAPP_SHOPPING_UI_AND_TESTS=present'
+      - name: Build Main only
+        env:
+          ORG_GRADLE_PROJECT_YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon --no-build-cache -PappVersionCode=${VERSION_CODE}
+      - name: Verify TMDB key is included in Main
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re, json
+          files = list(pathlib.Path("app/build/generated").rglob("BuildConfig.java"))
+          expected = os.environ["ORG_GRADLE_PROJECT_TMDB_API_KEY"]
+          found = False
+          for path in files:
+              text = path.read_text()
+              match = re.search(r'TMDB_API_KEY\s*=\s*("(?:[^"\\]|\\.)*")', text)
+              if match and json.loads(match.group(1)) == expected:
+                  found = True
+          if not found:
+              raise SystemExit("TMDB key missing from generated Main configuration; release blocked.")
+          print("Existing TMDB key included in Main; value not displayed.")
+          PY
+      - name: Guard against Family license and registration regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l the-one-remote-server/devices.php
+          php the-one-remote-server/tests/family-license-smoke.php
+          grep -q 'selected.devices.forEach { renderManagedDevice(details, it) }' app/src/main/java/com/gmailorg/hub/WakePcActivity.kt
+          grep -q 'fun setPersonName(' app/src/main/java/com/gmailorg/hub/MainDeviceRegistry.kt
+          grep -q 'return if (normalized.isNotBlank()) "person:' app/src/main/java/com/gmailorg/hub/FamilyApplicantGroups.kt
+          echo "People group display and per-installation permissions verified."
+      - name: Guard restored screen controls, existing Family UI and owner authorization
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s app/src/main/java/com/gmailorg/hub/ScreenControlActivity.kt
+          test -s app/src/main/java/com/gmailorg/hub/ScreenOwnerClient.kt
+          grep -q 'R.id.screenControlButton' app/src/main/java/com/gmailorg/hub/WakePcActivity.kt
+          grep -q 'ScreenControlActivity::class.java' app/src/main/java/com/gmailorg/hub/WakePcActivity.kt
+          grep -q 'screenControlButton' app/src/main/res/layout/activity_wake_pc.xml
+          grep -q 'android:name=".ScreenControlActivity"' app/src/main/AndroidManifest.xml
+          grep -q 'Schermen • aan en uit' app/src/main/res/layout/activity_wake_pc.xml
+          grep -q 'MainDeviceRegistry.isLocallyOwner' app/src/main/java/com/gmailorg/hub/ScreenOwnerClient.kt
+          grep -q 'MainDeviceRegistry.isLocallyBlocked' app/src/main/java/com/gmailorg/hub/ScreenOwnerClient.kt
+          grep -q 'the-one-main-owner-pairing-token' app/src/main/java/com/gmailorg/hub/ScreenOwnerClient.kt
+          grep -q 'https://rubenvanaggelen.com/the-one-remote-api/screen-control.php' app/src/main/java/com/gmailorg/hub/ScreenOwnerClient.kt
+          grep -q 'ScreenOwnerClient.screenTicket' app/src/main/java/com/gmailorg/hub/ScreenControlActivity.kt
+          grep -q 'ScreenOwnerClient.screenCommandStatus' app/src/main/java/com/gmailorg/hub/ScreenControlActivity.kt
+          echo 'MAIN_SCREEN_ON_OFF_OWNER_CONTROL_RESTORED=true'
+
+      - name: Existing server screen relay still rejects unauthenticated commands
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint='https://rubenvanaggelen.com/the-one-remote-api/screen-control.php'
+          for command in issue status poll; do
+            status=$(curl --silent --show-error --max-time 25 -o /dev/null -w '%{http_code}' \
+              -X POST -H 'Content-Type: application/json' \
+              --data '{"target":"hub","command":"ON","ticket":"0000000000000000000000000000000000000000000000000000000000000000","device_id":"00000000-0000-4000-8000-000000000000","installation_id":"00000000-0000-4000-8000-000000000000","owner_token":"invalid","agent_key":"invalid"}' \
+              "$endpoint?action=$command")
+            test "$status" = 403 || { echo "SCREEN_CONTROL_AUTH_PREFLIGHT_FAILED=$command HTTP=$status"; exit 1; }
+          done
+          echo 'SCREEN_CONTROL_HTTPS_AUTH_CHECK=passed'
+
+      - name: Verify installable Main update, package, version and fixed signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=app/build/outputs/apk/debug/app-debug.apk
+          bt=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          test -s "$apk"
+          "$bt/aapt" dump badging "$apk" | grep -q "package: name='com.gmailorg.hub' versionCode='1025'"
+          "$bt/apksigner" verify "$apk"
+          expected=$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey |
+            sed -n 's/^[[:space:]]*SHA256: //p' | head -1 | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          signed=$("$bt/apksigner" verify --print-certs "$apk" |
+            sed -n 's/.*certificate SHA-256 digest: //p' | head -1 | tr '[:upper:]' '[:lower:]')
+          test -n "$expected" && test "$signed" = "$expected"
+          "$bt/aapt" list "$apk" | grep -q 'the_one_logo'
+          "$bt/aapt" list "$apk" | grep -q 'family-branding/cinema-logo-1.base64'
+          "$bt/aapt" list "$apk" | grep -q 'family-branding/series-logo-1.base64'
+          "$bt/aapt" list "$apk" | grep -q 'family-branding/tv-logo-1.base64'
+          echo 'MAIN_V1025_SCREEN_UPDATE_PACKAGE_AND_SIGNATURE=verified'
+      - name: Upload Main v1025 signed APK for recovery
+        uses: actions/upload-artifact@v4
+        with:
+          name: the-one-main-v1025-restored-screen-controls-signed
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+      - name: Release Main only
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: main-v${{ env.VERSION_CODE }}
+          name: "The One Main — build ${{ env.VERSION_CODE }}"
+          body: |
+            Main v1025 adds 'Versturen via WhatsApp' in Huishouden > Boodschappenlijst.
+            Shares only a text snapshot; checks remain unchanged, WhatsApp does not send until user confirms.
+            Based on working Main v1024: preserves Screen Control (Hub, Surface, Ruben), licenses, person dropdowns, Family tiles and branding.
+            Install over existing Main to keep Android Keystore license identity and preferences.
+                    files: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/src/main/assets/supermarkets-nl.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
