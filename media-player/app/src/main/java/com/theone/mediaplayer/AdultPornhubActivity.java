@@ -206,7 +206,23 @@ public final class AdultPornhubActivity extends Activity {
         outer.addView(column,new FrameLayout.LayoutParams(-1,-1));
         column.addView(button("← Terug naar resultaten",this::showSearch));
         column.addView(label(video.title+"  •  "+video.duration,15,Color.WHITE));
-        player=new WebView(this);
+        try {
+            player=new WebView(this);
+        } catch (Throwable webViewUnavailable) {
+            // Android TV builds without a system WebView must not crash or open
+            // an external browser. Keep the Adult library accessible.
+            showingPlayer=false;
+            outer.removeAllViews();
+            LinearLayout unavailable=new LinearLayout(this);
+            unavailable.setPadding(dp(24),dp(24),dp(24),dp(24));
+            unavailable.setOrientation(LinearLayout.VERTICAL);
+            unavailable.addView(label(
+                "De ingebouwde videospeler is op dit toestel niet beschikbaar.",
+                17,Color.WHITE));
+            unavailable.addView(button("← Terug naar Adult-resultaten",this::showSearch));
+            outer.addView(unavailable);
+            return;
+        }
         player.setBackgroundColor(Color.BLACK);
         WebSettings settings=player.getSettings();
         settings.setJavaScriptEnabled(true);
