@@ -197,7 +197,7 @@ jobs:
           APK="media-player/app/build/outputs/apk/release/app-release.apk"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" > /tmp/package.txt
-          grep -q "name='com.theone.mediaplayer'.*versionCode='2402'" /tmp/package.txt
+          grep -q "name='com.theone.mediaplayer'.*versionCode='2403'" /tmp/package.txt
           python3 - <<'PY'
           import zipfile,json
           with zipfile.ZipFile("media-player/app/build/outputs/apk/release/app-release.apk") as z:
@@ -215,28 +215,28 @@ jobs:
           TV_APK="media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$TV_APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$TV_APK" >/tmp/tv-package.txt
-          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1003'" /tmp/tv-package.txt
+          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1004'" /tmp/tv-package.txt
 
       - name: Encrypt personal APK artifact
         run: |
           set -euo pipefail
           umask 077
           mkdir -p personal-out
-          cp media-player/app/build/outputs/apk/release/app-release.apk /tmp/The-One-Media-Player-v2402.apk
-          (cd /tmp && sha256sum The-One-Media-Player-v2402.apk) > personal-out/SHA256SUMS.txt
+          cp media-player/app/build/outputs/apk/release/app-release.apk /tmp/The-One-Media-Player-v2403.apk
+          (cd /tmp && sha256sum The-One-Media-Player-v2403.apk) > personal-out/SHA256SUMS.txt
           openssl rand -hex 32 > /tmp/artifact-password
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in /tmp/The-One-Media-Player-v2402.apk -out personal-out/The-One-Media-Player-v2402.apk.enc -pass file:/tmp/artifact-password
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in /tmp/The-One-Media-Player-v2403.apk -out personal-out/The-One-Media-Player-v2403.apk.enc -pass file:/tmp/artifact-password
           (cd media-player/tvapp/build/outputs/apk/debug && sha256sum tvapp-debug.apk) >> personal-out/SHA256SUMS.txt
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk -out personal-out/The-One-Media-Player-TV-v1003.apk.enc -pass file:/tmp/artifact-password
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk -out personal-out/The-One-Media-Player-TV-v1004.apk.enc -pass file:/tmp/artifact-password
           openssl pkeyutl -encrypt -pubin -inkey .github/media-player-owner-artifact-public.pem -in /tmp/artifact-password -out personal-out/key.enc -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
-          rm -f /tmp/artifact-password /tmp/The-One-Media-Player-v2402.apk
+          rm -f /tmp/artifact-password /tmp/The-One-Media-Player-v2403.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: the-one-media-player-v2402-and-tv-v1003-personal
+          name: the-one-media-player-v2403-and-tv-v1004-personal
           path: personal-out/
 
-      - name: Publish Android v2402 to authenticated Dev Hub only
+      - name: Publish Android v2403 to authenticated Dev Hub only
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
