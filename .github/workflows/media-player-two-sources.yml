@@ -187,6 +187,9 @@ jobs:
           grep -q 'loadCountry' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
           grep -q 'Terug naar zenders' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
           grep -q 'isTop2026MultiLang' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
+          grep -q 'org.json:json:20240303' media-player/app/build.gradle.kts
+          grep -q 'channelIdentity' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
+          grep -q 'advanceOrReport' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
           ! grep -q 'Bron instellen: Stalker' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
           grep -q 'private_xtream_secondary.json' media-player/app/src/main/java/com/theone/mediaplayer/XtreamConfig.java
           grep -q '#1CCAFF' media-player/app/src/main/res/drawable/ic_launcher.xml
