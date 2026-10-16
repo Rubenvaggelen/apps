@@ -65,6 +65,18 @@ public final class ChannelGuide {
         }
         return 10000;
     }
+    /**
+     * The Netherlands country list is deliberately strict: ONLY channel names
+     * starting with an NL country tag are shown. Category metadata and guessed
+     * origin are not sufficient (many providers mislabel international streams).
+     */
+    public static boolean hasNlPrefix(String name) {
+        if (name == null) return false;
+        String n = name.trim();
+        if (n.length() < 2 || !n.regionMatches(true, 0, "NL", 0, 2)) return false;
+        return n.length() == 2 || !Character.isLetterOrDigit(n.charAt(2));
+    }
+
     public static String country(String title,String category) {
         String raw=(category+" "+title).toLowerCase(Locale.ROOT);
         String n=normalize(category+" "+title);
