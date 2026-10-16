@@ -251,12 +251,17 @@ public final class PornhubCatalogActivity extends Activity {
             player.setWebViewClient(new WebViewClient(){
                 @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
                     // Do not become a general browser or leave the 5-minute catalog.
-                    if(!req.isForMainFrame())return false;
                     String destination=req.getUrl().toString();
-                    return !destination.equals("about:blank");
+                    if ("about:blank".equals(destination))return false;
+                    // The only allowed iframe navigation is to the SINGLE
+                    // duration-verified embed. Provider recommendations, popups
+                    // and arbitrary external links must not bypass the >=5m gate.
+                    return !(!req.isForMainFrame() &&
+                        destination.equals(PornhubDurationFilter.embedUrl(id)));
                 }
                 @Override public boolean shouldOverrideUrlLoading(WebView view,String destination) {
-                    return !"about:blank".equals(destination);
+                    return !("about:blank".equals(destination) ||
+                        PornhubDurationFilter.embedUrl(id).equals(destination));
                 }
             });
             player.setWebChromeClient(new WebChromeClient(){
