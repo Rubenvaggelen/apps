@@ -26,7 +26,7 @@ jobs:
           s=Path('ci/rutu-qr-direct-download-20261016.sh').read_text()
           assert 'Rutu-BBQ-Android.apk' in s
           assert '<FilesMatch "^Rutu-BBQ-Android\.apk$">' in s
-          assert 'Header always set Content-Disposition' in s
+          assert 'Header set Content-Disposition' in s
           assert 'RUTU_QR_HEADER_ROLLBACK_DONE' in s
           assert 'rm -f "$apk"' not in s
           print('Only existing customer APK response headers will change')
