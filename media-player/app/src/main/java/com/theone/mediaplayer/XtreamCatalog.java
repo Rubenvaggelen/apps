@@ -17,16 +17,18 @@ import java.util.Locale;
 final class XtreamCatalog {
     static final class Entry {
         final String source, kind, title, category, streamId, extension;
+        final boolean adult;
         final List<Entry> alternatives = new ArrayList<>();
-        Entry(String source, String kind, String title, String category, String streamId, String extension) {
-            this.source=source; this.kind=kind; this.title=title; this.category=category; this.streamId=streamId; this.extension=extension;
+        Entry(String source, String kind, String title, String category, String streamId, String extension, boolean adult) {
+            this.source=source; this.kind=kind; this.title=title; this.category=category; this.streamId=streamId; this.extension=extension; this.adult=adult;
         }
     }
     static final class Result {
         final List<Entry> entries = new ArrayList<>();
         final List<String> errors = new ArrayList<>();
     }
-    static Result load(SharedPreferences prefs, String kind) {
+    static Result load(SharedPreferences prefs, String kind) { return load(prefs,kind,false); }
+    static Result load(SharedPreferences prefs, String kind, boolean adultOnly) {
         Result result = new Result();
         LinkedHashMap<String,Entry> unique = new LinkedHashMap<>();
         for (int i=1;i<=2;i++) {
@@ -39,6 +41,11 @@ final class XtreamCatalog {
             try {
                 String action="live".equals(kind)?"get_live_streams":"movie".equals(kind)?"get_vod_streams":"get_series";
                 String endpoint=server.replaceAll("/+$","")+"/player_api.php?username="+encode(user)+"&password="+encode(password)+"&action="+action;
+                JSONObject categoryNames=new JSONObject();
+                String categoryAction="live".equals(kind)?"get_live_categories":"movie".equals(kind)?"get_vod_categories":"get_series_categories";
+                try { JSONArray categories=new JSONArray(fetch(server.replaceAll("/+$","")+"/player_api.php?username="+encode(user)+"&password="+encode(password)+"&action="+categoryAction));
+                    for(int k=0;k<categories.length();k++){JSONObject cat=categories.optJSONObject(k);if(cat!=null)categoryNames.put(cat.optString("category_id"),cat.optString("category_name"));}
+                } catch(Exception ignored) { /* fallback to title-based classification */ }
                 JSONArray items=new JSONArray(fetch(endpoint));
                 for(int n=0;n<items.length();n++) {
                     JSONObject item=items.optJSONObject(n);
@@ -46,8 +53,11 @@ final class XtreamCatalog {
                     String id=String.valueOf(item.opt("series".equals(kind)?"series_id":"stream_id"));
                     if("null".equals(id)||id.isEmpty())continue;
                     String title=item.optString("name","Zonder titel");
+                    String categoryId=item.optString("category_id","");
+                    boolean adult=isAdult(title+" "+categoryNames.optString(categoryId,""));
+                    if(adult!=adultOnly)continue;
                     String key=kind+":"+title.toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]+"," ").trim();
-                    Entry candidate=new Entry(name,kind,title,item.optString("category_id",""),id,item.optString("container_extension","mp4"));
+                    Entry candidate=new Entry(name,kind,title,item.optString("category_id",""),id,item.optString("container_extension","mp4"),adult);
                     if (!unique.containsKey(key)) unique.put(key,candidate);
                     else unique.get(key).alternatives.add(candidate);
                 }
@@ -55,6 +65,12 @@ final class XtreamCatalog {
         }
         result.entries.addAll(unique.values());
         return result;
+    }
+    private static boolean isAdult(String text) {
+        String t=" "+text.toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]+"," ")+" ";
+        for(String label:new String[]{" xxx "," 18 "," 18plus "," adult "," porno "," porn "," erotica "," erotic "," seks "," sex "," volwassenen "," 18plus "})
+            if(t.contains(label))return true;
+        return false;
     }
     static String streamUrl(SharedPreferences prefs, Entry entry) {
         for(int i=1;i<=2;i++) {
@@ -107,7 +123,7 @@ final class XtreamCatalog {
                         String id=ep.optString("id","");
                         if(id.isEmpty())continue;
                         String title="S"+season+" · "+ep.optString("title","Aflevering "+(j+1));
-                        Entry candidate=new Entry(option.source,"episode",title,season,id,ep.optString("container_extension","mp4"));
+                        Entry candidate=new Entry(option.source,"episode",title,season,id,ep.optString("container_extension","mp4"),entry.adult);
                         boolean found=false;
                         for(Entry existing:result)if(existing.title.equalsIgnoreCase(title)){existing.alternatives.add(candidate);found=true;break;}
                         if(!found)result.add(candidate);
