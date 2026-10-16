@@ -25,8 +25,10 @@ public class TvMainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        showTvHome();
-        startReceiver();
+        MediaPlayerAuthorization.requireAccess(this, () -> {
+            showTvHome();
+            startReceiver();
+        });
     }
 
     private void showTvHome() {
@@ -73,6 +75,7 @@ public class TvMainActivity extends Activity {
         addButton(root, "Live TV", () -> openCatalog("live"));
         addButton(root, "Films", () -> openCatalog("movie"));
         addButton(root, "Series", () -> openCatalog("series"));
+        addButton(root, "XXX 🔒", () -> startActivity(new Intent(this, AdultHubActivity.class)));
         addButton(root, "Instellingen", () ->
                 startActivity(new Intent(this, SourceConfigActivity.class)));
 
