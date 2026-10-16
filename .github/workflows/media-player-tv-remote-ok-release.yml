@@ -258,11 +258,6 @@ jobs:
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$TV_APK" >/tmp/tv-package.txt
           grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1012'" /tmp/tv-package.txt
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: the-one-media-player-v2410-and-tv-v1011-personal
-          path: personal-out/
-
       - name: Verify TV is signed with permanent legacy-TV keystore
         shell: bash
         run: |
