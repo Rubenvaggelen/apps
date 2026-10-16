@@ -58,9 +58,6 @@ jobs:
             sleep 6
             adb logcat -d -v brief > /tmp/tv-logcat.txt
             cat /tmp/tv-logcat.txt | grep -A 25 -B 5 -E 'TheOneMediaPlayer|FATAL EXCEPTION|IllegalArgumentException' || true
-            if grep -q 'Startup failed' /tmp/tv-logcat.txt; then
-              echo 'TV_STARTUP_FAILED'
-              exit 1
-            fi
+            if grep -q 'Startup failed' /tmp/tv-logcat.txt; then echo 'TV_STARTUP_FAILED'; exit 1; fi
             adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity'
             echo 'TV_STARTUP_OK'
