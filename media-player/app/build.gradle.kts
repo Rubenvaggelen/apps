@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2409
-        versionName = "2.4.09-adult-search-playback"
+        versionCode = 2410
+        versionName = "2.4.10-adult-search-playback"
     }
 
     signingConfigs {
