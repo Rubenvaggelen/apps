@@ -8,6 +8,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.util.Log;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.ViewGroup;
@@ -40,6 +41,10 @@ import java.util.concurrent.Executors;
 public class XtreamCatalogActivity extends Activity {
     private static final int BLUE = Color.rgb(32, 184, 255);
     private static final int BG = Color.rgb(5, 7, 11);
+    // Inflating hundreds/thousands of provider category buttons on the UI thread
+    // can cause a TV ANR/process termination when Live TV first loads.
+    private static final int CATEGORY_PAGE_SIZE = 42;
+    private static final String LOG_TAG = "TheOneCatalog";
     private static final int PANEL = Color.rgb(17, 23, 34);
     private static final int MUTED = Color.rgb(154, 166, 178);
 
@@ -182,21 +187,27 @@ public class XtreamCatalogActivity extends Activity {
             List<Category> result = new ArrayList<>(fresh);
             runOnUiThread(() -> {
                 categoriesLoading = false;
+                if (isFinishing() || isDestroyed() || content == null) return;
+                try {
+                    if (!result.isEmpty()) {
+                        categoryCache.clear();
+                        categoryCache.addAll(result);
+                        saveCachedCategories(result);
+                        renderCategories(new ArrayList<>(result));
+                        return;
+                    }
 
-                if (!result.isEmpty()) {
-                    categoryCache.clear();
-                    categoryCache.addAll(result);
-                    saveCachedCategories(result);
-                    renderCategories(new ArrayList<>(result));
-                    return;
+                    if (!categoryCache.isEmpty()) {
+                        renderCategories(new ArrayList<>(categoryCache));
+                        return;
+                    }
+
+                    showCategoriesRetry();
+                } catch (RuntimeException renderError) {
+                    // Degraded-but-alive screen beats crashing back to Android TV home.
+                    Log.e(LOG_TAG, "Live TV category rendering failed", renderError);
+                    showCategoriesRetry();
                 }
-
-                if (!categoryCache.isEmpty()) {
-                    renderCategories(new ArrayList<>(categoryCache));
-                    return;
-                }
-
-                showCategoriesRetry();
             });
         }).start();
     }
@@ -317,13 +328,30 @@ public class XtreamCatalogActivity extends Activity {
                     !ChannelGuide.isTop2026MultiLang(first.name),
                     !ChannelGuide.isTop2026MultiLang(second.name)));
         }
-        for (Category category : orderedCategories) {
+        // Keep the first frame responsive on budget Android TV devices.
+        // The user can still reach every category via the More button.
+        appendCategoryPage(orderedCategories, 0);
+    }
+
+    private void appendCategoryPage(List<Category> categories, int offset) {
+        int end = Math.min(categories.size(), offset + CATEGORY_PAGE_SIZE);
+        for (int i = offset; i < end; i++) {
+            Category category = categories.get(i);
             Button b = PremiumUi.chipButton(this, category.name);
             b.setOnClickListener(v -> loadItems(category));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             lp.bottomMargin = dp(8);
             content.addView(b, lp);
+        }
+        if (end < categories.size()) {
+            Button more = button("Meer categorieën (" + end + " / " + categories.size() + ")");
+            more.setOnClickListener(v -> {
+                content.removeView(more);
+                appendCategoryPage(categories, end);
+            });
+            more.setFocusable(true);
+            content.addView(more);
         }
     }
 
