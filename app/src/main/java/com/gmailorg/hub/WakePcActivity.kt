@@ -388,6 +388,12 @@ class WakePcActivity : AppCompatActivity() {
                     device.pendingMediaPlayer
                 )
                 addAccessControl(
+                    "Media Player XXX (aparte toestemming)",
+                    MainDeviceRegistry.ACCESS_MEDIA_PLAYER_XXX,
+                    device.mediaPlayerXxxRights,
+                    device.pendingMediaPlayerXxx
+                )
+                addAccessControl(
                     "The One Mixes",
                     MainDeviceRegistry.ACCESS_MIXES,
                     device.mixesRights,
