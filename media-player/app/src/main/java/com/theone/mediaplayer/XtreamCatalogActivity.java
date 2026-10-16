@@ -1207,8 +1207,23 @@ public class XtreamCatalogActivity extends Activity {
     private void play(XtreamItem item) {
         ArrayList<String> queue = new ArrayList<>();
         queue.add(config.stream(mode, item.id, item.extension));
+        // Some Xtream Live channels expose HLS but not MPEG-TS (or vice versa).
+        // Only fall back to the other transport if the original fails.
+        if ("live".equals(mode)) {
+            String opposite="m3u8".equalsIgnoreCase(item.extension) ? "ts" : "m3u8";
+            try {
+                String transport=config.stream(mode,item.id,opposite);
+                if(!queue.contains(transport))queue.add(transport);
+            } catch(Exception ignored) {}
+        }
         for(String url:item.alternativeUrls) {
             if(!queue.contains(url))queue.add(url);
+            if("live".equals(mode)) {
+                // Preserve source identity; do not use the first source's stream ID.
+                String other=url.endsWith(".m3u8") ? url.substring(0,url.length()-6)+".ts" :
+                    url.endsWith(".ts") ? url.substring(0,url.length()-3)+".m3u8" : "";
+                if(!other.isEmpty()&&!queue.contains(other))queue.add(other);
+            }
         }
         for(String id:item.alternatives) {
             // Older cached entries may not have per-source URL extensions.
