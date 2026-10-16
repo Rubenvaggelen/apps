@@ -182,6 +182,8 @@ jobs:
           grep -q 'com.theone.mediaplayer.tv' media-player/tvapp/build.gradle.kts
           grep -q 'appendCards' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
           grep -q 'loadCountry' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
+          grep -q 'Terug naar zenders' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
+          grep -q 'isTop2026MultiLang' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
           ! grep -q 'Bron instellen: Stalker' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
           grep -q 'private_xtream_secondary.json' media-player/app/src/main/java/com/theone/mediaplayer/XtreamConfig.java
           grep -q '#1CCAFF' media-player/app/src/main/res/drawable/ic_launcher.xml
@@ -246,5 +248,32 @@ jobs:
           DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: bash ci/publish-media-player-android-devhub.sh
+
+      - name: Verify Android TV signing continuity
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error --max-time 120 \
+            "https://github.com/Rubenvaggelen/apps/releases/download/media-player-tv-latest/The-One-Media-Player-TV.apk" \
+            -o /tmp/the-one-media-player-tv-previous.apk
+          APKSIGNER="$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner"
+          current="$("$APKSIGNER" verify --print-certs media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)"
+          previous="$("$APKSIGNER" verify --print-certs /tmp/the-one-media-player-tv-previous.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)"
+          test -n "$current" && test "$current" = "$previous" || {
+            echo "::error::TV signing identity mismatch; do not distribute an incompatible update."
+            exit 1
+          }
+          echo "Android TV / Google TV update certificate matched previous installation"
+
+      - name: Publish Android TV v1004 to authenticated Dev Hub only
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: bash ci/publish-media-player-tv-devhub.sh
 
 # Routing fixture portability verified on Android compile classpath.
