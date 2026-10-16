@@ -1157,36 +1157,55 @@ try {
         playbackRetryHandler.removeCallbacksAndMessages(null);
 
         if (retryXtreamPlayback) {
+            final boolean isLive="live".equals(playKind);
             player.addListener(new Player.Listener() {
+                private void advanceOrReport() {
+                    if(player==null)return;
+                    if(isLive&&player.hasNextMediaItem()){
+                        playbackRetryCount=0;
+                        player.seekToNextMediaItem();
+                        player.prepare();
+                        player.play();
+                    } else {
+                        Toast.makeText(MainActivity.this,
+                            "Deze stream is niet beschikbaar bij de ingestelde bronnen.",
+                            Toast.LENGTH_LONG).show();
+                    }
+                }
                 @Override
                 public void onPlayerError(PlaybackException error) {
-                    if (player == null || playbackRetryCount >= MAX_PLAYBACK_RETRIES) return;
-
-                    playbackRetryCount++;
-                    long delayMs = playbackRetryCount <= 3 ? 700L : 1000L;
-                    Log.w(
-                            "TheOneMediaPlayer",
-                            "Xtream stream not ready yet; retry " + playbackRetryCount
-                                    + "/" + MAX_PLAYBACK_RETRIES,
-                            error
-                    );
-
-                    playbackRetryHandler.postDelayed(() -> {
-                        if (player == null) return;
-                        try {
-                            player.prepare();
-                            player.play();
-                        } catch (Throwable retryError) {
-                            Log.w("TheOneMediaPlayer", "Xtream retry failed", retryError);
-                        }
-                    }, delayMs);
-                }
-
-                @Override
-                public void onPlaybackStateChanged(int playbackState) {
-                    if (playbackState == Player.STATE_READY) {
-                        playbackRetryCount = 0;
+                    if(player==null)return;
+                    int maxTries=isLive?1:MAX_PLAYBACK_RETRIES;
+                    if(playbackRetryCount>=maxTries) {
                         playbackRetryHandler.removeCallbacksAndMessages(null);
+                        advanceOrReport();
+                        return;
+                    }
+                    playbackRetryCount++;
+                    Log.w("TheOneMediaPlayer",
+                        "Media source unavailable, retry "+playbackRetryCount+"/"+maxTries+
+                        " (candidate "+player.getCurrentMediaItemIndex()+")",error);
+                    playbackRetryHandler.removeCallbacksAndMessages(null);
+                    playbackRetryHandler.postDelayed(()->{
+                        if(player==null)return;
+                        try {player.prepare();player.play();}
+                        catch(Throwable ignored){advanceOrReport();}
+                    },isLive?600:1000);
+                }
+                @Override
+                public void onPlaybackStateChanged(int state) {
+                    if(player==null)return;
+                    playbackRetryHandler.removeCallbacksAndMessages(null);
+                    if(state==Player.STATE_READY){
+                        playbackRetryCount=0;
+                    }else if(isLive&&state==Player.STATE_BUFFERING){
+                        final int startingIndex=player.getCurrentMediaItemIndex();
+                        playbackRetryHandler.postDelayed(()->{
+                            if(player==null||player.getPlaybackState()!=Player.STATE_BUFFERING
+                               ||player.getCurrentMediaItemIndex()!=startingIndex)return;
+                            Log.w("TheOneMediaPlayer","Live TV buffering timed out; trying the next provider/transport");
+                            advanceOrReport();
+                        },14000);
                     }
                 }
             });
