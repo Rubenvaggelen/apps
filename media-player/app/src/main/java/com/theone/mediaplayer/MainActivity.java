@@ -55,6 +55,7 @@ public class MainActivity extends Activity {
     private PlayerView activePlayerView;
     private SharedPreferences prefs;
     private boolean playerFullscreen = false;
+    private String selectedCountry = "Nederland";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -181,8 +182,25 @@ public class MainActivity extends Activity {
                 if (result.entries.isEmpty()) {
                     addInfo(box, "Geen items gevonden. Controleer de accounts via Instellingen.");
                 }
+                if("live".equals(kind)) {
+                    android.widget.Spinner countries=new android.widget.Spinner(this);
+                    List<String> options=new ArrayList<>();options.add("Alle landen");options.addAll(ChannelOrganizer.countries(result.entries));
+                    android.widget.ArrayAdapter<String> adapter=new android.widget.ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,options);
+                    countries.setAdapter(adapter);
+                    int selected=options.indexOf(selectedCountry);
+                    countries.setSelection(selected>=0?selected:0);
+                    countries.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
+                        @Override public void onNothingSelected(android.widget.AdapterView<?> parent){}
+                        @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view,int position,long id){
+                            String value=options.get(position);
+                            if(!value.equals(selectedCountry)){selectedCountry=value;showCatalog("live");}
+                        }
+                    });
+                    box.addView(countries);
+                }
                 int displayed = 0;
-                for (XtreamCatalog.Entry entry : result.entries) {
+                List<XtreamCatalog.Entry> visible = "live".equals(kind)?ChannelOrganizer.forCountry(result.entries,selectedCountry):result.entries;
+                for (XtreamCatalog.Entry entry : visible) {
                     if (displayed++ >= 400) break;
                     if ("series".equals(kind)) {
                         LinearLayout card=cardContainer();
