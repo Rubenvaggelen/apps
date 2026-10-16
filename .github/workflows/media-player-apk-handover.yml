@@ -50,7 +50,7 @@ jobs:
           x=a[0]
           assert int(x.get("version_code",0))==2407,"Dev Hub is not on approved version"
           name=x["apk"]; sha=x["sha256"]
-          assert re.fullmatch(r"The-One-Media-Player-Android-v2407-[0-9a-f]{12}\\.apk",name),"Unexpected filename"
+          assert re.fullmatch(r"The-One-Media-Player-Android-v2407-[0-9a-f]{12}[.]apk",name),"Unexpected filename"
           assert re.fullmatch(r"[0-9a-f]{64}",sha),"Invalid SHA256"
           print(name+" "+sha)
           ')
