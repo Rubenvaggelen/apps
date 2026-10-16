@@ -164,8 +164,17 @@ jobs:
           Path("media-player/app/src/main/assets/private_youtube_key.txt").write_text(m.group(1), encoding="utf-8")
           PY
 
-      - name: Build and test signed update
-        run: gradle -p media-player :app:testDebugUnitTest :app:assembleRelease --no-daemon
+      - name: Restore permanent TV update signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.android
+          cp "$MEDIA_PLAYER_KEYSTORE_PATH" ~/.android/debug.keystore
+          chmod 600 ~/.android/debug.keystore
+          keytool -list -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android >/dev/null
+
+      - name: Build and test Android and Android TV updates
+        run: gradle -p media-player :app:testDebugUnitTest :app:assembleRelease :tvapp:assembleDebug --no-daemon
 
       - name: Verify update identity and configuration
         run: |
@@ -173,7 +182,7 @@ jobs:
           APK="media-player/app/build/outputs/apk/release/app-release.apk"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" > /tmp/package.txt
-          grep -q "name='com.theone.mediaplayer'.*versionCode='2401'" /tmp/package.txt
+          grep -q "name='com.theone.mediaplayer'.*versionCode='2402'" /tmp/package.txt
           python3 - <<'PY'
           import zipfile,json
           with zipfile.ZipFile("media-player/app/build/outputs/apk/release/app-release.apk") as z:
@@ -184,21 +193,32 @@ jobs:
           print("Both source configurations verified")
           PY
 
+      - name: Verify independent TV package and update signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          TV_APK="media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$TV_APK"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$TV_APK" >/tmp/tv-package.txt
+          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1003'" /tmp/tv-package.txt
+
       - name: Encrypt personal APK artifact
         run: |
           set -euo pipefail
           umask 077
           mkdir -p personal-out
-          cp media-player/app/build/outputs/apk/release/app-release.apk /tmp/The-One-Media-Player-v2401.apk
-          (cd /tmp && sha256sum The-One-Media-Player-v2401.apk) > personal-out/SHA256SUMS.txt
+          cp media-player/app/build/outputs/apk/release/app-release.apk /tmp/The-One-Media-Player-v2402.apk
+          (cd /tmp && sha256sum The-One-Media-Player-v2402.apk) > personal-out/SHA256SUMS.txt
           openssl rand -hex 32 > /tmp/artifact-password
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in /tmp/The-One-Media-Player-v2401.apk -out personal-out/The-One-Media-Player-v2401.apk.enc -pass file:/tmp/artifact-password
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in /tmp/The-One-Media-Player-v2402.apk -out personal-out/The-One-Media-Player-v2402.apk.enc -pass file:/tmp/artifact-password
+          (cd media-player/tvapp/build/outputs/apk/debug && sha256sum tvapp-debug.apk) >> personal-out/SHA256SUMS.txt
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk -out personal-out/The-One-Media-Player-TV-v1003.apk.enc -pass file:/tmp/artifact-password
           openssl pkeyutl -encrypt -pubin -inkey .github/media-player-owner-artifact-public.pem -in /tmp/artifact-password -out personal-out/key.enc -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
-          rm -f /tmp/artifact-password /tmp/The-One-Media-Player-v2401.apk
+          rm -f /tmp/artifact-password /tmp/The-One-Media-Player-v2402.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: the-one-media-player-v2401-personal
+          name: the-one-media-player-v2402-and-tv-v1003-personal
           path: personal-out/
 
 # Routing fixture portability verified on Android compile classpath.
