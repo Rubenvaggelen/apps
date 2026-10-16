@@ -140,6 +140,10 @@ def main():
                     state = json.loads(state_file.read_text())
                     record = state["devices"][device]
                     assert record.get("family_package") == package
+                    if not isinstance(record["access_rights"], dict):
+                        record["access_rights"] = {}
+                    if not isinstance(record["access_requests"], dict):
+                        record["access_requests"] = {}
                     assert record["access_rights"].get(scope) is not True
                     # Approvals are granted ONLY in the local test fixture, not on a real server.
                     record["access_rights"][scope] = True
