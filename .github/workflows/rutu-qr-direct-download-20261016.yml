@@ -1,0 +1,43 @@
+name: RUTU printed QR direct APK download (URL unchanged)
+on:
+  push:
+    branches: [feature/jade-orders]
+    paths:
+      - 'ci/rutu-qr-direct-download-20261016.sh'
+      - '.github/workflows/rutu-qr-direct-download-20261016.yml'
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  qr-direct-download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm unchanged QR image and shell script syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s rutu-windows/assets/rutu-android-qr.png
+          test -s rutubusinessandroid/src/main/assets/rutu-android-qr.png
+          bash -n ci/rutu-qr-direct-download-20261016.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('ci/rutu-qr-direct-download-20261016.sh').read_text()
+          assert 'Rutu-BBQ-Android.apk' in s
+          assert '<FilesMatch "^Rutu-BBQ-Android\.apk$">' in s
+          assert 'Header always set Content-Disposition' in s
+          assert 'RUTU_QR_HEADER_ROLLBACK_DONE' in s
+          assert 'rm -f "$apk"' not in s
+          print('Only existing customer APK response headers will change')
+          PY
+      - name: Apply direct APK header without changing QR URL or APK
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: bash ci/rutu-qr-direct-download-20261016.sh
