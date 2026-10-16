@@ -1,6 +1,7 @@
 package com.gmailorg.hub
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -26,6 +27,7 @@ class HouseholdActivity : AppCompatActivity() {
 
     private lateinit var adapter: ShoppingAdapter
     private lateinit var emptyState: TextView
+    private lateinit var shareShoppingButton: View
     private lateinit var input: EditText
     private lateinit var supermarketSwitch: Switch
     private lateinit var supermarketStatus: TextView
@@ -117,6 +119,8 @@ class HouseholdActivity : AppCompatActivity() {
             ShoppingListStore.clearDone()
             refresh()
         }
+        shareShoppingButton = findViewById(R.id.shareShoppingButton)
+        shareShoppingButton.setOnClickListener { shareShoppingList() }
 
         // Toevoegen zodra je op de "Klaar"-toets van het toetsenbord tikt —
         // dit is het "typ 'brood' en het komt automatisch op de lijst"-gedrag.
@@ -284,10 +288,42 @@ class HouseholdActivity : AppCompatActivity() {
         refresh()
     }
 
+    private fun shareShoppingList() {
+        // Share a snapshot of the locally stored list; never alter items or send silently.
+        val message = ShoppingListShareFormatter.format(ShoppingListStore.getAll())
+        if (message.isBlank()) {
+            Toast.makeText(this, "Je boodschappenlijst is nog leeg.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val share = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, message)
+        }
+        // Prefer WhatsApp; Business users can also share without requiring access to contacts.
+        for (whatsAppPackage in listOf("com.whatsapp", "com.whatsapp.w4b")) {
+            try {
+                startActivity(Intent(share).setPackage(whatsAppPackage))
+                return
+            } catch (_: ActivityNotFoundException) {
+                // Continue to another WhatsApp variant or a standard share chooser.
+            } catch (_: SecurityException) {
+                // The receiving app is not accessible; use Android's share chooser.
+            }
+        }
+        try {
+            startActivity(Intent.createChooser(share, "Verstuur boodschappenlijst"))
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, "Geen geschikte app gevonden om te delen.", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun refresh() {
         val items = ShoppingListStore.getAll()
         adapter.updateItems(items)
         emptyState.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+        shareShoppingButton.isEnabled = items.isNotEmpty()
+        shareShoppingButton.alpha = if (items.isNotEmpty()) 1f else 0.5f
         updateSupermarketStatus()
     }
 }
