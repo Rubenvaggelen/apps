@@ -10,8 +10,8 @@ android {
         applicationId = "com.theone.mediaplayer.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1006
-        versionName = "1.0.6-back-navigation"
+        versionCode = 1007
+        versionName = "1.0.7-nl-filter"
     }
 
     buildTypes {
