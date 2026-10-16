@@ -208,7 +208,7 @@ jobs:
             Shares only a text snapshot; checks remain unchanged, WhatsApp does not send until user confirms.
             Based on working Main v1024: preserves Screen Control (Hub, Surface, Ruben), licenses, person dropdowns, Family tiles and branding.
             Install over existing Main to keep Android Keystore license identity and preferences.
-                    files: |
+          files: |
             app/build/outputs/apk/debug/app-debug.apk
             app/src/main/assets/supermarkets-nl.json
         env:
