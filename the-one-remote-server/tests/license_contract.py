@@ -13,7 +13,7 @@ import time
 import urllib.error
 import urllib.request
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 PACKAGES = {
     "com.theone.cinema": "cinema_android",
     "com.theone.cinema.tv": "cinema_android",
