@@ -1,6 +1,7 @@
 package com.gmailorg.hub
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -116,6 +117,9 @@ class HouseholdActivity : AppCompatActivity() {
         findViewById<View>(R.id.clearDoneButton).setOnClickListener {
             ShoppingListStore.clearDone()
             refresh()
+        }
+        findViewById<View>(R.id.shareWhatsAppButton).setOnClickListener {
+            shareShoppingListViaWhatsApp()
         }
 
         // Toevoegen zodra je op de "Klaar"-toets van het toetsenbord tikt —
@@ -276,6 +280,40 @@ class HouseholdActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Open WhatsApp met een conceptbericht. The One verzendt nooit zelfstandig:
+     * de gebruiker kiest de ontvanger en bevestigt versturen in WhatsApp.
+     */
+    private fun shareShoppingListViaWhatsApp() {
+        val message = ShoppingListShareFormatter.format(ShoppingListStore.getAll())
+        if (message == null) {
+            Toast.makeText(this, "Je boodschappenlijst is nog leeg.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, message)
+        }
+        // Gewone WhatsApp eerst; daarna WhatsApp Business; dan Android's deelmenu.
+        for (target in listOf("com.whatsapp", "com.whatsapp.w4b")) {
+            try {
+                startActivity(Intent(shareIntent).apply { setPackage(target) })
+                return
+            } catch (_: ActivityNotFoundException) {
+                // WhatsApp-variant niet geïnstalleerd.
+            } catch (_: SecurityException) {
+                // Deze Android-installatie staat de gerichte intent niet toe.
+            }
+        }
+        try {
+            startActivity(Intent.createChooser(shareIntent, "Boodschappenlijst versturen"))
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, "Geen app beschikbaar om de lijst te versturen.", Toast.LENGTH_LONG).show()
+        } catch (_: SecurityException) {
+            Toast.makeText(this, "Delen is op dit toestel niet toegestaan.", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun addCurrentInput() {
         val text = input.text.toString()
         if (text.isBlank()) return
@@ -288,6 +326,7 @@ class HouseholdActivity : AppCompatActivity() {
         val items = ShoppingListStore.getAll()
         adapter.updateItems(items)
         emptyState.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.shareWhatsAppButton).isEnabled = items.isNotEmpty()
         updateSupermarketStatus()
     }
 }
