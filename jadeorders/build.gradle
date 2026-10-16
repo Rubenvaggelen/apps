@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace 'com.vanaggelen.jadeorders'
-    compileSdk 34
+    compileSdk 36
 
     buildFeatures {
         buildConfig true
@@ -16,7 +16,7 @@ android {
     defaultConfig {
         applicationId "com.vanaggelen.jadeorders"
         minSdk 26
-        targetSdk 34
+        targetSdk 36
         versionCode appVersionCode
         versionName "1.${appVersionCode}"
     }
@@ -28,6 +28,15 @@ android {
             keyAlias "androiddebugkey"
             keyPassword "android"
         }
+        // Play Store gets a dedicated upload key, never the shared debug key.
+        if (System.getenv('RUTU_PLAY_UPLOAD_KEYSTORE_PATH')) {
+            playUpload {
+                storeFile file(System.getenv('RUTU_PLAY_UPLOAD_KEYSTORE_PATH'))
+                storePassword System.getenv('RUTU_PLAY_UPLOAD_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('RUTU_PLAY_UPLOAD_KEY_ALIAS')
+                keyPassword System.getenv('RUTU_PLAY_UPLOAD_KEY_PASSWORD')
+            }
+        }
     }
 
     buildTypes {
@@ -36,6 +45,9 @@ android {
         }
         release {
             minifyEnabled false
+            if (signingConfigs.findByName('playUpload') != null) {
+                signingConfig signingConfigs.playUpload
+            }
         }
     }
 
