@@ -57,6 +57,7 @@ public final class AdultPornhubActivity extends Activity {
     private String lastSearch="";
     private int lastPage=1;
     private boolean showingPlayer=false;
+    private boolean embedLoadFailed=false;
 
     private static final class Video {
         final String id,title,duration;
@@ -308,26 +309,32 @@ public final class AdultPornhubActivity extends Activity {
         }
         player.setWebViewClient(new WebViewClient(){
             @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap icon){
-                playerStatus.setText("Videopagina laden…");
+                if(!embedLoadFailed)playerStatus.setText("Officiële videospeler laden…");
             }
             @Override public void onPageFinished(WebView view,String url){
-                if(tv) {
-                    playerStatus.setText("Videopagina geladen. Kies ▶ Afspelen met de OK-knop op je afstandsbediening.");
-                    if(remotePlay!=null)remotePlay.requestFocus();
-                } else {
-                    playerStatus.setText("Videopagina geladen. Tik op ▶ om af te spelen.");
+                if(!embedLoadFailed) {
+                    if(tv) {
+                        playerStatus.setText("Spelerpagina geladen; video kan nog laden. Kies ▶ Afspelen met OK, of probeer de andere weergave.");
+                        if(remotePlay!=null)remotePlay.requestFocus();
+                    } else {
+                        playerStatus.setText("Spelerpagina geladen. Tik op ▶ om af te spelen.");
+                    }
                 }
             }
             @Override public void onReceivedError(WebView view,WebResourceRequest request,WebResourceError error){
-                if(request.isForMainFrame()) {
-                    playerStatus.setText("Videopagina niet bereikbaar ("+error.getErrorCode()+"). Probeer terug en een andere video.");
-                    Log.w("TheOneAdult","Adult embed WebView network error "+error.getErrorCode());
+                if(isOfficialEmbedRequest(request)) {
+                    embedLoadFailed=true;
+                    playerStatus.setText("Officiële videospeler niet bereikbaar (netwerkfout "+
+                        error.getErrorCode()+"). Kies eventueel de andere weergave.");
+                    Log.w("TheOneAdult","Adult official embed network error "+error.getErrorCode());
                 }
             }
             @Override public void onReceivedHttpError(WebView view,WebResourceRequest request,WebResourceResponse error){
-                if(request.isForMainFrame()) {
-                    playerStatus.setText("Videopagina geweigerd (HTTP "+error.getStatusCode()+"). Probeer een andere video.");
-                    Log.w("TheOneAdult","Adult embed HTTP "+error.getStatusCode());
+                if(isOfficialEmbedRequest(request)) {
+                    embedLoadFailed=true;
+                    playerStatus.setText("Officiële videospeler geweigerd (HTTP "+
+                        error.getStatusCode()+"). Een andere weergave kan worden geprobeerd.");
+                    Log.w("TheOneAdult","Adult official embed HTTP "+error.getStatusCode());
                 }
             }
             @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){
@@ -348,37 +355,94 @@ public final class AdultPornhubActivity extends Activity {
             }
             @Override public void onHideCustomView(){closeFullscreen();}
         });
+        // On TV, the provider's official embed is primarily designed to be
+        // hosted inside an iframe. Offer both the iframe and direct embed.
+        // Never load arbitrary search results, popup pages or external domains.
+        final boolean[] iframeMode={tv};
+        if(tv) {
+            Button otherMode=button("↔ Andere spelerweergave proberen",()->{
+                if(player==null)return;
+                iframeMode[0]=!iframeMode[0];
+                embedLoadFailed=false;
+                playerStatus.setText(iframeMode[0]
+                    ?"Ingesloten speler laden…":"Directe speler laden…");
+                loadOfficialEmbed(video.id,iframeMode[0]);
+                if(remotePlay!=null)remotePlay.requestFocus();
+            });
+            otherMode.setAllCaps(false);
+            column.addView(otherMode,new LinearLayout.LayoutParams(-1,dp(52)));
+        }
         column.addView(player,new LinearLayout.LayoutParams(-1,0,1f));
         if(remotePlay!=null)remotePlay.requestFocus();
         else player.requestFocus();
-        player.loadUrl(EMBED+video.id);
+        embedLoadFailed=false;
+        loadOfficialEmbed(video.id,tv);
+    }
+
+    private boolean isOfficialEmbedRequest(WebResourceRequest request) {
+        if(request.isForMainFrame())return true;
+        Uri uri=request.getUrl();
+        return "https".equalsIgnoreCase(uri.getScheme()) &&
+            "www.pornhub.com".equalsIgnoreCase(uri.getHost()) &&
+            uri.getPath()!=null && uri.getPath().startsWith("/embed/");
+    }
+
+    private void loadOfficialEmbed(String id,boolean iframeMode){
+        if(player==null || !id.matches("[A-Za-z0-9]{1,64}"))return;
+        if(!iframeMode){
+            player.loadUrl(EMBED+id);
+            return;
+        }
+        // Frame content uses the provider's published, official embed URL.
+        // No unverified third-party playback URL or extracted video stream.
+        String html="<!doctype html><html><head>"+
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"+
+            "<style>html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden}"+
+            "iframe{width:100%;height:100%;border:0}</style></head><body>"+
+            "<iframe id='provider-player' src='"+EMBED+id+"' "+
+            "allow='autoplay; fullscreen; picture-in-picture' allowfullscreen></iframe>"+
+            "</body></html>";
+        player.loadDataWithBaseURL("https://www.pornhub.com/",html,"text/html","UTF-8",null);
     }
 
     /**
-     * Explicit TV remote play action. It only acts on the currently opened,
-     * duration-validated official embed; no external URLs or access bypass.
-     * A provider may still reject playback, so never report success prematurely.
+     * Explicit TV remote play action. Only uses the provider's official page,
+     * and keeps cross-origin frame isolation intact.
      */
     private void startTvPlayback(TextView status) {
         if(!showingPlayer || player==null || !authorized())return;
-        status.setText("Afspeelopdracht verzenden…");
+        if(embedLoadFailed){
+            status.setText("De provider heeft de speler niet geladen. Probeer de andere weergave.");
+            return;
+        }
+        status.setText("Afspelen aanvragen…");
         final String js="(function(){try{" +
-            "var video=document.querySelector('video');" +
-            "if(video){var result=video.play();if(result&&result.catch)result.catch(function(){});return 'VIDEO';}" +
-            "var buttons=['.jw-icon-display','.jw-display-icon-container','.vjs-big-play-button'," +
-            "'.plyr__control--overlaid','button[aria-label*=play i]'];" +
-            "for(var i=0;i<buttons.length;i++){var btn=document.querySelector(buttons[i]);" +
-            "if(btn){btn.click();return 'BUTTON';}}" +
-            "return 'NOT_READY';" +
-            "}catch(error){return 'ERROR';}})();";
+            "var docs=[document],frames=document.querySelectorAll('iframe'),restricted=false;" +
+            "for(var i=0;i<frames.length;i++){try{if(frames[i].contentDocument)" +
+            "docs.push(frames[i].contentDocument);}catch(e){restricted=true;}}" +
+            "for(var d=0;d<docs.length;d++){var doc=docs[d];" +
+            "var v=doc.querySelector('video');" +
+            "if(v){var p=v.play();if(p&&p.catch)p.catch(function(){});return 'VIDEO_REQUESTED';}" +
+            "var selectors=['.jw-icon-display','.jw-display-icon-container'," +
+            "'.vjs-big-play-button','.plyr__control--overlaid'," +
+            "'button[aria-label*=play i]'];" +
+            "for(var k=0;k<selectors.length;k++){var b=doc.querySelector(selectors[k]);" +
+            "if(b){b.click();return 'BUTTON_REQUESTED';}}}" +
+            "return restricted?'FRAME_RESTRICTED':frames.length?'FRAME_NO_CONTROL':'NO_PLAYER';" +
+            "}catch(error){return 'PLAYER_ERROR';}})();";
         player.evaluateJavascript(js,result->{
             if(isFinishing()||isDestroyed()||!showingPlayer)return;
-            if(result!=null && result.contains("NOT_READY")) {
-                status.setText("De videobediening is nog niet beschikbaar. Wacht even en druk opnieuw op OK.");
-            } else if(result!=null && result.contains("ERROR")) {
-                status.setText("De videospeler reageert niet. Probeer opnieuw of ga terug.");
+            if(result==null || result.contains("PLAYER_ERROR")){
+                status.setText("Speler reageert niet. Kies de andere spelerweergave.");
+            } else if(result.contains("FRAME_RESTRICTED")) {
+                status.setText("De provider bedient deze video binnen een beschermd frame. "+
+                    "Probeer de bediening in de video of kies de andere weergave.");
+            } else if(result.contains("FRAME_NO_CONTROL") || result.contains("NO_PLAYER")) {
+                status.setText("Er is geen afspeelbare video geladen. "+
+                    "Kies 'Andere spelerweergave proberen'.");
             } else {
-                status.setText("Afspelen aangevraagd. Druk opnieuw op OK als de video niet start.");
+                status.setText("Afspelen aangevraagd. Als er geen beeld verschijnt, "+
+                    "probeer de andere weergave.");
             }
         });
     }
