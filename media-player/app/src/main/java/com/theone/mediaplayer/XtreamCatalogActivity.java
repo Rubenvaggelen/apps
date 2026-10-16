@@ -712,6 +712,13 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private void loadCountry(String country) {
+        // Returning from a stream or revisiting a country must never refetch the full
+        // list unnecessarily. The provider catalog also has a short disk cache.
+        List<XtreamItem> cached=categoryItemCache.get("country:"+country);
+        if(cached!=null&&!cached.isEmpty()) {
+            renderItems(new Category("country:"+country,country),new ArrayList<>(cached));
+            return;
+        }
         showLoading(country + " • zenders laden…");
         new Thread(() -> {
             List<XtreamItem> channels = new ArrayList<>();
@@ -725,10 +732,10 @@ public class XtreamCatalogActivity extends Activity {
                     if (item == null) continue;
                     String detected=ChannelGuide.country(item.name,categoryNameFor(row.optString("category_id","")));
                     if (!country.equals("Alle landen") && !country.equals(detected)) continue;
-                    String key=ChannelGuide.normalize(item.name);
+                    String key=ChannelGuide.channelIdentity(item.name);
                     XtreamItem current=unique.get(key);
                     if(current == null)unique.put(key,item);
-                    else if(!current.id.equals(item.id))current.alternatives.add(item.id);
+                    else addAlternative(current,item);
                 }
                 channels.addAll(unique.values());
                 channels.sort((left,right)->{
@@ -743,9 +750,21 @@ public class XtreamCatalogActivity extends Activity {
             } catch(Exception ignored){}
             runOnUiThread(()->{
                 if(isFinishing())return;
+                if(!channels.isEmpty())categoryItemCache.put("country:"+country,new ArrayList<>(channels));
                 renderItems(new Category("country:"+country,country),channels);
             });
         }).start();
+    }
+
+    private void addAlternative(XtreamItem current,XtreamItem candidate) {
+        if(current.id.equals(candidate.id) || current.alternatives.contains(candidate.id))return;
+        current.alternatives.add(candidate.id);
+        try {
+            // Resolve the candidate with its own provider and extension, not the
+            // primary item's extension (which may differ between providers).
+            String url=config.stream(mode,candidate.id,candidate.extension);
+            if(!current.alternativeUrls.contains(url))current.alternativeUrls.add(url);
+        } catch (Exception ignored) {}
     }
 
     private void loadItems(Category category) {
@@ -779,10 +798,10 @@ public class XtreamCatalogActivity extends Activity {
                                 if(row==null || !allowItem(row))continue;
                                 XtreamItem item=parseItem(row);
                                 if(item==null)continue;
-                                String key=ChannelGuide.normalize(item.name);
+                                String key="live".equals(mode) ? ChannelGuide.channelIdentity(item.name) : ChannelGuide.normalize(item.name);
                                 XtreamItem existing=unique.get(key);
                                 if(existing==null)unique.put(key,item);
-                                else if(!existing.id.equals(item.id))existing.alternatives.add(item.id);
+                                else addAlternative(existing,item);
                             }
                         } catch(Exception ignored) { /* one provider may be unavailable */ }
                     }
@@ -1009,7 +1028,8 @@ public class XtreamCatalogActivity extends Activity {
             content.addView(hint);
         }
 
-        renderCards(items, 150);
+        // TV remotes should not have to inflate 150 posters/channel tiles at once.
+        renderCards(items, "live".equals(mode) ? 48 : 150);
     }
 
     private void addLiveCategorySearch(Category category) {
@@ -1187,7 +1207,12 @@ public class XtreamCatalogActivity extends Activity {
     private void play(XtreamItem item) {
         ArrayList<String> queue = new ArrayList<>();
         queue.add(config.stream(mode, item.id, item.extension));
+        for(String url:item.alternativeUrls) {
+            if(!queue.contains(url))queue.add(url);
+        }
         for(String id:item.alternatives) {
+            // Older cached entries may not have per-source URL extensions.
+            if(!item.alternativeUrls.isEmpty())break;
             try {
                 String fallback=config.stream(mode,id,item.extension);
                 if(!queue.contains(fallback))queue.add(fallback);
@@ -1679,6 +1704,7 @@ public class XtreamCatalogActivity extends Activity {
         final String name;
         final String extension;
         final java.util.List<String> alternatives=new java.util.ArrayList<>();
+        final java.util.List<String> alternativeUrls=new java.util.ArrayList<>();
         final String rating;
         final String imageUrl;
         final String year;
