@@ -18,6 +18,13 @@ public class ChannelGuideTest {
         assertEquals("Nederland",ChannelGuide.country("NPO 1 HD",""));
         assertEquals("Duitsland",ChannelGuide.country("DE: ARD HD","DE | Nachrichten"));
     }
+    @Test public void top2026MultilanguageMovieCategoryHasPriority() {
+        assertTrue(ChannelGuide.isTop2026MultiLang("MULTI LANG | TOP 2026"));
+        assertTrue(ChannelGuide.isTop2026MultiLang("Multi Langl: Top 2026"));
+        assertFalse(ChannelGuide.isTop2026MultiLang("MULTI LANG | TOP 2025"));
+        assertFalse(ChannelGuide.isTop2026MultiLang("TOP 2026 NL"));
+    }
+
     @Test public void explicitAdultLabelsAreSeparate() {
         assertTrue(ChannelGuide.isAdult("NL XXX","Film"));
         assertTrue(ChannelGuide.isAdult("Adult Movies","Film"));
