@@ -166,10 +166,13 @@ jobs:
 
       - name: Restore permanent TV update signing key
         shell: bash
+        env:
+          TV_FIXED_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
+          test -n "$TV_FIXED_KEYSTORE_BASE64"
           mkdir -p ~/.android
-          cp "$MEDIA_PLAYER_KEYSTORE_PATH" ~/.android/debug.keystore
+          printf '%s' "$TV_FIXED_KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
           chmod 600 ~/.android/debug.keystore
           keytool -list -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android >/dev/null
 
