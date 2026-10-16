@@ -10,8 +10,8 @@ android {
         applicationId = "com.theone.mediaplayer.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1012
-        versionName = "1.0.12-tv-remote-ok-play"
+        versionCode = 1013
+        versionName = "1.0.13-provider-embed-fallback"
     }
 
     buildTypes {
