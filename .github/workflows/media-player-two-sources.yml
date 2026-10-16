@@ -184,6 +184,9 @@ jobs:
           grep -q 'loadCountry' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
           ! grep -q 'Bron instellen: Stalker' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
           grep -q 'private_xtream_secondary.json' media-player/app/src/main/java/com/theone/mediaplayer/XtreamConfig.java
+          grep -q '#1CCAFF' media-player/app/src/main/res/drawable/ic_launcher.xml
+          grep -q '@drawable/ic_launcher' media-player/tvapp/src/main/AndroidManifest.xml
+          grep -q '@drawable/ic_launcher' media-player/app/src/main/AndroidManifest.xml
 
       - name: Build and test Android and Android TV updates
         run: gradle -p media-player :app:testDebugUnitTest :app:assembleRelease :tvapp:assembleDebug --no-daemon
