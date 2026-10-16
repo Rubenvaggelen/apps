@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2407
-        versionName = "2.4.07-live-tv-stability"
+        versionCode = 2408
+        versionName = "2.4.08-adult-five-minute"
     }
 
     signingConfigs {
