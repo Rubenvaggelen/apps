@@ -10,8 +10,8 @@ android {
         applicationId = "com.theone.mediaplayer.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1010
-        versionName = "1.0.10-adult-search-playback"
+        versionCode = 1011
+        versionName = "1.0.11-adult-search-playback"
     }
 
     buildTypes {
