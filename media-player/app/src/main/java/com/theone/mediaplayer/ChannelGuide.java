@@ -39,6 +39,16 @@ public final class ChannelGuide {
             && (name.contains("multi lang") || name.contains("multilang"));
     }
 
+    /** Match the same live channel across country/quality tags, retaining channel numbers. */
+    public static String channelIdentity(String name) {
+        String text = normalize(name);
+        // Prefixes such as "NL | Cartoon Network" must not block provider fallback.
+        text = text.replaceAll("^(nl|nederland|netherlands|be|belgie|de|uk|us|fr)\\s+", "");
+        text = text.replaceAll("\\b(hd|fhd|sd|fullhd|1080p|720p|50fps|60fps|hevc|h265|h264)\\b", " ");
+        text = text.replaceAll("\\s+", " ").trim();
+        return text.isEmpty() ? normalize(name) : text;
+    }
+
     public static int videoTier(String title) {
         String t=normalize(title);
         if(includes(t,"16k"))return 3;
