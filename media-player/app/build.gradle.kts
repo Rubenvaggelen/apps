@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2404
-        versionName = "2.4.04-live-tv"
+        versionCode = 2405
+        versionName = "2.4.05-back-navigation"
     }
 
     signingConfigs {
