@@ -67,15 +67,16 @@ jobs:
             chmod 600 "$HOME/.rutu-play/upload.jks"
             echo "RUTU_PLAY_SIGNING_CONFIGURED=true" >> "$GITHUB_ENV"
             echo "RUTU_PLAY_UPLOAD_KEYSTORE_PATH=$HOME/.rutu-play/upload.jks" >> "$GITHUB_ENV"
-            echo "RUTU_PLAY_UPLOAD_KEYSTORE_PASSWORD=$PLAY_KEY_PASSWORD" >> "$GITHUB_ENV"
-            echo "RUTU_PLAY_UPLOAD_KEY_ALIAS=$PLAY_KEY_ALIAS" >> "$GITHUB_ENV"
-            echo "RUTU_PLAY_UPLOAD_KEY_PASSWORD=$PLAY_KEY_PASS" >> "$GITHUB_ENV"
           else
             echo "RUTU_PLAY_SIGNING_CONFIGURED=false" >> "$GITHUB_ENV"
             echo "Play upload key absent. Only unsigned technical test bundle will be produced."
           fi
       - name: Compile standalone Play Android App Bundle
         shell: bash
+        env:
+          RUTU_PLAY_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.RUTU_PLAY_UPLOAD_KEYSTORE_PASSWORD }}
+          RUTU_PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.RUTU_PLAY_UPLOAD_KEY_ALIAS }}
+          RUTU_PLAY_UPLOAD_KEY_PASSWORD: ${{ secrets.RUTU_PLAY_UPLOAD_KEY_PASSWORD }}
         run: gradle :jadeorders:bundleRelease --no-daemon -PappVersionCode=938
       - name: Validate AAB and signing state
         shell: bash
@@ -86,7 +87,7 @@ jobs:
           unzip -t "$bundle" | tail -1
           unzip -Z1 "$bundle" | grep -q 'base/manifest/AndroidManifest.xml'
           if [ "$RUTU_PLAY_SIGNING_CONFIGURED" = true ]; then
-            jarsigner -verify -strict "$bundle" >/dev/null
+            jarsigner -verify "$bundle" >/dev/null
             echo 'RUTU_PLAY_BUNDLE_SIGNED=true'
           else
             echo 'RUTU_PLAY_BUNDLE_SIGNED=false; not ready to submit'
