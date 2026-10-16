@@ -34,6 +34,16 @@ public final class AdultHubActivity extends Activity {
         add(root,"Live TV","live");
         add(root,"Films","movie");
         add(root,"Series","series");
+        Button pornhub=PremiumUi.primaryButton(this,"Pornhub • video's vanaf 5 minuten");
+        pornhub.setFocusable(true);
+        pornhub.setOnClickListener(v->{
+            if(!MediaPlayerAdultGate.isUnlocked()){finish();return;}
+            startActivity(new Intent(this,AdultPornhubActivity.class));
+        });
+        LinearLayout.LayoutParams phLp=new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT);
+        phLp.bottomMargin=dp(12);
+        root.addView(pornhub,phLp);
         Button lock=PremiumUi.chipButton(this,"Vergrendelen en terug");
         lock.setOnClickListener(v->{MediaPlayerAdultGate.lock();finish();});
         root.addView(lock);
