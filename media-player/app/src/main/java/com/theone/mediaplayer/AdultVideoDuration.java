@@ -9,10 +9,11 @@ public final class AdultVideoDuration {
         String[] parts = value.trim().split(":");
         if (parts.length != 2 && parts.length != 3) return -1;
         long seconds=0;
-        for (String p : parts) {
+        for (int i=0; i<parts.length; i++) {
+            String p=parts[i];
             if (!p.matches("[0-9]{1,3}")) return -1;
             long n=Long.parseLong(p);
-            if (n > 59 && !p.equals(parts[0])) return -1;
+            if (i>0 && n>59) return -1;
             seconds=seconds*60+n;
         }
         return seconds > Integer.MAX_VALUE ? -1 : (int)seconds;
