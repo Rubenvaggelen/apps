@@ -166,7 +166,7 @@ public class MainActivity extends Activity {
         content.removeAllViews();
         String title = "live".equals(kind) ? "Live TV" : "movie".equals(kind) ? "Films" : "Series";
         ScrollView scroll = new ScrollView(this);
-        LinearLayout box = baseBox(title, "Gecombineerde catalogus van je ingestelde bronnen");
+        LinearLayout box = baseBox(title, "Alles op één plek");
         box.addView(text("Bronnen laden…", 17, MUTED, false));
         scroll.addView(box);
         content.addView(scroll);
@@ -185,8 +185,8 @@ public class MainActivity extends Activity {
                     if (displayed++ >= 400) break;
                     String url=XtreamCatalog.streamUrl(prefs, entry);
                     if (url.isEmpty()) {
-                        addStaticCard(box, entry.title+" • "+entry.source+" • serie (afleveringen nog te koppelen)");
-                    } else addPlayableCard(box, entry.title, entry.source+" • categorie "+entry.category, url);
+                        addStaticCard(box, entry.title+" • serie (afleveringen nog te koppelen)");
+                    } else addPlayableCard(box, entry.title, "Categorie "+entry.category, url);
                 }
                 if(result.entries.size()>400) addInfo(box,"Eerste 400 resultaten getoond; zoeken en paginering volgen.");
             });
