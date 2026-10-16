@@ -236,4 +236,15 @@ jobs:
           name: the-one-media-player-v2402-and-tv-v1003-personal
           path: personal-out/
 
+      - name: Publish Android v2402 to authenticated Dev Hub only
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: bash ci/publish-media-player-android-devhub.sh
+
 # Routing fixture portability verified on Android compile classpath.
