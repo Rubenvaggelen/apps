@@ -1213,7 +1213,42 @@ try {
         // De lijst blijft mutabel zodat ook The One TV later kan worden toegevoegd.
         final ArrayList<View> autoHidePlayerButtons = new ArrayList<>();
 
+        // The same Media3 controls work for touch screens, Android TV and Google TV.
+        // Back and subtitles follow controller visibility; no permanent overlays
+        // during playback, and a tap/OK reveals controls again.
+        activePlayerView.setControllerAutoShow(false);
+        activePlayerView.setControllerShowTimeoutMs(4000);
+        activePlayerView.setControllerVisibilityListener(
+                (androidx.media3.ui.PlayerView.ControllerVisibilityListener) visibility -> {
+            boolean visible = visibility == View.VISIBLE;
+            for (View overlay : autoHidePlayerButtons) {
+                overlay.setVisibility(visible ? View.VISIBLE : View.GONE);
+            }
+        });
+
         try {
+            if ("live".equals(playKind)) {
+                Button goBack = PremiumUi.chipButton(this, "← Terug naar zenders");
+                goBack.setFocusable(true);
+                goBack.setOnClickListener(v -> {
+                    if (playerFullscreen) {
+                        releasePlayer();
+                        finish();
+                    } else {
+                        onBackPressed();
+                    }
+                });
+                FrameLayout.LayoutParams backLp = new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        Gravity.TOP | Gravity.START
+                );
+                backLp.topMargin = dp(14);
+                backLp.leftMargin = dp(14);
+                root.addView(goBack, backLp);
+                autoHidePlayerButtons.add(goBack);
+                activePlayerView.showController();
+            }
             Button subtitles = PremiumUi.chipButton(this, "CC  Ondertiteling");
             subtitles.setOnClickListener(v -> showSubtitleSelector());
             FrameLayout.LayoutParams subtitleLp = new FrameLayout.LayoutParams(
@@ -1247,13 +1282,7 @@ try {
                 activePlayerView.setControllerAutoShow(false);
                 activePlayerView.hideController();
 
-                activePlayerView.setControllerVisibilityListener(
-                        (androidx.media3.ui.PlayerView.ControllerVisibilityListener) visibility -> {
-                    boolean showControls = visibility == View.VISIBLE;
-                    for (View overlay : autoHidePlayerButtons) {
-                        overlay.setVisibility(showControls ? View.VISIBLE : View.GONE);
-                    }
-                });
+
             }
         } catch (Throwable subtitleUiError) {
             Log.w("TheOneMediaPlayer", "Subtitle controls unavailable; playback continues", subtitleUiError);
