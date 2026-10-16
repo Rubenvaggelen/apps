@@ -11,6 +11,8 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Locale;
 
 final class XtreamCatalog {
     static final class Entry {
@@ -25,6 +27,7 @@ final class XtreamCatalog {
     }
     static Result load(SharedPreferences prefs, String kind) {
         Result result = new Result();
+        LinkedHashMap<String,Entry> unique = new LinkedHashMap<>();
         for (int i=1;i<=2;i++) {
             String prefix="xtream_"+i+"_";
             String server=prefs.getString(prefix+"server", i==1 ? prefs.getString("xtream_server","") : "");
@@ -41,10 +44,13 @@ final class XtreamCatalog {
                     if(item==null)continue;
                     String id=String.valueOf(item.opt("series".equals(kind)?"series_id":"stream_id"));
                     if("null".equals(id)||id.isEmpty())continue;
-                    result.entries.add(new Entry(name,kind,item.optString("name","Zonder titel"),item.optString("category_id",""),id,item.optString("container_extension","mp4")));
+                    String title=item.optString("name","Zonder titel");
+                    String key=kind+":"+title.toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]+"," ").trim();
+                    if (!unique.containsKey(key)) unique.put(key,new Entry(name,kind,title,item.optString("category_id",""),id,item.optString("container_extension","mp4")));
                 }
             } catch(Exception e) { result.errors.add(name+": catalogus kon niet worden geladen ("+e.getClass().getSimpleName()+")"); }
         }
+        result.entries.addAll(unique.values());
         return result;
     }
     static String streamUrl(SharedPreferences prefs, Entry entry) {
