@@ -1,0 +1,30 @@
+name: Family License Contract Checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'the-one-remote-server/devices.php'
+      - 'the-one-remote-server/tests/**'
+      - '.github/workflows/deploy-the-one-remote-server.yml'
+      - '.github/workflows/license-contract-ci.yml'
+  pull_request:
+    paths:
+      - 'the-one-remote-server/devices.php'
+      - 'the-one-remote-server/tests/**'
+      - '.github/workflows/deploy-the-one-remote-server.yml'
+      - '.github/workflows/license-contract-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  license-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate current licensing PHP syntax
+        run: php -l the-one-remote-server/devices.php
+      - name: Test isolated signed installation workflows
+        run: python3 the-one-remote-server/tests/license_contract.py
