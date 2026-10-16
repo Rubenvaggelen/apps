@@ -737,8 +737,14 @@ public class XtreamCatalogActivity extends Activity {
                     if (row == null || !allowItem(row)) continue;
                     XtreamItem item=parseItem(row);
                     if (item == null) continue;
-                    String detected=ChannelGuide.country(item.name,categoryNameFor(row.optString("category_id","")));
-                    if (!country.equals("Alle landen") && !country.equals(detected)) continue;
+                    // Dutch country view: only explicit NL-prefixed channel
+                    // names. The provider category may contain other countries.
+                    if ("Nederland".equals(country)) {
+                        if (!ChannelGuide.hasNlPrefix(item.name)) continue;
+                    } else if (!"Alle landen".equals(country)) {
+                        String detected=ChannelGuide.country(item.name,categoryNameFor(row.optString("category_id","")));
+                        if (!country.equals(detected)) continue;
+                    }
                     String key=ChannelGuide.channelIdentity(item.name);
                     XtreamItem current=unique.get(key);
                     if(current == null)unique.put(key,item);
