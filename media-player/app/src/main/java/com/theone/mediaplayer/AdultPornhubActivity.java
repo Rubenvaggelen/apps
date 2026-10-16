@@ -366,16 +366,16 @@ public final class AdultPornhubActivity extends Activity {
             "var video=document.querySelector('video');" +
             "if(video){var result=video.play();if(result&&result.catch)result.catch(function(){});return 'VIDEO';}" +
             "var buttons=['.jw-icon-display','.jw-display-icon-container','.vjs-big-play-button'," +
-            "'.plyr__control--overlaid','button[aria-label*=\\\"play\\\" i]'];" +
+            "'.plyr__control--overlaid','button[aria-label*=play i]'];" +
             "for(var i=0;i<buttons.length;i++){var btn=document.querySelector(buttons[i]);" +
             "if(btn){btn.click();return 'BUTTON';}}" +
             "return 'NOT_READY';" +
             "}catch(error){return 'ERROR';}})();";
         player.evaluateJavascript(js,result->{
             if(isFinishing()||isDestroyed()||!showingPlayer)return;
-            if("\\"NOT_READY\\"".equals(result)) {
+            if(result!=null && result.contains("NOT_READY")) {
                 status.setText("De videobediening is nog niet beschikbaar. Wacht even en druk opnieuw op OK.");
-            } else if("\\"ERROR\\"".equals(result)) {
+            } else if(result!=null && result.contains("ERROR")) {
                 status.setText("De videospeler reageert niet. Probeer opnieuw of ga terug.");
             } else {
                 status.setText("Afspelen aangevraagd. Druk opnieuw op OK als de video niet start.");
