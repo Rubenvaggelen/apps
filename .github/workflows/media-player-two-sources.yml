@@ -196,6 +196,23 @@ jobs:
       - name: Build and test Android and Android TV updates
         run: gradle -p media-player :app:testDebugUnitTest :app:assembleRelease :tvapp:assembleDebug --no-daemon
 
+      - name: Explicitly sign Android TV with permanent TV update identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
+          SIGNED=media-player/tvapp/build/outputs/apk/debug/tvapp-owner-signed.apk
+          APKSIGNER="$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner"
+          test -s "$APK"
+          "$APKSIGNER" sign --ks "$HOME/.android/debug.keystore" \
+            --ks-key-alias androiddebugkey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --out "$SIGNED" "$APK"
+          "$APKSIGNER" verify "$SIGNED"
+          mv -f "$SIGNED" "$APK"
+          echo "TV APK signed with stable TV key and verified"
+
       - name: Verify update identity and configuration
         run: |
           set -euo pipefail
