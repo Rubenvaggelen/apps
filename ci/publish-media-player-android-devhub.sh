@@ -26,7 +26,7 @@ unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
 opts=(-i "$keydir/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$keydir/known_hosts" -o ConnectTimeout=20)
 remote="$DEPLOY_USER@$DEPLOY_HOST"
 sha=$(sha256sum "$APK" | awk '{print $1}')
-NAME=The-One-Media-Player-Android-v2406-${sha:0:12}.apk
+NAME=The-One-Media-Player-Android-v2407-${sha:0:12}.apk
 stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'mktemp -d "$HOME/.the-one-player-stage.XXXXXXXX"')
 scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$APK" "$remote:$stage/$NAME"
 ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "bash -s -- '$stage' '$NAME' '$sha'" <<'REMOTE'
@@ -74,7 +74,7 @@ with open(manifest,encoding="utf-8") as f: rows=json.load(f)
 matches=[x for x in rows if isinstance(x,dict) and "media player" in str(x.get("app_name","")).lower() and "android" in str(x.get("platform","")).lower() and "tv" not in str(x.get("platform","")).lower()]
 if len(matches)!=1: raise SystemExit("Concurrent card change detected")
 item=matches[0]
-item.update(apk=name,version_name="2.4.06-nl-filter",version_code=2406,size_bytes=os.path.getsize(apk),sha256=sha)
+item.update(apk=name,version_name="2.4.07-live-tv-stability",version_code=2407,size_bytes=os.path.getsize(apk),sha256=sha)
 fd,tmp=tempfile.mkstemp(prefix=".media-player-manifest-",dir=os.path.dirname(manifest))
 try:
  with os.fdopen(fd,"w",encoding="utf-8") as f:
@@ -86,7 +86,7 @@ finally:
  if os.path.exists(tmp):os.unlink(tmp)
 with open(manifest,encoding="utf-8") as f: reloaded=json.load(f)
 if not any(x.get("apk")==name and x.get("sha256")==sha for x in reloaded):raise SystemExit("Manifest verification failed")
-print("MEDIA_PLAYER_ANDROID_2406_PUBLISHED_TO_PRIVATE_DEVHUB")
+print("MEDIA_PLAYER_ANDROID_2407_PUBLISHED_TO_PRIVATE_DEVHUB")
 PY
 rm -rf -- "$stage"
 REMOTE
