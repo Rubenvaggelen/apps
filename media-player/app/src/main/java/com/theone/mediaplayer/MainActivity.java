@@ -86,7 +86,7 @@ public class MainActivity extends Activity {
         nav.setPadding(0, dp(16), 0, dp(14));
         addNavButton(nav, "Live TV", this::showLiveTv);
         addNavButton(nav, "Films", this::showFilms);
-        addNavButton(nav, "Series", () -> showSection("Series", "Series verschijnen hier zodra je bron is gekoppeld."));
+        addNavButton(nav, "Series", () -> showCatalog("series"));
         addNavButton(nav, "Test M3U", this::showDemoM3u);
         addNavButton(nav, "Verder kijken", () -> showSection("Verder kijken", "Je kijkvoortgang verschijnt hier."));
         addNavButton(nav, "Favorieten", () -> showSection("Favorieten", "Je favoriete zenders, films en series verschijnen hier."));
@@ -105,7 +105,7 @@ public class MainActivity extends Activity {
         else showLiveTv();
     }
 
-    private void showLiveTv() {
+    private void showLiveTv() {\n        if (hasXtreamSources()) {showCatalog("live"); return;}
         content.removeAllViews();
         ScrollView scroll = new ScrollView(this);
         LinearLayout box = baseBox("Live TV", "Gebruik de gratis teststreams of koppel je eigen bron via Instellingen.");
@@ -143,7 +143,7 @@ public class MainActivity extends Activity {
         addCard(box, card);
     }
 
-    private void showFilms() {
+    private void showFilms() {\n        if (hasXtreamSources()) {showCatalog("movie"); return;}
         content.removeAllViews();
         ScrollView scroll = new ScrollView(this);
         LinearLayout box = baseBox("Films", "Gratis Blender Open Movies voor de afspeeltest.");
@@ -153,6 +153,42 @@ public class MainActivity extends Activity {
         addInfo(box, "Externe apps zoals YouTube kunnen hun eigen advertenties tonen.");
         scroll.addView(box);
         content.addView(scroll);
+    }
+
+    private boolean hasXtreamSources() {
+        return !prefs.getString("xtream_1_server", prefs.getString("xtream_server", "")).isEmpty()
+                && !prefs.getString("xtream_1_user", prefs.getString("xtream_user", "")).isEmpty();
+    }
+
+    private void showCatalog(String kind) {
+        content.removeAllViews();
+        String title = "live".equals(kind) ? "Live TV" : "movie".equals(kind) ? "Films" : "Series";
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout box = baseBox(title, "Gecombineerde catalogus van je ingestelde bronnen");
+        box.addView(text("Bronnen laden…", 17, MUTED, false));
+        scroll.addView(box);
+        content.addView(scroll);
+        new Thread(() -> {
+            XtreamCatalog.Result result = XtreamCatalog.load(prefs, kind);
+            runOnUiThread(() -> {
+                if (content.indexOfChild(scroll) < 0) return;
+                box.removeAllViews();
+                box.addView(text(title+" ("+result.entries.size()+")", 27, Color.WHITE, true));
+                for (String error : result.errors) addInfo(box, error);
+                if (result.entries.isEmpty()) {
+                    addInfo(box, "Geen items gevonden. Controleer de accounts via Instellingen.");
+                }
+                int displayed = 0;
+                for (XtreamCatalog.Entry entry : result.entries) {
+                    if (displayed++ >= 400) break;
+                    String url=XtreamCatalog.streamUrl(prefs, entry);
+                    if (url.isEmpty()) {
+                        addStaticCard(box, entry.title+" • "+entry.source+" • serie (afleveringen nog te koppelen)");
+                    } else addPlayableCard(box, entry.title, entry.source+" • categorie "+entry.category, url);
+                }
+                if(result.entries.size()>400) addInfo(box,"Eerste 400 resultaten getoond; zoeken en paginering volgen.");
+            });
+        }).start();
     }
 
     private void showDemoM3u() {
