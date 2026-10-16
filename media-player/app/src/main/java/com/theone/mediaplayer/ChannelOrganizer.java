@@ -14,6 +14,7 @@ final class ChannelOrganizer {
     };
     static String country(String title, String category) {
         String t=(" "+title+" "+category+" ").toLowerCase(Locale.ROOT);
+        if(ziggoPosition(title)!=Integer.MAX_VALUE)return "Nederland";
         if(matches(t,"|nl|","[nl]"," nederland "," dutch "," netherlands "," nl:","nl |"))return "Nederland";
         if(matches(t,"|be|","[be]"," belgie "," belgium "," vlaanderen ","be |"))return "België";
         if(matches(t,"|de|","[de]"," germany "," deutschland "," duitsland ","de |"))return "Duitsland";
