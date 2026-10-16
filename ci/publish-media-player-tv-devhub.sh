@@ -26,7 +26,7 @@ unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
 opts=(-i "$keydir/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$keydir/known_hosts" -o ConnectTimeout=20)
 remote="$DEPLOY_USER@$DEPLOY_HOST"
 sha=$(sha256sum "$APK" | awk '{print $1}')
-NAME=The-One-Media-Player-TV-v1009-${sha:0:12}.apk
+NAME=The-One-Media-Player-TV-v1010-${sha:0:12}.apk
 stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'mktemp -d "$HOME/.the-one-player-stage.XXXXXXXX"')
 scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$APK" "$remote:$stage/$NAME"
 ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "bash -s -- '$stage' '$NAME' '$sha'" <<'REMOTE'
@@ -73,7 +73,7 @@ matches=[x for x in items if isinstance(x,dict) and x.get("id")=="media-player-t
 if len(matches)>1:raise SystemExit("Duplicate TV card")
 item=matches[0] if matches else {"id":"media-player-tv","app_name":"The One Media Player TV","platform":"Android TV / Google TV"}
 if not matches:items.append(item)
-item.update(apk=name,version_name="1.0.9-adult-five-minute",version_code=1009,size_bytes=os.path.getsize(apk),sha256=sha)
+item.update(apk=name,version_name="1.0.10-adult-search-playback",version_code=1010,size_bytes=os.path.getsize(apk),sha256=sha)
 fd,tmp=tempfile.mkstemp(prefix=".media-player-tv-manifest-",dir=os.path.dirname(manifest))
 try:
  with os.fdopen(fd,"w",encoding="utf-8") as out:
@@ -86,7 +86,7 @@ finally:
 with open(manifest,encoding="utf-8") as f:verified=json.load(f)
 if len([x for x in verified if isinstance(x,dict) and x.get("id")=="media-player-tv" and x.get("sha256")==sha])!=1:
  raise SystemExit("TV card verification failed")
-print("MEDIA_PLAYER_TV_1009_PUBLISHED_TO_PRIVATE_DEVHUB")
+print("MEDIA_PLAYER_TV_1010_PUBLISHED_TO_PRIVATE_DEVHUB")
 PY
 rm -rf -- "$stage"
 REMOTE
