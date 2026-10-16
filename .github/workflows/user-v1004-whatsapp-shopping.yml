@@ -1,0 +1,170 @@
+name: The One Gebruiker v1004 - WhatsApp boodschappenlijst
+
+on:
+  push:
+    branches: [feature/user-whatsapp-shopping-list-20261016]
+    paths:
+      - '.github/workflows/user-v1004-whatsapp-shopping.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build-user:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+      - name: Restore fixed debug keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.android
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > ~/.android/debug.keystore
+          chmod 600 ~/.android/debug.keystore
+      - name: Set User version code
+        shell: bash
+        run: echo "VERSION_CODE=1004" >> "$GITHUB_ENV"
+      - name: Verify YouTube key is configured
+        shell: bash
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: |
+          if [ -z "$YOUTUBE_API_KEY" ]; then
+            echo "::error::YOUTUBE_API_KEY secret is missing; User release blocked."
+            exit 1
+          fi
+      - name: Restore and verify existing TMDB key
+        shell: bash
+        env:
+          TMDB_SECRET: ${{ secrets.TMDB_API_KEY }}
+        run: |
+          set -euo pipefail
+          tmdb_key="$TMDB_SECRET"
+          if [ -z "$tmdb_key" ]; then
+            tmdb_key="$(sed -n 's/^TMDB_API_KEY[[:space:]]*=[[:space:]]*//p' gradle.properties | head -n 1 | tr -d '\r')"
+          fi
+          if [ -z "$tmdb_key" ]; then
+            echo "::error::No TMDB key available in secret or existing project configuration."
+            exit 1
+          fi
+          echo "::add-mask::$tmdb_key"
+          echo "ORG_GRADLE_PROJECT_TMDB_API_KEY=$tmdb_key" >> "$GITHUB_ENV"
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' --connect-timeout 15 --max-time 30 "https://api.themoviedb.org/3/configuration?api_key=$tmdb_key")"
+          if [ "$status" != "200" ]; then
+            echo "::error::Existing TMDB key validation failed (HTTP $status)."
+            exit 1
+          fi
+          echo "TMDB key validated without displaying credentials."
+      - name: Restore the working Media Player source
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error --max-time 120 "https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2316/The-One-Media-Player-v2316.apk" -o /tmp/theone-media-source.apk
+          echo "2de34daf9ef65ed045a8c49bd337bd9283841a12d2c3047784f40c76e48c6cb8  /tmp/theone-media-source.apk" | sha256sum --check --status
+          python3 - <<'PY'
+          import zipfile,json,pathlib
+          with zipfile.ZipFile("/tmp/theone-media-source.apk") as apk:
+              config=json.loads(apk.read("assets/private_xtream.json"))
+          if not all(isinstance(config.get(key),str) and config[key].strip() for key in ("server","username","password")):
+              raise SystemExit("Working Media Player configuration unavailable; release blocked.")
+          target=pathlib.Path("app/src/main/assets/theone_media_source.json")
+          target.parent.mkdir(parents=True,exist_ok=True)
+          target.write_text(json.dumps(config))
+          print("Working Media Player source restored; credentials not displayed.")
+          PY
+      - name: Bundle verified offline NL supermarket map
+        run: python3 .github/scripts/supermarket-snapshot.py
+      - name: Verify original Main theme and user identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'R.layout.activity_home' app/src/main/java/com/gmailorg/hub/UserHomeActivity.kt
+          grep -q 'HomeAdapter(::handleUserTile' app/src/main/java/com/gmailorg/hub/UserHomeActivity.kt
+          grep -q 'R.id.appRole' app/src/main/java/com/gmailorg/hub/UserHomeActivity.kt
+          grep -q 'android:id="@+id/appRole"' app/src/main/res/layout/activity_home.xml
+          grep -q 'OfficialFamilyArtwork.drawable' app/src/main/java/com/gmailorg/hub/HomeActivity.kt
+          grep -q 'ACCESS_USER_APP' app/src/main/java/com/gmailorg/hub/MainDeviceRegistry.kt
+          test -f app/src/main/assets/family-branding/cinema-logo-1.base64
+          test -f app/src/main/assets/family-branding/series-logo-1.base64
+          test -f app/src/main/assets/family-branding/tv-logo-1.base64
+          php -l the-one-remote-server/devices.php
+          php the-one-remote-server/tests/family-license-smoke.php
+      - name: Verify app visibility contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'UserTileVisibility.isVisible(tile, ::installed)' app/src/main/java/com/gmailorg/hub/UserHomeActivity.kt
+          grep -q 'UserTileVisibility.isVisible(shortcut, ::installed)' app/src/main/java/com/gmailorg/hub/UserHomeActivity.kt
+          grep -q 'getLaunchIntentForPackage' app/src/main/java/com/gmailorg/hub/UserHomeActivity.kt
+          grep -q '<category android:name="android.intent.category.LAUNCHER"' app/src/main/AndroidManifest.xml
+          test -f app/src/test/java/com/gmailorg/hub/UserTileVisibilityTest.kt
+      - name: Validate WhatsApp sharing and preserved household list
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'R.id.shareWhatsAppButton' app/src/main/java/com/gmailorg/hub/HouseholdActivity.kt
+          grep -q 'ShoppingListShareFormatter.format' app/src/main/java/com/gmailorg/hub/HouseholdActivity.kt
+          grep -q 'setPackage(target)' app/src/main/java/com/gmailorg/hub/HouseholdActivity.kt
+          grep -q 'android:id="@+id/shareWhatsAppButton"' app/src/main/res/layout/activity_household.xml
+          grep -q 'Versturen via WhatsApp' app/src/main/res/layout/activity_household.xml
+          test -f app/src/test/java/com/gmailorg/hub/ShoppingListShareFormatterTest.kt
+          grep -q 'ShoppingListStore.add' app/src/main/java/com/gmailorg/hub/HouseholdActivity.kt
+          grep -q 'ShoppingListStore.toggleDone' app/src/main/java/com/gmailorg/hub/HouseholdActivity.kt
+          echo 'WHATSAPP_SHOPPING_UI_AND_TESTS=present'
+      - name: Build The One User v1004 only
+        env:
+          ORG_GRADLE_PROJECT_YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon --no-build-cache -PtheOneUserBuild=true -PappVersionCode=1004
+      - name: Verify APK signature, independent installation and Main icons
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$apk"
+          bt=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          "$bt/aapt" dump badging "$apk" | grep -q "package: name='com.gmailorg.theoneuser' versionCode='1004'"
+          "$bt/aapt" dump badging "$apk" | grep -q "application-label:'The One'"
+          "$bt/apksigner" verify "$apk"
+          expected=$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | sed -n 's/^[[:space:]]*SHA256: //p' | head -1 | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          signed=$("$bt/apksigner" verify --print-certs "$apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1 | tr '[:upper:]' '[:lower:]')
+          test -n "$expected" && test "$expected" = "$signed"
+          "$bt/aapt" list "$apk" | grep -q 'the_one_logo'
+          "$bt/aapt" list "$apk" | grep -q 'ic_home_movies_fancy'
+          "$bt/aapt" list "$apk" | grep -q 'ic_home_ask_fancy'
+          "$bt/aapt" list "$apk" | grep -q 'family-branding/cinema-logo-1.base64'
+          "$bt/aapt" list "$apk" | grep -q 'family-branding/series-logo-1.base64'
+          "$bt/aapt" list "$apk" | grep -q 'family-branding/tv-logo-1.base64'
+          mkdir -p builds
+          cp "$apk" builds/The-One-Android-User-v1004.apk
+          cp "$apk" builds/The-One-Android-User.apk
+          cmp builds/The-One-Android-User-v1004.apk builds/The-One-Android-User.apk
+          sha256sum builds/The-One-Android-User-v1004.apk builds/The-One-Android-User.apk
+          echo "USER_THEME_AND_IDENTITY_VERIFIED=true"
+      - name: Store user APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: the-one-user-v1004-original-main-theme
+          path: builds/*.apk
+          retention-days: 30
+      - name: Release user v1004 only — preserve owner Main
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: user-v1004
+          name: "The One Gebruiker — v1004 (originele Main vormgeving)"
+          body: |
+            User v1004 adds WhatsApp sharing to Huishouden > Boodschappenlijst.
+            Retains user-v1003 licensing and original Main branding.
+            Install over existing The One User. No re-registration needed for updates using same signature.
+          files: |
+            builds/The-One-Android-User-v1004.apk
+            builds/The-One-Android-User.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
