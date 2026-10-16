@@ -8,6 +8,7 @@ import android.text.InputType;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -246,6 +247,18 @@ public final class AdultPornhubActivity extends Activity {
         column.addView(label(video.title+"  •  "+video.duration,15,Color.WHITE));
         final TextView playerStatus=label("Videospeler starten…",14,PremiumUi.MUTED);
         column.addView(playerStatus);
+        // A Google TV remote often has no dedicated Play key. Provide a real,
+        // focusable on-screen Play button that the remote's central OK activates.
+        final boolean tv=getPackageName().endsWith(".tv");
+        final Button remotePlay;
+        if(tv) {
+            remotePlay=button("▶ Afspelen — druk op OK",()->startTvPlayback(playerStatus));
+            remotePlay.setAllCaps(false);
+            column.addView(remotePlay,new LinearLayout.LayoutParams(-1,dp(58)));
+            remotePlay.requestFocus();
+        } else {
+            remotePlay=null;
+        }
         try {
             player=new WebView(this);
         } catch (Throwable webViewUnavailable) {
@@ -280,12 +293,30 @@ public final class AdultPornhubActivity extends Activity {
         player.setLayerType(View.LAYER_TYPE_HARDWARE,null);
         player.setFocusable(true);
         player.setFocusableInTouchMode(true);
+        // Also support the remote OK/Enter key if focus has moved into WebView.
+        // Do not intercept Back, arrows, or fullscreen media controls.
+        if(tv && remotePlay!=null) {
+            player.setOnKeyListener((view,keyCode,event)->{
+                boolean select=keyCode==KeyEvent.KEYCODE_DPAD_CENTER ||
+                    keyCode==KeyEvent.KEYCODE_ENTER ||
+                    keyCode==KeyEvent.KEYCODE_NUMPAD_ENTER ||
+                    keyCode==KeyEvent.KEYCODE_MEDIA_PLAY;
+                if(!select || fullscreenView!=null)return false;
+                if(event.getAction()==KeyEvent.ACTION_UP)remotePlay.performClick();
+                return true;
+            });
+        }
         player.setWebViewClient(new WebViewClient(){
             @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap icon){
                 playerStatus.setText("Videopagina laden…");
             }
             @Override public void onPageFinished(WebView view,String url){
-                playerStatus.setText("Videopagina geladen. Tik op ▶ om af te spelen.");
+                if(tv) {
+                    playerStatus.setText("Videopagina geladen. Kies ▶ Afspelen met de OK-knop op je afstandsbediening.");
+                    if(remotePlay!=null)remotePlay.requestFocus();
+                } else {
+                    playerStatus.setText("Videopagina geladen. Tik op ▶ om af te spelen.");
+                }
             }
             @Override public void onReceivedError(WebView view,WebResourceRequest request,WebResourceError error){
                 if(request.isForMainFrame()) {
@@ -318,8 +349,38 @@ public final class AdultPornhubActivity extends Activity {
             @Override public void onHideCustomView(){closeFullscreen();}
         });
         column.addView(player,new LinearLayout.LayoutParams(-1,0,1f));
-        player.requestFocus();
+        if(remotePlay!=null)remotePlay.requestFocus();
+        else player.requestFocus();
         player.loadUrl(EMBED+video.id);
+    }
+
+    /**
+     * Explicit TV remote play action. It only acts on the currently opened,
+     * duration-validated official embed; no external URLs or access bypass.
+     * A provider may still reject playback, so never report success prematurely.
+     */
+    private void startTvPlayback(TextView status) {
+        if(!showingPlayer || player==null || !authorized())return;
+        status.setText("Afspeelopdracht verzenden…");
+        final String js="(function(){try{" +
+            "var video=document.querySelector('video');" +
+            "if(video){var result=video.play();if(result&&result.catch)result.catch(function(){});return 'VIDEO';}" +
+            "var buttons=['.jw-icon-display','.jw-display-icon-container','.vjs-big-play-button'," +
+            "'.plyr__control--overlaid','button[aria-label*=\\\"play\\\" i]'];" +
+            "for(var i=0;i<buttons.length;i++){var btn=document.querySelector(buttons[i]);" +
+            "if(btn){btn.click();return 'BUTTON';}}" +
+            "return 'NOT_READY';" +
+            "}catch(error){return 'ERROR';}})();";
+        player.evaluateJavascript(js,result->{
+            if(isFinishing()||isDestroyed()||!showingPlayer)return;
+            if("\\"NOT_READY\\"".equals(result)) {
+                status.setText("De videobediening is nog niet beschikbaar. Wacht even en druk opnieuw op OK.");
+            } else if("\\"ERROR\\"".equals(result)) {
+                status.setText("De videospeler reageert niet. Probeer opnieuw of ga terug.");
+            } else {
+                status.setText("Afspelen aangevraagd. Druk opnieuw op OK als de video niet start.");
+            }
+        });
     }
 
     private void closeFullscreen(){
