@@ -57,7 +57,7 @@ final class XtreamCatalog {
                     boolean adult=isAdult(title+" "+categoryNames.optString(categoryId,""));
                     if(adult!=adultOnly)continue;
                     String key=kind+":"+title.toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]+"," ").trim();
-                    Entry candidate=new Entry(name,kind,title,item.optString("category_id",""),id,item.optString("container_extension","mp4"),adult);
+                    Entry candidate=new Entry(name,kind,title,categoryNames.optString(categoryId,item.optString("category_id","")),id,item.optString("container_extension","mp4"),adult);
                     if (!unique.containsKey(key)) unique.put(key,candidate);
                     else unique.get(key).alternatives.add(candidate);
                 }
