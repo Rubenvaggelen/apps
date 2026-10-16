@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2402
-        versionName = "2.4.02-unified"
+        versionCode = 2403
+        versionName = "2.4.03-navigation"
     }
 
     signingConfigs {
