@@ -1,0 +1,290 @@
+name: Media Player TV v1013 official embed fallback release
+
+on:
+  push:
+    branches: [feature/media-player-adult-5min-20261016]
+    paths:
+      - '.github/workflows/media-player-tv-provider-embed-release.yml'
+
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      MEDIA_PLAYER_KEYSTORE_PATH: ${{ github.workspace }}/media-player-fixed.keystore
+      MEDIA_PLAYER_KEYSTORE_PASSWORD: android
+      MEDIA_PLAYER_KEY_ALIAS: androiddebugkey
+      MEDIA_PLAYER_KEY_PASSWORD: android
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -name sdkmanager | head -1)"
+          fi
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.6
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Restore permanent signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${{ secrets.DEBUG_KEYSTORE_BASE64 }}"
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > "$MEDIA_PLAYER_KEYSTORE_PATH"
+          chmod 600 "$MEDIA_PLAYER_KEYSTORE_PATH"
+          keytool -list -keystore "$MEDIA_PLAYER_KEYSTORE_PATH" -alias "$MEDIA_PLAYER_KEY_ALIAS" -storepass "$MEDIA_PLAYER_KEYSTORE_PASSWORD" >/dev/null
+
+      - name: Export public signing certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool -exportcert -rfc \
+            -keystore "$MEDIA_PLAYER_KEYSTORE_PATH" \
+            -storepass "$MEDIA_PLAYER_KEYSTORE_PASSWORD" \
+            -alias "$MEDIA_PLAYER_KEY_ALIAS" \
+            -file media-player-signing-cert.pem
+
+      - name: Upload public signing certificate
+        uses: actions/upload-artifact@v4
+        with:
+          name: media-player-public-cert
+          path: media-player-signing-cert.pem
+
+      - name: Restore encrypted private Xtream source
+        shell: bash
+        run: |
+          set -euo pipefail
+          ENC=".github/media-player-private-source.enc.b64"
+          test -s "$ENC"
+
+          base64 -d "$ENC" > /tmp/media-player-source.enc
+
+          keytool -importkeystore \
+            -srckeystore "$MEDIA_PLAYER_KEYSTORE_PATH" \
+            -srcstorepass "$MEDIA_PLAYER_KEYSTORE_PASSWORD" \
+            -srcalias "$MEDIA_PLAYER_KEY_ALIAS" \
+            -destkeystore /tmp/media-player-signing.p12 \
+            -deststoretype PKCS12 \
+            -deststorepass changeit \
+            -destkeypass changeit \
+            -noprompt >/dev/null
+
+          openssl pkcs12 \
+            -in /tmp/media-player-signing.p12 \
+            -passin pass:changeit \
+            -nodes -nocerts \
+            -out /tmp/media-player-private.pem >/dev/null 2>&1
+
+          openssl pkeyutl -decrypt \
+            -inkey /tmp/media-player-private.pem \
+            -in /tmp/media-player-source.enc \
+            -out /tmp/media-player-source.json \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256
+
+          python3 - <<'PY'
+          from pathlib import Path
+          from urllib.parse import urlsplit, parse_qs
+          import json
+
+          src = json.loads(Path("/tmp/media-player-source.json").read_text(encoding="utf-8"))
+          m3u = str(src.get("m3u_url", "")).strip()
+          parsed = urlsplit(m3u)
+          qs = parse_qs(parsed.query)
+          username = (qs.get("username") or [""])[0]
+          password = (qs.get("password") or [""])[0]
+          server = f"{parsed.scheme}://{parsed.netloc}"
+
+          if not (server.startswith("http") and username and password):
+              raise SystemExit("Encrypted private source is not a valid Xtream-style M3U URL")
+
+          out = Path("media-player/app/src/main/assets")
+          out.mkdir(parents=True, exist_ok=True)
+          (out / "private_xtream.json").write_text(
+              json.dumps(
+                  {"server": server, "username": username, "password": password},
+                  ensure_ascii=False,
+                  indent=2,
+              ) + "\n",
+              encoding="utf-8",
+          )
+          (out / "private_source.txt").write_text(m3u + "\n", encoding="utf-8")
+          print("Private Media Player source restored securely")
+          PY
+
+          base64 -d .github/media-player-secondary-source.enc.b64 > /tmp/secondary.enc
+          openssl pkeyutl -decrypt -inkey /tmp/media-player-private.pem -in /tmp/secondary.enc -out media-player/app/src/main/assets/private_xtream_secondary.json -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
+          python3 - <<'PY'
+          import json,pathlib
+          p=pathlib.Path("media-player/app/src/main/assets/private_xtream_secondary.json")
+          c=json.loads(p.read_text())
+          assert set(c)=={"server","username","password"} and all(c.values())
+          assert c["server"]=="http://cqqwnnig.bulidns.com"
+          PY
+          rm -f /tmp/secondary.enc
+
+          rm -f \
+            /tmp/media-player-source.enc \
+            /tmp/media-player-source.json \
+            /tmp/media-player-signing.p12 \
+            /tmp/media-player-private.pem
+
+      - name: Keep working YouTube configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          source = Path("the-one-update/app/build.gradle").read_text(encoding="utf-8")
+          m = re.search(r'YOUTUBE_API_KEY.*?\?:\s*\'([^\']+)\'', source, re.S)
+          if not m:
+              raise SystemExit("YouTube build configuration unavailable")
+          Path("media-player/app/src/main/assets/private_youtube_key.txt").write_text(m.group(1), encoding="utf-8")
+          PY
+
+      - name: Restore permanent TV update signing key
+        shell: bash
+        env:
+          TV_FIXED_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$TV_FIXED_KEYSTORE_BASE64"
+          mkdir -p ~/.android
+          printf '%s' "$TV_FIXED_KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
+          chmod 600 ~/.android/debug.keystore
+          keytool -list -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android >/dev/null
+
+      - name: Verify separate adult authorization and launch isolation
+        run: |
+          grep -q 'MediaPlayerAdultGate' media-player/app/src/main/java/com/theone/mediaplayer/AdultHubActivity.java
+          grep -q 'adult_only' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
+          grep -q 'AdultHubActivity' media-player/app/src/main/AndroidManifest.xml
+          grep -q 'AdultPornhubActivity' media-player/app/src/main/AndroidManifest.xml
+          grep -q 'AdultPornhubActivity' media-player/tvapp/src/main/AndroidManifest.xml
+          grep -q 'AdultVideoDuration.allow(duration)' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
+          grep -q 'WebViewClient' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
+          grep -q 'AdultTvKeyboard.show' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
+          grep -q '▶ Afspelen — druk op OK' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
+          grep -q 'KEYCODE_DPAD_CENTER' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
+          grep -q 'startTvPlayback' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
+          grep -q 'loadOfficialEmbed' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
+          grep -q 'Andere spelerweergave proberen' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
+          grep -q 'isOfficialEmbedRequest' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
+          grep -q 'setMediaPlaybackRequiresUserGesture(false)' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
+          grep -q 'setAcceptThirdPartyCookies' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
+          test -s media-player/app/src/main/java/com/theone/mediaplayer/AdultTvKeyboard.java
+          grep -q 'field.append(Character.toString(character))' media-player/app/src/main/java/com/theone/mediaplayer/AdultTvKeyboard.java
+          test -s media-player/app/src/test/java/com/theone/mediaplayer/AdultVideoDurationTest.java
+          grep -q 'AdultHubActivity' media-player/tvapp/src/main/AndroidManifest.xml
+          grep -q 'com.theone.mediaplayer.tv' media-player/tvapp/build.gradle.kts
+          grep -q 'appendCards' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
+          grep -q 'loadCountry' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
+          grep -q 'hasNlPrefix(item.name)' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
+          grep -q 'categoryPageHeaderChildCount' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
+          grep -q 'Volgende categorieën' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
+          grep -q 'Terug naar zenders' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
+          # Regression guard: leaving the player must NEVER clear the existing
+          # catalog with the previous "Stream starten…" progress screen.
+          python3 - <<'PY'
+          from pathlib import Path
+          source=Path("media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java").read_text()
+          method=source.split("private void startPlaybackWhenLineFree(",1)[1].split("private int parseConnectionCount(",1)[0]
+          assert 'showLoading("Stream starten…")' not in method, "Playback destroys the channel list"
+          assert 'launchPlayback(queue, kind);' in method
+          assert 'restoreChannelFocusOnResume' in source
+          assert 'catalogScroll.scrollTo(0, savedY);' in source
+          assert 'lastPlayedChannelButton = open;' in source
+          player=Path("media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java").read_text()
+          back=player.split("public void onBackPressed()",1)[1].split("private void addNavButton(",1)[0]
+          assert "releasePlayer();" in back and "finish();" in back
+          assert 'Terug naar zenders' in player
+          print("Back button, remote Back, focus and scroll restoration guards passed")
+          PY
+          grep -q 'isTop2026MultiLang' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
+          grep -q 'org.json:json:20240303' media-player/app/build.gradle.kts
+          grep -q 'channelIdentity' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
+          grep -q 'advanceOrReport' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
+          ! grep -q 'Bron instellen: Stalker' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
+          grep -q 'private_xtream_secondary.json' media-player/app/src/main/java/com/theone/mediaplayer/XtreamConfig.java
+          grep -q '#1CCAFF' media-player/app/src/main/res/drawable/ic_launcher.xml
+          grep -q '@drawable/ic_launcher' media-player/tvapp/src/main/AndroidManifest.xml
+          grep -q '@drawable/ic_launcher' media-player/app/src/main/AndroidManifest.xml
+
+      - name: Build and unit-test TV v1013 update
+        run: gradle -p media-player :app:testDebugUnitTest :tvapp:assembleDebug --no-daemon
+
+      - name: Explicitly sign Android TV with permanent TV update identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
+          SIGNED=media-player/tvapp/build/outputs/apk/debug/tvapp-owner-signed.apk
+          APKSIGNER="$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner"
+          test -s "$APK"
+          "$APKSIGNER" sign --ks "$HOME/.android/debug.keystore" \
+            --ks-key-alias androiddebugkey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --out "$SIGNED" "$APK"
+          "$APKSIGNER" verify "$SIGNED"
+          mv -f "$SIGNED" "$APK"
+          echo "TV APK signed with stable TV key and verified"
+
+      - name: Verify independent TV package and update signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          TV_APK="media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$TV_APK"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$TV_APK" >/tmp/tv-package.txt
+          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1013'" /tmp/tv-package.txt
+
+      - name: Verify TV is signed with permanent legacy-TV keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER="$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner"
+          current="$("$APKSIGNER" verify --print-certs media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)"
+          expected="$(keytool -exportcert -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey \
+            | openssl x509 -inform DER -fingerprint -sha256 -noout \
+            | sed 's/.*=//' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          test -n "$current" && test "$current" = "$expected" || {
+            echo "::error::TV signing mismatch with the established fixed TV signing key."
+            exit 1
+          }
+          echo "Android TV build uses the established fixed TV signing key"
+
+      - name: Publish Android TV v1013 to authenticated Dev Hub only
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: bash ci/publish-media-player-tv-devhub.sh
+
+# Routing fixture portability verified on Android compile classpath.
