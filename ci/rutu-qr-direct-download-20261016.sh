@@ -61,13 +61,11 @@ else
 
 # BEGIN RUTU-QR-ATTACHMENT-20261016
 # Request a direct file download. QR target and APK remain unchanged.
-<IfModule mod_headers.c>
 <FilesMatch "^Rutu-BBQ-Android\.apk$">
-Header always set Content-Disposition "attachment; filename=Rutu-BBQ-Android.apk"
-Header always set X-Content-Type-Options "nosniff"
-Header always set Cache-Control "no-store, max-age=0"
+Header set Content-Disposition "attachment; filename=Rutu-BBQ-Android.apk"
+Header set X-Content-Type-Options "nosniff"
+Header set Cache-Control "no-store, max-age=0"
 </FilesMatch>
-</IfModule>
 # END RUTU-QR-ATTACHMENT-20261016
 APACHE
   chmod 644 "$stage"
@@ -75,6 +73,9 @@ APACHE
   mv "$stage" "$rules"
   changed=true
   after="$(curl -sSI --max-time 25 "$url")"
+  echo "RUTU_QR_RESPONSE_SERVER=$(printf '%s' "$after" | sed -n 's/^[Ss]erver: //p' | tr -d '\r' | head -1)"
+  echo "RUTU_QR_RESPONSE_STATUS=$(printf '%s' "$after" | head -1 | tr -d '\r')"
+  echo "RUTU_QR_RESPONSE_DISPOSITION=$(printf '%s' "$after" | grep -i '^content-disposition:' | tr -d '\r' | head -1 || true)"
   printf '%s' "$after" | grep -qi '^content-disposition: attachment; filename=Rutu-BBQ-Android.apk' ||
     { echo 'RUTU_QR_ATTACHMENT_HEADER_FAILED'; exit 12; }
   printf '%s' "$after" | grep -qE '^HTTP/.* 200' || exit 13
