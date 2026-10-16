@@ -109,7 +109,7 @@ function clean_device_id(string $value): string {
 
 function clean_access_scope(string $value): string {
     $scope = strtolower(trim($value));
-    if (!in_array($scope, ['media_player', 'mixes', 'shared', 'favorites', 'dj', 'run', 'downloads', 'download_files'], true)) {
+    if (!in_array($scope, ['media_player', 'media_player_xxx', 'mixes', 'shared', 'favorites', 'dj', 'run', 'downloads', 'download_files'], true)) {
         respond_devices(400, ['ok' => false, 'error' => 'Invalid access scope']);
     }
     return $scope;
@@ -120,6 +120,7 @@ function device_access_rights(array $device): array {
     $stored = is_array($device['access_rights'] ?? null) ? $device['access_rights'] : [];
     return [
         'media_player' => (bool)($stored['media_player'] ?? false),
+        'media_player_xxx' => (bool)($stored['media_player_xxx'] ?? false),
         'mixes' => (bool)($stored['mixes'] ?? $legacy),
         'shared' => (bool)($stored['shared'] ?? $legacy),
         'favorites' => (bool)($stored['favorites'] ?? $legacy),
@@ -137,7 +138,7 @@ function device_access_rights(array $device): array {
 function device_access_requests(array $device): array {
     $stored = is_array($device['access_requests'] ?? null) ? $device['access_requests'] : [];
     $result = [];
-    foreach (['media_player', 'mixes', 'shared', 'favorites', 'dj', 'run', 'downloads', 'download_files'] as $scope) {
+    foreach (['media_player', 'media_player_xxx', 'mixes', 'shared', 'favorites', 'dj', 'run', 'downloads', 'download_files'] as $scope) {
         $row = is_array($stored[$scope] ?? null) ? $stored[$scope] : [];
         if (($row['status'] ?? '') === 'pending') {
             $result[$scope] = [
@@ -518,6 +519,7 @@ if ($action === 'set_music_rights') {
     $existingScoped = device_access_rights($state['devices'][$deviceId]);
     $state['devices'][$deviceId]['access_rights'] = [
         'media_player' => $ownerTarget ? true : (bool)($existingScoped['media_player'] ?? false),
+        'media_player_xxx' => $ownerTarget ? true : (bool)($existingScoped['media_player_xxx'] ?? false),
         'mixes' => $ownerTarget ? true : $enabled,
         'shared' => $ownerTarget ? true : $enabled,
         'favorites' => $ownerTarget ? true : $enabled,
