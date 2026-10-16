@@ -121,6 +121,13 @@ public class SourceConfigActivity extends Activity {
             fields.addView(pass);
             fields.addView(spacer());
             fields.addView(info("Xtream gebruikt server + gebruikersnaam + wachtwoord van je eigen abonnement."));
+            fields.addView(spacer());
+            fields.addView(info("Bron 2 (optioneel) — catalogi van beide accounts worden in Live TV, Films en Series samengevoegd."));
+            EditText secondServer = input("Bron 2: server", prefs.getString("xtream_2_server", ""), false);
+            EditText secondUser = input("Bron 2: gebruikersnaam", prefs.getString("xtream_2_user", ""), false);
+            EditText secondPass = input("Bron 2: wachtwoord", prefs.getString("xtream_2_pass", ""), true);
+            fields.addView(secondServer); fields.addView(spacer()); fields.addView(secondUser); fields.addView(spacer()); fields.addView(secondPass);
+
             Button save = button("Opslaan");
             save.setOnClickListener(v -> {
                 String s = server.getText().toString().trim();
@@ -130,6 +137,14 @@ public class SourceConfigActivity extends Activity {
                         .putString("xtream_server", normalizeServer(s))
                         .putString("xtream_user", user.getText().toString().trim())
                         .putString("xtream_pass", pass.getText().toString())
+                        .putString("xtream_1_name", "Bron 1")
+                        .putString("xtream_1_server", normalizeServer(s))
+                        .putString("xtream_1_user", user.getText().toString().trim())
+                        .putString("xtream_1_pass", pass.getText().toString())
+                        .putString("xtream_2_name", "Bron 2")
+                        .putString("xtream_2_server", normalizeServer(secondServer.getText().toString()))
+                        .putString("xtream_2_user", secondUser.getText().toString().trim())
+                        .putString("xtream_2_pass", secondPass.getText().toString())
                         .apply();
                 Toast.makeText(this, "Xtream-bron opgeslagen", Toast.LENGTH_SHORT).show();
             });
