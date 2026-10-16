@@ -83,6 +83,20 @@
             android:contentDescription="Spreek een item in" />
     </LinearLayout>
 
+    <Button
+        android:id="@+id/shareShoppingButton"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="12dp"
+        android:text="Versturen via WhatsApp"
+        android:textAllCaps="false"
+        android:textStyle="bold"
+        android:textColor="@color/text_main"
+        android:backgroundTint="@color/surface"
+        android:contentDescription="Boodschappenlijst delen via WhatsApp" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
