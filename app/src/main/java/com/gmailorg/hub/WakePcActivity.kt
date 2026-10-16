@@ -396,6 +396,7 @@ class WakePcActivity : AppCompatActivity() {
             "com.theone.cinema", "com.theone.cinema.tv" -> "Cinema"
             "com.theone.series", "com.theone.series.tv" -> "Series"
             "com.theone.tv.phone", "com.theone.tv" -> "TV"
+            "com.theone.mediaplayer", "com.theone.mediaplayer.tv" -> "Media Player"
             else -> ""
         }
         val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(16, 14, 16, 14) }
@@ -591,6 +592,16 @@ class WakePcActivity : AppCompatActivity() {
                         "TV", MainDeviceRegistry.ACCESS_TV,
                         device.tvRights, device.pendingTv
                     )
+                    "com.theone.mediaplayer", "com.theone.mediaplayer.tv" -> {
+                        addAccessControl(
+                            "Media Player", MainDeviceRegistry.ACCESS_MEDIA_PLAYER,
+                            device.mediaPlayerRights, device.pendingMediaPlayer
+                        )
+                        addAccessControl(
+                            "Media Player XXX 🔒", MainDeviceRegistry.ACCESS_MEDIA_PLAYER_XXX,
+                            device.mediaPlayerXxxRights, device.pendingMediaPlayerXxx
+                        )
+                    }
                 }
             } else {
             if (device.familyPackage == "com.gmailorg.theoneuser") {
@@ -602,6 +613,12 @@ class WakePcActivity : AppCompatActivity() {
                 MainDeviceRegistry.ACCESS_MEDIA_PLAYER,
                 device.mediaPlayerRights,
                 device.pendingMediaPlayer
+            )
+            addAccessControl(
+                "Media Player XXX 🔒",
+                MainDeviceRegistry.ACCESS_MEDIA_PLAYER_XXX,
+                device.mediaPlayerXxxRights,
+                device.pendingMediaPlayerXxx
             )
             addAccessControl(
                 "The One Mixes",
