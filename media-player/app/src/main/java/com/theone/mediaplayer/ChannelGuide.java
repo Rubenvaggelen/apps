@@ -31,6 +31,14 @@ public final class ChannelGuide {
         }
         return false;
     }
+    /** Provider naming may vary: Multi Lang, Multi Langl, Multilanguage. */
+    public static boolean isTop2026MultiLang(String category) {
+        String name = normalize(category);
+        return name.contains("2026")
+            && name.contains("top")
+            && (name.contains("multi lang") || name.contains("multilang"));
+    }
+
     public static int videoTier(String title) {
         String t=normalize(title);
         if(includes(t,"16k"))return 3;
