@@ -183,14 +183,71 @@ public class MainActivity extends Activity {
                 int displayed = 0;
                 for (XtreamCatalog.Entry entry : result.entries) {
                     if (displayed++ >= 400) break;
-                    String url=XtreamCatalog.streamUrl(prefs, entry);
-                    if (url.isEmpty()) {
-                        addStaticCard(box, entry.title+" • serie (afleveringen nog te koppelen)");
-                    } else addPlayableCard(box, entry.title, "Categorie "+entry.category, url);
+                    if ("series".equals(kind)) {
+                        LinearLayout card=cardContainer();
+                        card.addView(text(entry.title,20,Color.WHITE,true));
+                        Button episodes=button("Seizoenen en afleveringen");
+                        episodes.setOnClickListener(v -> showEpisodes(entry));
+                        card.addView(episodes);
+                        addCard(box,card);
+                    } else {
+                        List<String> urls=XtreamCatalog.playbackUrls(prefs,entry);
+                        if(!urls.isEmpty())addPlayableCardWithFallback(box,entry.title,urls);
+                    }
                 }
                 if(result.entries.size()>400) addInfo(box,"Eerste 400 resultaten getoond; zoeken en paginering volgen.");
             });
         }).start();
+    }
+
+    private void showEpisodes(XtreamCatalog.Entry series) {
+        content.removeAllViews();
+        ScrollView scroll=new ScrollView(this);
+        LinearLayout box=baseBox(series.title,"Afleveringen");
+        box.addView(text("Afleveringen laden…",16,MUTED,false));
+        scroll.addView(box);
+        content.addView(scroll);
+        new Thread(() -> {
+            List<XtreamCatalog.Entry> episodes=new ArrayList<>();
+            String failure=null;
+            try {episodes=XtreamCatalog.episodes(prefs,series);}
+            catch(Exception e){failure="Afleveringen konden niet worden geladen.";}
+            final List<XtreamCatalog.Entry> loaded=episodes;
+            final String error=failure;
+            runOnUiThread(() -> {
+                if(content.indexOfChild(scroll)<0)return;
+                box.removeAllViews();
+                box.addView(text(series.title,26,Color.WHITE,true));
+                if(error!=null)addInfo(box,error);
+                for(XtreamCatalog.Entry episode:loaded){
+                    List<String> urls=XtreamCatalog.playbackUrls(prefs,episode);
+                    if(!urls.isEmpty())addPlayableCardWithFallback(box,episode.title,urls);
+                }
+            });
+        }).start();
+    }
+
+    private void addPlayableCardWithFallback(LinearLayout box,String title,List<String> urls) {
+        LinearLayout card=cardContainer();
+        card.addView(text(title,20,Color.WHITE,true));
+        Button play=button("▶ Afspelen");
+        play.setOnClickListener(v -> showPlayerWithFallback(urls,0));
+        card.addView(play);
+        addCard(box,card);
+    }
+
+    private void showPlayerWithFallback(List<String> urls,int index) {
+        if(urls.isEmpty()||index>=urls.size()){
+            Toast.makeText(this,"Afspelen niet mogelijk",Toast.LENGTH_LONG).show();
+            return;
+        }
+        showPlayer(urls.get(index));
+        player.addListener(new androidx.media3.common.Player.Listener() {
+            @Override public void onPlayerError(androidx.media3.common.PlaybackException error) {
+                if(index+1<urls.size())runOnUiThread(() -> showPlayerWithFallback(urls,index+1));
+                else runOnUiThread(() -> Toast.makeText(MainActivity.this,"Geen beschikbare stream",Toast.LENGTH_LONG).show());
+            }
+        });
     }
 
     private void showDemoM3u() {
