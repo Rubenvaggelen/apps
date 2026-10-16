@@ -15,6 +15,7 @@
 
         <activity android:name=".YouTubeActivity" android:exported="false" />
         <activity android:name=".AdultHubActivity" android:exported="false" />
+        <activity android:name=".PornhubCatalogActivity" android:exported="false" />
         <activity android:name=".XtreamCatalogActivity" android:exported="false" />
         <activity android:name=".TmdbCatalogActivity" android:exported="false" />
         <activity android:name=".SourceConfigActivity" android:exported="false" />
