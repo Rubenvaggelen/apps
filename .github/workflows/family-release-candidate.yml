@@ -109,7 +109,7 @@ jobs:
           OWNER_SHA=$(sha256sum /tmp/cinema-owner.der | cut -d " " -f1)
           grep -i "certificate SHA-256 digest: $OWNER_SHA" /tmp/cinema-signature.txt
           "$BT/aapt" dump badging "$APK" > /tmp/cinema-badging.txt
-          grep "package: name='com.theone.tv.phone' versionCode='106'" /tmp/cinema-badging.txt
+          grep "package: name='com.theone.tv.phone' versionCode='107'" /tmp/cinema-badging.txt
           grep 'launchable-activity' /tmp/cinema-badging.txt
           mkdir -p deliverable
           cp "$APK" deliverable/The-One-TV-Android-v1.0.6.apk
@@ -145,7 +145,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: the-one-live-android-v106
+          name: the-one-live-android-v107
           path: live-android/protected-deliverable/
           retention-days: 7
       - name: Verify private update service is deployed
@@ -153,7 +153,7 @@ jobs:
           curl --fail --silent --show-error --max-time 15 https://rubenvanaggelen.com/the-one-remote-api/family-updates.php?action=health |
             python3 -c 'import json,sys; x=json.load(sys.stdin); assert x.get("ok") is True and x.get("service") == "The One Family Secure Updates"'
       - name: Publish signed app to private Dev Hub after tests
-        if: false # applicant-name test build; publish after real-device verification
+        if: success() # private test release requested by owner
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
@@ -163,7 +163,7 @@ jobs:
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           BUILD_APP_ID: tv-phone
           BUILD_APK_PATH: live-android/deliverable/The-One-TV-Android-v1.0.6.apk
-          BUILD_VERSION_NAME: 1.0.6
+          BUILD_VERSION_NAME: 1.0.7
         run: bash ci/publish-family-private.sh
       - name: Save test reports
         if: always()
