@@ -1047,10 +1047,12 @@ public class XtreamCatalogActivity extends Activity {
             content.addView(text("Geen resultaten.", 16, MUTED, false));
             return;
         }
+        appendCards(items,0,max);
+    }
 
-        int limit = Math.min(max, items.size());
-
-        for (int i = 0; i < limit; i++) {
+    private void appendCards(List<XtreamItem> items,int start,int pageSize) {
+        int limit=Math.min(start+pageSize,items.size());
+        for (int i=start; i<limit; i++) {
             XtreamItem item = items.get(i);
 
             LinearLayout card = new LinearLayout(this);
@@ -1142,13 +1144,12 @@ public class XtreamCatalogActivity extends Activity {
         }
 
         if (items.size() > limit) {
-            TextView more = text(
-                    "Eerste " + limit + " resultaten getoond. Gebruik de zoekbalk om sneller te vinden.",
-                    14,
-                    MUTED,
-                    false
-            );
-            more.setPadding(0, dp(6), 0, dp(10));
+            Button more=button("Meer laden • " + Math.min(pageSize,items.size()-limit) +
+                " van " + (items.size()-limit) + " resterende");
+            more.setOnClickListener(v -> {
+                content.removeView(more);
+                appendCards(items,limit,pageSize);
+            });
             content.addView(more);
         }
     }
