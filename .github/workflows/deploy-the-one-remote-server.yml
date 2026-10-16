@@ -1,17 +1,13 @@
-name: Deploy The One Remote Relay
+name: Deploy The One Remote Relay (Manual Approval Only)
 
+# Never deploy live auth server automatically on GitHub pushes.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'the-one-remote-server/index.php'
-      - 'the-one-remote-server/music.php'
-      - 'the-one-remote-server/devices.php'
-      - 'the-one-remote-server/dedupe-cache.php'
-      - 'the-one-remote-server/adopt-hub.php'
-      - 'the-one-remote-server/RESET_SHARED_MEDIA_ONCE'
-      - '.github/workflows/deploy-the-one-remote-server.yml'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Enter DEPLOY_THE_ONE_API to authorize live update'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -22,9 +18,19 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/main'
+    environment: the-one-production
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
+      - name: Confirm explicit production release
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          if [ "$CONFIRMATION" != "DEPLOY_THE_ONE_API" ]; then
+            echo "::error::Explicit production approval phrase is required"
+            exit 1
+          fi
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -45,6 +51,9 @@ jobs:
           grep -Fq "cinema_android" the-one-remote-server/devices.php
           grep -Fq "series_android" the-one-remote-server/devices.php
           grep -Fq "tv_android" the-one-remote-server/devices.php
+
+      - name: Test full signed Family license contract in isolation
+        run: python3 the-one-remote-server/tests/license_contract.py
 
       - name: Deploy relay
         shell: bash
@@ -75,34 +84,8 @@ jobs:
           opts=(-i "$keydir/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$keydir/known_hosts" -o ConnectTimeout=20)
           remote="$DEPLOY_USER@$DEPLOY_HOST"
 
-          # Eenmalige volledige Shared Media reset wanneer de marker in deze commit staat.
-          # Alleen servercache/catalogus wordt gewist; lokale USB-sticks blijven onaangeraakt.
-          if [ -f the-one-remote-server/RESET_SHARED_MEDIA_ONCE ]; then
-            ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" '
-              rm -f "$HOME/the-one-music-cache/files/"*.bin 2>/dev/null || true
-              rm -f "$HOME/the-one-music-cache/files/"*.part 2>/dev/null || true
-              rm -f "$HOME/the-one-music-cache/meta/"*.json 2>/dev/null || true
-              rm -f "$HOME/the-one-music-cache/meta/"*.tmp.* 2>/dev/null || true
-              echo "SHARED_MEDIA_RESET_DONE"
-            '
-          fi
-
-          # Ruimte meten en alleen veilige tijdelijke rommel opruimen.
-          # Geldige .bin-cache en definitieve catalogusmetadata blijven onaangeraakt.
-          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" '
-            echo "=== SPACE BEFORE ==="
-            df -h "$HOME" || true
-            du -sh "$HOME/the-one-music-cache" "$HOME/the-one-music-cache/files" "$HOME/the-one-music-cache/meta" 2>/dev/null || true
-            find "$HOME/the-one-music-cache/files" -maxdepth 1 -type f -name "*.part" -delete 2>/dev/null || true
-            find "$HOME/the-one-music-cache/meta" -maxdepth 1 -type f -name "*.sync.json" -delete 2>/dev/null || true
-            find "$HOME/the-one-music-cache/meta" -maxdepth 1 -type f -name "*.tmp.*" -delete 2>/dev/null || true
-            rm -rf "$HOME"/.the-one-remote-stage.* 2>/dev/null || true
-            # Keep server API backups for license recovery; do not remove historical snapshots.
-            echo "=== SPACE AFTER ==="
-            df -h "$HOME" || true
-            du -sh "$HOME/the-one-music-cache" "$HOME/the-one-music-cache/files" "$HOME/the-one-music-cache/meta" 2>/dev/null || true
-          '
-
+          # Deployment is limited to API files. Do not touch Shared Media caches,
+          # stored licenses, device registrations, or any other server data.
           stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'mktemp -d "$HOME/.the-one-remote-stage.XXXXXXXX"')
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" the-one-remote-server/dedupe-cache.php "$remote:$stage/dedupe-cache.php"
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" the-one-remote-server/adopt-hub.php "$remote:$stage/adopt-hub.php"
@@ -127,6 +110,21 @@ jobs:
             [ -f "$music_target" ] && cp -p "$music_target" "$backup/music.php" || true
             [ -f "$devices_target" ] && cp -p "$devices_target" "$backup/devices.php" || true
           fi
+          # Roll back all three PHP files on any failed atomic swap or smoke check.
+          rollback() {
+            trap - ERR
+            echo "::error::API release failed. Restoring preserved PHP snapshot: $backup"
+            for name in index.php music.php devices.php; do
+              [ -f "$backup/$name" ] || continue
+              cp -p "$backup/$name" "$target_dir/$name.rollback" || true
+              mv -f "$target_dir/$name.rollback" "$target_dir/$name" || true
+            done
+            for name in index.php music.php devices.php; do
+              cmp -s "$backup/$name" "$target_dir/$name" ||
+                echo "::error::Rollback verification failed for $name"
+            done
+          }
+          trap rollback ERR
           cp "$stage/index.php" "$target.new"
           cp "$stage/music.php" "$music_target.new"
           cp "$stage/devices.php" "$devices_target.new"
@@ -134,12 +132,39 @@ jobs:
           mv -f "$target.new" "$target"
           mv -f "$music_target.new" "$music_target"
           mv -f "$devices_target.new" "$devices_target"
-          rm -rf "$stage"
-          REMOTE
+          # Smoke tests run before rollback is disarmed: any error restores the backup.
+          for endpoint in index.php music.php devices.php; do
+            case "$endpoint" in
+              index.php) service='The One Remote Relay';;
+              music.php) service='The One Music Cache';;
+              devices.php) service='The One Main Device Registry';;
+            esac
+            curl -fsS --max-time 15 "https://rubenvanaggelen.com/the-one-remote-api/$endpoint?action=health" |
+              php -r '
+                $data=json_decode(stream_get_contents(STDIN),true);
+                if (!is_array($data) || ($data["ok"]??false)!==true ||
+                    ($data["service"]??"")!==$argv[1]) exit(1);
+              ' "$service"
+          done
 
-          curl -fsS --max-time 15 "https://rubenvanaggelen.com/the-one-remote-api/index.php?action=health" |
-            python3 -c 'import json,sys; x=json.load(sys.stdin); assert x.get("ok") is True and x.get("service") == "The One Remote Relay"'
-          curl -fsS --max-time 15 "https://rubenvanaggelen.com/the-one-remote-api/music.php?action=health" |
-            python3 -c 'import json,sys; x=json.load(sys.stdin); assert x.get("ok") is True and x.get("service") == "The One Music Cache"'
-          curl -fsS --max-time 15 "https://rubenvanaggelen.com/the-one-remote-api/devices.php?action=health" |
-            python3 -c 'import json,sys; x=json.load(sys.stdin); assert x.get("ok") is True and x.get("service") == "The One Main Device Registry"'
+          # Missing/invalid identities must reach the correct Family handler,
+          # rather than return a generic 403 from the owner-only fallback.
+          for action in family_register family_check; do
+            case "$action" in
+              family_register) expected_error='Unknown app';;
+              family_check) expected_error='Invalid device';;
+            esac
+            output="$stage/probe-$action.json"
+            code=$(curl -sS --max-time 15 -o "$output" -w '%{http_code}' \
+              -X POST -H 'Content-Type: application/json' --data '{}' \
+              "https://rubenvanaggelen.com/the-one-remote-api/devices.php?action=$action")
+            test "$code" = "400"
+            php -r '
+              $data=json_decode(file_get_contents($argv[1]),true);
+              if (!is_array($data) || ($data["error"]??"")!==$argv[2]) exit(1);
+            ' "$output" "$expected_error"
+          done
+          trap - ERR
+          rm -rf -- "$stage"
+          echo "API_DEPLOYMENT_VERIFIED; RECOVERY_SNAPSHOT=$backup"
+          REMOTE
