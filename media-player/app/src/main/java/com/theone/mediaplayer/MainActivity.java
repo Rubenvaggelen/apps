@@ -105,7 +105,8 @@ public class MainActivity extends Activity {
         else showLiveTv();
     }
 
-    private void showLiveTv() {\n        if (hasXtreamSources()) {showCatalog("live"); return;}
+    private void showLiveTv() {
+        if (hasXtreamSources()) {showCatalog("live"); return;}
         content.removeAllViews();
         ScrollView scroll = new ScrollView(this);
         LinearLayout box = baseBox("Live TV", "Gebruik de gratis teststreams of koppel je eigen bron via Instellingen.");
@@ -143,7 +144,8 @@ public class MainActivity extends Activity {
         addCard(box, card);
     }
 
-    private void showFilms() {\n        if (hasXtreamSources()) {showCatalog("movie"); return;}
+    private void showFilms() {
+        if (hasXtreamSources()) {showCatalog("movie"); return;}
         content.removeAllViews();
         ScrollView scroll = new ScrollView(this);
         LinearLayout box = baseBox("Films", "Gratis Blender Open Movies voor de afspeeltest.");
