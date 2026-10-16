@@ -1,6 +1,10 @@
 package com.theone.mediaplayer;
 
 import android.app.Activity;
+import android.content.Context;
+import android.view.inputmethod.InputMethodManager;
+import android.view.inputmethod.EditorInfo;
+import android.text.InputType;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.view.Gravity;
@@ -18,6 +22,10 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceResponse;
+import android.webkit.CookieManager;
+import android.util.Log;
 import android.net.Uri;
 
 import org.json.JSONArray;
@@ -102,19 +110,49 @@ public final class AdultPornhubActivity extends Activity {
         box.addView(label("De videoduur wordt vooraf gecontroleerd. Video's zonder geldige duur worden verborgen.",13,PremiumUi.MUTED));
         EditText search=PremiumUi.searchField(this,"Zoek op Pornhub…");
         search.setSingleLine(true);
+        search.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
         search.setText(lastSearch);
+        search.setFocusable(true);
+        search.setFocusableInTouchMode(true);
         box.addView(search);
         final LinearLayout results=new LinearLayout(this);
         results.setOrientation(LinearLayout.VERTICAL);
-        box.addView(button("Zoeken",()->{
-            lastSearch=search.getText().toString().trim();
+        final java.util.function.Consumer<String> submitSearch=term->{
+            lastSearch=term.trim();
             lastPage=1;
             if(lastSearch.length()<2){
                 Toast.makeText(this,"Vul minimaal 2 letters in.",Toast.LENGTH_SHORT).show();
                 return;
             }
+            search.setText(lastSearch);
             searchVideos(lastSearch,lastPage,results);
-        }));
+        };
+        boolean tv=getPackageName().endsWith(".tv");
+        if(tv) {
+            // Many TV launchers do not provide a working native text IME.
+            // Make D-pad OK open our own keyboard, and expose an obvious action.
+            search.setShowSoftInputOnFocus(false);
+            search.setOnClickListener(v->{
+                if(authorized())AdultTvKeyboard.show(this,search.getText().toString(),submitSearch);
+            });
+            box.addView(button("⌨ Zoektekst invoeren met afstandsbediening",()->
+                AdultTvKeyboard.show(this,search.getText().toString(),submitSearch)));
+        } else {
+            search.setOnClickListener(v->{
+                search.requestFocus();
+                InputMethodManager keyboard=(InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE);
+                if(keyboard!=null)keyboard.showSoftInput(search,InputMethodManager.SHOW_IMPLICIT);
+            });
+            search.setOnEditorActionListener((view,action,event)->{
+                if(action==EditorInfo.IME_ACTION_SEARCH){
+                    submitSearch.accept(search.getText().toString());
+                    return true;
+                }
+                return false;
+            });
+        }
+        box.addView(button("Zoeken",()->submitSearch.accept(search.getText().toString())));
         box.addView(results);
         renderResults(results);
         if(!lastSearch.isEmpty() && displayed.isEmpty())searchVideos(lastSearch,lastPage,results);
@@ -206,6 +244,8 @@ public final class AdultPornhubActivity extends Activity {
         outer.addView(column,new FrameLayout.LayoutParams(-1,-1));
         column.addView(button("← Terug naar resultaten",this::showSearch));
         column.addView(label(video.title+"  •  "+video.duration,15,Color.WHITE));
+        final TextView playerStatus=label("Videospeler starten…",14,PremiumUi.MUTED);
+        column.addView(playerStatus);
         try {
             player=new WebView(this);
         } catch (Throwable webViewUnavailable) {
@@ -227,10 +267,38 @@ public final class AdultPornhubActivity extends Activity {
         WebSettings settings=player.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
-        settings.setMediaPlaybackRequiresUserGesture(true);
+        // HTML5 video needs JS, DOM storage, cookies and an unrestricted
+        // in-app media gesture; standard Android WebView otherwise stays blank.
+        settings.setMediaPlaybackRequiresUserGesture(false);
+        settings.setLoadWithOverviewMode(true);
+        settings.setUseWideViewPort(true);
+        settings.setJavaScriptCanOpenWindowsAutomatically(false);
         settings.setSupportMultipleWindows(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        CookieManager.getInstance().setAcceptCookie(true);
+        CookieManager.getInstance().setAcceptThirdPartyCookies(player,true);
+        player.setLayerType(View.LAYER_TYPE_HARDWARE,null);
+        player.setFocusable(true);
+        player.setFocusableInTouchMode(true);
         player.setWebViewClient(new WebViewClient(){
+            @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap icon){
+                playerStatus.setText("Videopagina laden…");
+            }
+            @Override public void onPageFinished(WebView view,String url){
+                playerStatus.setText("Videopagina geladen. Tik op ▶ om af te spelen.");
+            }
+            @Override public void onReceivedError(WebView view,WebResourceRequest request,WebResourceError error){
+                if(request.isForMainFrame()) {
+                    playerStatus.setText("Videopagina niet bereikbaar ("+error.getErrorCode()+"). Probeer terug en een andere video.");
+                    Log.w("TheOneAdult","Adult embed WebView network error "+error.getErrorCode());
+                }
+            }
+            @Override public void onReceivedHttpError(WebView view,WebResourceRequest request,WebResourceResponse error){
+                if(request.isForMainFrame()) {
+                    playerStatus.setText("Videopagina geweigerd (HTTP "+error.getStatusCode()+"). Probeer een andere video.");
+                    Log.w("TheOneAdult","Adult embed HTTP "+error.getStatusCode());
+                }
+            }
             @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){
                 // Prevent video recommendation navigation to unverified/short clips.
                 if(!request.isForMainFrame())return false;
@@ -250,6 +318,7 @@ public final class AdultPornhubActivity extends Activity {
             @Override public void onHideCustomView(){closeFullscreen();}
         });
         column.addView(player,new LinearLayout.LayoutParams(-1,0,1f));
+        player.requestFocus();
         player.loadUrl(EMBED+video.id);
     }
 
