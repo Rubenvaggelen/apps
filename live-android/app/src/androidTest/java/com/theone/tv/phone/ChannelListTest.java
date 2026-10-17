@@ -9,4 +9,58 @@ import org.junit.*;import org.junit.runner.RunWith;import static org.junit.Asser
  }
  @Test public void categoryArraysDoNotAbortProviderCatalog()throws Exception{java.lang.reflect.Method m=MediaRepository.class.getDeclaredMethod("stringValue",JsonReader.class);m.setAccessible(true);try(JsonReader r=new JsonReader(new StringReader("[12,\"14\",null]"))){assertEquals("12,14",m.invoke(null,r));}}
  @Test public void normalChannelsSortBeforeInactiveEventRows(){CatalogEntry event=new CatalogEntry(1,"NL - NO EVENT STREAMING","ts","","NL","live",0);CatalogEntry channel=new CatalogEntry(2,"NL - NPO 1 HD","ts","","NL","live",0);assertTrue(CatalogEntry.CHANNEL_ORDER.compare(channel,event)<0);assertEquals("NPO 1",channel.displayTitle());}
+
+ @Test public void xxxBackRestoresSearchAndPreviousChannelList()throws Exception{
+  Intent i=new Intent(InstrumentationRegistry.getInstrumentation().getTargetContext(),MainActivity.class)
+      .putExtra("tv_test_mode",true).putExtra("tv_test_count",600);
+  try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(i)){
+   scenario.onActivity(a->{
+    try{
+     java.lang.reflect.Field verified=MainActivity.class.getDeclaredField("adultConfirmed");
+     verified.setAccessible(true);
+     verified.setBoolean(a,true); // Test-only bypass; the real app always requests 18+ confirmation.
+    }catch(Exception failure){throw new AssertionError(failure);}
+    EditText search=a.findViewById(1010);
+    search.setText("Testkanaal 25");
+    a.findViewById(1011).performClick();
+    ListView channels=a.findViewById(1020);
+    assertTrue(channels.getAdapter().getCount()>0);
+    a.findViewById(1008).performClick();
+    assertNotNull("XXX must show a visible Back control",a.findViewById(1009));
+    a.findViewById(1009).performClick();
+    EditText restored=a.findViewById(1010);
+    assertEquals("Testkanaal 25",restored.getText().toString());
+    ListView returned=a.findViewById(1020);
+    assertTrue("Previous filtered channel list restored",returned.getAdapter().getCount()>0);
+    assertNull("XXX-only Back control must disappear on return",a.findViewById(1009));
+   });
+  }
+ }
+ @Test public void xxxBackRestoresScrollPositionOnRemoteOrPhone()throws Exception{
+  Intent i=new Intent(InstrumentationRegistry.getInstrumentation().getTargetContext(),MainActivity.class)
+      .putExtra("tv_test_mode",true).putExtra("tv_test_count",600);
+  try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(i)){
+   scenario.onActivity(a->{
+    try{
+     java.lang.reflect.Field verified=MainActivity.class.getDeclaredField("adultConfirmed");
+     verified.setAccessible(true);
+     verified.setBoolean(a,true);
+    }catch(Exception failure){throw new AssertionError(failure);}
+    ((ListView)a.findViewById(1020)).setSelectionFromTop(240,0);
+   });
+   final int[] index={0};
+   scenario.onActivity(a->{
+     ListView list=a.findViewById(1020);
+     index[0]=list.getFirstVisiblePosition();
+     assertTrue("Test list scrolled before entering XXX",index[0]>0);
+     a.findViewById(1008).performClick();
+     a.onBackPressed(); // Real remote Back uses the identical return point.
+   });
+   scenario.onActivity(a->{
+     ListView list=a.findViewById(1020);
+     assertEquals("Back must return to the same channel row",index[0],list.getFirstVisiblePosition());
+   });
+  }
+ }
+
 }
