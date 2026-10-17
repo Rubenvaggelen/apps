@@ -76,6 +76,11 @@ public final class AndroidPornhubActivity extends Activity {
     private Button tvBackOverlay;
     private TextView tvSeekOverlay;
     private LinearLayout phoneSeekButtons;
+    // Android-only alternative: direct official embed as the main WebView
+    // document. The ordinary nested iframe stays the tested fallback.
+    private boolean phoneCleanDirect=false;
+    private final Runnable phoneCleanIdle=()->setPhoneCleanControlsIdle(true);
+
     // Android fullscreen must expand the SAME WebView to the entire Activity.
     // Rotating the device without moving its original weighted row is not enough.
     private FrameLayout phoneFullscreenSurface;
@@ -165,6 +170,8 @@ public final class AndroidPornhubActivity extends Activity {
 
     private void showSearch(){
         if(!authorized())return;
+        tvOverlayHandler.removeCallbacks(phoneCleanIdle);
+        phoneCleanDirect=false;
         leaveTvFullscreen();
         showingPlayer=false;
         destroyPlayer();
@@ -392,6 +399,10 @@ public final class AndroidPornhubActivity extends Activity {
                 if(!embedLoadFailed)playerStatus.setText("Officiële videospeler laden…");
             }
             @Override public void onPageFinished(WebView view,String url){
+                if(phoneCleanDirect && url!=null && url.startsWith(EMBED+video.id)) {
+                    installPhoneCleanControls(view);
+                    if(tvFullscreen)schedulePhoneCleanIdle();
+                }
                 if(!embedLoadFailed) {
                     if(tv) {
                         playerStatus.setText("Videobeeld geladen. Tik op ▶ Afspelen om de video te starten.");
@@ -446,12 +457,29 @@ public final class AndroidPornhubActivity extends Activity {
         final boolean[] iframeMode={tv};
         Button otherMode=null;
         if(tv) {
-            otherMode=button("↔ Andere spelerweergave proberen",()->{
+            otherMode=button("🎬 Schone videoweergave proberen",()->{
                 if(player==null)return;
                 iframeMode[0]=!iframeMode[0];
+                phoneCleanDirect=!iframeMode[0];
                 embedLoadFailed=false;
                 playerStatus.setText(iframeMode[0]
-                    ?"Ingesloten speler laden…":"Directe speler laden…");
+                    ?"Originele ingesloten speler laden…":
+                    "Schone directe speler laden. Als hij niet afspeelt: schakel terug.");
+                loadOfficialEmbed(video.id,iframeMode[0]);
+                if(remotePlay!=null)remotePlay.requestFocus();
+            });
+            final Button switchMode=otherMode;
+            otherMode.setOnClickListener(v->{
+                if(!authorized()||player==null)return;
+                iframeMode[0]=!iframeMode[0];
+                phoneCleanDirect=!iframeMode[0];
+                tvOverlayHandler.removeCallbacks(phoneCleanIdle);
+                embedLoadFailed=false;
+                switchMode.setText(iframeMode[0]
+                    ?"🎬 Schone videoweergave proberen":"↩ Originele videoweergave herstellen");
+                playerStatus.setText(iframeMode[0]
+                    ?"Originele ingesloten speler laden…":
+                    "Directe speler laden; bij problemen kun je terugschakelen.");
                 loadOfficialEmbed(video.id,iframeMode[0]);
                 if(remotePlay!=null)remotePlay.requestFocus();
             });
@@ -481,6 +509,10 @@ public final class AndroidPornhubActivity extends Activity {
                             enterPhoneFullscreen();
                     },850);
                 }else{
+                    if(phoneCleanDirect){
+                        setPhoneCleanControlsIdle(false);
+                        schedulePhoneCleanIdle();
+                    }
                     showTvBackOverlay(false);
                     showPhoneButtons();
                     scheduleProviderControlsHide();
@@ -572,6 +604,54 @@ public final class AndroidPornhubActivity extends Activity {
             status.setText("De videospeler heeft de afspeelbediening niet aangenomen. "+
                 "Probeer de andere weergave.");
         }
+    }
+
+    /**
+     * Clean playback is possible only when the official embed itself is the
+     * WebView's main document. Styling the nested cross-origin iframe from
+     * our local HTML is blocked by the browser's same-origin policy.
+     *
+     * The provider may change these classes. This path is optional and the
+     * original official iframe is always one tap away, never deleted.
+     */
+    private void installPhoneCleanControls(WebView active) {
+        if(!phoneCleanDirect || active!=player || active.getUrl()==null ||
+           !active.getUrl().startsWith(EMBED))return;
+        String js="(function(){try{" +
+            "if(document.getElementById('theone-clean-css'))return 'READY';" +
+            "var style=document.createElement('style');" +
+            "style.id='theone-clean-css';" +
+            "var list=['.mgp_controlsContainer','.mgp_controlsBar'," +
+            "'.mgp_controls','.mgp_title','.mgp_playerTitle'," +
+            "'.mgp_logo','.mgp_branding','.mgp_header','.mgp_topBar'," +
+            "'.mgp_previewTitle','.fp-ui','.fp-controls'," +
+            "'.video-control-container'];" +
+            "style.textContent=list.map(function(s){" +
+            "return 'html.theone-clean-idle '+s+" +
+            "'{opacity:0!important;visibility:hidden!important;" +
+            "pointer-events:none!important}';}).join('\\n');" +
+            "(document.head||document.documentElement).appendChild(style);" +
+            "return 'READY';" +
+            "}catch(e){return 'NO_ACCESS';}})();";
+        active.evaluateJavascript(js,result->{
+            if("READY".equals(result)||"\"READY\"".equals(result))
+                schedulePhoneCleanIdle();
+        });
+    }
+
+    private void setPhoneCleanControlsIdle(boolean idle){
+        if(!phoneCleanDirect || !tvFullscreen || player==null ||
+           player.getUrl()==null || !player.getUrl().startsWith(EMBED))return;
+        player.evaluateJavascript("(function(){try{" +
+            "document.documentElement.classList."+
+            (idle?"add":"remove")+"('theone-clean-idle');" +
+            "return true;}catch(e){return false;}})();",null);
+    }
+
+    private void schedulePhoneCleanIdle(){
+        tvOverlayHandler.removeCallbacks(phoneCleanIdle);
+        if(phoneCleanDirect && tvFullscreen)
+            tvOverlayHandler.postDelayed(phoneCleanIdle,2900);
     }
 
     private void enterPhoneFullscreen() {
@@ -666,6 +746,7 @@ public final class AndroidPornhubActivity extends Activity {
         showTvBackOverlay(false);
         showPhoneButtons();
         scheduleProviderControlsHide();
+        schedulePhoneCleanIdle();
     }
 
     private void showPhoneButtons(){
@@ -875,6 +956,8 @@ public final class AndroidPornhubActivity extends Activity {
     }
 
     private void leaveTvFullscreen() {
+        tvOverlayHandler.removeCallbacks(phoneCleanIdle);
+        setPhoneCleanControlsIdle(false);
         tvOverlayHandler.removeCallbacks(dismissProviderControls);
         // Restore the live WebView to its original row before navigating away;
         // the actual provider instance is not reloaded or replaced.
@@ -1019,6 +1102,7 @@ public final class AndroidPornhubActivity extends Activity {
         tvOverlayHandler.removeCallbacks(hideTvSeek);
         tvOverlayHandler.removeCallbacks(hidePhoneButtons);
         tvOverlayHandler.removeCallbacks(dismissProviderControls);
+        tvOverlayHandler.removeCallbacks(phoneCleanIdle);
         destroyPlayer();
         super.onDestroy();
     }
