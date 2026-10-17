@@ -1,4 +1,4 @@
-name: Media Player TV v1014 remote OK video poster release
+name: Media Player TV v1015 remote OK video poster release
 
 on:
   push:
@@ -192,6 +192,9 @@ jobs:
           grep -q 'loadOfficialEmbed' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
           grep -q 'dispatchTouchEvent(down)' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
           grep -q 'dispatchTouchEvent(up)' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
+          grep -q 'enterTvFullscreen' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
+          grep -q 'showTvBackOverlay' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
+          grep -q 'postDelayed(hideTvBack,4500)' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
           grep -q 'Andere spelerweergave proberen' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
           grep -q 'isOfficialEmbedRequest' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
           grep -q 'setMediaPlaybackRequiresUserGesture(false)' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
@@ -234,7 +237,7 @@ jobs:
           grep -q '@drawable/ic_launcher' media-player/tvapp/src/main/AndroidManifest.xml
           grep -q '@drawable/ic_launcher' media-player/app/src/main/AndroidManifest.xml
 
-      - name: Build and unit-test TV v1014 update
+      - name: Build and unit-test TV v1015 update
         run: gradle -p media-player :app:testDebugUnitTest :tvapp:assembleDebug --no-daemon
 
       - name: Explicitly sign Android TV with permanent TV update identity
@@ -261,7 +264,7 @@ jobs:
           TV_APK="media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$TV_APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$TV_APK" >/tmp/tv-package.txt
-          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1014'" /tmp/tv-package.txt
+          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1015'" /tmp/tv-package.txt
 
       - name: Verify TV is signed with permanent legacy-TV keystore
         shell: bash
@@ -278,15 +281,15 @@ jobs:
           }
           echo "Android TV build uses the established fixed TV signing key"
 
-      - name: Keep signed TV v1014 APK in private build artifacts
+      - name: Keep signed TV v1015 APK in private build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: The-One-Media-Player-TV-v1014-signed-private
+          name: The-One-Media-Player-TV-v1015-signed-private
           path: media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
           if-no-files-found: error
           retention-days: 7
 
-      - name: Publish Android TV v1014 to authenticated Dev Hub only
+      - name: Publish Android TV v1015 to authenticated Dev Hub only
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
