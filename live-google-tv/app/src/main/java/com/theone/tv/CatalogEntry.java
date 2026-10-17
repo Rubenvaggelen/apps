@@ -5,11 +5,15 @@ public final class CatalogEntry {
  private static final Pattern QUALITY=Pattern.compile("(?i)\\b(?:4k|2160p?|1080p?|720p?|uhd|fhd|hd|sd|hevc|h264|h265|backup|vip)\\b");
  private static final Map<String,String> HINT_CACHE=new java.util.concurrent.ConcurrentHashMap<>();
  private static final Pattern NUMBERS=Pattern.compile("\\d+");
- private static final Pattern SEPARATORS=Pattern.compile("[^\\p{L}\\p{N}+]+");
+ private static final Pattern SEPARATORS=Pattern.compile("[^\\p{L}\\p{N}]+");
+ // Recognize explicit adult labels from BOTH provider category names and
+ // channel titles. Do not infer age-restricted content from country names.
+ private static final Pattern ADULT_MARKER=Pattern.compile(
+     "(?iu)(?<![\\p{L}\\p{N}])(?:XXX|ADULT|18\\+|18PLUS|PORN\\p{L}*|EROTIC\\p{L}*|SEX\\s*TV|RED\\s*LIGHT|PLAYBOY|BRAZZERS|DORCEL|HUSTLER|PENTHOUSE|NUDE\\s*TV)(?![\\p{L}\\p{N}])");
  public final int id;public final String title,extension,poster,category,type,movieId;public final long added;public final int rank;private final String key,sortKey;
  public CatalogEntry(int id,String title,String extension,String poster,String category,String type,long added){this(id,title,extension,poster,category,type,added,"");}
- public CatalogEntry(int id,String title,String extension,String poster,String category,String type,long added,String movieId){this.id=id;this.title=title;this.extension=extension==null?"m3u8":extension;this.poster=poster==null?"":poster;this.category=country(title,category);this.type=type;this.added=added;this.movieId="";this.rank=quality(title);this.key="live:"+this.category+":"+normalize(title);this.sortKey=natural(displayTitle());}
- public String key(){return key;}public String legacyKey(){return key;}public boolean isAdult(){return false;}public boolean isEpisode(){return false;}public String languageCode(){return "";}
+ public CatalogEntry(int id,String title,String extension,String poster,String category,String type,long added,String movieId){this.id=id;this.title=title;this.extension=extension==null?"m3u8":extension;this.poster=poster==null?"":poster;this.category=(adultTitle(title)||adultTitle(category))?"XXX":country(title,category);this.type=type;this.added=added;this.movieId="";this.rank=quality(title);this.key="live:"+this.category+":"+normalize(title);this.sortKey=natural(displayTitle());}
+ public String key(){return key;}public String legacyKey(){return key;}public boolean isAdult(){return "XXX".equals(category);}public boolean isEpisode(){return false;}public String languageCode(){return "";}
  public String displayTitle(){return QUALITY.matcher(PREFIX.matcher(title).replaceFirst("")).replaceAll("").replaceFirst("^[\\s|:·\\-]+","").replaceAll("\\s+"," ").trim();}
  public static String normalize(String value){String name=PREFIX.matcher(value).replaceFirst("");name=QUALITY.matcher(name).replaceAll("");return SEPARATORS.matcher(name.toLowerCase(Locale.ROOT)).replaceAll("");}
  public static String country(String name,String hint){Matcher match=PREFIX.matcher(name==null?"":name);if(match.find())return canonicalCountry(match.group(1));String raw=(hint==null?"":hint).toUpperCase(Locale.ROOT);String code=canonicalCountry(raw);if(!code.equals("OTHER"))return code;if(raw.matches(".*(?:\\bNL\\b|NEDERLAND|NETHERLAND|DUTCH|HOLLAND).*"))return "NL";if(raw.matches(".*(?:\\bUS\\b|\\bUSA\\b|UNITED STATES|AMERICAN).*"))return "US";if(raw.matches(".*(?:\\bUK\\b|\\bGB\\b|UNITED KINGDOM|ENGLAND|ENGLISH|BRITISH).*"))return "GB";for(String c:new String[]{"BE","DE","FR","ES","IT","PT","PL","TR","IN","AR"})if(raw.matches(".*\\b"+c+"\\b.*"))return c;if((name==null?"":name).toUpperCase(Locale.ROOT).matches("^(?:NPO|RTL|SBS|NET5|VERONICA|ZIGGO).*"))return "NL";String cached=HINT_CACHE.get(raw);if(cached!=null)return cached;for(String isoCode:Locale.getISOCountries()){Locale locale=new Locale("",isoCode);String en=locale.getDisplayCountry(Locale.ENGLISH).toUpperCase(Locale.ROOT),nl=locale.getDisplayCountry(new Locale("nl")).toUpperCase(Locale.ROOT);if(raw.matches(".*\\b"+isoCode+"\\b.*")||raw.contains(en)||raw.contains(nl)){if(HINT_CACHE.size()<1024)HINT_CACHE.put(raw,isoCode);return isoCode;}}if(HINT_CACHE.size()<1024)HINT_CACHE.put(raw,"OTHER");return "OTHER";}
@@ -25,5 +29,5 @@ public final class CatalogEntry {
  public static int quality(String value){String s=value.toLowerCase(Locale.ROOT);return s.contains("2160")||s.contains("4k")||s.contains("uhd")?2160:s.contains("1080")||s.contains("fhd")?1080:s.contains("720")||Pattern.compile("\\bhd\\b").matcher(s).find()?720:480;}
  public static String canonical(String value){if(value==null)return "";String s=value.toLowerCase(Locale.ROOT);switch(s.split("[-_]")[0]){case "eng":return "en";case "nld":case "dut":return "nl";default:return s.split("[-_]")[0];}}
  public static String languageName(String code){switch(canonical(code)){case "en":return "Engels";case "nl":return "Nederlands";case "":case "und":return "Taal niet vermeld";default:return code;}}
- public static boolean adultTitle(String title){return false;}
+ public static boolean adultTitle(String title){return title!=null&&ADULT_MARKER.matcher(title).find();}
 }
