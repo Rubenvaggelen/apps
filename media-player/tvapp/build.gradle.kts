@@ -10,8 +10,8 @@ android {
         applicationId = "com.theone.mediaplayer.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1013
-        versionName = "1.0.13-provider-embed-fallback"
+        versionCode = 1014
+        versionName = "1.0.14-tv-poster-ok"
     }
 
     buildTypes {
