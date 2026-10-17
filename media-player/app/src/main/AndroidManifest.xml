@@ -24,7 +24,7 @@
         <activity android:name=".AdultHubActivity" android:exported="false" />
         <activity android:name=".AdultPornhubActivity" android:exported="false" />
         <activity android:name=".AndroidPornhubActivity" android:exported="false"
-            android:configChanges="orientation|screenSize|keyboardHidden" />
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
         <activity
             android:name=".XtreamCatalogActivity"
             android:exported="false" />
