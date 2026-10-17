@@ -2,7 +2,7 @@ name: The One TV Android v108 — XXX category and adult isolation
 on:
   push:
     branches: [feature/tv-android-autoupdate-20261014]
-    paths: [live-android/**, ci/publish-tv-icon-build.sh, ci/devhub-tv-build-update.php, .github/workflows/live-android.yml]
+    paths: [live-android/**, ci/publish-tv-android-candidate.sh, .github/workflows/live-android.yml]
 permissions:
   contents: read
 concurrency:
@@ -155,7 +155,7 @@ jobs:
           name: the-one-live-android-v108
           path: live-android/protected-deliverable/
           retention-days: 7
-      - name: Publish signed Android v108 to protected The One Dev Hub
+      - name: Publish Android v108 candidate to authenticated test download only
         if: success()
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -164,10 +164,9 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-          BUILD_APP_ID: tv-android
           BUILD_APK_PATH: live-android/deliverable/The-One-TV-Android-v1.0.8.apk
-          BUILD_VERSION_NAME: 1.0.8
-        run: bash ci/publish-tv-icon-build.sh
+          BUILD_APK_NAME: The-One-TV-Android-1.0.8.apk
+        run: bash ci/publish-tv-android-candidate.sh
       - name: Save test reports
         if: always()
         uses: actions/upload-artifact@v4
