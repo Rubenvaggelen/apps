@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Owner-initiated, one-off promotion: signed Android v1.0.9 + Google TV v1.0.11.
+# Owner-initiated, one-off promotion: signed Android v1.0.9 + Google TV v1.0.12.
 # Source APKs: already signed and emulator-tested, private candidates only.
 set -euo pipefail
 umask 077
@@ -22,7 +22,7 @@ remote="$DEPLOY_USER@$DEPLOY_HOST"
 # Confirm that both existing candidates require authentication, not just PHP pages.
 for url in \
   'https://dev.rubenvanaggelen.com/the-one-tv-android-tests/The-One-TV-Android-1.0.9.apk' \
-  'https://dev.rubenvanaggelen.com/sony-bravia-audio-tests/The-One-TV-Google-TV-Sony-1.0.11.apk'; do
+  'https://dev.rubenvanaggelen.com/sony-bravia-audio-tests/The-One-TV-Google-TV-Sony-1.0.12.apk'; do
   code=$(curl -L -sS --connect-timeout 10 --max-time 25 -o /dev/null -w '%{http_code}' "$url")
   test "$code" = 401 || { echo "ABORT_SOURCE_NOT_AUTHENTICATED_HTTP_$code"; exit 2; }
 done
@@ -31,13 +31,13 @@ scp -O -P "$DEPLOY_PORT" "${opts[@]}" \
   "$remote:/home/vanawiwj/dev.vanaggelen.com/the-one-tv-android-tests/The-One-TV-Android-1.0.9.apk" \
   "$dir/The-One-TV-Android-v1.0.9.apk"
 scp -O -P "$DEPLOY_PORT" "${opts[@]}" \
-  "$remote:/home/vanawiwj/dev.vanaggelen.com/sony-bravia-audio-tests/The-One-TV-Google-TV-Sony-1.0.11.apk" \
-  "$dir/The-One-TV-Google-TV-v1.0.11.apk"
+  "$remote:/home/vanawiwj/dev.vanaggelen.com/sony-bravia-audio-tests/The-One-TV-Google-TV-Sony-1.0.12.apk" \
+  "$dir/The-One-TV-Google-TV-v1.0.12.apk"
 bt=$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -type d | sort -V | tail -1)
 keytool -exportcert -keystore "$dir/signing.keystore" -storepass android \
   -alias androiddebugkey -file "$dir/owner.der" >/dev/null 2>&1
 owner_sha=$(sha256sum "$dir/owner.der" | cut -d' ' -f1)
-for name in The-One-TV-Android-v1.0.9.apk The-One-TV-Google-TV-v1.0.11.apk; do
+for name in The-One-TV-Android-v1.0.9.apk The-One-TV-Google-TV-v1.0.12.apk; do
   "$bt/apksigner" verify --verbose --print-certs "$dir/$name" > "$dir/$name-signature.txt"
   grep -qi "certificate SHA-256 digest: $owner_sha" "$dir/$name-signature.txt" || \
     { echo "REJECT_UNRECOGNIZED_SIGNING_CERTIFICATE=$name"; exit 3; }
@@ -48,7 +48,7 @@ import sys, pathlib, hashlib, datetime, json, re
 folder=pathlib.Path(sys.argv[1])
 specs=[
   ("tv-phone","com.theone.tv.phone",109,"1.0.9","The-One-TV-Android-v1.0.9.apk","e3015d82946b358501a089eb37ec43c762a82f11"),
-  ("tv-google-tv","com.theone.tv",111,"1.0.11","The-One-TV-Google-TV-v1.0.11.apk","0442bcae1769eb9ccc15c34eef779c4e47f06141")
+  ("tv-google-tv","com.theone.tv",112,"1.0.12","The-One-TV-Google-TV-v1.0.12.apk","f9b239ffa3a2b0bb628fd370b9069efea70436e9")
 ]
 builds=[]
 for build_id,package,code,version,name,commit in specs:
@@ -68,13 +68,13 @@ for build_id,package,code,version,name,commit in specs:
     })
 (folder/"metadata.json").write_text(json.dumps({"builds":builds}))
 print("SIGNED_APKS_VERIFIED=2")
-print("APP_PACKAGE_AND_VERSION_MATCH=tv-phone:109,tv-google-tv:111")
+print("APP_PACKAGE_AND_VERSION_MATCH=tv-phone:109,tv-google-tv:112")
 PY
 remote_stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" \
   'umask 077; test -d /home/vanawiwj/the-one-private-builds/2026-10-13/apks; mktemp -d /home/vanawiwj/the-one-private-builds/.tv-family-ota.XXXXXXXX')
 trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$dir"; if [ -n "$remote_stage" ]; then ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "rm -rf -- \"$remote_stage\"" >/dev/null 2>&1 || true; fi' EXIT
 scp -O -P "$DEPLOY_PORT" "${opts[@]}" \
-  "$dir/The-One-TV-Android-v1.0.9.apk" "$dir/The-One-TV-Google-TV-v1.0.11.apk" \
+  "$dir/The-One-TV-Android-v1.0.9.apk" "$dir/The-One-TV-Google-TV-v1.0.12.apk" \
   "$dir/metadata.json" ci/promote-the-one-tv-family-ota.php \
   "$remote:$remote_stage/"
 ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" \
