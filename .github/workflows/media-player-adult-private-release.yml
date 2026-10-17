@@ -1,4 +1,4 @@
-name: Media Player Android v2420 phone Pornhub release (TV frozen)
+name: Media Player Android v2421 phone Pornhub release (TV frozen)
 
 on:
   push:
@@ -230,7 +230,7 @@ jobs:
       - name: Build and test Android only — TV build frozen
         run: gradle -p media-player :app:testDebugUnitTest :app:assembleRelease --no-daemon
 
-      - name: Verify signed Android v2420, phone player and preserved package
+      - name: Verify signed Android v2421, phone player and preserved package
         shell: bash
         run: |
           set -euo pipefail
@@ -238,7 +238,7 @@ jobs:
           test -s "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" >/tmp/media-player-package.txt
-          grep -q "name='com.theone.mediaplayer'.*versionCode='2420'" /tmp/media-player-package.txt
+          grep -q "name='com.theone.mediaplayer'.*versionCode='2421'" /tmp/media-player-package.txt
           grep -q 'AndroidPornhubActivity' media-player/app/src/main/AndroidManifest.xml
           grep -q 'AndroidPornhubActivity.class' media-player/app/src/main/java/com/theone/mediaplayer/AdultHubActivity.java
           grep -q 'loadOfficialEmbed(video.id,tv)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
@@ -254,6 +254,11 @@ jobs:
           grep -Fq 'MotionEvent.ACTION_HOVER_EXIT' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
           grep -Fq 'active.dispatchGenericMotionEvent(leave)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
           grep -Fq 'installPhoneCleanControls(WebView active)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
+          grep -Fq 'phoneCinemaTop=createPhoneCinemaMask(true)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
+          grep -Fq 'phoneCinemaBottom=createPhoneCinemaMask(false)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
+          grep -Fq '◫ Bioscoop aan' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
+          grep -Fq 'tvOverlayHandler.postDelayed(phoneCinemaIdle,4000)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
+          grep -Fq 'phoneCinemaModeEnabled=!phoneCinemaModeEnabled' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
           grep -Fq 'Schone videoweergave proberen' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
           grep -Fq 'Originele videoweergave herstellen' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
           grep -Fq 'loadOfficialEmbed(video.id,iframeMode[0])' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
@@ -269,9 +274,9 @@ jobs:
           ! grep -q 'new String\[\]{"Bibliotheek","Stream naar TV"}' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
           # Existing Google TV binaries and releases must never be modified here.
           test -z "$(find media-player/tvapp -type f -path '*/build/outputs/*.apk' -print -quit)"
-          echo "ANDROID_ONLY_2420_SIGNED_TV_FROZEN"
+          echo "ANDROID_ONLY_2421_SIGNED_TV_FROZEN"
 
-      - name: Publish Android v2420 to authenticated Dev Hub only
+      - name: Publish Android v2421 to authenticated Dev Hub only
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
