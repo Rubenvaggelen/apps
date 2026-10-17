@@ -1,4 +1,4 @@
-name: Media Player Android v2414 and TV v1021 Remote logo release
+name: Media Player Android v2415 phone Pornhub release (TV frozen)
 
 on:
   push:
@@ -164,18 +164,6 @@ jobs:
           Path("media-player/app/src/main/assets/private_youtube_key.txt").write_text(m.group(1), encoding="utf-8")
           PY
 
-      - name: Restore permanent TV update signing key
-        shell: bash
-        env:
-          TV_FIXED_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
-        run: |
-          set -euo pipefail
-          test -n "$TV_FIXED_KEYSTORE_BASE64"
-          mkdir -p ~/.android
-          printf '%s' "$TV_FIXED_KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
-          chmod 600 ~/.android/debug.keystore
-          keytool -list -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android >/dev/null
-
       - name: Verify separate adult authorization and launch isolation
         run: |
           grep -q 'MediaPlayerAdultGate' media-player/app/src/main/java/com/theone/mediaplayer/AdultHubActivity.java
@@ -239,72 +227,28 @@ jobs:
           grep -q 'familyFooter(this)' media-player/app/src/main/java/com/theone/mediaplayer/AdultHubActivity.java
           ! grep -q 'R.drawable.ic_launcher' media-player/app/src/main/java/com/theone/mediaplayer/TvMainActivity.java
 
-      - name: Build and test Android and Android TV updates
-        run: gradle -p media-player :app:testDebugUnitTest :app:assembleRelease :tvapp:assembleDebug --no-daemon
+      - name: Build and test Android only — TV build frozen
+        run: gradle -p media-player :app:testDebugUnitTest :app:assembleRelease --no-daemon
 
-      - name: Explicitly sign Android TV with permanent TV update identity
+      - name: Verify signed Android v2415, phone player and preserved package
         shell: bash
-        run: |
-          set -euo pipefail
-          APK=media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
-          SIGNED=media-player/tvapp/build/outputs/apk/debug/tvapp-owner-signed.apk
-          APKSIGNER="$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner"
-          test -s "$APK"
-          "$APKSIGNER" sign --ks "$HOME/.android/debug.keystore" \
-            --ks-key-alias androiddebugkey \
-            --ks-pass pass:android \
-            --key-pass pass:android \
-            --out "$SIGNED" "$APK"
-          "$APKSIGNER" verify "$SIGNED"
-          mv -f "$SIGNED" "$APK"
-          echo "TV APK signed with stable TV key and verified"
-
-      - name: Verify update identity and configuration
         run: |
           set -euo pipefail
           APK="media-player/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$APK"
-          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" > /tmp/package.txt
-          grep -q "name='com.theone.mediaplayer'.*versionCode='2414'" /tmp/package.txt
-          python3 - <<'PY'
-          import zipfile,json
-          with zipfile.ZipFile("media-player/app/build/outputs/apk/release/app-release.apk") as z:
-              a=json.loads(z.read("assets/private_xtream.json"))
-              b=json.loads(z.read("assets/private_xtream_secondary.json"))
-              assert a["server"] != b["server"]
-              assert b["server"]=="http://cqqwnnig.bulidns.com"
-          print("Both source configurations verified")
-          PY
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" >/tmp/media-player-package.txt
+          grep -q "name='com.theone.mediaplayer'.*versionCode='2415'" /tmp/media-player-package.txt
+          grep -q 'AndroidPornhubActivity' media-player/app/src/main/AndroidManifest.xml
+          grep -q 'AndroidPornhubActivity.class' media-player/app/src/main/java/com/theone/mediaplayer/AdultHubActivity.java
+          grep -q 'loadOfficialEmbed(video.id,tv)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
+          grep -q 'showPhoneButtons' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
+          grep -q 'AdultVideoDuration.allow' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
+          # Existing Google TV binaries and releases must never be modified here.
+          test -z "$(find media-player/tvapp -type f -path '*/build/outputs/*.apk' -print -quit)"
+          echo "ANDROID_ONLY_2415_SIGNED_TV_FROZEN"
 
-      - name: Verify independent TV package and update signing
-        shell: bash
-        run: |
-          set -euo pipefail
-          TV_APK="media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk"
-          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$TV_APK"
-          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$TV_APK" >/tmp/tv-package.txt
-          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1021'" /tmp/tv-package.txt
-
-      - name: Encrypt personal APK artifact
-        run: |
-          set -euo pipefail
-          umask 077
-          mkdir -p personal-out
-          cp media-player/app/build/outputs/apk/release/app-release.apk /tmp/The-One-Media-Player-v2414.apk
-          (cd /tmp && sha256sum The-One-Media-Player-v2414.apk) > personal-out/SHA256SUMS.txt
-          openssl rand -hex 32 > /tmp/artifact-password
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in /tmp/The-One-Media-Player-v2414.apk -out personal-out/The-One-Media-Player-v2414.apk.enc -pass file:/tmp/artifact-password
-          (cd media-player/tvapp/build/outputs/apk/debug && sha256sum tvapp-debug.apk) >> personal-out/SHA256SUMS.txt
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk -out personal-out/The-One-Media-Player-TV-v1021.apk.enc -pass file:/tmp/artifact-password
-          openssl pkeyutl -encrypt -pubin -inkey .github/media-player-owner-artifact-public.pem -in /tmp/artifact-password -out personal-out/key.enc -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
-          rm -f /tmp/artifact-password /tmp/The-One-Media-Player-v2414.apk
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: the-one-media-player-v2414-and-tv-v1021-personal
-          path: personal-out/
-
-      - name: Publish Android v2414 to authenticated Dev Hub only
+      - name: Publish Android v2415 to authenticated Dev Hub only
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -314,31 +258,3 @@ jobs:
           DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: bash ci/publish-media-player-android-devhub.sh
-
-      - name: Verify TV is signed with permanent legacy-TV keystore
-        shell: bash
-        run: |
-          set -euo pipefail
-          APKSIGNER="$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner"
-          current="$("$APKSIGNER" verify --print-certs media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)"
-          expected="$(keytool -exportcert -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey \
-            | openssl x509 -inform DER -fingerprint -sha256 -noout \
-            | sed 's/.*=//' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
-          test -n "$current" && test "$current" = "$expected" || {
-            echo "::error::TV signing mismatch with the established fixed TV signing key."
-            exit 1
-          }
-          echo "Android TV build uses the established fixed TV signing key"
-
-      - name: Publish Android TV v1021 to authenticated Dev Hub only
-        shell: bash
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
-          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-        run: bash ci/publish-media-player-tv-devhub.sh
-
-# Routing fixture portability verified on Android compile classpath.
