@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2419
-        versionName = "2.4.19-overlay-autohide"
+        versionCode = 2420
+        versionName = "2.4.20-direct-clean-player"
     }
 
     signingConfigs {
