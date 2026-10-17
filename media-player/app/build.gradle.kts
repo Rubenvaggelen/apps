@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2412
-        versionName = "2.4.12-neon-remote-tv-ui"
+        versionCode = 2413
+        versionName = "2.4.13-family-theme"
     }
 
     signingConfigs {
