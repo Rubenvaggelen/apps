@@ -1,4 +1,4 @@
-name: Media Player Android v2415 phone Pornhub release (TV frozen)
+name: Media Player Android v2416 phone Pornhub release (TV frozen)
 
 on:
   push:
@@ -230,7 +230,7 @@ jobs:
       - name: Build and test Android only — TV build frozen
         run: gradle -p media-player :app:testDebugUnitTest :app:assembleRelease --no-daemon
 
-      - name: Verify signed Android v2415, phone player and preserved package
+      - name: Verify signed Android v2416, phone player and preserved package
         shell: bash
         run: |
           set -euo pipefail
@@ -238,17 +238,22 @@ jobs:
           test -s "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" >/tmp/media-player-package.txt
-          grep -q "name='com.theone.mediaplayer'.*versionCode='2415'" /tmp/media-player-package.txt
+          grep -q "name='com.theone.mediaplayer'.*versionCode='2416'" /tmp/media-player-package.txt
           grep -q 'AndroidPornhubActivity' media-player/app/src/main/AndroidManifest.xml
           grep -q 'AndroidPornhubActivity.class' media-player/app/src/main/java/com/theone/mediaplayer/AdultHubActivity.java
           grep -q 'loadOfficialEmbed(video.id,tv)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
           grep -q 'showPhoneButtons' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
           grep -q 'AdultVideoDuration.allow' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
+          grep -q 'SCREEN_ORIENTATION_LANDSCAPE' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
+          grep -q 'setRequestedOrientation(previousOrientation)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
+          grep -q 'onConfigurationChanged(Configuration configuration)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
+          grep -q 'Stream naar TV remains implemented but is intentionally hidden' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
+          ! grep -q 'new String\[\]{"Bibliotheek","Stream naar TV"}' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
           # Existing Google TV binaries and releases must never be modified here.
           test -z "$(find media-player/tvapp -type f -path '*/build/outputs/*.apk' -print -quit)"
-          echo "ANDROID_ONLY_2415_SIGNED_TV_FROZEN"
+          echo "ANDROID_ONLY_2416_SIGNED_TV_FROZEN"
 
-      - name: Publish Android v2415 to authenticated Dev Hub only
+      - name: Publish Android v2416 to authenticated Dev Hub only
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
