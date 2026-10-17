@@ -21,10 +21,10 @@ import android.widget.TextView;
 
 // v18 premium prototype
 public final class PremiumUi {
-    public static final int BG = Color.rgb(4, 7, 12);
-    public static final int PANEL = Color.rgb(12, 18, 28);
-    public static final int BLUE = Color.rgb(35, 190, 255);
-    public static final int BLUE_SOFT = Color.rgb(77, 210, 255);
+    public static final int BG = Color.rgb(5, 11, 25); // The One Midnight Navy
+    public static final int PANEL = Color.rgb(11, 30, 54); // Deep Ocean
+    public static final int BLUE = Color.rgb(29, 151, 255); // Electric Blue
+    public static final int BLUE_SOFT = Color.rgb(63, 224, 255); // Neon Cyan
     public static final int MUTED = Color.rgb(150, 164, 180);
 
     private PremiumUi() {}
@@ -69,6 +69,32 @@ public final class PremiumUi {
         return row;
     }
 
+    /** The One Family visual identity shared by phone, TV and Adult library. */
+    public static GradientDrawable familyTileBackground(Context context, boolean focused) {
+        GradientDrawable shape = new GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            focused
+                ? new int[]{Color.rgb(12, 42, 89), Color.rgb(16, 72, 128), Color.rgb(28, 26, 80)}
+                : new int[]{Color.rgb(10, 25, 50), Color.rgb(10, 38, 73), Color.rgb(15, 25, 53)}
+        );
+        shape.setCornerRadius(dp(context, 23));
+        shape.setStroke(dp(context, focused ? 2 : 1),
+            focused ? Color.rgb(89, 235, 255) : Color.rgb(30, 99, 151));
+        return shape;
+    }
+
+    public static TextView familyFooter(Context context) {
+        TextView footer = new TextView(context);
+        footer.setText("Part of The One Family");
+        footer.setTextColor(Color.rgb(119, 170, 205));
+        footer.setTextSize(12);
+        footer.setGravity(Gravity.CENTER);
+        footer.setTypeface(Typeface.DEFAULT, Typeface.NORMAL);
+        footer.setLetterSpacing(0.07f);
+        footer.setPadding(0, dp(context, 18), 0, dp(context, 12));
+        return footer;
+    }
+
     public static Button primaryButton(Context context, String label) {
         Button b = new Button(context);
         b.setText(label);
@@ -82,8 +108,13 @@ public final class PremiumUi {
         b.setMinHeight(dp(context, 48));
 
         // Zelfde donkere neon The One-look als de categorieknoppen.
-        b.setBackground(neonButtonBackground(context, false));
-        b.setElevation(dp(context, 5));
+        b.setBackground(familyTileBackground(context, false));
+        b.setOnFocusChangeListener((v, hasFocus) -> {
+            b.setBackground(familyTileBackground(context, hasFocus));
+            b.setScaleX(hasFocus ? 1.015f : 1f);
+            b.setScaleY(hasFocus ? 1.015f : 1f);
+        });
+        b.setElevation(dp(context, 4));
         b.setStateListAnimator(null);
         return b;
     }
@@ -98,7 +129,9 @@ public final class PremiumUi {
         b.setAllCaps(false);
         b.setPadding(dp(context, 16), dp(context, 9), dp(context, 16), dp(context, 9));
         b.setMinHeight(dp(context, 44));
-        b.setBackground(neonButtonBackground(context, false));
+        b.setBackground(familyTileBackground(context, false));
+        b.setOnFocusChangeListener((v, hasFocus) ->
+            b.setBackground(familyTileBackground(context, hasFocus)));
         b.setElevation(dp(context, 4));
         b.setStateListAnimator(null);
         return b;
