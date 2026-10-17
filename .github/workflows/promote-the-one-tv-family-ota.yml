@@ -1,0 +1,38 @@
+name: Publish approved The One TV updates to apps
+on:
+  push:
+    branches: [feature/tv-android-autoupdate-20261014]
+    paths: [.github/workflows/promote-the-one-tv-family-ota.yml]
+permissions:
+  contents: read
+concurrency:
+  group: authenticated-the-one-tv-family-ota-promotion
+  cancel-in-progress: false
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Android APK verification tools
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - name: Verify release promotion scripts
+        run: |
+          set -euo pipefail
+          bash -n ci/promote-the-one-tv-family-ota.sh
+          php -l ci/promote-the-one-tv-family-ota.php
+          grep -Fq "'tv-phone'=>['package'=>'com.theone.tv.phone','code'=>109" ci/promote-the-one-tv-family-ota.php
+          grep -Fq "'tv-google-tv'=>['package'=>'com.theone.tv','code'=>111" ci/promote-the-one-tv-family-ota.php
+      - name: Promote only the previously tested signed TV APKs
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          SIGNING_KEY: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: bash ci/promote-the-one-tv-family-ota.sh
