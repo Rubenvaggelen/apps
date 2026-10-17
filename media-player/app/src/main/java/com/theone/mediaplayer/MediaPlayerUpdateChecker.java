@@ -2,322 +2,150 @@ package com.theone.mediaplayer;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.app.DownloadManager;
 import android.content.Context;
 import android.content.Intent;
-import android.database.Cursor;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
-import android.os.Environment;
-import android.provider.Settings;
 import android.widget.Toast;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
-
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
+/**
+ * The One Media Player updater (Android + Google TV).
+ *
+ * The signed APKs are published ONLY to authenticated private Dev Hub, not
+ * GitHub Releases. Read version metadata from our successful GitHub release
+ * workflow, then open the matching protected download page in the browser.
+ * Never place Dev Hub credentials or private download URLs in an APK.
+ *
+ * Android requires explicit user approval for regular app installations.
+ */
 public final class MediaPlayerUpdateChecker {
-    private static final String RELEASES_URL =
-            "https://api.github.com/repos/Rubenvaggelen/apps/releases?per_page=100";
-    private static final String TAG_PREFIX = "media-player-v";
-    private static final String APK_MIME = "application/vnd.android.package-archive";
+    private static final String RELEASE_RUNS =
+        "https://api.github.com/repos/Rubenvaggelen/apps/actions/workflows/" +
+        "media-player-adult-private-release.yml/runs?branch=" +
+        "feature%2Fmedia-player-adult-5min-20261016&status=success&per_page=20";
+    private static final String PRIVATE_DOWNLOAD =
+        "https://dev.rubenvanaggelen.com/family-download-20261013.php?app=";
+    private static final String PREFS="the_one_player_updater";
+    private static final String LAST_CHECK="last_check";
+    private static final long CHECK_INTERVAL_MS=4L*60L*60L*1000L;
+    private static final Pattern ANDROID_PATTERN=Pattern.compile("Android\\s+v(\\d+)");
+    private static final Pattern TV_PATTERN=Pattern.compile("TV\\s+v(\\d+)");
+    private static final AtomicBoolean inProgress=new AtomicBoolean(false);
+    private static final AtomicBoolean dialogOpen=new AtomicBoolean(false);
 
     private MediaPlayerUpdateChecker() {}
 
-    public static void checkForUpdate(Activity activity) {
-        checkForUpdate(activity, false);
+    public static void checkForUpdate(Activity activity){
+        check(activity,false);
     }
 
-    public static void checkForUpdateManual(Activity activity) {
-        if (activity == null || activity.isFinishing()) return;
-        Toast.makeText(activity, "Zoeken naar updates…", Toast.LENGTH_SHORT).show();
-        checkForUpdate(activity, true);
+    public static void checkForUpdateManual(Activity activity){
+        check(activity,true);
     }
 
-    private static void checkForUpdate(Activity activity, boolean manual) {
-        if (activity == null || activity.isFinishing()) return;
+    private static void check(Activity activity, boolean manual){
+        if(activity==null||activity.isFinishing())return;
+        SharedPreferences settings=activity.getSharedPreferences(PREFS,Context.MODE_PRIVATE);
+        long now=System.currentTimeMillis();
+        if(!manual && now-settings.getLong(LAST_CHECK,0L)<CHECK_INTERVAL_MS)return;
+        if(!inProgress.compareAndSet(false,true))return;
+        final boolean tv=activity.getPackageName().equals("com.theone.mediaplayer.tv");
+        if(manual)Toast.makeText(activity,"Controleren op nieuwe versie…",Toast.LENGTH_SHORT).show();
 
-        new Thread(() -> {
-            HttpURLConnection connection = null;
-            try {
-                connection = (HttpURLConnection) new URL(RELEASES_URL).openConnection();
-                connection.setRequestProperty("Accept", "application/vnd.github+json");
-                connection.setRequestProperty("User-Agent", "TheOneMediaPlayer-Updater");
-                connection.setConnectTimeout(10000);
-                connection.setReadTimeout(10000);
-
-                int code = connection.getResponseCode();
-                if (code < 200 || code >= 300) {
-                    if (manual) {
-                        activity.runOnUiThread(() -> Toast.makeText(
-                                activity,
-                                "Updatecontrole mislukt. Probeer het later opnieuw.",
-                                Toast.LENGTH_LONG
-                        ).show());
-                    }
-                    return;
-                }
-
-                StringBuilder body = new StringBuilder();
-                try (BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(connection.getInputStream()))) {
+        new Thread(()->{
+            HttpURLConnection conn=null;
+            try{
+                conn=(HttpURLConnection)new URL(RELEASE_RUNS).openConnection();
+                conn.setRequestProperty("Accept","application/vnd.github+json");
+                conn.setRequestProperty("User-Agent","TheOneMediaPlayer-VersionCheck");
+                conn.setConnectTimeout(9000);
+                conn.setReadTimeout(9000);
+                if(conn.getResponseCode()!=200)throw new IllegalStateException("Release check unavailable");
+                StringBuilder data=new StringBuilder();
+                try(BufferedReader in=new BufferedReader(
+                    new InputStreamReader(conn.getInputStream(),java.nio.charset.StandardCharsets.UTF_8))){
                     String line;
-                    while ((line = reader.readLine()) != null) body.append(line);
-                }
-
-                JSONArray releases = new JSONArray(body.toString());
-                UpdateInfo newest = null;
-
-                for (int i = 0; i < releases.length(); i++) {
-                    JSONObject release = releases.optJSONObject(i);
-                    if (release == null || release.optBoolean("draft", false)) continue;
-
-                    String tag = release.optString("tag_name", "");
-                    if (!tag.startsWith(TAG_PREFIX)) continue;
-
-                    int versionCode;
-                    try {
-                        versionCode = Integer.parseInt(tag.substring(TAG_PREFIX.length()));
-                    } catch (Throwable ignored) {
-                        continue;
-                    }
-
-                    String downloadUrl = "";
-                    JSONArray assets = release.optJSONArray("assets");
-                    if (assets != null) {
-                        for (int a = 0; a < assets.length(); a++) {
-                            JSONObject asset = assets.optJSONObject(a);
-                            if (asset == null) continue;
-                            String name = asset.optString("name", "").toLowerCase();
-                            if (!name.endsWith(".apk")) continue;
-                            if (!(name.contains("media-player") || name.contains("mediaplayer"))) continue;
-                            if (name.contains("android-tv") || name.contains("-tv") || name.contains("_tv")) continue;
-
-                            downloadUrl = asset.optString("browser_download_url", "");
-                            if (!downloadUrl.isEmpty()) break;
-                        }
-                    }
-
-                    // Geen webpagina meer openen: alleen een echte APK is geldig als update.
-                    if (downloadUrl.isEmpty()) continue;
-
-                    if (newest == null || versionCode > newest.versionCode) {
-                        newest = new UpdateInfo(
-                                versionCode,
-                                release.optString("name", tag),
-                                downloadUrl
-                        );
+                    while((line=in.readLine())!=null){
+                        data.append(line);
+                        if(data.length()>500000)throw new IllegalStateException("Response too large");
                     }
                 }
-
-                if (newest == null) {
-                    if (manual) {
-                        activity.runOnUiThread(() -> Toast.makeText(
-                                activity,
-                                "Geen Media Player-update gevonden.",
-                                Toast.LENGTH_LONG
-                        ).show());
-                    }
-                    return;
-                }
-
-                long currentVersion = getCurrentVersionCode(activity);
-                if (newest.versionCode <= currentVersion) {
-                    if (manual) {
-                        activity.runOnUiThread(() -> new AlertDialog.Builder(activity)
-                                .setTitle("Geen update beschikbaar")
-                                .setMessage("Je hebt al de nieuwste versie van The One Media Player.")
-                                .setPositiveButton("OK", null)
-                                .show());
-                    }
-                    return;
-                }
-
-                UpdateInfo finalNewest = newest;
-                activity.runOnUiThread(() -> showUpdateDialog(activity, finalNewest));
-            } catch (Throwable ignored) {
-                // Update-check mag de Media Player nooit blokkeren.
-                if (manual) {
-                    activity.runOnUiThread(() -> Toast.makeText(
-                            activity,
-                            "Updatecontrole mislukt. Controleer je internetverbinding.",
-                            Toast.LENGTH_LONG
-                    ).show());
-                }
-            } finally {
-                if (connection != null) connection.disconnect();
-            }
-        }).start();
-    }
-
-    private static long getCurrentVersionCode(Context context) {
-        try {
-            android.content.pm.PackageInfo info =
-                    context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
-            if (Build.VERSION.SDK_INT >= 28) return info.getLongVersionCode();
-            return info.versionCode;
-        } catch (Throwable ignored) {
-            return 0;
-        }
-    }
-
-    private static void showUpdateDialog(Activity activity, UpdateInfo update) {
-        if (activity.isFinishing()) return;
-
-        new AlertDialog.Builder(activity)
-                .setTitle("Nieuwe versie beschikbaar")
-                .setMessage("Er is een nieuwe versie van The One Media Player beschikbaar.")
-                .setPositiveButton("Bijwerken", (dialog, which) -> beginUpdate(activity, update))
-                .setNegativeButton("Later", null)
-                .show();
-    }
-
-    private static void beginUpdate(Activity activity, UpdateInfo update) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-                !activity.getPackageManager().canRequestPackageInstalls()) {
-            try {
-                Intent settings = new Intent(
-                        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                        Uri.parse("package:" + activity.getPackageName())
-                );
-                activity.startActivity(settings);
-                Toast.makeText(
-                        activity,
-                        "Sta installatie van updates toe en kies daarna opnieuw Bijwerken.",
-                        Toast.LENGTH_LONG
-                ).show();
-            } catch (Throwable ignored) {
-            }
-            return;
-        }
-
-        try {
-            DownloadManager manager =
-                    (DownloadManager) activity.getSystemService(Context.DOWNLOAD_SERVICE);
-            if (manager == null) {
-                Toast.makeText(activity, "Update kon niet worden gestart.", Toast.LENGTH_SHORT).show();
-                return;
-            }
-
-            File dir = activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
-            if (dir != null && !dir.exists()) dir.mkdirs();
-
-            String fileName = "The-One-Media-Player-v" + update.versionCode + ".apk";
-            if (dir != null) {
-                File previous = new File(dir, fileName);
-                if (previous.exists()) previous.delete();
-            }
-
-            DownloadManager.Request request =
-                    new DownloadManager.Request(Uri.parse(update.downloadUrl))
-                            .setTitle("The One Media Player update")
-                            .setDescription("Versie " + update.versionCode + " wordt gedownload")
-                            .setMimeType(APK_MIME)
-                            .setNotificationVisibility(
-                                    DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
-                            )
-                            .setAllowedOverMetered(true)
-                            .setAllowedOverRoaming(true)
-                            .setDestinationInExternalFilesDir(
-                                    activity,
-                                    Environment.DIRECTORY_DOWNLOADS,
-                                    fileName
-                            );
-
-            long downloadId = manager.enqueue(request);
-            Toast.makeText(activity, "Update wordt gedownload…", Toast.LENGTH_SHORT).show();
-
-            new Thread(() -> waitForDownload(activity, manager, downloadId)).start();
-        } catch (Throwable e) {
-            Toast.makeText(activity, "Update kon niet worden gestart.", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private static void waitForDownload(
-            Activity activity,
-            DownloadManager manager,
-            long downloadId
-    ) {
-        long end = System.currentTimeMillis() + (10L * 60L * 1000L);
-
-        while (System.currentTimeMillis() < end) {
-            Cursor cursor = null;
-            try {
-                DownloadManager.Query query =
-                        new DownloadManager.Query().setFilterById(downloadId);
-                cursor = manager.query(query);
-
-                if (cursor != null && cursor.moveToFirst()) {
-                    int statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS);
-                    int status = statusIndex >= 0
-                            ? cursor.getInt(statusIndex)
-                            : DownloadManager.STATUS_FAILED;
-
-                    if (status == DownloadManager.STATUS_SUCCESSFUL) {
-                        Uri apkUri = manager.getUriForDownloadedFile(downloadId);
-                        activity.runOnUiThread(() -> openInstaller(activity, apkUri));
-                        return;
-                    }
-
-                    if (status == DownloadManager.STATUS_FAILED) {
-                        activity.runOnUiThread(() -> Toast.makeText(
-                                activity,
-                                "Download van de update is mislukt.",
-                                Toast.LENGTH_LONG
-                        ).show());
-                        return;
+                JSONArray runs=new JSONObject(data.toString()).optJSONArray("workflow_runs");
+                if(runs==null)throw new IllegalStateException("No workflow runs");
+                Pattern pattern=tv?TV_PATTERN:ANDROID_PATTERN;
+                int latest=0;
+                for(int i=0;i<runs.length();i++){
+                    JSONObject run=runs.optJSONObject(i);
+                    if(run==null || !"success".equals(run.optString("conclusion")))continue;
+                    if(!"feature/media-player-adult-5min-20261016".equals(run.optString("head_branch")))continue;
+                    Matcher match=pattern.matcher(run.optString("name",""));
+                    if(match.find()){
+                        try{ latest=Math.max(latest,Integer.parseInt(match.group(1))); }
+                        catch(NumberFormatException ignored){}
                     }
                 }
-            } catch (Throwable ignored) {
-            } finally {
-                if (cursor != null) cursor.close();
+                final int available=latest;
+                long installed=currentVersion(activity);
+                settings.edit().putLong(LAST_CHECK,System.currentTimeMillis()).apply();
+                activity.runOnUiThread(()->{
+                    if(activity.isFinishing() || activity.isDestroyed())return;
+                    if(available>installed)showDialog(activity,available,tv);
+                    else if(manual)Toast.makeText(activity,
+                        "Je hebt de nieuwste Media Player-versie.",Toast.LENGTH_LONG).show();
+                });
+            }catch(Exception e){
+                if(manual)activity.runOnUiThread(()->{
+                    if(!activity.isFinishing())Toast.makeText(activity,
+                        "Updatecontrole niet beschikbaar. Probeer later opnieuw.",
+                        Toast.LENGTH_LONG).show();
+                });
+            }finally{
+                if(conn!=null)conn.disconnect();
+                inProgress.set(false);
             }
-
-            try {
-                Thread.sleep(700);
-            } catch (InterruptedException ignored) {
-                return;
-            }
-        }
-
-        activity.runOnUiThread(() -> Toast.makeText(
-                activity,
-                "De update-download duurde te lang.",
-                Toast.LENGTH_LONG
-        ).show());
+        },"media-player-auto-update").start();
     }
 
-    private static void openInstaller(Activity activity, Uri apkUri) {
-        if (apkUri == null || activity.isFinishing()) return;
-
-        try {
-            Intent install = new Intent(Intent.ACTION_VIEW);
-            install.setDataAndType(apkUri, APK_MIME);
-            install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            activity.startActivity(install);
-        } catch (Throwable e) {
-            Toast.makeText(
-                    activity,
-                    "De Android-installatie kon niet worden geopend.",
-                    Toast.LENGTH_LONG
-            ).show();
-        }
+    private static long currentVersion(Context context){
+        try{
+            android.content.pm.PackageInfo info=context.getPackageManager()
+                .getPackageInfo(context.getPackageName(),0);
+            return Build.VERSION.SDK_INT>=28?info.getLongVersionCode():info.versionCode;
+        }catch(Exception ignored){return 0;}
     }
 
-    private static class UpdateInfo {
-        final int versionCode;
-        final String name;
-        final String downloadUrl;
+    private static void showDialog(Activity activity,int version,boolean tv){
+        if(!dialogOpen.compareAndSet(false,true))return;
+        String name=tv?"Google TV":"Android";
+        AlertDialog dialog=new AlertDialog.Builder(activity)
+            .setTitle("The One Media Player-update")
+            .setMessage("Nieuwe "+name+"-versie v"+version+
+                " staat klaar in de privé-Dev Hub. Open de download en bevestig " +
+                "de installatie. Je bestaande instellingen blijven behouden.")
+            .setPositiveButton("Update openen",(d,w)->openPrivateDownload(activity,tv))
+            .setNegativeButton("Later",null)
+            .create();
+        dialog.setOnDismissListener(d->dialogOpen.set(false));
+        dialog.show();
+    }
 
-        UpdateInfo(int versionCode, String name, String downloadUrl) {
-            this.versionCode = versionCode;
-            this.name = name;
-            this.downloadUrl = downloadUrl;
-        }
+    private static void openPrivateDownload(Activity activity,boolean tv){
+        String target=PRIVATE_DOWNLOAD+(tv?"media-player-tv":"media-player");
+        Intent browser=new Intent(Intent.ACTION_VIEW,Uri.parse(target));
+        browser.addCategory(Intent.CATEGORY_BROWSABLE);
+        try{activity.startActivity(browser);}
+        catch(Exception e){Toast.makeText(activity,
+            "Dev Hub kon niet worden geopend.",Toast.LENGTH_LONG).show();}
     }
 }
