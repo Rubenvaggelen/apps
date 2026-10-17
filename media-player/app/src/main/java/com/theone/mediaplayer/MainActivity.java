@@ -370,6 +370,12 @@ try {
     }
 
     private void showShell(String section) {
+        // Share the Google TV home design on touch Android. Keep all existing
+        // catalog/player activities, permissions and Cast functions unchanged.
+        if ("Home".equals(section) && !isTvBuild()) {
+            showMatchingAndroidHome();
+            return;
+        }
         playerFullscreen = false;
         releasePlayer();
 
@@ -414,6 +420,91 @@ try {
         else if ("Test M3U".equals(section)) showDemoM3u();
         else if ("Instellingen".equals(section)) showSettings();
         else showLiveTv();
+    }
+
+    /**
+     * Android home mirrors TvMainActivity's vertical neon menu, rather than
+     * the older horizontal chip bar. Touch navigation replaces D-pad focus,
+     * with Cast and Settings retained as phone-only additional actions.
+     */
+    private void showMatchingAndroidHome() {
+        playerFullscreen = false;
+        releasePlayer();
+        content = new FrameLayout(this);
+        content.setBackgroundColor(PremiumUi.BG);
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setBackgroundColor(PremiumUi.BG);
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(20), dp(22), dp(20), dp(30));
+        scroll.addView(root,new ScrollView.LayoutParams(-1,-2));
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        android.widget.ImageView logo = new android.widget.ImageView(this);
+        logo.setImageResource(R.drawable.remote_final);
+        logo.setScaleType(android.widget.ImageView.ScaleType.CENTER_INSIDE);
+        header.addView(logo,new LinearLayout.LayoutParams(dp(68),dp(68)));
+
+        LinearLayout titles = new LinearLayout(this);
+        titles.setOrientation(LinearLayout.VERTICAL);
+        titles.setPadding(dp(14),0,0,0);
+        TextView brand=text("THE ONE",14,PremiumUi.BLUE,true);
+        TextView heading=text("MEDIA PLAYER",25,Color.WHITE,true);
+        titles.addView(brand);
+        titles.addView(heading);
+        header.addView(titles);
+        root.addView(header);
+
+        TextView instructions=text("Kies wat je wilt kijken.",16,MUTED,false);
+        instructions.setPadding(0,dp(18),0,dp(24));
+        root.addView(instructions);
+
+        addMatchingHomeButton(root,"Live TV",()->openXtreamCatalog("live"));
+        addMatchingHomeButton(root,"Films",()->openXtreamCatalog("movie"));
+        addMatchingHomeButton(root,"Series",()->openXtreamCatalog("series"));
+        addMatchingHomeButton(root,"XXX 🔒",()->startActivity(new Intent(this,AdultHubActivity.class)));
+        addMatchingHomeButton(root,"Over de bibliotheek",()->
+            Toast.makeText(this,"Live TV, films en series staan samen in jouw bibliotheek.",Toast.LENGTH_LONG).show());
+        addMatchingHomeButton(root,"Stream naar TV",this::showCastPanel);
+        addMatchingHomeButton(root,"Instellingen",this::showSettings);
+        content.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
+        setContentView(content);
+        scroll.post(this::exitImmersiveFullscreen);
+    }
+
+    private void addMatchingHomeButton(LinearLayout root,String name,Runnable action) {
+        Button item = new Button(this);
+        item.setText(name);
+        item.setTextColor(Color.WHITE);
+        item.setTextSize(20);
+        item.setTypeface(android.graphics.Typeface.DEFAULT,android.graphics.Typeface.BOLD);
+        item.setAllCaps(false);
+        item.setGravity(Gravity.CENTER);
+        item.setFocusable(true);
+        item.setMinHeight(dp(64));
+        item.setPadding(dp(24),dp(12),dp(24),dp(12));
+        item.setBackground(matchingHomeBackground(false));
+        item.setOnClickListener(v->action.run());
+        item.setOnFocusChangeListener((v,focused)->
+            item.setBackground(matchingHomeBackground(focused)));
+        LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,-2);
+        params.bottomMargin=dp(14);
+        root.addView(item,params);
+    }
+
+    private android.graphics.drawable.GradientDrawable matchingHomeBackground(boolean focused) {
+        android.graphics.drawable.GradientDrawable d=new android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+            focused
+                ? new int[]{Color.rgb(5,74,122),Color.rgb(13,151,214)}
+                : new int[]{Color.rgb(10,18,30),Color.rgb(14,42,62)});
+        d.setCornerRadius(dp(24));
+        d.setStroke(dp(focused?2:1),
+            focused?Color.rgb(104,226,255):Color.rgb(48,141,184));
+        return d;
     }
 
     private void showTvHome() {
