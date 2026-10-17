@@ -10,8 +10,8 @@ android {
         applicationId = "com.theone.mediaplayer.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1019
-        versionName = "1.0.19-neon-remote-logo"
+        versionCode = 1020
+        versionName = "1.0.20-family-theme"
     }
 
     buildTypes {
