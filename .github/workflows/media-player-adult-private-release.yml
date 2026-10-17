@@ -252,6 +252,8 @@ jobs:
           grep -Fq 'mgp_seekbar' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
           grep -Fq 'tapPhoneTimelineAt(active,x,y,target,direction,foundTrack)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
           grep -Fq 'MotionEvent.ACTION_HOVER_EXIT' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
+          grep -Fq 'active.dispatchGenericMotionEvent(leave)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
+          ! grep -Fq 'dispatchHoverEvent(leave)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
           grep -Fq 'scheduleProviderControlsHide' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
           ! grep -Fq 'MotionEvent.ACTION_HOVER_MOVE,tx,ty' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
           ! grep -Fq 'Video nog niet klaar om te spoelen' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
