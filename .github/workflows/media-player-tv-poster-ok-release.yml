@@ -1,4 +1,4 @@
-name: Media Player TV v1017 remote OK video poster release
+name: Media Player TV v1018 remote OK video poster release
 
 on:
   push:
@@ -234,10 +234,13 @@ jobs:
           ! grep -q 'Bron instellen: Stalker' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
           grep -q 'private_xtream_secondary.json' media-player/app/src/main/java/com/theone/mediaplayer/XtreamConfig.java
           grep -q '#1CCAFF' media-player/app/src/main/res/drawable/ic_launcher.xml
-          grep -q '@drawable/ic_launcher' media-player/tvapp/src/main/AndroidManifest.xml
-          grep -q '@drawable/ic_launcher' media-player/app/src/main/AndroidManifest.xml
+          cmp remoteapp/src/main/res/drawable-nodpi/the_one_logo.png media-player/app/src/main/res/drawable-nodpi/the_one_logo.png
+          grep -q '@drawable/the_one_logo' media-player/tvapp/src/main/AndroidManifest.xml
+          grep -q '@drawable/the_one_logo' media-player/app/src/main/AndroidManifest.xml
+          grep -q '@drawable/the_one_logo' media-player/tvapp/src/main/res/drawable/tv_banner.xml
+          grep -q 'setImageResource(R.drawable.the_one_logo)' media-player/app/src/main/java/com/theone/mediaplayer/PremiumUi.java
 
-      - name: Build and unit-test TV v1017 update
+      - name: Build and unit-test TV v1018 update
         run: gradle -p media-player :app:testDebugUnitTest :tvapp:assembleDebug --no-daemon
 
       - name: Explicitly sign Android TV with permanent TV update identity
@@ -264,7 +267,7 @@ jobs:
           TV_APK="media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$TV_APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$TV_APK" >/tmp/tv-package.txt
-          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1017'" /tmp/tv-package.txt
+          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1018'" /tmp/tv-package.txt
 
       - name: Verify TV is signed with permanent legacy-TV keystore
         shell: bash
@@ -281,15 +284,15 @@ jobs:
           }
           echo "Android TV build uses the established fixed TV signing key"
 
-      - name: Keep signed TV v1017 APK in private build artifacts
+      - name: Keep signed TV v1018 APK in private build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: The-One-Media-Player-TV-v1017-signed-private
+          name: The-One-Media-Player-TV-v1018-signed-private
           path: media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
           if-no-files-found: error
           retention-days: 7
 
-      - name: Publish Android TV v1017 to authenticated Dev Hub only
+      - name: Publish Android TV v1018 to authenticated Dev Hub only
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
