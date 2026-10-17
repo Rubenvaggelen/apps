@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2413
-        versionName = "2.4.13-family-theme"
+        versionCode = 2414
+        versionName = "2.4.14-family-tiles-auto-update"
     }
 
     signingConfigs {
