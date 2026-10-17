@@ -24,6 +24,8 @@ public class TvMainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // The TV launcher must check private Dev Hub updates too.
+        MediaPlayerUpdateChecker.checkForUpdate(this);
         MediaPlayerAuthorization.requireAccess(this, () -> {
             showTvHome();
             startReceiver();
