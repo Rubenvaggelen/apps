@@ -5,7 +5,7 @@ for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPH
   test -n "${!name}" || { echo "MISSING_SETTING=$name"; exit 1; }
 done
 test -s "$BUILD_APK_PATH"
-[[ "$BUILD_APK_NAME" =~ ^The-One-(Cinema|TV)-Google-TV-Sony-[0-9.]+\.apk$ ]] ||
+[[ "$BUILD_APK_NAME" =~ ^The-One-TV-Android-[0-9.]+\.apk$ ]] ||
   { echo "INVALID_CANDIDATE_NAME"; exit 2; }
 # Fail closed if the Dev Hub site is not protected by Basic authentication.
 code=$(curl -L -sS --connect-timeout 10 --max-time 25 -o /dev/null -w '%{http_code}' \
