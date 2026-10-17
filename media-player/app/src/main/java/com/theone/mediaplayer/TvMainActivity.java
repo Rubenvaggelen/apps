@@ -33,64 +33,67 @@ public class TvMainActivity extends Activity {
     }
 
     private void showTvHome() {
-        ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(BG);
+        // Dedicated The One tile grid, not the old full-width list.
+        LinearLayout screen=new LinearLayout(this);
+        screen.setOrientation(LinearLayout.VERTICAL);
+        screen.setBackgroundColor(BG);
 
-        LinearLayout root = new LinearLayout(this);
+        ScrollView scroll=new ScrollView(this);
+        scroll.setFillViewport(true);
+        LinearLayout root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(42), dp(30), dp(42), dp(34));
-        scroll.addView(root, new ScrollView.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
+        root.setPadding(dp(34),dp(25),dp(34),dp(15));
+        scroll.addView(root);
 
-        LinearLayout header = new LinearLayout(this);
+        LinearLayout header=new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-
-        ImageView logo = new ImageView(this);
-        logo.setImageResource(com.theone.mediaplayer.R.drawable.remote_final);
+        ImageView logo=new ImageView(this);
+        logo.setImageResource(R.drawable.remote_final);
         logo.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        header.addView(logo, new LinearLayout.LayoutParams(dp(76), dp(76)));
-
-        LinearLayout titles = new LinearLayout(this);
+        header.addView(logo,new LinearLayout.LayoutParams(dp(76),dp(76)));
+        LinearLayout titles=new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
-        titles.setPadding(dp(18), 0, 0, 0);
-
-        TextView brand = label("THE ONE", 16, BLUE, true);
-        TextView title = label("THE ONE MEDIA PLAYER", 27, Color.WHITE, true);
-        titles.addView(brand);
-        titles.addView(title);
+        titles.setPadding(dp(16),0,0,0);
+        titles.addView(label("THE ONE",14,BLUE,true));
+        titles.addView(label("MEDIA PLAYER",30,Color.WHITE,true));
         header.addView(titles);
         root.addView(header);
 
-        TextView ready = label(
-                "Android TV-versie • gebruik de pijltjestoetsen en OK op je afstandsbediening.",
-                17,
-                MUTED,
-                false
-        );
-        ready.setPadding(0, dp(18), 0, dp(24));
-        root.addView(ready);
+        TextView intro=label("Kies wat je wilt kijken",17,MUTED,false);
+        intro.setPadding(0,dp(18),0,dp(14));
+        root.addView(intro);
 
-        addButton(root, "Live TV", () -> openCatalog("live"));
-        addButton(root, "Films", () -> openCatalog("movie"));
-        addButton(root, "Series", () -> openCatalog("series"));
-        addButton(root, "XXX 🔒", () -> startActivity(new Intent(this, AdultHubActivity.class)));
-        addButton(root, "Over de bibliotheek", () ->
-                Toast.makeText(this, "Alle beschikbare zenders, films en series verschijnen automatisch in één bibliotheek.", Toast.LENGTH_LONG).show());
+        PremiumUi.addFamilyGridRow(this,root,
+            new String[]{"▣","▶","▤"},
+            new String[]{"Live TV","Films","Series"},
+            new Runnable[]{
+                ()->openCatalog("live"),
+                ()->openCatalog("movie"),
+                ()->openCatalog("series")
+            });
+        PremiumUi.addFamilyGridRow(this,root,
+            new String[]{"✦","▦","↻"},
+            new String[]{"XXX 🔒","Bibliotheek","Updates"},
+            new Runnable[]{
+                ()->startActivity(new Intent(this,AdultHubActivity.class)),
+                ()->Toast.makeText(this,
+                    "Alle zenders, films en series staan in de bibliotheek.",
+                    Toast.LENGTH_LONG).show(),
+                ()->MediaPlayerUpdateChecker.checkForUpdateManual(this)
+            });
 
-        TextView cast = label(
-                "Stream vanaf telefoon staat klaar wanneer telefoon en TV op hetzelfde wifi-netwerk zitten.",
-                15,
-                BLUE,
-                false
-        );
-        cast.setPadding(0, dp(24), 0, 0);
+        TextView cast=label("Streamen vanaf je telefoon is beschikbaar op hetzelfde wifi-netwerk.",
+            14,BLUE,false);
+        cast.setGravity(Gravity.CENTER);
+        cast.setPadding(0,dp(12),0,0);
         root.addView(cast);
-        root.addView(PremiumUi.familyFooter(this));
 
-        setContentView(scroll);
+        screen.addView(scroll,new LinearLayout.LayoutParams(-1,0,1f));
+        // Footer outside the ScrollView so it stays visible without scrolling.
+        screen.addView(PremiumUi.familyFooter(this),
+            new LinearLayout.LayoutParams(-1,-2));
+        setContentView(screen);
     }
 
     private void startReceiver() {
