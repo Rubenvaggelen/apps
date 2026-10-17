@@ -69,6 +69,10 @@ public final class AdultPornhubActivity extends Activity {
     private int previousSystemUiFlags=0;
     private View[] tvVideoChrome;
     private Button tvBackOverlay;
+    private TextView tvSeekOverlay;
+    private final Runnable hideTvSeek=()->{
+        if(tvSeekOverlay!=null)tvSeekOverlay.setVisibility(View.GONE);
+    };
     private final Handler tvOverlayHandler=new Handler(Looper.getMainLooper());
     private final Runnable hideTvBack=()->{
         if(tvFullscreen && tvBackOverlay!=null){
@@ -508,6 +512,16 @@ public final class AdultPornhubActivity extends Activity {
         p.setMargins(dp(20),dp(20),0,0);
         outer.addView(tvBackOverlay,p);
         tvBackOverlay.bringToFront();
+        // Brief seek feedback is independent of the Back button overlay.
+        tvSeekOverlay=label("",21,Color.WHITE);
+        tvSeekOverlay.setBackgroundColor(0xB8000000);
+        tvSeekOverlay.setGravity(Gravity.CENTER);
+        tvSeekOverlay.setPadding(dp(22),dp(8),dp(22),dp(8));
+        FrameLayout.LayoutParams seekLayout=new FrameLayout.LayoutParams(
+            -2,dp(56),Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);
+        seekLayout.bottomMargin=dp(36);
+        outer.addView(tvSeekOverlay,seekLayout);
+        tvSeekOverlay.setVisibility(View.GONE);
         player.requestFocus();
         showTvBackOverlay(false);
     }
@@ -521,8 +535,61 @@ public final class AdultPornhubActivity extends Activity {
         tvOverlayHandler.postDelayed(hideTvBack,4500);
     }
 
+    private void showTvSeekMessage(String message){
+        if(!tvFullscreen || tvSeekOverlay==null)return;
+        tvOverlayHandler.removeCallbacks(hideTvSeek);
+        tvSeekOverlay.setText(message);
+        tvSeekOverlay.setVisibility(View.VISIBLE);
+        tvSeekOverlay.bringToFront();
+        tvOverlayHandler.postDelayed(hideTvSeek,2000);
+    }
+
+    private void seekTvVideo(int seconds){
+        if(!tvFullscreen || !authorized() || player==null || embedLoadFailed)return;
+        final WebView active=player;
+        // Use HTMLVideoElement.currentTime only where provider's embed permits
+        // same-origin DOM access. Never bypass cross-origin isolation.
+        final String js="(function(){try{" +
+            "function find(doc,depth){if(!doc||depth>3)return null;" +
+            "var videos=doc.querySelectorAll('video');" +
+            "for(var i=0;i<videos.length;i++){if(videos[i].readyState>0)return videos[i];}" +
+            "var frames=doc.querySelectorAll('iframe');" +
+            "for(var j=0;j<frames.length;j++){try{" +
+            "var v=find(frames[j].contentDocument,depth+1);if(v)return v;" +
+            "}catch(ignore){}}" +
+            "return null;}" +
+            "var v=find(document,0);if(!v)return 'NOT_ACCESSIBLE';" +
+            "var current=v.currentTime;if(!isFinite(current))return 'NOT_READY';" +
+            "var duration=v.duration;var to=Math.max(0,current+("+seconds+"));" +
+            "if(isFinite(duration)&&duration>0)to=Math.min(to,Math.max(0,duration-0.1));" +
+            "v.currentTime=to;return Math.abs(v.currentTime-current)>0.1?'SEEKED':'UNCONFIRMED';" +
+            "}catch(e){return 'NOT_ACCESSIBLE';}})();";
+        active.evaluateJavascript(js,result->{
+            if(!tvFullscreen || player!=active || isFinishing() || isDestroyed())return;
+            if(result!=null && result.contains("SEEKED")){
+                showTvSeekMessage(seconds<0?"⏪ 10 sec terug":"⏩ 10 sec vooruit");
+            }else {
+                // On cross-origin embeds, native player keyboard shortcuts
+                // are the only non-invasive option. Their support is vendor
+                // dependent; never claim playback time changed without proof.
+                int code=seconds<0?KeyEvent.KEYCODE_J:KeyEvent.KEYCODE_L;
+                long now=SystemClock.uptimeMillis();
+                active.requestFocus();
+                active.dispatchKeyEvent(new KeyEvent(now,now,KeyEvent.ACTION_DOWN,code,0));
+                active.dispatchKeyEvent(new KeyEvent(now,now+30,KeyEvent.ACTION_UP,code,0));
+                showTvSeekMessage(seconds<0?"⏪ Terugspoelen gevraagd":"⏩ Vooruitspoelen gevraagd");
+            }
+        });
+    }
+
     private void leaveTvFullscreen() {
         tvOverlayHandler.removeCallbacks(hideTvBack);
+        tvOverlayHandler.removeCallbacks(hideTvSeek);
+        if(tvSeekOverlay!=null){
+            if(tvSeekOverlay.getParent() instanceof ViewGroup)
+                ((ViewGroup)tvSeekOverlay.getParent()).removeView(tvSeekOverlay);
+            tvSeekOverlay=null;
+        }
         if(tvBackOverlay!=null){
             if(tvBackOverlay.getParent() instanceof ViewGroup)
                 ((ViewGroup)tvBackOverlay.getParent()).removeView(tvBackOverlay);
@@ -542,6 +609,17 @@ public final class AdultPornhubActivity extends Activity {
         if(tvFullscreen && event.getKeyCode()==KeyEvent.KEYCODE_BACK) {
             if(event.getAction()==KeyEvent.ACTION_UP && !event.isCanceled())showSearch();
             return true; // Remote Back must work even after the overlay auto-hides.
+        }
+        if(tvFullscreen && (event.getKeyCode()==KeyEvent.KEYCODE_DPAD_LEFT ||
+           event.getKeyCode()==KeyEvent.KEYCODE_DPAD_RIGHT ||
+           event.getKeyCode()==KeyEvent.KEYCODE_MEDIA_REWIND ||
+           event.getKeyCode()==KeyEvent.KEYCODE_MEDIA_FAST_FORWARD)) {
+            if(event.getAction()==KeyEvent.ACTION_DOWN && event.getRepeatCount()==0) {
+                boolean backwards=event.getKeyCode()==KeyEvent.KEYCODE_DPAD_LEFT ||
+                    event.getKeyCode()==KeyEvent.KEYCODE_MEDIA_REWIND;
+                seekTvVideo(backwards?-10:10);
+            }
+            return true;
         }
         if(tvFullscreen && tvBackOverlay!=null &&
            event.getAction()==KeyEvent.ACTION_DOWN) {
@@ -601,6 +679,7 @@ public final class AdultPornhubActivity extends Activity {
     }
     @Override protected void onDestroy(){
         tvOverlayHandler.removeCallbacks(hideTvBack);
+        tvOverlayHandler.removeCallbacks(hideTvSeek);
         destroyPlayer();
         super.onDestroy();
     }
