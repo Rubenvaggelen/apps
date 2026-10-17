@@ -85,6 +85,30 @@ public final class AndroidPornhubActivity extends Activity {
     private final Runnable hidePhoneButtons=()->{
         if(tvFullscreen && phoneSeekButtons!=null)phoneSeekButtons.setVisibility(View.GONE);
     };
+    // The official embed owns its own title, timeline and controls. Native
+    // ACTION_HOVER_MOVE, used by the previous seek implementation, left the
+    // embedded player thinking a mouse was hovering over its controls.
+    // Send mouse-leave only after a quiet period, never an extra video tap
+    // (which would pause or resume playback).
+    private final Runnable dismissProviderControls=()->{
+        if(!tvFullscreen || player==null || isFinishing() || isDestroyed())return;
+        WebView active=player;
+        long now=SystemClock.uptimeMillis();
+        MotionEvent leave=MotionEvent.obtain(now,now,
+            MotionEvent.ACTION_HOVER_EXIT,Math.max(1,active.getWidth()/2f),
+            Math.max(1,active.getHeight()/2f),0);
+        leave.setSource(InputDevice.SOURCE_MOUSE);
+        try{
+            active.dispatchHoverEvent(leave);
+        }catch(RuntimeException exception){
+            Log.w("TheOneAdult","Provider controls mouse-leave not accepted");
+        }finally{leave.recycle();}
+    };
+    private void scheduleProviderControlsHide(){
+        tvOverlayHandler.removeCallbacks(dismissProviderControls);
+        if(tvFullscreen && player!=null)
+            tvOverlayHandler.postDelayed(dismissProviderControls,3200);
+    }
     // Provider duration is validated before it enters the catalog. The
     // playback clock is a fallback estimate ONLY when the iframe keeps its
     // real HTMLVideoElement inaccessible across the browser origin boundary.
@@ -459,6 +483,7 @@ public final class AndroidPornhubActivity extends Activity {
                 }else{
                     showTvBackOverlay(false);
                     showPhoneButtons();
+                    scheduleProviderControlsHide();
                 }
             }
             return false;
@@ -640,6 +665,7 @@ public final class AndroidPornhubActivity extends Activity {
         player.requestFocus();
         showTvBackOverlay(false);
         showPhoneButtons();
+        scheduleProviderControlsHide();
     }
 
     private void showPhoneButtons(){
@@ -648,6 +674,7 @@ public final class AndroidPornhubActivity extends Activity {
         phoneSeekButtons.setVisibility(View.VISIBLE);
         phoneSeekButtons.bringToFront();
         tvOverlayHandler.postDelayed(hidePhoneButtons,4500);
+        scheduleProviderControlsHide();
     }
 
     private void showTvBackOverlay(boolean focus) {
@@ -816,12 +843,9 @@ public final class AndroidPornhubActivity extends Activity {
                                     int direction,boolean locatedTrack) {
         final float tx=Math.max(dp(8),Math.min(active.getWidth()-dp(8),x));
         final float ty=Math.max(dp(8),Math.min(active.getHeight()-dp(8),y));
-        final long at=SystemClock.uptimeMillis();
-        MotionEvent hover=MotionEvent.obtain(at,at,MotionEvent.ACTION_HOVER_MOVE,tx,ty,0);
-        hover.setSource(InputDevice.SOURCE_MOUSE);
-        try{active.dispatchGenericMotionEvent(hover);}
-        catch(RuntimeException ignored){}
-        finally{hover.recycle();}
+        // Android is a touchscreen: no synthetic mouse hover is required.
+        // Touch directly, then let the provider auto-hide its chrome.
+        tvOverlayHandler.removeCallbacks(dismissProviderControls);
         active.postDelayed(()->{
             if(!tvFullscreen || player!=active || isFinishing() || isDestroyed())return;
             long now=SystemClock.uptimeMillis();
@@ -846,10 +870,12 @@ public final class AndroidPornhubActivity extends Activity {
             }else{
                 showTvSeekMessage("De speler reageert niet op spoelen");
             }
+            scheduleProviderControlsHide();
         },125);
     }
 
     private void leaveTvFullscreen() {
+        tvOverlayHandler.removeCallbacks(dismissProviderControls);
         // Restore the live WebView to its original row before navigating away;
         // the actual provider instance is not reloaded or replaced.
         if(phoneFullscreenSurface!=null) {
@@ -992,6 +1018,7 @@ public final class AndroidPornhubActivity extends Activity {
         tvOverlayHandler.removeCallbacks(hideTvBack);
         tvOverlayHandler.removeCallbacks(hideTvSeek);
         tvOverlayHandler.removeCallbacks(hidePhoneButtons);
+        tvOverlayHandler.removeCallbacks(dismissProviderControls);
         destroyPlayer();
         super.onDestroy();
     }
