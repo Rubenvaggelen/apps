@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2416
-        versionName = "2.4.16-android-landscape-hide-cast"
+        versionCode = 2417
+        versionName = "2.4.17-true-fullscreen"
     }
 
     signingConfigs {
