@@ -7,7 +7,7 @@
     <application
         android:allowBackup="true"
         android:usesCleartextTraffic="true"
-        android:icon="@drawable/the_one_logo"
+        android:icon="@drawable/remote_final"
         android:banner="@drawable/tv_banner"
         android:label="The One Media Player TV"
         android:supportsRtl="true"
