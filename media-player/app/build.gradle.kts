@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2417
-        versionName = "2.4.17-true-fullscreen"
+        versionCode = 2418
+        versionName = "2.4.18-android-real-seek"
     }
 
     signingConfigs {
