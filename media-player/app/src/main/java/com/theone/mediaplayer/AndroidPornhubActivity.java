@@ -99,7 +99,7 @@ public final class AndroidPornhubActivity extends Activity {
             Math.max(1,active.getHeight()/2f),0);
         leave.setSource(InputDevice.SOURCE_MOUSE);
         try{
-            active.dispatchHoverEvent(leave);
+            active.dispatchGenericMotionEvent(leave);
         }catch(RuntimeException exception){
             Log.w("TheOneAdult","Provider controls mouse-leave not accepted");
         }finally{leave.recycle();}
