@@ -47,6 +47,7 @@ public final class AdultHubActivity extends Activity {
         Button lock=PremiumUi.chipButton(this,"Vergrendelen en terug");
         lock.setOnClickListener(v->{MediaPlayerAdultGate.lock();finish();});
         root.addView(lock);
+        root.addView(PremiumUi.familyFooter(this));
         setContentView(scroll);
     }
     private void add(LinearLayout root,String label,String mode) {
