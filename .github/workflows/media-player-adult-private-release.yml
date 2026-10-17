@@ -1,4 +1,4 @@
-name: Media Player Adult 5m search and player stability release
+name: Media Player Android v2411 and TV v1018 Remote logo release
 
 on:
   push:
@@ -223,8 +223,11 @@ jobs:
           ! grep -q 'Bron instellen: Stalker' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
           grep -q 'private_xtream_secondary.json' media-player/app/src/main/java/com/theone/mediaplayer/XtreamConfig.java
           grep -q '#1CCAFF' media-player/app/src/main/res/drawable/ic_launcher.xml
-          grep -q '@drawable/ic_launcher' media-player/tvapp/src/main/AndroidManifest.xml
-          grep -q '@drawable/ic_launcher' media-player/app/src/main/AndroidManifest.xml
+          cmp remoteapp/src/main/res/drawable-nodpi/the_one_logo.png media-player/app/src/main/res/drawable-nodpi/the_one_logo.png
+          grep -q '@drawable/the_one_logo' media-player/tvapp/src/main/AndroidManifest.xml
+          grep -q '@drawable/the_one_logo' media-player/app/src/main/AndroidManifest.xml
+          grep -q '@drawable/the_one_logo' media-player/tvapp/src/main/res/drawable/tv_banner.xml
+          grep -q 'setImageResource(R.drawable.the_one_logo)' media-player/app/src/main/java/com/theone/mediaplayer/PremiumUi.java
 
       - name: Build and test Android and Android TV updates
         run: gradle -p media-player :app:testDebugUnitTest :app:assembleRelease :tvapp:assembleDebug --no-daemon
@@ -252,7 +255,7 @@ jobs:
           APK="media-player/app/build/outputs/apk/release/app-release.apk"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" > /tmp/package.txt
-          grep -q "name='com.theone.mediaplayer'.*versionCode='2410'" /tmp/package.txt
+          grep -q "name='com.theone.mediaplayer'.*versionCode='2411'" /tmp/package.txt
           python3 - <<'PY'
           import zipfile,json
           with zipfile.ZipFile("media-player/app/build/outputs/apk/release/app-release.apk") as z:
@@ -270,28 +273,28 @@ jobs:
           TV_APK="media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$TV_APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$TV_APK" >/tmp/tv-package.txt
-          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1011'" /tmp/tv-package.txt
+          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1018'" /tmp/tv-package.txt
 
       - name: Encrypt personal APK artifact
         run: |
           set -euo pipefail
           umask 077
           mkdir -p personal-out
-          cp media-player/app/build/outputs/apk/release/app-release.apk /tmp/The-One-Media-Player-v2410.apk
-          (cd /tmp && sha256sum The-One-Media-Player-v2410.apk) > personal-out/SHA256SUMS.txt
+          cp media-player/app/build/outputs/apk/release/app-release.apk /tmp/The-One-Media-Player-v2411.apk
+          (cd /tmp && sha256sum The-One-Media-Player-v2411.apk) > personal-out/SHA256SUMS.txt
           openssl rand -hex 32 > /tmp/artifact-password
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in /tmp/The-One-Media-Player-v2410.apk -out personal-out/The-One-Media-Player-v2410.apk.enc -pass file:/tmp/artifact-password
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in /tmp/The-One-Media-Player-v2411.apk -out personal-out/The-One-Media-Player-v2411.apk.enc -pass file:/tmp/artifact-password
           (cd media-player/tvapp/build/outputs/apk/debug && sha256sum tvapp-debug.apk) >> personal-out/SHA256SUMS.txt
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk -out personal-out/The-One-Media-Player-TV-v1011.apk.enc -pass file:/tmp/artifact-password
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk -out personal-out/The-One-Media-Player-TV-v1018.apk.enc -pass file:/tmp/artifact-password
           openssl pkeyutl -encrypt -pubin -inkey .github/media-player-owner-artifact-public.pem -in /tmp/artifact-password -out personal-out/key.enc -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
-          rm -f /tmp/artifact-password /tmp/The-One-Media-Player-v2410.apk
+          rm -f /tmp/artifact-password /tmp/The-One-Media-Player-v2411.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: the-one-media-player-v2410-and-tv-v1011-personal
+          name: the-one-media-player-v2411-and-tv-v1018-personal
           path: personal-out/
 
-      - name: Publish Android v2410 to authenticated Dev Hub only
+      - name: Publish Android v2411 to authenticated Dev Hub only
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -317,7 +320,7 @@ jobs:
           }
           echo "Android TV build uses the established fixed TV signing key"
 
-      - name: Publish Android TV v1011 to authenticated Dev Hub only
+      - name: Publish Android TV v1018 to authenticated Dev Hub only
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
