@@ -76,6 +76,12 @@ public final class AndroidPornhubActivity extends Activity {
     private Button tvBackOverlay;
     private TextView tvSeekOverlay;
     private LinearLayout phoneSeekButtons;
+    // Android fullscreen must expand the SAME WebView to the entire Activity.
+    // Rotating the device without moving its original weighted row is not enough.
+    private FrameLayout phoneFullscreenSurface;
+    private ViewGroup phonePlayerParent;
+    private ViewGroup.LayoutParams phonePlayerParams;
+    private int phonePlayerIndex=-1;
     private final Runnable hidePhoneButtons=()->{
         if(tvFullscreen && phoneSeekButtons!=null)phoneSeekButtons.setVisibility(View.GONE);
     };
@@ -305,6 +311,11 @@ public final class AndroidPornhubActivity extends Activity {
         } else {
             remotePlay=null;
         }
+        // Explicit fallback for providers whose player captures the tap itself:
+        // fullscreen must not depend on the simulated Play gesture being consumed.
+        final Button fullScreenButton=button("⛶ Volledig scherm",this::enterPhoneFullscreen);
+        fullScreenButton.setAllCaps(false);
+        column.addView(fullScreenButton,new LinearLayout.LayoutParams(-1,dp(54)));
         try {
             player=new WebView(this);
         } catch (Throwable webViewUnavailable) {
@@ -423,8 +434,26 @@ public final class AndroidPornhubActivity extends Activity {
             otherMode.setAllCaps(false);
             column.addView(otherMode,new LinearLayout.LayoutParams(-1,dp(52)));
         }
-        if(tv) tvVideoChrome=new View[]{backToResults,videoTitle,playerStatus,remotePlay,otherMode};
+        if(tv) tvVideoChrome=new View[]{backToResults,videoTitle,playerStatus,remotePlay,fullScreenButton,otherMode};
         column.addView(player,new LinearLayout.LayoutParams(-1,0,1f));
+        // A physical tap on the provider's play poster is also a playback
+        // gesture; auto-expand without intercepting touch or reloading video.
+        player.setOnTouchListener((view,event)->{
+            if(event.getAction()==MotionEvent.ACTION_UP){
+                if(!tvFullscreen) {
+                    final WebView current=player;
+                    view.postDelayed(()->{
+                        if(current==player && showingPlayer && !tvFullscreen &&
+                           !isFinishing() && !isDestroyed() && !embedLoadFailed)
+                            enterPhoneFullscreen();
+                    },850);
+                }else{
+                    showTvBackOverlay(false);
+                    showPhoneButtons();
+                }
+            }
+            return false;
+        });
         if(remotePlay!=null)remotePlay.requestFocus();
         else player.requestFocus();
         embedLoadFailed=false;
@@ -511,6 +540,11 @@ public final class AndroidPornhubActivity extends Activity {
         }
     }
 
+    private void enterPhoneFullscreen() {
+        if(!showingPlayer || player==null || !authorized())return;
+        enterTvFullscreen();
+    }
+
     private void enterTvFullscreen() {
         if(tvFullscreen || !showingPlayer || player==null ||
            !authorized())return;
@@ -526,8 +560,24 @@ public final class AndroidPornhubActivity extends Activity {
         if(tvVideoChrome!=null)for(View chrome:tvVideoChrome) {
             if(chrome!=null)chrome.setVisibility(View.GONE);
         }
-        // Keep the WebView in its original parent and do not call loadUrl:
-        // a re-created iframe would interrupt the video that already plays.
+        // The weighted WebView inside its vertical column never filled the
+        // landscape Activity. Move the live instance into a full-screen
+        // FrameLayout; DO NOT reload its URL or destroy/recreate its session.
+        if(player.getParent() instanceof ViewGroup) {
+            phonePlayerParent=(ViewGroup)player.getParent();
+            phonePlayerIndex=phonePlayerParent.indexOfChild(player);
+            phonePlayerParams=player.getLayoutParams();
+            phonePlayerParent.removeView(player);
+            phoneFullscreenSurface=new FrameLayout(this);
+            phoneFullscreenSurface.setBackgroundColor(Color.BLACK);
+            outer.addView(phoneFullscreenSurface,new FrameLayout.LayoutParams(-1,-1));
+            phoneFullscreenSurface.addView(player,new FrameLayout.LayoutParams(-1,-1));
+            player.setBackgroundColor(Color.BLACK);
+            player.requestLayout();
+        }
+        // Chrome may present a native HTML5 custom video view; keep it above
+        // our WebView surface while leaving the app-owned controls on top.
+        if(fullscreenView!=null)fullscreenView.bringToFront();
         int flags=View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
             View.SYSTEM_UI_FLAG_FULLSCREEN |
             View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
@@ -576,13 +626,8 @@ public final class AndroidPornhubActivity extends Activity {
             -1,dp(58),Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);
         phoneSeekLayout.bottomMargin=dp(25);
         outer.addView(phoneSeekButtons,phoneSeekLayout);
-        player.setOnTouchListener((v,event)->{
-            if(event.getAction()==MotionEvent.ACTION_UP && tvFullscreen){
-                showTvBackOverlay(false);
-                showPhoneButtons();
-            }
-            return false; // All gestures still reach the embedded provider.
-        });
+        // Touch listener is installed before playback and remains attached to
+        // the same WebView after it is expanded to the screen.
         player.requestFocus();
         showTvBackOverlay(false);
         showPhoneButtons();
@@ -739,6 +784,23 @@ public final class AndroidPornhubActivity extends Activity {
     }
 
     private void leaveTvFullscreen() {
+        // Restore the live WebView to its original row before navigating away;
+        // the actual provider instance is not reloaded or replaced.
+        if(phoneFullscreenSurface!=null) {
+            if(player!=null && player.getParent()==phoneFullscreenSurface) {
+                phoneFullscreenSurface.removeView(player);
+                if(phonePlayerParent!=null) {
+                    int index=Math.max(0,Math.min(phonePlayerIndex,phonePlayerParent.getChildCount()));
+                    phonePlayerParent.addView(player,index,phonePlayerParams);
+                }
+            }
+            if(phoneFullscreenSurface.getParent() instanceof ViewGroup)
+                ((ViewGroup)phoneFullscreenSurface.getParent()).removeView(phoneFullscreenSurface);
+            phoneFullscreenSurface=null;
+        }
+        phonePlayerParent=null;
+        phonePlayerParams=null;
+        phonePlayerIndex=-1;
         tvOverlayHandler.removeCallbacks(hidePhoneButtons);
         if(phoneSeekButtons!=null){
             if(phoneSeekButtons.getParent() instanceof ViewGroup)
