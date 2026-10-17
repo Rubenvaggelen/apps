@@ -440,6 +440,15 @@ public final class AndroidPornhubActivity extends Activity {
         // gesture; auto-expand without intercepting touch or reloading video.
         player.setOnTouchListener((view,event)->{
             if(event.getAction()==MotionEvent.ACTION_UP){
+                // On phones people often start the embedded clip by tapping the
+                // video poster directly, rather than our external Play button.
+                // Previous versions never registered that user gesture, so
+                // seekTvVideo() incorrectly refused both seek buttons.
+                if(!tvPlaybackRequested){
+                    tvPlaybackRequested=true;
+                    tvEstimatedPositionSeconds=0;
+                    tvEstimatedPositionAtMs=SystemClock.elapsedRealtime();
+                }
                 if(!tvFullscreen) {
                     final WebView current=player;
                     view.postDelayed(()->{
@@ -693,9 +702,16 @@ public final class AndroidPornhubActivity extends Activity {
      */
     private void seekTvVideo(int seconds){
         if(!tvFullscreen || !authorized() || player==null || embedLoadFailed)return;
-        if(tvClipDurationSeconds<300 || !tvPlaybackRequested) {
-            showTvSeekMessage("Video nog niet klaar om te spoelen");
+        if(tvClipDurationSeconds<300) {
+            showTvSeekMessage("Videoduur nog niet beschikbaar");
             return;
+        }
+        // Do not reject seeking simply because the clip was started from its
+        // own cross-origin play button. First try the REAL HTML5 media clock;
+        // if inaccessible, send a pointer gesture to the provider's seek bar.
+        if(!tvPlaybackRequested){
+            tvPlaybackRequested=true;
+            tvEstimatedPositionAtMs=SystemClock.elapsedRealtime();
         }
         final WebView active=player;
         final String js="(function(){try{" +
@@ -739,48 +755,98 @@ public final class AndroidPornhubActivity extends Activity {
         });
     }
 
+
     private void tapProviderTimeline(WebView active,double target,int direction){
         if(active.getWidth()<dp(200) || active.getHeight()<dp(120)){
             showTvSeekMessage("Tijdlijn nog niet beschikbaar");
             return;
         }
-        // Pornhub's embed exposes a horizontal progress bar just above the
-        // bottom control row. Its interior starts after the play/volume area.
-        // The WebView stays in-place and the seek is performed on the actual
-        // official provider control, not an app-owned dummy progress bar.
-        final float width=active.getWidth(),height=active.getHeight();
-        final float left=width*0.17f,right=width*0.96f;
+        // On touch phones the actual player controls are in a responsive
+        // layout. The old TV-only hardcoded bottom -38dp offset missed the
+        // slider. Probe the REAL progress element first, and map its DOM
+        // coordinates to native WebView view pixels.
         final float ratio=(float)Math.max(0,Math.min(1,target/tvClipDurationSeconds));
-        final float x=left+ratio*(right-left);
-        final float y=Math.max(dp(15),height-dp(38));
+        final String probe="(function(){try{" +
+            "var sels=['.mgp_seekbar','.mgp_progressWrapper','.mgp_progressBar'," +
+            "'.jw-slider-time .jw-slider-container','.jw-slider-time'," +
+            "'.vjs-progress-holder','.plyr__progress input[type=range]'," +
+            "'[role=slider][aria-label*=seek i]'];" +
+            "function find(doc,dx,dy,depth){if(!doc||depth>4)return null;" +
+            "for(var k=0;k<sels.length;k++){var el=doc.querySelector(sels[k]);" +
+            "if(el){var r=el.getBoundingClientRect();" +
+            "if(r.width>50&&r.height>0)return [dx+r.left,dy+r.top+r.height/2,r.width];}}" +
+            "var frames=doc.querySelectorAll('iframe');" +
+            "for(var i=0;i<frames.length;i++){try{var fr=frames[i].getBoundingClientRect();" +
+            "var result=find(frames[i].contentDocument,dx+fr.left,dy+fr.top,depth+1);" +
+            "if(result)return result;}catch(ignored){}}return null;}" +
+            "var track=find(document,0,0,0);if(!track)return 'PROTECTED_FRAME';" +
+            "var vw=window.innerWidth||document.documentElement.clientWidth;" +
+            "var vh=window.innerHeight||document.documentElement.clientHeight;" +
+            "var x=(track[0]+track[2]*"+ratio+")/vw;" +
+            "var y=track[1]/vh;" +
+            "return 'TRACK:'+x+':'+y;" +
+            "}catch(e){return 'NO_TRACK';}})();";
+        active.evaluateJavascript(probe,result->{
+            if(!tvFullscreen || player!=active || isFinishing() || isDestroyed())return;
+            float x=active.getWidth()*(0.12f+ratio*0.76f);
+            float y=active.getHeight()-dp(24); // responsive mobile fallback
+            boolean foundTrack=false;
+            if(result!=null && result.contains("TRACK:")){
+                try{
+                    String payload=result.replace(""","").trim();
+                    int index=payload.indexOf("TRACK:");
+                    String[] parts=payload.substring(index+6).split(":");
+                    float fracX=Float.parseFloat(parts[0]);
+                    float fracY=Float.parseFloat(parts[1]);
+                    if(Float.isFinite(fracX)&&Float.isFinite(fracY)&&
+                        fracX>=0&&fracX<=1&&fracY>=0&&fracY<=1){
+                        x=fracX*active.getWidth();
+                        y=fracY*active.getHeight();
+                        foundTrack=true;
+                    }
+                }catch(RuntimeException ignored){}
+            }
+            // Hover reveals hidden controls on desktop-style embeds, whereas
+            // on mobile the actual native tap reaches the responsive slider.
+            tapPhoneTimelineAt(active,x,y,target,direction,foundTrack);
+        });
+    }
+
+    private void tapPhoneTimelineAt(WebView active,float x,float y,double target,
+                                    int direction,boolean locatedTrack) {
+        final float tx=Math.max(dp(8),Math.min(active.getWidth()-dp(8),x));
+        final float ty=Math.max(dp(8),Math.min(active.getHeight()-dp(8),y));
         final long at=SystemClock.uptimeMillis();
-        MotionEvent hover=MotionEvent.obtain(at,at,MotionEvent.ACTION_HOVER_MOVE,x,y,0);
+        MotionEvent hover=MotionEvent.obtain(at,at,MotionEvent.ACTION_HOVER_MOVE,tx,ty,0);
         hover.setSource(InputDevice.SOURCE_MOUSE);
         try{active.dispatchGenericMotionEvent(hover);}
-        catch(RuntimeException ignored) {}
+        catch(RuntimeException ignored){}
         finally{hover.recycle();}
         active.postDelayed(()->{
             if(!tvFullscreen || player!=active || isFinishing() || isDestroyed())return;
             long now=SystemClock.uptimeMillis();
-            MotionEvent down=MotionEvent.obtain(now,now,MotionEvent.ACTION_DOWN,x,y,0);
-            MotionEvent up=MotionEvent.obtain(now,now+65,MotionEvent.ACTION_UP,x,y,0);
+            MotionEvent down=MotionEvent.obtain(now,now,MotionEvent.ACTION_DOWN,tx,ty,0);
+            MotionEvent up=MotionEvent.obtain(now,now+85,MotionEvent.ACTION_UP,tx,ty,0);
             down.setSource(InputDevice.SOURCE_TOUCHSCREEN);
             up.setSource(InputDevice.SOURCE_TOUCHSCREEN);
             boolean received=false;
             try{
                 received=active.dispatchTouchEvent(down);
                 received=active.dispatchTouchEvent(up)||received;
-            }catch(RuntimeException ex){
-                Log.w("TheOneAdult","TV progress-bar pointer event failed");
+            }catch(RuntimeException e){
+                Log.w("TheOneAdult","Android responsive timeline touch failed");
             }finally{down.recycle();up.recycle();}
             if(received){
+                // A consumed pointer event is NOT proof that media moved.
+                // Never report an unverified seek as a successful time jump.
                 setEstimatedTvPosition(target);
-                showTvSeekMessage((direction<0?"⏪ ":"⏩ ")+
-                    "Tijdlijn ≈ "+formatTvTime(target));
+                showTvSeekMessage(locatedTrack?
+                    (direction<0?"⏪ ":"⏩ ")+"Tijdlijn bediend":
+                    "Spoelen aangevraagd — controleer de positie");
             }else{
-                showTvSeekMessage("Spoelen niet ondersteund door deze speler");
+                showTvSeekMessage("De speler reageert niet op spoelen");
             }
-        },130);
+        },125);
     }
 
     private void leaveTvFullscreen() {
