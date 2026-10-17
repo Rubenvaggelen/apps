@@ -61,5 +61,26 @@ jobs:
             if d.is_dir():
               print('UPDATE_DIRECTORY='+str(d))
               print('UPDATE_DIRECTORY_FILENAMES='+','.join(sorted(p.name for p in d.iterdir() if p.is_file())[:30]))
+          service=root/'public_html/the-one-remote-api/family-updates.php'
+          if service.is_file():
+            lines=service.read_text(errors='replace').splitlines()
+            print('FAMILY_SERVICE_KEY_LINES_BEGIN')
+            for index,line in enumerate(lines,1):
+              if re.search(r'manifest|version_code|version_name|sha256|tv_android|tv_google_tv|case .*check|case .*download|idTo|package.*=>|packages|apk.*path',line,re.I):
+                # Replace any long or sensitive literal values with a constant
+                safe=re.sub(r"(['\\\"])(.{45,}?)\\1",r"\\1[REDACTED]\\1",line)
+                print(str(index)+':'+safe[:230])
+            print('FAMILY_SERVICE_KEY_LINES_END')
+            for p in [root/'public_html/the-one-remote-api/manifest.json',root/'private/family-updates/manifest.json',root/'the-one-remote-api/manifest.json']:
+              if p.is_file():
+                obj=json.loads(p.read_text())
+                print('UPDATER_MANIFEST_PATH='+str(p))
+                print('UPDATER_MANIFEST_TYPE='+type(obj).__name__)
+                if isinstance(obj,dict):
+                  print('UPDATER_MANIFEST_FIELDS='+','.join(sorted(obj.keys())[:50]))
+                  for key,val in obj.items():
+                    if re.search('tv|android|google',key,re.I) and isinstance(val,dict):
+                      print('UPDATER_TV_ENTRY='+json.dumps({'key':key,**{f:val.get(f) for f in ('package','version_code','version_name','sha256','apk')}}))
+            print('FAMILY_SERVICE_FILES='+','.join(sorted(p.name for p in service.parent.glob('*manifest*.json'))))
           PY
           REMOTE
