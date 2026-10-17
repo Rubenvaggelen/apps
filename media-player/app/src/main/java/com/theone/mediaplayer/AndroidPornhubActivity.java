@@ -6,6 +6,7 @@ import android.view.inputmethod.InputMethodManager;
 import android.view.inputmethod.EditorInfo;
 import android.text.InputType;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
@@ -84,6 +85,43 @@ public final class AndroidPornhubActivity extends Activity {
     // Android fullscreen must expand the SAME WebView to the entire Activity.
     // Rotating the device without moving its original weighted row is not enough.
     private FrameLayout phoneFullscreenSurface;
+    // Unlike CSS inside a cross-origin provider, these are native Android
+    // surface-edge masks. They are optional and only active when idle.
+    // Cinematic mode masks a small part of the picture near its edges.
+    private boolean phoneCinemaModeEnabled=true;
+    private View phoneCinemaTop;
+    private View phoneCinemaBottom;
+    private final Runnable phoneCinemaIdle=()->setPhoneCinemaIdle(true);
+    private void schedulePhoneCinemaIdle(){
+        tvOverlayHandler.removeCallbacks(phoneCinemaIdle);
+        if(tvFullscreen && phoneCinemaModeEnabled && phoneFullscreenSurface!=null)
+            tvOverlayHandler.postDelayed(phoneCinemaIdle,4000);
+    }
+    private void setPhoneCinemaIdle(boolean idle){
+        if(phoneCinemaTop==null || phoneCinemaBottom==null)return;
+        boolean obscure=idle && phoneCinemaModeEnabled && tvFullscreen;
+        phoneCinemaTop.setVisibility(obscure?View.VISIBLE:View.GONE);
+        phoneCinemaBottom.setVisibility(obscure?View.VISIBLE:View.GONE);
+    }
+    private View createPhoneCinemaMask(boolean top){
+        View mask=new View(this);
+        final int opaque=Color.BLACK;
+        GradientDrawable gradient=new GradientDrawable(
+            top?GradientDrawable.Orientation.TOP_BOTTOM:
+                GradientDrawable.Orientation.BOTTOM_TOP,
+            new int[]{opaque,opaque,0xF5000000,0x00000000});
+        mask.setBackground(gradient);
+        mask.setClickable(true);
+        mask.setOnClickListener(v->{
+            // One tap reveals the provider controls; it does not
+            // accidentally toggle play/pause through the covered player.
+            setPhoneCinemaIdle(false);
+            showTvBackOverlay(false);
+            showPhoneButtons();
+            schedulePhoneCinemaIdle();
+        });
+        return mask;
+    }
     private ViewGroup phonePlayerParent;
     private ViewGroup.LayoutParams phonePlayerParams;
     private int phonePlayerIndex=-1;
@@ -499,6 +537,10 @@ public final class AndroidPornhubActivity extends Activity {
                             enterPhoneFullscreen();
                     },850);
                 }else{
+                    // A touch reveals the provider controls and our transport
+                    // buttons; the native edge masks return after inactivity.
+                    setPhoneCinemaIdle(false);
+                    schedulePhoneCinemaIdle();
                     if(phoneCleanDirect){
                         setPhoneCleanControlsIdle(false);
                         schedulePhoneCleanIdle();
@@ -678,6 +720,27 @@ public final class AndroidPornhubActivity extends Activity {
             phoneFullscreenSurface.addView(player,new FrameLayout.LayoutParams(-1,-1));
             player.setBackgroundColor(Color.BLACK);
             player.requestLayout();
+            // Positioned in pixels using the measured landscape screen size.
+            // Black opaque near the outer edges, softly fading toward picture.
+            // The controls are never deleted; tapping a mask reveals them.
+            phoneCinemaTop=createPhoneCinemaMask(true);
+            phoneCinemaBottom=createPhoneCinemaMask(false);
+            phoneFullscreenSurface.post(()->{
+                if(!tvFullscreen || phoneFullscreenSurface==null ||
+                   phoneCinemaTop==null || phoneCinemaBottom==null)return;
+                int h=phoneFullscreenSurface.getHeight();
+                if(h<=0)return;
+                int topHeight=Math.max(dp(50),(int)(h*0.11f));
+                int bottomHeight=Math.max(dp(60),(int)(h*0.135f));
+                FrameLayout.LayoutParams topParams=new FrameLayout.LayoutParams(
+                    -1,topHeight,Gravity.TOP);
+                FrameLayout.LayoutParams bottomParams=new FrameLayout.LayoutParams(
+                    -1,bottomHeight,Gravity.BOTTOM);
+                phoneFullscreenSurface.addView(phoneCinemaTop,topParams);
+                phoneFullscreenSurface.addView(phoneCinemaBottom,bottomParams);
+                setPhoneCinemaIdle(false);
+                schedulePhoneCinemaIdle();
+            });
         }
         // Chrome may present a native HTML5 custom video view; keep it above
         // our WebView surface while leaving the app-owned controls on top.
@@ -717,15 +780,25 @@ public final class AndroidPornhubActivity extends Activity {
         phoneSeekButtons.setOrientation(LinearLayout.HORIZONTAL);
         phoneSeekButtons.setGravity(Gravity.CENTER);
         Button back10=button("⏪ 10 sec",()->{
+            setPhoneCinemaIdle(false);
             seekTvVideo(-10);
             showPhoneButtons();
+            schedulePhoneCinemaIdle();
         });
+        Button cinema=button("◫ Bioscoop aan",()->{
+            phoneCinemaModeEnabled=!phoneCinemaModeEnabled;
+            cinemaModeChanged();
+        });
+        cinema.setTag("cinema-toggle");
         Button forward10=button("10 sec ⏩",()->{
+            setPhoneCinemaIdle(false);
             seekTvVideo(10);
             showPhoneButtons();
+            schedulePhoneCinemaIdle();
         });
-        phoneSeekButtons.addView(back10,new LinearLayout.LayoutParams(dp(128),dp(53)));
-        phoneSeekButtons.addView(forward10,new LinearLayout.LayoutParams(dp(128),dp(53)));
+        phoneSeekButtons.addView(back10,new LinearLayout.LayoutParams(dp(119),dp(53)));
+        phoneSeekButtons.addView(cinema,new LinearLayout.LayoutParams(dp(170),dp(53)));
+        phoneSeekButtons.addView(forward10,new LinearLayout.LayoutParams(dp(119),dp(53)));
         FrameLayout.LayoutParams phoneSeekLayout=new FrameLayout.LayoutParams(
             -1,dp(58),Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);
         phoneSeekLayout.bottomMargin=dp(25);
@@ -737,6 +810,18 @@ public final class AndroidPornhubActivity extends Activity {
         showPhoneButtons();
         scheduleProviderControlsHide();
         schedulePhoneCleanIdle();
+    }
+
+    private void cinemaModeChanged(){
+        if(phoneSeekButtons!=null) {
+            View button=phoneSeekButtons.findViewWithTag("cinema-toggle");
+            if(button instanceof Button)
+                ((Button)button).setText(phoneCinemaModeEnabled?
+                    "◫ Bioscoop aan":"◫ Bioscoop uit");
+        }
+        setPhoneCinemaIdle(false);
+        schedulePhoneCinemaIdle();
+        showPhoneButtons();
     }
 
     private void showPhoneButtons(){
@@ -946,6 +1031,9 @@ public final class AndroidPornhubActivity extends Activity {
     }
 
     private void leaveTvFullscreen() {
+        tvOverlayHandler.removeCallbacks(phoneCinemaIdle);
+        phoneCinemaTop=null;
+        phoneCinemaBottom=null;
         tvOverlayHandler.removeCallbacks(phoneCleanIdle);
         setPhoneCleanControlsIdle(false);
         tvOverlayHandler.removeCallbacks(dismissProviderControls);
@@ -1093,6 +1181,7 @@ public final class AndroidPornhubActivity extends Activity {
         tvOverlayHandler.removeCallbacks(hidePhoneButtons);
         tvOverlayHandler.removeCallbacks(dismissProviderControls);
         tvOverlayHandler.removeCallbacks(phoneCleanIdle);
+        tvOverlayHandler.removeCallbacks(phoneCinemaIdle);
         destroyPlayer();
         super.onDestroy();
     }
