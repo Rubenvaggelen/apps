@@ -42,7 +42,11 @@ public final class AdultHubActivity extends Activity {
             new String[]{"▤","✦"},new String[]{"Series","Pornhub 5+ min"},
             new Runnable[]{()->openAdultCatalog("series"),()->{
                 if(!MediaPlayerAdultGate.isUnlocked()){finish();return;}
-                startActivity(new Intent(this,AdultPornhubActivity.class));
+                // Keep the released Google TV v1021 playback activity untouched.
+                // Only touchscreen Android opens the dedicated phone player.
+                Class<?> target=getPackageName().endsWith(".tv")
+                    ? AdultPornhubActivity.class : AndroidPornhubActivity.class;
+                startActivity(new Intent(this,target));
             }});
         Button lock=PremiumUi.primaryButton(this,"Vergrendelen en terug");
         lock.setOnClickListener(v->{MediaPlayerAdultGate.lock();finish();});
