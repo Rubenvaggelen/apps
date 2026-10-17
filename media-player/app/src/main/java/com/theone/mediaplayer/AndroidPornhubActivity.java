@@ -793,7 +793,7 @@ public final class AndroidPornhubActivity extends Activity {
             boolean foundTrack=false;
             if(result!=null && result.contains("TRACK:")){
                 try{
-                    String payload=result.replace(""","").trim();
+                    String payload=result.substring(1,result.length()-1).trim();
                     int index=payload.indexOf("TRACK:");
                     String[] parts=payload.substring(index+6).split(":");
                     float fracX=Float.parseFloat(parts[0]);
