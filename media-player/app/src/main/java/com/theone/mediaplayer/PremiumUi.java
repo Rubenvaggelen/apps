@@ -39,8 +39,8 @@ public final class PremiumUi {
         mark.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         mark.setAdjustViewBounds(true);
         row.addView(mark, new LinearLayout.LayoutParams(dp(context, 58), dp(context, 58)));
-        // Use the exact local The One Remote app logo, also offline.
-        mark.setImageResource(R.drawable.the_one_logo);
+        // Author-approved blue neon remote artwork bundled locally for offline use.
+        mark.setImageResource(R.drawable.remote_final);
 
         LinearLayout titles = new LinearLayout(context);
         titles.setOrientation(LinearLayout.VERTICAL);
