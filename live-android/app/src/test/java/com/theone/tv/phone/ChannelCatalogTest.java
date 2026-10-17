@@ -9,4 +9,39 @@ public class ChannelCatalogTest {
  @Test public void categoryNamesClassifyUntaggedChannels(){assertEquals("US",CatalogEntry.country("CNN","United States"));assertEquals("GB",CatalogEntry.country("BBC One","United Kingdom"));assertEquals("NL",CatalogEntry.country("NPO 1","Netherlands"));}
  @Test public void backupFormatsAndCountriesSurviveCache()throws Exception{List<CatalogEntry> rows=Arrays.asList(entry(1,"NL - NPO 1 HD","NL"),new CatalogEntry(1000000002,"NL - NPO 1 HD","ts","","NL","live",0));ByteArrayOutputStream out=new ByteArrayOutputStream();CatalogCodec.write(out,rows);List<CatalogEntry> saved=CatalogCodec.read(new ByteArrayInputStream(out.toByteArray()),"live");assertEquals(1,CatalogEntry.group(saved).size());assertEquals("ts",saved.get(1).extension);assertEquals("NL",saved.get(0).category);}
  @Test public void ultraHdChannelsFollowRegularChannelsWithinEachCountry(){List<CatalogEntry> rows=new ArrayList<>(Arrays.asList(entry(1,"NL - NPO 1 16K","NL"),entry(2,"NL - NPO 2 8K","NL"),entry(3,"NL - NPO 3 HD","NL"),entry(4,"NL - NPO 4 4K","NL"),entry(5,"BE - VRT 16K","BE"),entry(6,"BE - VRT HD","BE")));rows.sort(CatalogEntry.CHANNEL_ORDER);assertEquals(Arrays.asList(3,4,2,1,6,5),Arrays.asList(rows.get(0).id,rows.get(1).id,rows.get(2).id,rows.get(3).id,rows.get(4).id,rows.get(5).id));}
+
+ @Test public void adultCategoriesAndExplicitTitlesGoIntoXxxFolder(){
+  CatalogEntry byCategory=entry(91,"NL - Czech Streets","18+ | Adult TV");
+  CatalogEntry byTitle=entry(92,"UK - XXX Cinema","United Kingdom");
+  CatalogEntry regular=entry(93,"NL - NPO 1","Nederland");
+  assertTrue(byCategory.isAdult());
+  assertTrue(byTitle.isAdult());
+  assertEquals("XXX",byCategory.category);
+  assertEquals("XXX",byTitle.category);
+  assertFalse(regular.isAdult());
+  assertEquals("NL",regular.category);
+ }
+ @Test public void xxxDetectionPreservesVariantsAndCache()throws Exception{
+  List<CatalogEntry> all=Arrays.asList(
+    entry(101,"XXX - Adult Channel HD","Adult"),
+    new CatalogEntry(101,"XXX - Adult Channel HD","ts","","XXX","live",0),
+    entry(102,"BBC One","GB"));
+  assertEquals(2,CatalogEntry.group(all).size());
+  ByteArrayOutputStream bytes=new ByteArrayOutputStream();
+  CatalogCodec.write(bytes,all);
+  List<CatalogEntry> restored=CatalogCodec.read(new ByteArrayInputStream(bytes.toByteArray()),"live");
+  assertTrue(restored.get(0).isAdult());
+  assertTrue(restored.get(1).isAdult());
+  assertFalse(restored.get(2).isAdult());
+  assertEquals("XXX",restored.get(0).category);
+ }
+ @Test public void explicitlyAdultLabelsAreCaseInsensitive(){
+  assertTrue(CatalogEntry.adultTitle("xXx"));
+  assertTrue(CatalogEntry.adultTitle("18+ International"));
+  assertTrue(CatalogEntry.adultTitle("EROTIC channels"));
+  assertTrue(CatalogEntry.adultTitle("Porn TV"));
+  assertFalse(CatalogEntry.adultTitle("NPO 3"));
+  assertFalse(CatalogEntry.adultTitle("US - BBC World News"));
+ }
+
 }
