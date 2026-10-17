@@ -70,6 +70,13 @@ public final class AdultPornhubActivity extends Activity {
     private View[] tvVideoChrome;
     private Button tvBackOverlay;
     private TextView tvSeekOverlay;
+    // Provider duration is validated before it enters the catalog. The
+    // playback clock is a fallback estimate ONLY when the iframe keeps its
+    // real HTMLVideoElement inaccessible across the browser origin boundary.
+    private int tvClipDurationSeconds=-1;
+    private double tvEstimatedPositionSeconds=0;
+    private long tvEstimatedPositionAtMs=0;
+    private boolean tvPlaybackRequested=false;
     private final Runnable hideTvSeek=()->{
         if(tvSeekOverlay!=null)tvSeekOverlay.setVisibility(View.GONE);
     };
@@ -263,6 +270,10 @@ public final class AdultPornhubActivity extends Activity {
         if(!authorized() || !AdultVideoDuration.allow(video.duration) ||
            !video.id.matches("[A-Za-z0-9]{1,64}"))return;
         showingPlayer=true;
+        tvClipDurationSeconds=AdultVideoDuration.parseSeconds(video.duration);
+        tvEstimatedPositionSeconds=0;
+        tvEstimatedPositionAtMs=0;
+        tvPlaybackRequested=false;
         outer.removeAllViews();
         LinearLayout column=new LinearLayout(this);
         column.setOrientation(LinearLayout.VERTICAL);
@@ -474,6 +485,8 @@ public final class AdultPornhubActivity extends Activity {
             up.recycle();
         }
         if(deliveredDown || deliveredUp) {
+            tvPlaybackRequested=true;
+            tvEstimatedPositionAtMs=SystemClock.elapsedRealtime();
             status.setText("Afspelen gestart; overschakelen naar volledig scherm…");
             // The official provider player lives in a cross-origin iframe, so
             // playback state cannot be read reliably. After a successful
@@ -544,42 +557,128 @@ public final class AdultPornhubActivity extends Activity {
         tvOverlayHandler.postDelayed(hideTvSeek,2000);
     }
 
+    private String formatTvTime(double seconds) {
+        int total=Math.max(0,(int)Math.round(seconds));
+        int hours=total/3600;
+        int minutes=(total/60)%60;
+        int remainder=total%60;
+        return hours>0
+            ?String.format(java.util.Locale.ROOT,"%d:%02d:%02d",hours,minutes,remainder)
+            :String.format(java.util.Locale.ROOT,"%d:%02d",minutes,remainder);
+    }
+
+    private double estimatedTvPosition() {
+        if(!tvPlaybackRequested || tvEstimatedPositionAtMs<=0)return 0;
+        long elapsed=SystemClock.elapsedRealtime()-tvEstimatedPositionAtMs;
+        double estimate=tvEstimatedPositionSeconds+Math.max(0,elapsed)/1000.0;
+        if(tvClipDurationSeconds>0)estimate=Math.min(estimate,tvClipDurationSeconds-0.5);
+        return Math.max(0,estimate);
+    }
+
+    private void setEstimatedTvPosition(double value) {
+        tvEstimatedPositionSeconds=Math.max(0,value);
+        tvEstimatedPositionAtMs=SystemClock.elapsedRealtime();
+    }
+
+    /**
+     * The player shows a real, seekable progress timeline on Google TV.
+     * Some official embeds keep the HTML5 video inside a protected iframe:
+     * sending J/L keyboard shortcuts to the outer WebView does not seek it.
+     * First seek a same-origin HTMLVideoElement when possible; otherwise
+     * activate the official player's own visible timeline with the same
+     * native pointer events that already made TV playback work in v1014.
+     * No third-party media URL extraction, cross-origin DOM access or reload.
+     */
     private void seekTvVideo(int seconds){
         if(!tvFullscreen || !authorized() || player==null || embedLoadFailed)return;
+        if(tvClipDurationSeconds<300 || !tvPlaybackRequested) {
+            showTvSeekMessage("Video nog niet klaar om te spoelen");
+            return;
+        }
         final WebView active=player;
-        // Use HTMLVideoElement.currentTime only where provider's embed permits
-        // same-origin DOM access. Never bypass cross-origin isolation.
         final String js="(function(){try{" +
             "function find(doc,depth){if(!doc||depth>3)return null;" +
-            "var videos=doc.querySelectorAll('video');" +
-            "for(var i=0;i<videos.length;i++){if(videos[i].readyState>0)return videos[i];}" +
-            "var frames=doc.querySelectorAll('iframe');" +
-            "for(var j=0;j<frames.length;j++){try{" +
-            "var v=find(frames[j].contentDocument,depth+1);if(v)return v;" +
+            "var v=doc.querySelectorAll('video');" +
+            "for(var i=0;i<v.length;i++)if(v[i].readyState>0)return v[i];" +
+            "var fs=doc.querySelectorAll('iframe');" +
+            "for(var j=0;j<fs.length;j++){try{" +
+            "var nested=find(fs[j].contentDocument,depth+1);if(nested)return nested;" +
             "}catch(ignore){}}" +
             "return null;}" +
-            "var v=find(document,0);if(!v)return 'NOT_ACCESSIBLE';" +
-            "var current=v.currentTime;if(!isFinite(current))return 'NOT_READY';" +
-            "var duration=v.duration;var to=Math.max(0,current+("+seconds+"));" +
-            "if(isFinite(duration)&&duration>0)to=Math.min(to,Math.max(0,duration-0.1));" +
-            "v.currentTime=to;return Math.abs(v.currentTime-current)>0.1?'SEEKED':'UNCONFIRMED';" +
-            "}catch(e){return 'NOT_ACCESSIBLE';}})();";
+            "var video=find(document,0);if(!video)return 'PROTECTED_FRAME';" +
+            "var old=video.currentTime;if(!isFinite(old))return 'NOT_READY';" +
+            "var duration=video.duration;" +
+            "var next=Math.max(0,old+("+seconds+"));" +
+            "if(isFinite(duration)&&duration>0)next=Math.min(next,Math.max(0,duration-0.5));" +
+            "video.currentTime=next;" +
+            "return Math.abs(video.currentTime-old)>0.1?'SEEKED:'+video.currentTime:'NO_CHANGE';" +
+            "}catch(e){return 'PROTECTED_FRAME';}})();";
         active.evaluateJavascript(js,result->{
             if(!tvFullscreen || player!=active || isFinishing() || isDestroyed())return;
-            if(result!=null && result.contains("SEEKED")){
-                showTvSeekMessage(seconds<0?"⏪ 10 sec terug":"⏩ 10 sec vooruit");
-            }else {
-                // On cross-origin embeds, native player keyboard shortcuts
-                // are the only non-invasive option. Their support is vendor
-                // dependent; never claim playback time changed without proof.
-                int code=seconds<0?KeyEvent.KEYCODE_J:KeyEvent.KEYCODE_L;
-                long now=SystemClock.uptimeMillis();
-                active.requestFocus();
-                active.dispatchKeyEvent(new KeyEvent(now,now,KeyEvent.ACTION_DOWN,code,0));
-                active.dispatchKeyEvent(new KeyEvent(now,now+30,KeyEvent.ACTION_UP,code,0));
-                showTvSeekMessage(seconds<0?"⏪ Terugspoelen gevraagd":"⏩ Vooruitspoelen gevraagd");
+            if(result!=null && result.contains("SEEKED:")){
+                try {
+                    String value=result.replaceAll("[^0-9.]"," ").trim().split(" ")[0];
+                    double actual=Double.parseDouble(value);
+                    setEstimatedTvPosition(actual);
+                    showTvSeekMessage((seconds<0?"⏪ ":"⏩ ")+formatTvTime(actual));
+                    return;
+                }catch(Exception ignored) {}
             }
+            // The provider iframe did not expose its media clock. Use duration
+            // metadata plus our local playback clock to target the visible
+            // seek bar, which accepts native TV WebView pointer interaction.
+            double predicted=estimatedTvPosition();
+            double target=Math.max(0,Math.min(tvClipDurationSeconds-0.5,predicted+seconds));
+            if(Math.abs(target-predicted)<0.3){
+                showTvSeekMessage(seconds<0?"Begin van video":"Einde van video");
+                return;
+            }
+            tapProviderTimeline(active,target,seconds);
         });
+    }
+
+    private void tapProviderTimeline(WebView active,double target,int direction){
+        if(active.getWidth()<dp(200) || active.getHeight()<dp(120)){
+            showTvSeekMessage("Tijdlijn nog niet beschikbaar");
+            return;
+        }
+        // Pornhub's embed exposes a horizontal progress bar just above the
+        // bottom control row. Its interior starts after the play/volume area.
+        // The WebView stays in-place and the seek is performed on the actual
+        // official provider control, not an app-owned dummy progress bar.
+        final float width=active.getWidth(),height=active.getHeight();
+        final float left=width*0.17f,right=width*0.96f;
+        final float ratio=(float)Math.max(0,Math.min(1,target/tvClipDurationSeconds));
+        final float x=left+ratio*(right-left);
+        final float y=Math.max(dp(15),height-dp(38));
+        final long at=SystemClock.uptimeMillis();
+        MotionEvent hover=MotionEvent.obtain(at,at,MotionEvent.ACTION_HOVER_MOVE,x,y,0);
+        hover.setSource(InputDevice.SOURCE_MOUSE);
+        try{active.dispatchGenericMotionEvent(hover);}
+        catch(RuntimeException ignored) {}
+        finally{hover.recycle();}
+        active.postDelayed(()->{
+            if(!tvFullscreen || player!=active || isFinishing() || isDestroyed())return;
+            long now=SystemClock.uptimeMillis();
+            MotionEvent down=MotionEvent.obtain(now,now,MotionEvent.ACTION_DOWN,x,y,0);
+            MotionEvent up=MotionEvent.obtain(now,now+65,MotionEvent.ACTION_UP,x,y,0);
+            down.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+            up.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+            boolean received=false;
+            try{
+                received=active.dispatchTouchEvent(down);
+                received=active.dispatchTouchEvent(up)||received;
+            }catch(RuntimeException ex){
+                Log.w("TheOneAdult","TV progress-bar pointer event failed");
+            }finally{down.recycle();up.recycle();}
+            if(received){
+                setEstimatedTvPosition(target);
+                showTvSeekMessage((direction<0?"⏪ ":"⏩ ")+
+                    "Tijdlijn ≈ "+formatTvTime(target));
+            }else{
+                showTvSeekMessage("Spoelen niet ondersteund door deze speler");
+            }
+        },130);
     }
 
     private void leaveTvFullscreen() {
@@ -603,6 +702,8 @@ public final class AdultPornhubActivity extends Activity {
             if(chrome!=null)chrome.setVisibility(View.VISIBLE);
         }
         tvVideoChrome=null;
+        tvPlaybackRequested=false;
+        tvEstimatedPositionAtMs=0;
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
