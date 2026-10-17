@@ -10,8 +10,8 @@ android {
         applicationId = "com.theone.mediaplayer.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1020
-        versionName = "1.0.20-family-theme"
+        versionCode = 1021
+        versionName = "1.0.21-family-tiles-auto-update"
     }
 
     buildTypes {
