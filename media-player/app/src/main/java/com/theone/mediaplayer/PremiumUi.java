@@ -83,6 +83,65 @@ public final class PremiumUi {
         return shape;
     }
 
+    /**
+     * The One Family grid tile: square-ish Midnight Navy card, neon pictogram,
+     * and bold title. Shared verbatim between Android touch and Google TV DPAD.
+     */
+    public static LinearLayout familyGridTile(Context context, String symbol,
+                                               String title, Runnable action) {
+        LinearLayout tile=new LinearLayout(context);
+        tile.setOrientation(LinearLayout.VERTICAL);
+        tile.setGravity(Gravity.CENTER);
+        tile.setPadding(dp(context,12),dp(context,14),dp(context,12),dp(context,12));
+        tile.setBackground(familyTileBackground(context,false));
+        tile.setFocusable(true);
+        tile.setClickable(true);
+        tile.setElevation(dp(context,7));
+
+        TextView pictogram=new TextView(context);
+        pictogram.setText(symbol);
+        pictogram.setTextSize(40);
+        pictogram.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
+        pictogram.setTextColor(Color.rgb(65,220,255));
+        pictogram.setGravity(Gravity.CENTER);
+        pictogram.setShadowLayer(dp(context,8),0,0,Color.rgb(16,143,255));
+        tile.addView(pictogram,new LinearLayout.LayoutParams(-1,dp(context,62)));
+
+        TextView name=new TextView(context);
+        name.setText(title);
+        name.setTextSize(17);
+        name.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
+        name.setTextColor(Color.WHITE);
+        name.setGravity(Gravity.CENTER);
+        name.setMaxLines(2);
+        tile.addView(name,new LinearLayout.LayoutParams(-1,-2));
+
+        tile.setOnClickListener(v->action.run());
+        tile.setOnFocusChangeListener((v,focused)->{
+            tile.setBackground(familyTileBackground(context,focused));
+            tile.setScaleX(focused?1.025f:1f);
+            tile.setScaleY(focused?1.025f:1f);
+        });
+        return tile;
+    }
+
+    public static void addFamilyGridRow(Context context, LinearLayout parent,
+                                        String[] symbols, String[] labels,
+                                        Runnable[] actions) {
+        LinearLayout row=new LinearLayout(context);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        int count=Math.min(symbols.length,Math.min(labels.length,actions.length));
+        for(int i=0;i<count;i++) {
+            LinearLayout tile=familyGridTile(context,symbols[i],labels[i],actions[i]);
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(
+                0,dp(context,153),1f);
+            int gap=dp(context,7);
+            lp.setMargins(gap,gap,gap,gap);
+            row.addView(tile,lp);
+        }
+        parent.addView(row,new LinearLayout.LayoutParams(-1,-2));
+    }
+
     public static TextView familyFooter(Context context) {
         TextView footer = new TextView(context);
         footer.setText("Part of The One Family");
