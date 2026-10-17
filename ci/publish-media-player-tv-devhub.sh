@@ -12,7 +12,7 @@ guard_auth() {
   test "$result" = "401" || { echo "::error::Dev Hub auth gate not confirmed: $result"; exit 1; }
 }
 guard_auth https://dev.rubenvanaggelen.com/builds.php
-guard_auth 'https://dev.rubenvanaggelen.com/family-download-20261013.php?app=__probe__'
+guard_auth 'https://dev.rubenvanaggelen.com/family-download-20261014.php?app=__probe__'
 keydir=$(mktemp -d)
 trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$keydir"' EXIT
 printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$keydir/key"
@@ -26,7 +26,7 @@ unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
 opts=(-i "$keydir/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$keydir/known_hosts" -o ConnectTimeout=20)
 remote="$DEPLOY_USER@$DEPLOY_HOST"
 sha=$(sha256sum "$APK" | awk '{print $1}')
-NAME=The-One-Media-Player-TV-v1013-${sha:0:12}.apk
+NAME=The-One-Media-Player-TV-v1014-${sha:0:12}.apk
 stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'mktemp -d "$HOME/.the-one-player-stage.XXXXXXXX"')
 scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$APK" "$remote:$stage/$NAME"
 ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "bash -s -- '$stage' '$NAME' '$sha'" <<'REMOTE'
@@ -38,14 +38,14 @@ root="$HOME/the-one-private-builds/2026-10-13"
 manifest="$root/manifest.json"
 target="$root/apks/$filename"
 webroot="$HOME/dev.vanaggelen.com"
-for f in "$manifest" "$webroot/family-download-20261013.php" "$webroot/family-new-builds-20261013.php" "$webroot/.htaccess"; do
+for f in "$manifest" "$webroot/family-download-20261014.php" "$webroot/family-new-builds-20261014.php" "$webroot/.htaccess"; do
   test -s "$f" || { echo "Required protected Dev Hub file missing"; exit 1; }
 done
 test -d "$root/apks"
 test -s "$stage/$filename"
 test "$(sha256sum "$stage/$filename" | cut -d' ' -f1)" = "$sha"
-php -l "$webroot/family-download-20261013.php" >/dev/null
-php -l "$webroot/family-new-builds-20261013.php" >/dev/null
+php -l "$webroot/family-download-20261014.php" >/dev/null
+php -l "$webroot/family-new-builds-20261014.php" >/dev/null
 python3 - "$manifest" <<'PY'
 import json,sys
 with open(sys.argv[1],encoding="utf-8") as f:entries=json.load(f)
@@ -73,7 +73,7 @@ matches=[x for x in items if isinstance(x,dict) and x.get("id")=="media-player-t
 if len(matches)>1:raise SystemExit("Duplicate TV card")
 item=matches[0] if matches else {"id":"media-player-tv","app_name":"The One Media Player TV","platform":"Android TV / Google TV"}
 if not matches:items.append(item)
-item.update(apk=name,version_name="1.0.13-provider-embed-fallback",version_code=1013,size_bytes=os.path.getsize(apk),sha256=sha)
+item.update(apk=name,version_name="1.0.14-tv-poster-ok",version_code=1014,size_bytes=os.path.getsize(apk),sha256=sha)
 fd,tmp=tempfile.mkstemp(prefix=".media-player-tv-manifest-",dir=os.path.dirname(manifest))
 try:
  with os.fdopen(fd,"w",encoding="utf-8") as out:
@@ -86,10 +86,10 @@ finally:
 with open(manifest,encoding="utf-8") as f:verified=json.load(f)
 if len([x for x in verified if isinstance(x,dict) and x.get("id")=="media-player-tv" and x.get("sha256")==sha])!=1:
  raise SystemExit("TV card verification failed")
-print("MEDIA_PLAYER_TV_1013_PUBLISHED_TO_PRIVATE_DEVHUB")
+print("MEDIA_PLAYER_TV_1014_PUBLISHED_TO_PRIVATE_DEVHUB")
 PY
 rm -rf -- "$stage"
 REMOTE
 guard_auth https://dev.rubenvanaggelen.com/builds.php
-guard_auth 'https://dev.rubenvanaggelen.com/family-download-20261013.php?app=__probe__'
+guard_auth 'https://dev.rubenvanaggelen.com/family-download-20261014.php?app=__probe__'
 echo "DEVHUB_MEDIA_PLAYER_TV_PRIVATE_APK_READY"
