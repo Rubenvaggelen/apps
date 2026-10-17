@@ -18,37 +18,49 @@ public final class AdultHubActivity extends Activity {
     }
     private void showHome() {
         if(!MediaPlayerAdultGate.isUnlocked()){finish();return;}
+        LinearLayout screen=new LinearLayout(this);
+        screen.setOrientation(LinearLayout.VERTICAL);
+        screen.setBackgroundColor(PremiumUi.BG);
         ScrollView scroll=new ScrollView(this);
-        scroll.setBackgroundColor(PremiumUi.BG);
+        scroll.setFillViewport(true);
         LinearLayout root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(34),dp(26),dp(34),dp(30));
-        scroll.addView(root);
+        root.setPadding(dp(26),dp(24),dp(26),dp(16));
+        scroll.addView(root,new ScrollView.LayoutParams(-1,-2));
         root.addView(PremiumUi.brandHeader(this,"XXX • Afgeschermd"));
         TextView info=new TextView(this);
         info.setText("Deze bibliotheek is apart beveiligd en staat los van de gewone Media Player.");
         info.setTextColor(Color.LTGRAY);
-        info.setTextSize(17);
-        info.setPadding(0,dp(22),0,dp(18));
+        info.setTextSize(16);
+        info.setPadding(0,dp(18),0,dp(12));
         root.addView(info);
-        add(root,"Live TV","live");
-        add(root,"Films","movie");
-        add(root,"Series","series");
-        Button pornhub=PremiumUi.primaryButton(this,"Pornhub • video's vanaf 5 minuten");
-        pornhub.setFocusable(true);
-        pornhub.setOnClickListener(v->{
-            if(!MediaPlayerAdultGate.isUnlocked()){finish();return;}
-            startActivity(new Intent(this,AdultPornhubActivity.class));
-        });
-        LinearLayout.LayoutParams phLp=new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT);
-        phLp.bottomMargin=dp(12);
-        root.addView(pornhub,phLp);
-        Button lock=PremiumUi.chipButton(this,"Vergrendelen en terug");
+
+        PremiumUi.addFamilyGridRow(this,root,
+            new String[]{"▣","▶"},new String[]{"Live TV","Films"},
+            new Runnable[]{()->openAdultCatalog("live"),()->openAdultCatalog("movie")});
+        PremiumUi.addFamilyGridRow(this,root,
+            new String[]{"▤","✦"},new String[]{"Series","Pornhub 5+ min"},
+            new Runnable[]{()->openAdultCatalog("series"),()->{
+                if(!MediaPlayerAdultGate.isUnlocked()){finish();return;}
+                startActivity(new Intent(this,AdultPornhubActivity.class));
+            }});
+        Button lock=PremiumUi.primaryButton(this,"Vergrendelen en terug");
         lock.setOnClickListener(v->{MediaPlayerAdultGate.lock();finish();});
-        root.addView(lock);
-        root.addView(PremiumUi.familyFooter(this));
-        setContentView(scroll);
+        LinearLayout.LayoutParams lockLp=new LinearLayout.LayoutParams(-1,-2);
+        lockLp.topMargin=dp(14);
+        root.addView(lock,lockLp);
+        screen.addView(scroll,new LinearLayout.LayoutParams(-1,0,1f));
+        screen.addView(PremiumUi.familyFooter(this),
+            new LinearLayout.LayoutParams(-1,-2));
+        setContentView(screen);
+    }
+
+    private void openAdultCatalog(String mode) {
+        if(!MediaPlayerAdultGate.isUnlocked()){finish();return;}
+        Intent intent=new Intent(this,XtreamCatalogActivity.class);
+        intent.putExtra("mode",mode);
+        intent.putExtra("adult_only",true);
+        startActivity(intent);
     }
     private void add(LinearLayout root,String label,String mode) {
         Button button=PremiumUi.primaryButton(this,label);
