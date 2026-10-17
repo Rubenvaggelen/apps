@@ -15,5 +15,5 @@
         android:width="108dp"
         android:height="108dp"
         android:gravity="center"
-        android:drawable="@drawable/ic_launcher" />
+        android:drawable="@drawable/the_one_logo" />
 </layer-list>
