@@ -686,6 +686,32 @@ public final class AndroidPornhubActivity extends Activity {
             tvOverlayHandler.postDelayed(phoneCleanIdle,2900);
     }
 
+    private void resizePhoneFullscreenForOrientation(){
+        if(!tvFullscreen || phoneFullscreenSurface==null ||
+           phoneCinemaTop==null || phoneCinemaBottom==null)return;
+        int height=phoneFullscreenSurface.getHeight();
+        if(height<=0)return;
+        // In portrait, the player is still a full-screen surface but has more
+        // height than width. Keep masks proportional instead of reusing sizes
+        // measured in landscape.
+        int topHeight=Math.max(1,Math.round(height*0.11f));
+        int bottomHeight=Math.max(1,Math.round(height*0.125f));
+        FrameLayout.LayoutParams top=new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,topHeight,Gravity.TOP);
+        FrameLayout.LayoutParams bottom=new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,bottomHeight,Gravity.BOTTOM);
+        if(phoneCinemaTop.getParent()==phoneFullscreenSurface)
+            phoneCinemaTop.setLayoutParams(top);
+        else if(phoneCinemaTop.getParent()==null)
+            phoneFullscreenSurface.addView(phoneCinemaTop,top);
+        if(phoneCinemaBottom.getParent()==phoneFullscreenSurface)
+            phoneCinemaBottom.setLayoutParams(bottom);
+        else if(phoneCinemaBottom.getParent()==null)
+            phoneFullscreenSurface.addView(phoneCinemaBottom,bottom);
+        player.requestLayout();
+        if(phoneSeekButtons!=null)phoneSeekButtons.requestLayout();
+    }
+
     private void enterPhoneFullscreen() {
         if(!showingPlayer || player==null || !authorized())return;
         enterTvFullscreen();
@@ -699,9 +725,10 @@ public final class AndroidPornhubActivity extends Activity {
         previousOrientation=getRequestedOrientation();
         wasWindowFullscreen=(getWindow().getAttributes().flags &
             WindowManager.LayoutParams.FLAG_FULLSCREEN)!=0;
-        // Google TV is already landscape; touchscreen Android needs landscape
-        // to fill the physical display, independent of the auto-rotate setting.
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        // Phone fullscreen follows the physical device orientation in both
+        // directions. FULL_SENSOR also works when the device-wide rotation
+        // toggle is off. configChanges preserves this live WebView session.
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         if(tvVideoChrome!=null)for(View chrome:tvVideoChrome) {
             if(chrome!=null)chrome.setVisibility(View.GONE);
@@ -720,24 +747,12 @@ public final class AndroidPornhubActivity extends Activity {
             phoneFullscreenSurface.addView(player,new FrameLayout.LayoutParams(-1,-1));
             player.setBackgroundColor(Color.BLACK);
             player.requestLayout();
-            // Positioned in pixels using the measured landscape screen size.
-            // Black opaque near the outer edges, softly fading toward picture.
-            // The controls are never deleted; tapping a mask reveals them.
+            // Edge masks must be measured again after each phone rotation.
+            // Do not rebuild the WebView, iframe, or playing media session.
             phoneCinemaTop=createPhoneCinemaMask(true);
             phoneCinemaBottom=createPhoneCinemaMask(false);
             phoneFullscreenSurface.post(()->{
-                if(!tvFullscreen || phoneFullscreenSurface==null ||
-                   phoneCinemaTop==null || phoneCinemaBottom==null)return;
-                int h=phoneFullscreenSurface.getHeight();
-                if(h<=0)return;
-                int topHeight=Math.max(1,(int)(h*0.11f));
-                int bottomHeight=Math.max(1,(int)(h*0.125f));
-                FrameLayout.LayoutParams topParams=new FrameLayout.LayoutParams(
-                    -1,topHeight,Gravity.TOP);
-                FrameLayout.LayoutParams bottomParams=new FrameLayout.LayoutParams(
-                    -1,bottomHeight,Gravity.BOTTOM);
-                phoneFullscreenSurface.addView(phoneCinemaTop,topParams);
-                phoneFullscreenSurface.addView(phoneCinemaBottom,bottomParams);
+                resizePhoneFullscreenForOrientation();
                 setPhoneCinemaIdle(false);
                 schedulePhoneCinemaIdle();
             });
@@ -796,9 +811,17 @@ public final class AndroidPornhubActivity extends Activity {
             showPhoneButtons();
             schedulePhoneCinemaIdle();
         });
-        phoneSeekButtons.addView(back10,new LinearLayout.LayoutParams(dp(119),dp(53)));
-        phoneSeekButtons.addView(cinema,new LinearLayout.LayoutParams(dp(170),dp(53)));
-        phoneSeekButtons.addView(forward10,new LinearLayout.LayoutParams(dp(119),dp(53)));
+        // Weighted buttons fit narrow portrait phones without clipping, while
+        // keeping the same seek actions and Cinema-mode toggle.
+        back10.setText("⏪ 10 s");
+        forward10.setText("10 s ⏩");
+        back10.setTextSize(13);
+        forward10.setTextSize(13);
+        cinema.setTextSize(13);
+        phoneSeekButtons.setPadding(dp(6),0,dp(6),0);
+        phoneSeekButtons.addView(back10,new LinearLayout.LayoutParams(0,dp(53),1f));
+        phoneSeekButtons.addView(cinema,new LinearLayout.LayoutParams(0,dp(53),1.45f));
+        phoneSeekButtons.addView(forward10,new LinearLayout.LayoutParams(0,dp(53),1f));
         FrameLayout.LayoutParams phoneSeekLayout=new FrameLayout.LayoutParams(
             -1,dp(58),Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);
         phoneSeekLayout.bottomMargin=dp(25);
@@ -1092,14 +1115,22 @@ public final class AndroidPornhubActivity extends Activity {
 
     @Override public void onConfigurationChanged(Configuration configuration) {
         super.onConfigurationChanged(configuration);
-        // Manifest handles orientation|screenSize: resize the same WebView
-        // rather than destroying its active iframe when landscape starts.
+        // The phone turns freely between landscape and portrait. Keep one
+        // uninterrupted WebView and remeasure the native overlays after the
+        // new fullscreen surface bounds have settled.
         if(tvFullscreen && player!=null) {
             outer.requestLayout();
+            if(phoneFullscreenSurface!=null) {
+                phoneFullscreenSurface.requestLayout();
+                phoneFullscreenSurface.post(this::resizePhoneFullscreenForOrientation);
+            }
             player.requestLayout();
             player.invalidate();
             if(tvBackOverlay!=null)tvBackOverlay.bringToFront();
-            if(phoneSeekButtons!=null)phoneSeekButtons.bringToFront();
+            if(phoneSeekButtons!=null){
+                phoneSeekButtons.requestLayout();
+                phoneSeekButtons.bringToFront();
+            }
         }
     }
 
