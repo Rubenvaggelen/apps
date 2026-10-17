@@ -1,4 +1,4 @@
-name: Media Player TV v1019 remote OK video poster release
+name: Media Player TV v1020 remote OK video poster release
 
 on:
   push:
@@ -240,7 +240,7 @@ jobs:
           grep -q 'R.drawable.remote_final' media-player/app/src/main/java/com/theone/mediaplayer/PremiumUi.java
           grep -q 'showMatchingAndroidHome' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
 
-      - name: Build and unit-test TV v1019 update
+      - name: Build and unit-test TV v1020 update
         run: gradle -p media-player :app:testDebugUnitTest :tvapp:assembleDebug --no-daemon
 
       - name: Explicitly sign Android TV with permanent TV update identity
@@ -267,7 +267,7 @@ jobs:
           TV_APK="media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$TV_APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$TV_APK" >/tmp/tv-package.txt
-          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1019'" /tmp/tv-package.txt
+          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1020'" /tmp/tv-package.txt
 
       - name: Verify TV is signed with permanent legacy-TV keystore
         shell: bash
@@ -284,15 +284,15 @@ jobs:
           }
           echo "Android TV build uses the established fixed TV signing key"
 
-      - name: Keep signed TV v1019 APK in private build artifacts
+      - name: Keep signed TV v1020 APK in private build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: The-One-Media-Player-TV-v1019-signed-private
+          name: The-One-Media-Player-TV-v1020-signed-private
           path: media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
           if-no-files-found: error
           retention-days: 7
 
-      - name: Publish Android TV v1019 to authenticated Dev Hub only
+      - name: Publish Android TV v1020 to authenticated Dev Hub only
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
