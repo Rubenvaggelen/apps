@@ -8,6 +8,8 @@ import android.text.InputType;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.InputDevice;
@@ -61,6 +63,19 @@ public final class AdultPornhubActivity extends Activity {
     private int lastPage=1;
     private boolean showingPlayer=false;
     private boolean embedLoadFailed=false;
+    // Google TV fullscreen: keep the same WebView/video session; only hide
+    // the surrounding UI. Never reload the provider's already playing iframe.
+    private boolean tvFullscreen=false;
+    private int previousSystemUiFlags=0;
+    private View[] tvVideoChrome;
+    private Button tvBackOverlay;
+    private final Handler tvOverlayHandler=new Handler(Looper.getMainLooper());
+    private final Runnable hideTvBack=()->{
+        if(tvFullscreen && tvBackOverlay!=null){
+            if(tvBackOverlay.hasFocus() && player!=null)player.requestFocus();
+            tvBackOverlay.setVisibility(View.GONE);
+        }
+    };
 
     private static final class Video {
         final String id,title,duration;
@@ -100,6 +115,7 @@ public final class AdultPornhubActivity extends Activity {
 
     private void showSearch(){
         if(!authorized())return;
+        leaveTvFullscreen();
         showingPlayer=false;
         destroyPlayer();
         outer.removeAllViews();
@@ -247,8 +263,10 @@ public final class AdultPornhubActivity extends Activity {
         LinearLayout column=new LinearLayout(this);
         column.setOrientation(LinearLayout.VERTICAL);
         outer.addView(column,new FrameLayout.LayoutParams(-1,-1));
-        column.addView(button("← Terug naar resultaten",this::showSearch));
-        column.addView(label(video.title+"  •  "+video.duration,15,Color.WHITE));
+        final Button backToResults=button("← Terug naar resultaten",this::showSearch);
+        final TextView videoTitle=label(video.title+"  •  "+video.duration,15,Color.WHITE);
+        column.addView(backToResults);
+        column.addView(videoTitle);
         final TextView playerStatus=label("Videospeler starten…",14,PremiumUi.MUTED);
         column.addView(playerStatus);
         // A Google TV remote often has no dedicated Play key. Provide a real,
@@ -355,6 +373,10 @@ public final class AdultPornhubActivity extends Activity {
                 fullscreenView=view;
                 fullscreenCallback=callback;
                 outer.addView(view,new FrameLayout.LayoutParams(-1,-1,Gravity.CENTER));
+                if(tv) {
+                    enterTvFullscreen();
+                    if(tvBackOverlay!=null)tvBackOverlay.bringToFront();
+                }
             }
             @Override public void onHideCustomView(){closeFullscreen();}
         });
@@ -362,8 +384,9 @@ public final class AdultPornhubActivity extends Activity {
         // hosted inside an iframe. Offer both the iframe and direct embed.
         // Never load arbitrary search results, popup pages or external domains.
         final boolean[] iframeMode={tv};
+        Button otherMode=null;
         if(tv) {
-            Button otherMode=button("↔ Andere spelerweergave proberen",()->{
+            otherMode=button("↔ Andere spelerweergave proberen",()->{
                 if(player==null)return;
                 iframeMode[0]=!iframeMode[0];
                 embedLoadFailed=false;
@@ -375,6 +398,7 @@ public final class AdultPornhubActivity extends Activity {
             otherMode.setAllCaps(false);
             column.addView(otherMode,new LinearLayout.LayoutParams(-1,dp(52)));
         }
+        if(tv) tvVideoChrome=new View[]{backToResults,videoTitle,playerStatus,remotePlay,otherMode};
         column.addView(player,new LinearLayout.LayoutParams(-1,0,1f));
         if(remotePlay!=null)remotePlay.requestFocus();
         else player.requestFocus();
@@ -446,12 +470,90 @@ public final class AdultPornhubActivity extends Activity {
             up.recycle();
         }
         if(deliveredDown || deliveredUp) {
-            status.setText("OK naar de afspeelknop in het videobeeld gestuurd. "+
-                "Kijk of de video begint. Zo niet, probeer de andere spelerweergave.");
+            status.setText("Afspelen gestart; overschakelen naar volledig scherm…");
+            // The official provider player lives in a cross-origin iframe, so
+            // playback state cannot be read reliably. After a successful
+            // user-initiated play gesture, expand the SAME playing WebView.
+            activePlayer.postDelayed(()->{
+                if(showingPlayer && player==activePlayer && !embedLoadFailed &&
+                   !isFinishing() && !isDestroyed())enterTvFullscreen();
+            },900);
         } else {
             status.setText("De TV-speler heeft de OK-bediening niet aangenomen. "+
                 "Probeer de andere weergave.");
         }
+    }
+
+    private void enterTvFullscreen() {
+        if(tvFullscreen || !showingPlayer || player==null ||
+           !getPackageName().endsWith(".tv") || !authorized())return;
+        tvFullscreen=true;
+        previousSystemUiFlags=getWindow().getDecorView().getSystemUiVisibility();
+        if(tvVideoChrome!=null)for(View chrome:tvVideoChrome) {
+            if(chrome!=null)chrome.setVisibility(View.GONE);
+        }
+        // Keep the WebView in its original parent and do not call loadUrl:
+        // a re-created iframe would interrupt the video that already plays.
+        int flags=View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
+            View.SYSTEM_UI_FLAG_FULLSCREEN |
+            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
+        getWindow().getDecorView().setSystemUiVisibility(flags);
+        tvBackOverlay=button("← Terug",this::showSearch);
+        tvBackOverlay.setAllCaps(false);
+        FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(
+            dp(170),dp(54),Gravity.TOP|Gravity.START);
+        p.setMargins(dp(20),dp(20),0,0);
+        outer.addView(tvBackOverlay,p);
+        tvBackOverlay.bringToFront();
+        player.requestFocus();
+        showTvBackOverlay(false);
+    }
+
+    private void showTvBackOverlay(boolean focus) {
+        if(!tvFullscreen || tvBackOverlay==null)return;
+        tvBackOverlay.bringToFront();
+        tvBackOverlay.setVisibility(View.VISIBLE);
+        if(focus)tvBackOverlay.requestFocus();
+        tvOverlayHandler.removeCallbacks(hideTvBack);
+        tvOverlayHandler.postDelayed(hideTvBack,4500);
+    }
+
+    private void leaveTvFullscreen() {
+        tvOverlayHandler.removeCallbacks(hideTvBack);
+        if(tvBackOverlay!=null){
+            if(tvBackOverlay.getParent() instanceof ViewGroup)
+                ((ViewGroup)tvBackOverlay.getParent()).removeView(tvBackOverlay);
+            tvBackOverlay=null;
+        }
+        if(tvFullscreen) {
+            getWindow().getDecorView().setSystemUiVisibility(previousSystemUiFlags);
+            tvFullscreen=false;
+        }
+        if(tvVideoChrome!=null)for(View chrome:tvVideoChrome) {
+            if(chrome!=null)chrome.setVisibility(View.VISIBLE);
+        }
+        tvVideoChrome=null;
+    }
+
+    @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        if(tvFullscreen && tvBackOverlay!=null &&
+           event.getAction()==KeyEvent.ACTION_DOWN) {
+            int key=event.getKeyCode();
+            if(key==KeyEvent.KEYCODE_DPAD_UP &&
+               tvBackOverlay.getVisibility()!=View.VISIBLE) {
+                showTvBackOverlay(true);
+                return true;
+            }
+            if(key==KeyEvent.KEYCODE_DPAD_UP ||
+               key==KeyEvent.KEYCODE_DPAD_DOWN ||
+               key==KeyEvent.KEYCODE_DPAD_LEFT ||
+               key==KeyEvent.KEYCODE_DPAD_RIGHT)
+                showTvBackOverlay(false);
+        }
+        return super.dispatchKeyEvent(event);
     }
 
     private void closeFullscreen(){
@@ -465,6 +567,7 @@ public final class AdultPornhubActivity extends Activity {
     }
 
     private void destroyPlayer(){
+        leaveTvFullscreen();
         closeFullscreen();
         if(player!=null){
             player.stopLoading();
@@ -476,6 +579,9 @@ public final class AdultPornhubActivity extends Activity {
     }
 
     @Override public void onBackPressed(){
+        // TV remote Back exits immersive playback in one press, even if the
+        // temporary on-screen Back control has already disappeared.
+        if(tvFullscreen){showSearch();return;}
         if(fullscreenView!=null){closeFullscreen();return;}
         if(showingPlayer){showSearch();return;}
         super.onBackPressed();
@@ -490,6 +596,7 @@ public final class AdultPornhubActivity extends Activity {
         super.onPause();
     }
     @Override protected void onDestroy(){
+        tvOverlayHandler.removeCallbacks(hideTvBack);
         destroyPlayer();
         super.onDestroy();
     }
