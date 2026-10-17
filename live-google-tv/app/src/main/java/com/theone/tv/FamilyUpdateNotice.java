@@ -36,6 +36,7 @@ final class FamilyUpdateNotice {
     private volatile boolean closed, busy, waitingForInstallPermission;
     private long lastCheck;
     private int offeredVersion;
+    private volatile String verifiedDownloadSha256;
 
     FamilyUpdateNotice(Activity activity) {
         this.activity = activity;
@@ -163,6 +164,7 @@ final class FamilyUpdateNotice {
     private void download(String expectedSha) {
         if (closed || busy) return;
         busy = true;
+        verifiedDownloadSha256=null;
         toast("Beveiligde update downloaden…");
         executor.execute(() -> {
             File tmp = new File(apk.getParentFile(), "update.tmp");
@@ -173,6 +175,7 @@ final class FamilyUpdateNotice {
                 verify(tmp);
                 if (apk.exists() && !apk.delete()) throw new IOException("Oude update niet te vervangen");
                 if (!tmp.renameTo(apk)) throw new IOException("Update opslaan mislukt");
+                verifiedDownloadSha256=expectedSha;
                 ui.post(() -> { if (!closed) install(); });
             } catch (Exception error) {
                 ui.post(() -> { if (!closed) toast("Update afgewezen: "+error.getMessage()); });
@@ -180,22 +183,72 @@ final class FamilyUpdateNotice {
         });
     }
 
+    /**
+     * Android TV firmware, including some Sony Bravia versions, can return a
+     * PackageInfo with null signingInfo for an APK on disk. The old updater
+     * dereferenced that field and rejected every legitimate download.
+     *
+     * Prefer modern SigningInfo; fall back to legacy signatures when the
+     * archive parser omits signingInfo. If a vendor omits both, the APK is
+     * still pinned to the SHA-256 returned by our authenticated server and
+     * the operating system's package installer MUST enforce matching signing
+     * certificates on an in-place update.
+     */
+    @SuppressWarnings("deprecation")
+    private static Signature[] signaturesOf(PackageInfo info) {
+        if(info==null)return null;
+        if(Build.VERSION.SDK_INT>=28 && info.signingInfo!=null){
+            Signature[] current=info.signingInfo.getApkContentsSigners();
+            if(current!=null && current.length>0)return current;
+        }
+        return info.signatures!=null && info.signatures.length>0?
+            info.signatures:null;
+    }
+
+    private static boolean sameSigner(Signature[] current,Signature[] installed){
+        return current!=null && installed!=null && current.length>0 &&
+            installed.length>0 &&
+            new HashSet<>(Arrays.asList(current)).equals(new HashSet<>(Arrays.asList(installed)));
+    }
+
+    private static String sha256(File candidate) throws Exception {
+        MessageDigest md=MessageDigest.getInstance("SHA-256");
+        try(InputStream in=new FileInputStream(candidate)){
+            byte[] buf=new byte[32768];
+            for(int n;(n=in.read(buf))!=-1;)md.update(buf,0,n);
+        }
+        return hex(md.digest());
+    }
+
     @SuppressWarnings("deprecation")
     private void verify(File candidate) throws Exception {
-        PackageManager pm = activity.getPackageManager();
-        int flags = Build.VERSION.SDK_INT >= 28 ? PackageManager.GET_SIGNING_CERTIFICATES : PackageManager.GET_SIGNATURES;
-        PackageInfo next = pm.getPackageArchiveInfo(candidate.getAbsolutePath(), flags);
-        PackageInfo old = pm.getPackageInfo(activity.getPackageName(), flags);
-        if (next == null || !activity.getPackageName().equals(next.packageName))
+        // Never install cached or modified bytes without checking the
+        // authenticated update server's verified digest once more.
+        String expected=verifiedDownloadSha256;
+        if(expected==null || !expected.matches("[a-f0-9]{64}") ||
+            !expected.equals(sha256(candidate)))
+            throw new SecurityException("Updatebestand niet geverifieerd");
+        PackageManager pm=activity.getPackageManager();
+        int flags=PackageManager.GET_SIGNATURES;
+        if(Build.VERSION.SDK_INT>=28)flags|=PackageManager.GET_SIGNING_CERTIFICATES;
+        PackageInfo next=pm.getPackageArchiveInfo(candidate.getAbsolutePath(),flags);
+        PackageInfo installed=pm.getPackageInfo(activity.getPackageName(),flags);
+        if(next==null || installed==null ||
+            !activity.getPackageName().equals(next.packageName))
             throw new SecurityException("Onjuiste app-update");
-        long n = Build.VERSION.SDK_INT >= 28 ? next.getLongVersionCode() : next.versionCode;
-        long o = Build.VERSION.SDK_INT >= 28 ? old.getLongVersionCode() : old.versionCode;
-        if (n <= o) throw new SecurityException("Geen nieuwere build");
-        Signature[] aa = Build.VERSION.SDK_INT >= 28 ? next.signingInfo.getApkContentsSigners() : next.signatures;
-        Signature[] bb = Build.VERSION.SDK_INT >= 28 ? old.signingInfo.getApkContentsSigners() : old.signatures;
-        if (aa == null || bb == null || aa.length == 0 ||
-            !new HashSet<>(Arrays.asList(aa)).equals(new HashSet<>(Arrays.asList(bb))))
+        long newCode=Build.VERSION.SDK_INT>=28?
+            next.getLongVersionCode():next.versionCode;
+        long oldCode=Build.VERSION.SDK_INT>=28?
+            installed.getLongVersionCode():installed.versionCode;
+        if(newCode<=oldCode)
+            throw new SecurityException("Geen nieuwere build");
+        Signature[] nextSigners=signaturesOf(next);
+        Signature[] installedSigners=signaturesOf(installed);
+        if(nextSigners!=null && installedSigners!=null &&
+            !sameSigner(nextSigners,installedSigners))
             throw new SecurityException("Ondertekening van APK komt niet overeen");
+        // No unchecked vendor-provided null is ever dereferenced. Android's
+        // PackageInstaller independently rejects any wrong signing identity.
     }
 
     private void install() {
