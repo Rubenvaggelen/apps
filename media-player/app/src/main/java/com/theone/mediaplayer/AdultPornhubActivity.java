@@ -539,6 +539,10 @@ public final class AdultPornhubActivity extends Activity {
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        if(tvFullscreen && event.getKeyCode()==KeyEvent.KEYCODE_BACK) {
+            if(event.getAction()==KeyEvent.ACTION_UP && !event.isCanceled())showSearch();
+            return true; // Remote Back must work even after the overlay auto-hides.
+        }
         if(tvFullscreen && tvBackOverlay!=null &&
            event.getAction()==KeyEvent.ACTION_DOWN) {
             int key=event.getKeyCode();
