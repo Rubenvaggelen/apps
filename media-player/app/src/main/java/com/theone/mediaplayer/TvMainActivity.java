@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.ViewGroup;
@@ -16,8 +15,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 public class TvMainActivity extends Activity {
-    private static final int BG = Color.rgb(4, 7, 12);
-    private static final int BLUE = Color.rgb(35, 190, 255);
+    private static final int BG = PremiumUi.BG;
+    private static final int BLUE = PremiumUi.BLUE_SOFT;
     private static final int MUTED = Color.rgb(150, 164, 180);
 
     private TheOneCast.Receiver castReceiver;
@@ -57,7 +56,7 @@ public class TvMainActivity extends Activity {
         titles.setPadding(dp(18), 0, 0, 0);
 
         TextView brand = label("THE ONE", 16, BLUE, true);
-        TextView title = label("MEDIA PLAYER • TV", 30, Color.WHITE, true);
+        TextView title = label("THE ONE MEDIA PLAYER", 27, Color.WHITE, true);
         titles.addView(brand);
         titles.addView(title);
         header.addView(titles);
@@ -87,6 +86,7 @@ public class TvMainActivity extends Activity {
         );
         cast.setPadding(0, dp(24), 0, 0);
         root.addView(cast);
+        root.addView(PremiumUi.familyFooter(this));
 
         setContentView(scroll);
     }
@@ -134,10 +134,10 @@ public class TvMainActivity extends Activity {
         button.setFocusableInTouchMode(false);
         button.setMinHeight(dp(64));
         button.setPadding(dp(26), dp(12), dp(26), dp(12));
-        button.setBackground(buttonBackground(false));
+        button.setBackground(PremiumUi.familyTileBackground(this, false));
         button.setOnClickListener(v -> action.run());
         button.setOnFocusChangeListener((v, focused) -> {
-            button.setBackground(buttonBackground(focused));
+            button.setBackground(PremiumUi.familyTileBackground(this, focused));
             button.setScaleX(focused ? 1.025f : 1f);
             button.setScaleY(focused ? 1.025f : 1f);
         });
@@ -148,18 +148,6 @@ public class TvMainActivity extends Activity {
         );
         lp.bottomMargin = dp(14);
         root.addView(button, lp);
-    }
-
-    private GradientDrawable buttonBackground(boolean focused) {
-        GradientDrawable d = new GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                focused
-                        ? new int[]{Color.rgb(5, 74, 122), Color.rgb(13, 151, 214)}
-                        : new int[]{Color.rgb(10, 18, 30), Color.rgb(14, 42, 62)}
-        );
-        d.setCornerRadius(dp(24));
-        d.setStroke(dp(focused ? 2 : 1), focused ? Color.rgb(104, 226, 255) : Color.rgb(48, 141, 184));
-        return d;
     }
 
     private TextView label(String value, int sp, int color, boolean bold) {
