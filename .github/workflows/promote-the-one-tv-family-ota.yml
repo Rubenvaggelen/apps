@@ -1,6 +1,9 @@
 name: Publish approved The One TV updates to apps
 on:
-  workflow_dispatch: {} # Explicit manual approval only; never auto-republish production TV binaries
+  push:
+    branches: [feature/tv-android-autoupdate-20261014]
+    paths: [.github/workflows/promote-the-one-tv-family-ota.yml]
+  workflow_dispatch: {} # Owner-approved repair release; re-lock after success
 permissions:
   contents: read
 concurrency:
@@ -23,7 +26,7 @@ jobs:
           bash -n ci/promote-the-one-tv-family-ota.sh
           php -l ci/promote-the-one-tv-family-ota.php
           grep -Fq "'tv-phone'=>['package'=>'com.theone.tv.phone','code'=>109" ci/promote-the-one-tv-family-ota.php
-          grep -Fq "'tv-google-tv'=>['package'=>'com.theone.tv','code'=>111" ci/promote-the-one-tv-family-ota.php
+          grep -Fq "'tv-google-tv'=>['package'=>'com.theone.tv','code'=>112" ci/promote-the-one-tv-family-ota.php
       - name: Promote only the previously tested signed TV APKs
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
