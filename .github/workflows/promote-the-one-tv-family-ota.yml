@@ -1,8 +1,6 @@
 name: Publish approved The One TV updates to apps
 on:
-  push:
-    branches: [feature/tv-android-autoupdate-20261014]
-    paths: [.github/workflows/promote-the-one-tv-family-ota.yml, ci/promote-the-one-tv-family-ota.php, ci/promote-the-one-tv-family-ota.sh]
+  workflow_dispatch: {} # Explicit manual approval only; never auto-republish production TV binaries
 permissions:
   contents: read
 concurrency:
