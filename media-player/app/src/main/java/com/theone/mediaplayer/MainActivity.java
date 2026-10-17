@@ -401,11 +401,8 @@ try {
         addNavButton(nav, "XXX 🔒", () -> startActivity(new Intent(this, AdultHubActivity.class)));
         addNavButton(nav, "Verder kijken", () -> showSection("Verder kijken", "Je kijkvoortgang verschijnt hier."));
         addNavButton(nav, "Favorieten", () -> showSection("Favorieten", "Je favoriete zenders, films en series verschijnen hier."));
-        if (!isTvBuild()) {
-            // Google Cast wordt pas geladen wanneer de gebruiker deze functie opent.
-            // Zo kan een Cast-/Play Services-probleem de Media Player nooit meer bij startup blokkeren.
-            addNavButton(nav, "Stream naar TV", this::showCastPanel);
-        }
+        // Stream naar TV remains implemented but is intentionally hidden
+        // until Cast/phone-to-TV integration has passed end-to-end testing.
         addNavButton(nav, "Instellingen", this::showSettings);
         navScroll.addView(nav);
         root.addView(navScroll);
@@ -470,15 +467,12 @@ try {
             new Runnable[]{()->openXtreamCatalog("series"),
                 ()->startActivity(new Intent(this,AdultHubActivity.class))});
         PremiumUi.addFamilyGridRow(this,root,
-            new String[]{"▦","⇧"},
-            new String[]{"Bibliotheek","Stream naar TV"},
+            new String[]{"▦","⚙","↻"},
+            new String[]{"Bibliotheek","Instellingen","Updates"},
             new Runnable[]{()->Toast.makeText(this,
                 "Live TV, films en series staan samen in jouw bibliotheek.",
-                Toast.LENGTH_LONG).show(),this::showCastPanel});
-        PremiumUi.addFamilyGridRow(this,root,
-            new String[]{"⚙","↻"},
-            new String[]{"Instellingen","Updates"},
-            new Runnable[]{this::showSettings,
+                Toast.LENGTH_LONG).show(),
+                this::showSettings,
                 ()->MediaPlayerUpdateChecker.checkForUpdateManual(this)});
 
         screen.addView(scroll,new LinearLayout.LayoutParams(-1,0,1f));
@@ -571,17 +565,8 @@ try {
             castCard.addView(ready);
             addCard(box, castCard);
         } else {
-            Button cast = button("📺 Stream naar TV / Chromecast");
-            cast.setOnClickListener(v -> showCastPanel());
-            box.addView(cast);
-            TextView castInfo = text(
-                    "Ondersteunt The One Android TV én Google Cast-apparaten zoals Chromecast en Google TV.",
-                    14,
-                    MUTED,
-                    false
-            );
-            castInfo.setPadding(0, dp(8), 0, 0);
-            box.addView(castInfo);
+            // Not yet validated: keep Cast service code for future work,
+            // but do not expose a phone-to-TV button in the legacy home.
         }
 
         scroll.addView(box);
