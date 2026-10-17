@@ -30,8 +30,9 @@ foreach($input['builds'] as $build){
  $id=(string)$build['id'];
  if(isset($byId[$id]) || !isset($approved[$id]))exit(6);
  $expected=$approved[$id];
- foreach(['package','version_name','apk'] as $key)
+ foreach(['package','apk'] as $key)
    if(($build[$key]??null)!==$expected[$key])exit(7);
+ if(($build['version_name']??null)!==$expected['name'])exit(7);
  if((int)($build['version_code']??0)!==$expected['code'])exit(8);
  if(!preg_match('/^[a-f0-9]{64}$/D',(string)($build['sha256']??'')))exit(9);
  $badge=(string)($build['package_badging']??'');
