@@ -730,8 +730,8 @@ public final class AndroidPornhubActivity extends Activity {
                    phoneCinemaTop==null || phoneCinemaBottom==null)return;
                 int h=phoneFullscreenSurface.getHeight();
                 if(h<=0)return;
-                int topHeight=Math.max(dp(50),(int)(h*0.11f));
-                int bottomHeight=Math.max(dp(60),(int)(h*0.135f));
+                int topHeight=Math.max(1,(int)(h*0.11f));
+                int bottomHeight=Math.max(1,(int)(h*0.125f));
                 FrameLayout.LayoutParams topParams=new FrameLayout.LayoutParams(
                     -1,topHeight,Gravity.TOP);
                 FrameLayout.LayoutParams bottomParams=new FrameLayout.LayoutParams(
