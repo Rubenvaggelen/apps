@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2421
-        versionName = "2.4.21-android-cinema-masks"
+        versionCode = 2422
+        versionName = "2.4.22-auto-rotate-fullscreen"
     }
 
     signingConfigs {
