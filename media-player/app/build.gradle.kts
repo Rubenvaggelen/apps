@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2415
-        versionName = "2.4.15-android-pornhub-tv-parity"
+        versionCode = 2416
+        versionName = "2.4.16-android-landscape-hide-cast"
     }
 
     signingConfigs {
