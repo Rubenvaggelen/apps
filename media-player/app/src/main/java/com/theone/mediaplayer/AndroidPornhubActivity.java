@@ -457,17 +457,7 @@ public final class AndroidPornhubActivity extends Activity {
         final boolean[] iframeMode={tv};
         Button otherMode=null;
         if(tv) {
-            otherMode=button("🎬 Schone videoweergave proberen",()->{
-                if(player==null)return;
-                iframeMode[0]=!iframeMode[0];
-                phoneCleanDirect=!iframeMode[0];
-                embedLoadFailed=false;
-                playerStatus.setText(iframeMode[0]
-                    ?"Originele ingesloten speler laden…":
-                    "Schone directe speler laden. Als hij niet afspeelt: schakel terug.");
-                loadOfficialEmbed(video.id,iframeMode[0]);
-                if(remotePlay!=null)remotePlay.requestFocus();
-            });
+            otherMode=button("🎬 Schone videoweergave proberen",()->{});
             final Button switchMode=otherMode;
             otherMode.setOnClickListener(v->{
                 if(!authorized()||player==null)return;
