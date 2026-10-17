@@ -428,72 +428,65 @@ try {
      * with Cast and Settings retained as phone-only additional actions.
      */
     private void showMatchingAndroidHome() {
-        playerFullscreen = false;
+        playerFullscreen=false;
         releasePlayer();
-        content = new FrameLayout(this);
+        content=new FrameLayout(this);
         content.setBackgroundColor(PremiumUi.BG);
-        ScrollView scroll = new ScrollView(this);
+        LinearLayout screen=new LinearLayout(this);
+        screen.setOrientation(LinearLayout.VERTICAL);
+        screen.setBackgroundColor(PremiumUi.BG);
+        ScrollView scroll=new ScrollView(this);
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(PremiumUi.BG);
-        LinearLayout root = new LinearLayout(this);
+        LinearLayout root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(20), dp(22), dp(20), dp(30));
+        root.setPadding(dp(15),dp(18),dp(15),dp(8));
         scroll.addView(root,new ScrollView.LayoutParams(-1,-2));
 
-        LinearLayout header = new LinearLayout(this);
+        LinearLayout header=new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        android.widget.ImageView logo = new android.widget.ImageView(this);
+        android.widget.ImageView logo=new android.widget.ImageView(this);
         logo.setImageResource(R.drawable.remote_final);
         logo.setScaleType(android.widget.ImageView.ScaleType.CENTER_INSIDE);
-        header.addView(logo,new LinearLayout.LayoutParams(dp(68),dp(68)));
-
-        LinearLayout titles = new LinearLayout(this);
+        header.addView(logo,new LinearLayout.LayoutParams(dp(67),dp(67)));
+        LinearLayout titles=new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
-        titles.setPadding(dp(14),0,0,0);
-        TextView brand=text("THE ONE",14,PremiumUi.BLUE,true);
-        TextView heading=text("THE ONE MEDIA PLAYER",23,Color.WHITE,true);
-        titles.addView(brand);
-        titles.addView(heading);
+        titles.setPadding(dp(12),0,0,0);
+        titles.addView(text("THE ONE",13,PremiumUi.BLUE_SOFT,true));
+        titles.addView(text("MEDIA PLAYER",25,Color.WHITE,true));
         header.addView(titles);
         root.addView(header);
 
-        TextView instructions=text("Kies wat je wilt kijken.",16,MUTED,false);
-        instructions.setPadding(0,dp(18),0,dp(24));
-        root.addView(instructions);
+        TextView intro=text("Kies wat je wilt kijken",16,MUTED,false);
+        intro.setPadding(0,dp(14),0,dp(12));
+        root.addView(intro);
+        PremiumUi.addFamilyGridRow(this,root,
+            new String[]{"▣","▶"},
+            new String[]{"Live TV","Films"},
+            new Runnable[]{()->openXtreamCatalog("live"),()->openXtreamCatalog("movie")});
+        PremiumUi.addFamilyGridRow(this,root,
+            new String[]{"▤","✦"},
+            new String[]{"Series","XXX 🔒"},
+            new Runnable[]{()->openXtreamCatalog("series"),
+                ()->startActivity(new Intent(this,AdultHubActivity.class))});
+        PremiumUi.addFamilyGridRow(this,root,
+            new String[]{"▦","⇧"},
+            new String[]{"Bibliotheek","Stream naar TV"},
+            new Runnable[]{()->Toast.makeText(this,
+                "Live TV, films en series staan samen in jouw bibliotheek.",
+                Toast.LENGTH_LONG).show(),this::showCastPanel});
+        PremiumUi.addFamilyGridRow(this,root,
+            new String[]{"⚙","↻"},
+            new String[]{"Instellingen","Updates"},
+            new Runnable[]{this::showSettings,
+                ()->MediaPlayerUpdateChecker.checkForUpdateManual(this)});
 
-        addMatchingHomeButton(root,"Live TV",()->openXtreamCatalog("live"));
-        addMatchingHomeButton(root,"Films",()->openXtreamCatalog("movie"));
-        addMatchingHomeButton(root,"Series",()->openXtreamCatalog("series"));
-        addMatchingHomeButton(root,"XXX 🔒",()->startActivity(new Intent(this,AdultHubActivity.class)));
-        addMatchingHomeButton(root,"Over de bibliotheek",()->
-            Toast.makeText(this,"Live TV, films en series staan samen in jouw bibliotheek.",Toast.LENGTH_LONG).show());
-        addMatchingHomeButton(root,"Stream naar TV",this::showCastPanel);
-        addMatchingHomeButton(root,"Instellingen",this::showSettings);
-        root.addView(PremiumUi.familyFooter(this));
-        content.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
+        screen.addView(scroll,new LinearLayout.LayoutParams(-1,0,1f));
+        screen.addView(PremiumUi.familyFooter(this),
+            new LinearLayout.LayoutParams(-1,-2));
+        content.addView(screen,new FrameLayout.LayoutParams(-1,-1));
         setContentView(content);
         scroll.post(this::exitImmersiveFullscreen);
-    }
-
-    private void addMatchingHomeButton(LinearLayout root,String name,Runnable action) {
-        Button item = new Button(this);
-        item.setText(name);
-        item.setTextColor(Color.WHITE);
-        item.setTextSize(20);
-        item.setTypeface(android.graphics.Typeface.DEFAULT,android.graphics.Typeface.BOLD);
-        item.setAllCaps(false);
-        item.setGravity(Gravity.CENTER);
-        item.setFocusable(true);
-        item.setMinHeight(dp(64));
-        item.setPadding(dp(24),dp(12),dp(24),dp(12));
-        item.setBackground(PremiumUi.familyTileBackground(this,false));
-        item.setOnClickListener(v->action.run());
-        item.setOnFocusChangeListener((v,focused)->
-            item.setBackground(PremiumUi.familyTileBackground(this,focused)));
-        LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,-2);
-        params.bottomMargin=dp(14);
-        root.addView(item,params);
     }
 
     private void showTvHome() {
