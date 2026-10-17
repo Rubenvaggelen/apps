@@ -2,7 +2,7 @@ name: Media Player TV v1017 remote OK video poster release
 
 on:
   push:
-    branches: [feature/media-player-adult-5min-20261017]
+    branches: [feature/media-player-adult-5min-20261016]
     paths:
       - '.github/workflows/media-player-tv-poster-ok-release.yml'
 
