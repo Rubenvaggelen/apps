@@ -452,7 +452,7 @@ try {
         titles.setOrientation(LinearLayout.VERTICAL);
         titles.setPadding(dp(14),0,0,0);
         TextView brand=text("THE ONE",14,PremiumUi.BLUE,true);
-        TextView heading=text("MEDIA PLAYER",25,Color.WHITE,true);
+        TextView heading=text("THE ONE MEDIA PLAYER",23,Color.WHITE,true);
         titles.addView(brand);
         titles.addView(heading);
         header.addView(titles);
@@ -470,6 +470,7 @@ try {
             Toast.makeText(this,"Live TV, films en series staan samen in jouw bibliotheek.",Toast.LENGTH_LONG).show());
         addMatchingHomeButton(root,"Stream naar TV",this::showCastPanel);
         addMatchingHomeButton(root,"Instellingen",this::showSettings);
+        root.addView(PremiumUi.familyFooter(this));
         content.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
         setContentView(content);
         scroll.post(this::exitImmersiveFullscreen);
@@ -486,25 +487,13 @@ try {
         item.setFocusable(true);
         item.setMinHeight(dp(64));
         item.setPadding(dp(24),dp(12),dp(24),dp(12));
-        item.setBackground(matchingHomeBackground(false));
+        item.setBackground(PremiumUi.familyTileBackground(this,false));
         item.setOnClickListener(v->action.run());
         item.setOnFocusChangeListener((v,focused)->
-            item.setBackground(matchingHomeBackground(focused)));
+            item.setBackground(PremiumUi.familyTileBackground(this,focused)));
         LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,-2);
         params.bottomMargin=dp(14);
         root.addView(item,params);
-    }
-
-    private android.graphics.drawable.GradientDrawable matchingHomeBackground(boolean focused) {
-        android.graphics.drawable.GradientDrawable d=new android.graphics.drawable.GradientDrawable(
-            android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
-            focused
-                ? new int[]{Color.rgb(5,74,122),Color.rgb(13,151,214)}
-                : new int[]{Color.rgb(10,18,30),Color.rgb(14,42,62)});
-        d.setCornerRadius(dp(24));
-        d.setStroke(dp(focused?2:1),
-            focused?Color.rgb(104,226,255):Color.rgb(48,141,184));
-        return d;
     }
 
     private void showTvHome() {
