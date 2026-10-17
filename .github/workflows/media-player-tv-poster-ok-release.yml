@@ -278,6 +278,14 @@ jobs:
           }
           echo "Android TV build uses the established fixed TV signing key"
 
+      - name: Keep signed TV v1014 APK in private build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: The-One-Media-Player-TV-v1014-signed-private
+          path: media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Publish Android TV v1014 to authenticated Dev Hub only
         shell: bash
         env:
