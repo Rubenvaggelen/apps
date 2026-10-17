@@ -1,4 +1,4 @@
-name: Media Player Android v2417 phone Pornhub release (TV frozen)
+name: Media Player Android v2418 phone Pornhub release (TV frozen)
 
 on:
   push:
@@ -230,7 +230,7 @@ jobs:
       - name: Build and test Android only — TV build frozen
         run: gradle -p media-player :app:testDebugUnitTest :app:assembleRelease --no-daemon
 
-      - name: Verify signed Android v2417, phone player and preserved package
+      - name: Verify signed Android v2418, phone player and preserved package
         shell: bash
         run: |
           set -euo pipefail
@@ -238,7 +238,7 @@ jobs:
           test -s "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" >/tmp/media-player-package.txt
-          grep -q "name='com.theone.mediaplayer'.*versionCode='2417'" /tmp/media-player-package.txt
+          grep -q "name='com.theone.mediaplayer'.*versionCode='2418'" /tmp/media-player-package.txt
           grep -q 'AndroidPornhubActivity' media-player/app/src/main/AndroidManifest.xml
           grep -q 'AndroidPornhubActivity.class' media-player/app/src/main/java/com/theone/mediaplayer/AdultHubActivity.java
           grep -q 'loadOfficialEmbed(video.id,tv)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
@@ -248,6 +248,11 @@ jobs:
           grep -q 'setRequestedOrientation(previousOrientation)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
           grep -q 'onConfigurationChanged(Configuration configuration)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
           grep -q 'phoneFullscreenSurface.addView(player,new FrameLayout.LayoutParams(-1,-1))' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
+          grep -Fq 'tvEstimatedPositionAtMs=SystemClock.elapsedRealtime();' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
+          grep -Fq 'mgp_seekbar' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
+          grep -Fq 'tapPhoneTimelineAt(active,x,y,target,direction,foundTrack)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
+          ! grep -Fq 'Video nog niet klaar om te spoelen' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
+          test "$(grep -Fc 'tvClipDurationSeconds<300' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java)" -eq 1
           grep -q '⛶ Volledig scherm' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
           grep -q 'phonePlayerParent.addView(player,index,phonePlayerParams)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
           grep -q 'screenLayout|smallestScreenSize|keyboardHidden' media-player/app/src/main/AndroidManifest.xml
@@ -255,9 +260,9 @@ jobs:
           ! grep -q 'new String\[\]{"Bibliotheek","Stream naar TV"}' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
           # Existing Google TV binaries and releases must never be modified here.
           test -z "$(find media-player/tvapp -type f -path '*/build/outputs/*.apk' -print -quit)"
-          echo "ANDROID_ONLY_2417_SIGNED_TV_FROZEN"
+          echo "ANDROID_ONLY_2418_SIGNED_TV_FROZEN"
 
-      - name: Publish Android v2417 to authenticated Dev Hub only
+      - name: Publish Android v2418 to authenticated Dev Hub only
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
