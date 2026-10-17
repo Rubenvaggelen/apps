@@ -48,7 +48,7 @@ import sys, pathlib, hashlib, datetime, json, re
 folder=pathlib.Path(sys.argv[1])
 specs=[
   ("tv-phone","com.theone.tv.phone",109,"1.0.9","The-One-TV-Android-v1.0.9.apk","e3015d82946b358501a089eb37ec43c762a82f11"),
-  ("tv-google-tv","com.theone.tv",112,"1.0.12","The-One-TV-Google-TV-v1.0.12.apk","f9b239ffa3a2b0bb628fd370b9069efea70436e9")
+  ("tv-google-tv","com.theone.tv",112,"1.0.12","The-One-TV-Google-TV-v1.0.12.apk","c7771e8e07dd26fb805db531e54a6881548fee54")
 ]
 builds=[]
 for build_id,package,code,version,name,commit in specs:
