@@ -1,4 +1,4 @@
-name: Export installed-safe Media Player Android v2412 for handover
+name: Export installed-safe Media Player Android v2413 for handover
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
       DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
       DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
     steps:
-      - name: Fetch exact signed v2412 from authenticated private Dev Hub
+      - name: Fetch exact signed v2413 from authenticated private Dev Hub
         shell: bash
         run: |
           set -euo pipefail
@@ -48,22 +48,22 @@ jobs:
           a=[r for r in rows if isinstance(r,dict) and "media player" in str(r.get("app_name","")).lower() and "android" in str(r.get("platform","")).lower() and "tv" not in str(r.get("platform","")).lower()]
           assert len(a)==1,"Unexpected app match"
           x=a[0]
-          assert int(x.get("version_code",0))==2412,"Dev Hub is not on approved version"
+          assert int(x.get("version_code",0))==2413,"Dev Hub is not on approved version"
           name=x["apk"]; sha=x["sha256"]
-          assert re.fullmatch(r"The-One-Media-Player-Android-v2412-[0-9a-f]{12}[.]apk",name),"Unexpected filename"
+          assert re.fullmatch(r"The-One-Media-Player-Android-v2413-[0-9a-f]{12}[.]apk",name),"Unexpected filename"
           assert re.fullmatch(r"[0-9a-f]{64}",sha),"Invalid SHA256"
           print(name+" "+sha)
           ')
           read -r name expected <<<"$metadata"
           mkdir -p handover
-          scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$remote:the-one-private-builds/2026-10-13/apks/$name" handover/The-One-Media-Player-Android-v2412.apk
-          actual=$(sha256sum handover/The-One-Media-Player-Android-v2412.apk | cut -d' ' -f1)
+          scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$remote:the-one-private-builds/2026-10-13/apks/$name" handover/The-One-Media-Player-Android-v2413.apk
+          actual=$(sha256sum handover/The-One-Media-Player-Android-v2413.apk | cut -d' ' -f1)
           test "$actual" = "$expected"
-          echo "MEDIA_PLAYER_ANDROID_V2412_PRIVATE_SHA256_VERIFIED"
+          echo "MEDIA_PLAYER_ANDROID_V2413_PRIVATE_SHA256_VERIFIED"
       - name: Keep handover in authenticated GitHub artifact (1 day)
         uses: actions/upload-artifact@v4
         with:
-          name: Media-Player-Android-v2412-signed-for-chat
-          path: handover/The-One-Media-Player-Android-v2412.apk
+          name: Media-Player-Android-v2413-signed-for-chat
+          path: handover/The-One-Media-Player-Android-v2413.apk
           if-no-files-found: error
           retention-days: 1
