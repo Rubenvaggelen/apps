@@ -1,0 +1,65 @@
+name: Inspect The One TV authenticated update channel
+on:
+  push:
+    branches: [feature/tv-android-autoupdate-20261014]
+    paths: [.github/workflows/inspect-the-one-tv-update-channel.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect server publishing paths without modifying updates
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          for n in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "${!n}" || { echo "Missing deployment secret: $n"; exit 1; }
+          done
+          tmp=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$tmp"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$tmp/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$tmp/known"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$tmp/askpass"
+          chmod 600 "$tmp/key" "$tmp/known"; chmod 700 "$tmp/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$tmp/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$tmp/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          ssh -p "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo "INSPECTION_READ_ONLY=YES"
+          python3 - <<'PY'
+          import os, pathlib, json, re
+          root=pathlib.Path('/home/vanawiwj')
+          # Only print exact paths and sanitized nonsecret field names / descriptions.
+          for p in root.glob('**/family-updates.php'):
+            if len(p.parts)>13 or any(v in p.parts for v in ['vendor','node_modules','.cache','.git']): continue
+            if not p.is_file():continue
+            print('FAMILY_UPDATE_SERVICE_PATH='+str(p))
+            data=p.read_text(errors='replace')
+            for term in ['version_code','version_name','sha256','package','tv_android','manifest.json','json_decode','sqlite','PDO','download','check']:
+              print('SERVICE_REFERENCE_'+term.upper().replace('.','_')+'='+str(term in data))
+            print('SERVICE_CODE_BYTES='+str(len(data)))
+          m=root/'the-one-private-builds/2026-10-13/manifest.json'
+          if m.is_file():
+            rows=json.loads(m.read_text())
+            print('PRIVATE_DEVHUB_ROW_COUNT='+str(len(rows)))
+            for r in rows:
+              if r.get('id') in ('tv-phone','tv-google-tv','tv-android'):
+                print('DEVHUB_ROW='+json.dumps({k:r.get(k) for k in ('id','version_name','apk','dev_hub_status')},sort_keys=True))
+          for d in [root/'the-one-remote-api',root/'public_html/the-one-remote-api',root/'rubenvanaggelen.com/the-one-remote-api']:
+            if d.is_dir():
+              print('UPDATE_DIRECTORY='+str(d))
+              print('UPDATE_DIRECTORY_FILENAMES='+','.join(sorted(p.name for p in d.iterdir() if p.is_file())[:30]))
+          PY
+          REMOTE
