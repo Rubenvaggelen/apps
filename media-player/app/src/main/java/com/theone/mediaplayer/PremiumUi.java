@@ -1,11 +1,6 @@
 package com.theone.mediaplayer;
 
 import android.content.Context;
-import java.net.URL;
-import java.net.HttpURLConnection;
-import java.io.InputStream;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.widget.ImageView;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -44,7 +39,8 @@ public final class PremiumUi {
         mark.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         mark.setAdjustViewBounds(true);
         row.addView(mark, new LinearLayout.LayoutParams(dp(context, 58), dp(context, 58)));
-        loadMainTheOneLogo(mark);
+        // Use the exact local The One Remote app logo, also offline.
+        mark.setImageResource(R.drawable.the_one_logo);
 
         LinearLayout titles = new LinearLayout(context);
         titles.setOrientation(LinearLayout.VERTICAL);
@@ -191,34 +187,6 @@ public final class PremiumUi {
         d.setCornerRadius(dp(context, radiusDp));
         d.setStroke(dp(context, strokeDp), stroke);
         return d;
-    }
-
-    private static final String MAIN_THE_ONE_LOGO_URL =
-            "https://raw.githubusercontent.com/Rubenvaggelen/apps/main/app/src/main/res/drawable-nodpi/the_one_logo.png";
-
-    private static void loadMainTheOneLogo(ImageView view) {
-        // Fallback blijft The One-achtig als internet even niet beschikbaar is.
-        view.setBackgroundColor(Color.TRANSPARENT);
-
-        new Thread(() -> {
-            HttpURLConnection connection = null;
-            try {
-                connection = (HttpURLConnection) new URL(MAIN_THE_ONE_LOGO_URL).openConnection();
-                connection.setConnectTimeout(8000);
-                connection.setReadTimeout(12000);
-                connection.setRequestProperty("User-Agent", "TheOneMediaPlayer/2.0");
-
-                try (InputStream input = connection.getInputStream()) {
-                    Bitmap bitmap = BitmapFactory.decodeStream(input);
-                    if (bitmap != null) {
-                        view.post(() -> view.setImageBitmap(bitmap));
-                    }
-                }
-            } catch (Throwable ignored) {
-            } finally {
-                if (connection != null) connection.disconnect();
-            }
-        }).start();
     }
 
     public static int dp(Context context, int value) {
