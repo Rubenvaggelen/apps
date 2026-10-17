@@ -244,7 +244,7 @@ jobs:
           grep -q 'loadOfficialEmbed(video.id,tv)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
           grep -q 'showPhoneButtons' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
           grep -q 'AdultVideoDuration.allow' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
-          grep -q 'SCREEN_ORIENTATION_LANDSCAPE' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
+          grep -Fq 'SCREEN_ORIENTATION_FULL_SENSOR' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
           grep -q 'setRequestedOrientation(previousOrientation)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
           grep -q 'onConfigurationChanged(Configuration configuration)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
           grep -q 'phoneFullscreenSurface.addView(player,new FrameLayout.LayoutParams(-1,-1))' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
