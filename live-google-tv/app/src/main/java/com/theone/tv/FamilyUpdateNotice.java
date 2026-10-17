@@ -195,7 +195,7 @@ final class FamilyUpdateNotice {
      * certificates on an in-place update.
      */
     @SuppressWarnings("deprecation")
-    private static Signature[] signaturesOf(PackageInfo info) {
+    static Signature[] signaturesOf(PackageInfo info) {
         if(info==null)return null;
         if(Build.VERSION.SDK_INT>=28 && info.signingInfo!=null){
             Signature[] current=info.signingInfo.getApkContentsSigners();
