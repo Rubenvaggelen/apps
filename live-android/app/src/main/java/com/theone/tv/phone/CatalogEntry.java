@@ -5,7 +5,7 @@ public final class CatalogEntry {
  private static final Pattern QUALITY=Pattern.compile("(?i)\\b(?:4k|2160p?|1080p?|720p?|uhd|fhd|hd|sd|hevc|h264|h265|backup|vip)\\b");
  private static final Map<String,String> HINT_CACHE=new java.util.concurrent.ConcurrentHashMap<>();
  private static final Pattern NUMBERS=Pattern.compile("\\d+");
- private static final Pattern SEPARATORS=Pattern.compile("[^\\p{L}\\p{N}]+");
+ private static final Pattern SEPARATORS=Pattern.compile("[^\\p{L}\\p{N}+]+");
  // Recognize explicit adult labels from BOTH provider category names and
  // channel titles. Do not infer age-restricted content from country names.
  private static final Pattern ADULT_MARKER=Pattern.compile(
