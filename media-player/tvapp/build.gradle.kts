@@ -10,8 +10,8 @@ android {
         applicationId = "com.theone.mediaplayer.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1017
-        versionName = "1.0.17-timeline-seek"
+        versionCode = 1018
+        versionName = "1.0.18-remote-logo"
     }
 
     buildTypes {
