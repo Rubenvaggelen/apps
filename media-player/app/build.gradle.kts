@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2410
-        versionName = "2.4.10-adult-search-playback"
+        versionCode = 2411
+        versionName = "2.4.11-remote-logo"
     }
 
     signingConfigs {
