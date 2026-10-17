@@ -7,6 +7,9 @@ import android.view.inputmethod.EditorInfo;
 import android.text.InputType;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.content.pm.ActivityInfo;
+import android.content.res.Configuration;
+import android.view.WindowManager;
 import android.os.SystemClock;
 import android.os.Handler;
 import android.os.Looper;
@@ -67,6 +70,8 @@ public final class AndroidPornhubActivity extends Activity {
     // the surrounding UI. Never reload the provider's already playing iframe.
     private boolean tvFullscreen=false;
     private int previousSystemUiFlags=0;
+    private int previousOrientation=ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
+    private boolean wasWindowFullscreen=false;
     private View[] tvVideoChrome;
     private Button tvBackOverlay;
     private TextView tvSeekOverlay;
@@ -511,6 +516,13 @@ public final class AndroidPornhubActivity extends Activity {
            !authorized())return;
         tvFullscreen=true;
         previousSystemUiFlags=getWindow().getDecorView().getSystemUiVisibility();
+        previousOrientation=getRequestedOrientation();
+        wasWindowFullscreen=(getWindow().getAttributes().flags &
+            WindowManager.LayoutParams.FLAG_FULLSCREEN)!=0;
+        // Google TV is already landscape; touchscreen Android needs landscape
+        // to fill the physical display, independent of the auto-rotate setting.
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         if(tvVideoChrome!=null)for(View chrome:tvVideoChrome) {
             if(chrome!=null)chrome.setVisibility(View.GONE);
         }
@@ -523,6 +535,11 @@ public final class AndroidPornhubActivity extends Activity {
             View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
             View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
         getWindow().getDecorView().setSystemUiVisibility(flags);
+        // Do not reparent or reload the WebView: doing so would interrupt the
+        // official embedded provider playback that has already started.
+        outer.setBackgroundColor(Color.BLACK);
+        outer.requestLayout();
+        player.requestLayout();
         tvBackOverlay=button("← Terug",this::showSearch);
         tvBackOverlay.setAllCaps(false);
         FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(
@@ -741,8 +758,14 @@ public final class AndroidPornhubActivity extends Activity {
             tvBackOverlay=null;
         }
         if(tvFullscreen) {
-            getWindow().getDecorView().setSystemUiVisibility(previousSystemUiFlags);
+            // Clear fullscreen first and restore original orientation to
+            // avoid leaving the results screen stuck in landscape.
             tvFullscreen=false;
+            getWindow().getDecorView().setSystemUiVisibility(previousSystemUiFlags);
+            if(!wasWindowFullscreen)
+                getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+            setRequestedOrientation(previousOrientation);
+            outer.setBackgroundColor(PremiumUi.BG);
         }
         if(tvVideoChrome!=null)for(View chrome:tvVideoChrome) {
             if(chrome!=null)chrome.setVisibility(View.VISIBLE);
@@ -750,6 +773,19 @@ public final class AndroidPornhubActivity extends Activity {
         tvVideoChrome=null;
         tvPlaybackRequested=false;
         tvEstimatedPositionAtMs=0;
+    }
+
+    @Override public void onConfigurationChanged(Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        // Manifest handles orientation|screenSize: resize the same WebView
+        // rather than destroying its active iframe when landscape starts.
+        if(tvFullscreen && player!=null) {
+            outer.requestLayout();
+            player.requestLayout();
+            player.invalidate();
+            if(tvBackOverlay!=null)tvBackOverlay.bringToFront();
+            if(phoneSeekButtons!=null)phoneSeekButtons.bringToFront();
+        }
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
