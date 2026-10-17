@@ -10,8 +10,8 @@ android {
         applicationId = "com.theone.mediaplayer.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1014
-        versionName = "1.0.14-tv-poster-ok"
+        versionCode = 1015
+        versionName = "1.0.15-auto-fullscreen-back"
     }
 
     buildTypes {
