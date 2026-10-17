@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2420
-        versionName = "2.4.20-direct-clean-player"
+        versionCode = 2421
+        versionName = "2.4.21-android-cinema-masks"
     }
 
     signingConfigs {
