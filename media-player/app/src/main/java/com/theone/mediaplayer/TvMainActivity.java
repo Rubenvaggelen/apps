@@ -48,7 +48,7 @@ public class TvMainActivity extends Activity {
         header.setGravity(Gravity.CENTER_VERTICAL);
 
         ImageView logo = new ImageView(this);
-        logo.setImageResource(com.theone.mediaplayer.R.drawable.ic_launcher);
+        logo.setImageResource(com.theone.mediaplayer.R.drawable.remote_final);
         logo.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         header.addView(logo, new LinearLayout.LayoutParams(dp(76), dp(76)));
 
