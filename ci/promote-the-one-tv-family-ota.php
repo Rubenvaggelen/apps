@@ -22,7 +22,7 @@ if (!is_array($input) || !isset($input['builds']) || !is_array($input['builds'])
     || count($input['builds'])!==2) exit(4);
 $approved=[
  'tv-phone'=>['package'=>'com.theone.tv.phone','code'=>109,'name'=>'1.0.9','apk'=>'The-One-TV-Android-v1.0.9.apk'],
- 'tv-google-tv'=>['package'=>'com.theone.tv','code'=>111,'name'=>'1.0.11','apk'=>'The-One-TV-Google-TV-v1.0.11.apk']
+ 'tv-google-tv'=>['package'=>'com.theone.tv','code'=>112,'name'=>'1.0.12','apk'=>'The-One-TV-Google-TV-v1.0.12.apk']
 ];
 $byId=[];
 foreach($input['builds'] as $build){
