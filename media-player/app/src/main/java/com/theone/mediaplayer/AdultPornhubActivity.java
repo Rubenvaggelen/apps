@@ -7,8 +7,11 @@ import android.view.inputmethod.EditorInfo;
 import android.text.InputType;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.InputDevice;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -253,7 +256,7 @@ public final class AdultPornhubActivity extends Activity {
         final boolean tv=getPackageName().endsWith(".tv");
         final Button remotePlay;
         if(tv) {
-            remotePlay=button("▶ Afspelen — druk op OK",()->startTvPlayback(playerStatus));
+            remotePlay=button("▶ Start video met OK",()->startTvPlayback(playerStatus));
             remotePlay.setAllCaps(false);
             column.addView(remotePlay,new LinearLayout.LayoutParams(-1,dp(58)));
             remotePlay.requestFocus();
@@ -314,7 +317,7 @@ public final class AdultPornhubActivity extends Activity {
             @Override public void onPageFinished(WebView view,String url){
                 if(!embedLoadFailed) {
                     if(tv) {
-                        playerStatus.setText("Spelerpagina geladen; video kan nog laden. Kies ▶ Afspelen met OK, of probeer de andere weergave.");
+                        playerStatus.setText("Videobeeld geladen. Selecteer ▶ Start video met OK om de grote afspeelknop in het beeld te bedienen.");
                         if(remotePlay!=null)remotePlay.requestFocus();
                     } else {
                         playerStatus.setText("Spelerpagina geladen. Tik op ▶ om af te spelen.");
@@ -406,8 +409,13 @@ public final class AdultPornhubActivity extends Activity {
     }
 
     /**
-     * Explicit TV remote play action. Only uses the provider's official page,
-     * and keeps cross-origin frame isolation intact.
+     * Google TV has no touch screen. Provider embeds frequently render their
+     * actual play overlay in a cross-origin iframe: evaluateJavascript cannot
+     * reach that overlay. Translate an explicit OK press into a pointer tap
+     * at the CENTER OF THE VISIBLE WEBVIEW, where the provider's central play
+     * icon is presented. Dispatch both DOWN and UP into Chromium/WebView.
+     * This is only invoked after the owner presses the Play button/remote OK;
+     * never attempt to autoplay or bypass provider restrictions.
      */
     private void startTvPlayback(TextView status) {
         if(!showingPlayer || player==null || !authorized())return;
@@ -415,36 +423,35 @@ public final class AdultPornhubActivity extends Activity {
             status.setText("De provider heeft de speler niet geladen. Probeer de andere weergave.");
             return;
         }
-        status.setText("Afspelen aanvragen…");
-        final String js="(function(){try{" +
-            "var docs=[document],frames=document.querySelectorAll('iframe'),restricted=false;" +
-            "for(var i=0;i<frames.length;i++){try{if(frames[i].contentDocument)" +
-            "docs.push(frames[i].contentDocument);}catch(e){restricted=true;}}" +
-            "for(var d=0;d<docs.length;d++){var doc=docs[d];" +
-            "var v=doc.querySelector('video');" +
-            "if(v){var p=v.play();if(p&&p.catch)p.catch(function(){});return 'VIDEO_REQUESTED';}" +
-            "var selectors=['.jw-icon-display','.jw-display-icon-container'," +
-            "'.vjs-big-play-button','.plyr__control--overlaid'," +
-            "'button[aria-label*=play i]'];" +
-            "for(var k=0;k<selectors.length;k++){var b=doc.querySelector(selectors[k]);" +
-            "if(b){b.click();return 'BUTTON_REQUESTED';}}}" +
-            "return restricted?'FRAME_RESTRICTED':frames.length?'FRAME_NO_CONTROL':'NO_PLAYER';" +
-            "}catch(error){return 'PLAYER_ERROR';}})();";
-        player.evaluateJavascript(js,result->{
-            if(isFinishing()||isDestroyed()||!showingPlayer)return;
-            if(result==null || result.contains("PLAYER_ERROR")){
-                status.setText("Speler reageert niet. Kies de andere spelerweergave.");
-            } else if(result.contains("FRAME_RESTRICTED")) {
-                status.setText("De provider bedient deze video binnen een beschermd frame. "+
-                    "Probeer de bediening in de video of kies de andere weergave.");
-            } else if(result.contains("FRAME_NO_CONTROL") || result.contains("NO_PLAYER")) {
-                status.setText("Er is geen afspeelbare video geladen. "+
-                    "Kies 'Andere spelerweergave proberen'.");
-            } else {
-                status.setText("Afspelen aangevraagd. Als er geen beeld verschijnt, "+
-                    "probeer de andere weergave.");
-            }
-        });
+        final WebView activePlayer=player;
+        if(activePlayer.getWidth()<=0 || activePlayer.getHeight()<=0){
+            status.setText("Het videobeeld wordt nog opgebouwd. Probeer OK over een moment.");
+            return;
+        }
+        final float x=activePlayer.getWidth()/2f;
+        final float y=activePlayer.getHeight()/2f;
+        final long downAt=SystemClock.uptimeMillis();
+        MotionEvent down=MotionEvent.obtain(downAt,downAt,MotionEvent.ACTION_DOWN,x,y,0);
+        MotionEvent up=MotionEvent.obtain(downAt,downAt+70,MotionEvent.ACTION_UP,x,y,0);
+        down.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        up.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        boolean deliveredDown=false,deliveredUp=false;
+        try {
+            deliveredDown=activePlayer.dispatchTouchEvent(down);
+            deliveredUp=activePlayer.dispatchTouchEvent(up);
+        } catch (RuntimeException e) {
+            Log.w("TheOneAdult","TV WebView playback remote touch rejected");
+        } finally {
+            down.recycle();
+            up.recycle();
+        }
+        if(deliveredDown || deliveredUp) {
+            status.setText("OK naar de afspeelknop in het videobeeld gestuurd. "+
+                "Kijk of de video begint. Zo niet, probeer de andere spelerweergave.");
+        } else {
+            status.setText("De TV-speler heeft de OK-bediening niet aangenomen. "+
+                "Probeer de andere weergave.");
+        }
     }
 
     private void closeFullscreen(){
