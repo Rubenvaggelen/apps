@@ -63,4 +63,36 @@ import org.junit.*;import org.junit.runner.RunWith;import static org.junit.Asser
   }
  }
 
+
+ @Test public void googleTvRemoteCanFocusXxxBetweenKanalenAndLanden() throws Exception {
+  Intent i=new Intent(InstrumentationRegistry.getInstrumentation().getTargetContext(),MainActivity.class)
+      .putExtra("tv_test_mode",true).putExtra("tv_test_count",40);
+  try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(i)){
+   scenario.onActivity(a->{
+     assertTrue(a.findViewById(1001).requestFocus());
+     assertEquals(1001,a.getCurrentFocus().getId());
+     a.dispatchKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,android.view.KeyEvent.KEYCODE_DPAD_RIGHT));
+     assertNotNull("XXX should be focusable on Google TV",a.getCurrentFocus());
+     assertEquals("Right from Kanalen must reach XXX",1008,a.getCurrentFocus().getId());
+     a.dispatchKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,android.view.KeyEvent.KEYCODE_DPAD_RIGHT));
+     assertEquals("Right from XXX must reach Landen",1007,a.getCurrentFocus().getId());
+     a.dispatchKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,android.view.KeyEvent.KEYCODE_DPAD_LEFT));
+     assertEquals("Left from Landen must return to XXX",1008,a.getCurrentFocus().getId());
+     assertTrue("XXX must respond to click",a.findViewById(1008).performClick());
+     assertNull("18+ must be confirmed before opening XXX",a.findViewById(1009));
+   });
+  }
+ }
+ @Test public void sonyArchiveNullSigningInfoDoesNotCauseNullPointer() {
+   android.content.pm.PackageInfo legacy=new android.content.pm.PackageInfo();
+   android.content.pm.Signature cert=new android.content.pm.Signature("3006020101");
+   legacy.signatures=new android.content.pm.Signature[]{cert};
+   legacy.signingInfo=null;
+   assertArrayEquals("Legacy signed APK has usable certificate even with null SigningInfo",
+       new android.content.pm.Signature[]{cert},FamilyUpdateNotice.signaturesOf(legacy));
+   assertNull(FamilyUpdateNotice.signaturesOf(null));
+   android.content.pm.PackageInfo noCert=new android.content.pm.PackageInfo();
+   assertNull("Missing vendor certificate must not throw",FamilyUpdateNotice.signaturesOf(noCert));
+ }
+
 }
