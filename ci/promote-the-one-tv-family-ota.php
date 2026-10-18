@@ -21,8 +21,8 @@ $input=json_decode((string)file_get_contents($metadata),true,512,JSON_THROW_ON_E
 if (!is_array($input) || !isset($input['builds']) || !is_array($input['builds'])
     || count($input['builds'])!==2) exit(4);
 $approved=[
- 'tv-phone'=>['package'=>'com.theone.tv.phone','code'=>110,'name'=>'1.0.10','apk'=>'The-One-TV-Android-v1.0.10.apk'],
- 'tv-google-tv'=>['package'=>'com.theone.tv','code'=>113,'name'=>'1.0.13','apk'=>'The-One-TV-Google-TV-v1.0.13.apk']
+ 'tv-phone'=>['package'=>'com.theone.tv.phone','code'=>119,'name'=>'1.0.19','apk'=>'The-One-TV-Android-v1.0.19.apk'],
+ 'tv-google-tv'=>['package'=>'com.theone.tv','code'=>121,'name'=>'1.0.21','apk'=>'The-One-TV-Google-TV-v1.0.21.apk']
 ];
 $byId=[];
 foreach($input['builds'] as $build){
