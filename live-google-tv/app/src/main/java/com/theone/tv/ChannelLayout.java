@@ -78,7 +78,14 @@ public final class ChannelLayout {
         if(ziggoOrder(title)<10000)return "NL";
         return "OTHER";
     }
-    public static String countryName(String code){
+    public static String channelCountry(CatalogEntry entry){
+        String detected=country(entry.title,CatalogEntry.countryName(entry.category));
+        if("OTHER".equals(detected)){
+            for(String code:CODES)if(code.equals(entry.category))return code;
+        }
+        return detected;
+    }
+        public static String countryName(String code){
         for(int i=0;i<CODES.length;i++)if(CODES[i].equals(code))return NAMES[i];
         return NAMES[NAMES.length-2];
     }
@@ -99,7 +106,7 @@ public final class ChannelLayout {
         for(String code:CODES)grouped.put(code,new LinkedHashMap<>());
         for(CatalogEntry e:entries){
             if(e.isAdult())continue;
-            String code=country(e.title,CatalogEntry.countryName(e.category));
+            String code=channelCountry(e);
             String identity=channelIdentity(e.title);
             for(String bucket:new String[]{"ALL",code}){
                 if(bucket.equals("NL")&&!hasNlPrefix(e.title))continue;
@@ -118,8 +125,8 @@ public final class ChannelLayout {
         for(String bucket:CODES){
             List<CatalogEntry> values=new ArrayList<>(grouped.get(bucket).values());
             values.sort((a,b)->{
-                String ca=country(a.title,CatalogEntry.countryName(a.category));
-                String cb=country(b.title,CatalogEntry.countryName(b.category));
+                String ca=channelCountry(a);
+                String cb=channelCountry(b);
                 if(bucket.equals("ALL")){
                     int byCountry=Integer.compare(order(ca),order(cb));
                     if(byCountry!=0)return byCountry;
