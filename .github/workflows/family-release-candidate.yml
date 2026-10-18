@@ -163,6 +163,14 @@ jobs:
           name: the-one-series-google-tv-v120
           path: series-google-tv/protected-deliverable/
           retention-days: 7
+      - name: Hand over verified signed Series TV APK to owner
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: The-One-Series-Google-TV-v120-signed-owner
+          path: series-google-tv/deliverable/The-One-Series-Google-TV-v1.2.0.apk
+          retention-days: 1
+          if-no-files-found: error
       - name: Verify private update service is deployed
         run: |
           curl --fail --silent --show-error --max-time 15 https://rubenvanaggelen.com/the-one-remote-api/family-updates.php?action=health |
