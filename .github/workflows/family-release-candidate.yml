@@ -133,6 +133,14 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: cd series-android && gradle :app:connectedDebugAndroidTest --no-daemon
+      - name: Temporary signed owner APK handover
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: The-One-Series-Android-v121-owner
+          path: series-android/deliverable/The-One-Series-Android-v1.2.1.apk
+          retention-days: 1
+          if-no-files-found: error
       - name: Encrypt personal APK before artifact publication
         if: success()
         working-directory: series-android
