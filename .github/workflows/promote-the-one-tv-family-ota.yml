@@ -28,8 +28,8 @@ jobs:
           set -euo pipefail
           bash -n ci/promote-the-one-tv-family-ota.sh
           php -l ci/promote-the-one-tv-family-ota.php
-          grep -Fq "'tv-phone'=>['package'=>'com.theone.tv.phone','code'=>119" ci/promote-the-one-tv-family-ota.php
-          grep -Fq "'tv-google-tv'=>['package'=>'com.theone.tv','code'=>121" ci/promote-the-one-tv-family-ota.php
+          grep -Fq "'tv-phone'=>['package'=>'com.theone.tv.phone','code'=>120" ci/promote-the-one-tv-family-ota.php
+          grep -Fq "'tv-google-tv'=>['package'=>'com.theone.tv','code'=>122" ci/promote-the-one-tv-family-ota.php
       - name: Promote only the previously tested signed TV APKs
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
