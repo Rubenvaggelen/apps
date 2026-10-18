@@ -10,8 +10,8 @@ android {
         applicationId = "com.theone.mediaplayer.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1022
-        versionName = "1.0.22-pornhub-tv-transport"
+        versionCode = 1023
+        versionName = "1.0.23-favorites"
     }
 
     buildTypes {
