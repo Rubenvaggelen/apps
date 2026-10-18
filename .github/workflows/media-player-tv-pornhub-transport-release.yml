@@ -38,6 +38,54 @@ jobs:
           printf '%s' "$TV_SIGNING_KEY" | base64 -d > ~/.android/debug.keystore
           chmod 600 ~/.android/debug.keystore
           keytool -list -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey >/dev/null
+      - name: Restore encrypted primary IPTV source for Google TV
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test -s .github/media-player-private-source.enc.b64
+          test -s "$HOME/.android/debug.keystore"
+          keytool -importkeystore \
+            -srckeystore "$HOME/.android/debug.keystore" \
+            -srcstorepass android \
+            -srcalias androiddebugkey \
+            -destkeystore /tmp/media-player-primary-signing.p12 \
+            -deststoretype PKCS12 \
+            -deststorepass changeit \
+            -destkeypass changeit \
+            -noprompt >/dev/null
+          openssl pkcs12 \
+            -in /tmp/media-player-primary-signing.p12 \
+            -passin pass:changeit \
+            -nodes -nocerts \
+            -out /tmp/media-player-primary-private.pem >/dev/null 2>&1
+          base64 -d .github/media-player-private-source.enc.b64 > /tmp/media-player-primary.enc
+          openssl pkeyutl -decrypt \
+            -inkey /tmp/media-player-primary-private.pem \
+            -in /tmp/media-player-primary.enc \
+            -out /tmp/media-player-primary.json \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256
+          python3 - <<'PY_PRIMARY'
+          from pathlib import Path
+          from urllib.parse import urlsplit, parse_qs
+          import json
+          src=json.loads(Path("/tmp/media-player-primary.json").read_text())
+          parsed=urlsplit(str(src.get("m3u_url","")).strip())
+          query=parse_qs(parsed.query)
+          user=(query.get("username") or [""])[0]
+          password=(query.get("password") or [""])[0]
+          host=parsed.hostname or ""
+          server=parsed.scheme+"://"+parsed.netloc
+          if parsed.scheme not in ("http","https") or not host or not user or not password:
+              raise SystemExit("Encrypted primary IPTV source is invalid")
+          if user.startswith("PRIVATE_") or password.startswith("PRIVATE_"):
+              raise SystemExit("Placeholder credentials are forbidden in signed TV releases")
+          out=Path("media-player/app/src/main/assets/private_xtream.json")
+          out.write_text(json.dumps({"server":server,"username":user,"password":password})+"\n")
+          print("GOOGLE_TV_PRIMARY_IPTV_SOURCE_RESTORED=1")
+          PY_PRIMARY
+          rm -f /tmp/media-player-primary-signing.p12 /tmp/media-player-primary-private.pem /tmp/media-player-primary.enc /tmp/media-player-primary.json
       - name: Restore encrypted secondary IPTV source for Google TV
         shell: bash
         run: |
