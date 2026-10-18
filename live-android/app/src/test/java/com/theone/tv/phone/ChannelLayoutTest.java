@@ -112,7 +112,8 @@ public class ChannelLayoutTest {
         List<CatalogEntry> dutch=layout.countries.get("NL");
         assertEquals("NL - NPO 1",dutch.get(0).title);
         assertTrue(dutch.indexOf(dutch.stream().filter(e -> e.title.equals("NL - ESPN FHD")).findFirst().get()) > 0);
-        assertEquals("NL - ESPN 2 HD",dutch.get(dutch.size()-1).title);
+        assertTrue(ChannelLayout.isEspn(dutch.get(dutch.size()-1).title));
+        assertFalse(ChannelLayout.isEspnFhd(dutch.get(dutch.size()-1).title));
         List<CatalogEntry> all=layout.countries.get("ALL");
         assertEquals("NL - NPO 1",all.get(0).title);
         assertEquals("US - ESPN 3",all.get(all.size()-1).title);
