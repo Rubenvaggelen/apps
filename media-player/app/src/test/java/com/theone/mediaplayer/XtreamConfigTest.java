@@ -36,5 +36,25 @@ public class XtreamConfigTest {
  @Test public void sameProviderIdsRemainSeparate()throws Exception {JSONArray a=new JSONArray(config.fetchCatalog(config.api("get_vod_streams")));assertEquals(2,a.length());assertEquals("7",a.getJSONObject(0).optString("stream_id"));assertEquals("source2:7",a.getJSONObject(1).optString("stream_id"));assertTrue(config.stream("movie","source2:7","mp4").contains(":"+two.port()+"/movie/"));}
  @Test public void secondaryCategoryRoutesOnlyToSecondary()throws Exception {JSONArray a=new JSONArray(config.fetchCatalog(config.api("get_vod_streams","category_id","source2:1")));assertEquals(1,a.length());assertEquals("source2:7",a.getJSONObject(0).optString("stream_id"));}
  @Test public void seriesEpisodesKeepTheirSource()throws Exception {JSONObject o=new JSONObject(config.fetchCatalog(config.api("get_series_info","series_id","source2:3")));assertEquals("source2:7",o.getJSONObject("episodes").getJSONArray("1").getJSONObject(0).getString("id"));assertTrue(config.stream("series","source2:7","mkv").endsWith("/series/fixture-user/fixture-password/7.mkv"));}
+ @Test public void degradedCatalogIsReportedWhenProviderFails()throws Exception {
+  two.stop(0);
+  JSONArray rows=new JSONArray(config.fetchCatalog(config.api("get_live_streams")));
+  assertEquals(1,rows.length());
+  assertTrue("Do not silently present the one-provider list as complete",config.isLastLiveCatalogPartial());
+ }
+ @Test public void suspiciousProviderDropKeepsPreviouslyKnownDutchChannels()throws Exception {
+  JSONArray before=new JSONArray();
+  for(int i=0;i<80;i++)before.put(new JSONObject().put("stream_id",i+1).put("name","NL - Channel "+i));
+  JSONArray after=new JSONArray().put(new JSONObject().put("stream_id",1).put("name","NL - VIAPLAY DARTS PPV"));
+  assertTrue(XtreamConfig.suspiciousCatalogShrink(before,after,true));
+  assertFalse(XtreamConfig.suspiciousCatalogShrink(before,before,true));
+  assertFalse(XtreamConfig.suspiciousCatalogShrink(new JSONArray(),after,true));
+ }
+ @Test public void losingMostProviderEntriesDoesNotReplaceCache()throws Exception {
+  JSONArray original=new JSONArray();
+  for(int i=0;i<200;i++)original.put(new JSONObject().put("stream_id",i+1).put("name","NL - "+i));
+  JSONArray partial=new JSONArray().put(new JSONObject().put("stream_id",1).put("name","NL - only"));
+  assertTrue(XtreamConfig.suspiciousCatalogShrink(original,partial,false));
+ }
  @Test public void primarySurvivesUnavailableSecondary()throws Exception {two.stop(0);JSONArray a=new JSONArray(config.fetchCatalog(config.api("get_live_streams")));assertEquals(1,a.length());assertEquals("7",a.getJSONObject(0).optString("stream_id"));}
 }
