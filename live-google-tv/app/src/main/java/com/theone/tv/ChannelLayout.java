@@ -153,9 +153,17 @@ public final class ChannelLayout {
                 if(bucket.equals("ALL")){
                     int nlFirst=Boolean.compare(!hasNlPrefix(a.title),!hasNlPrefix(b.title));
                     if(nlFirst!=0)return nlFirst;
+                    // Maintain the Dutch Ziggo order in the combined list.
+                    if(hasNlPrefix(a.title)&&hasNlPrefix(b.title)){
+                        int ziggo=Integer.compare(ziggoOrder(a.title),ziggoOrder(b.title));
+                        if(ziggo!=0)return ziggo;
+                    }
                 }
-                int espnFirst=Boolean.compare(!isEspnFhd(a.title),!isEspnFhd(b.title));
-                if(espnFirst!=0)return espnFirst;
+                // ESPN FHD must lead only the ESPN group, never NPO or RTL.
+                if(isEspn(a.title)&&isEspn(b.title)){
+                    int espnFirst=Boolean.compare(!isEspnFhd(a.title),!isEspnFhd(b.title));
+                    if(espnFirst!=0)return espnFirst;
+                }
                 int quality=Integer.compare(videoTier(a.title),videoTier(b.title));
                 if(quality!=0)return quality;
                 if(bucket.equals("NL")){
