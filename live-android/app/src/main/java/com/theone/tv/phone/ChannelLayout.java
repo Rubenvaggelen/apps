@@ -154,8 +154,12 @@ public final class ChannelLayout {
                     int nlFirst=Boolean.compare(!hasNlPrefix(a.title),!hasNlPrefix(b.title));
                     if(nlFirst!=0)return nlFirst;
                 }
-                int espnFirst=Boolean.compare(!isEspnFhd(a.title),!isEspnFhd(b.title));
-                if(espnFirst!=0)return espnFirst;
+                // ESPN FHD leads ESPN variants, never the Dutch channel lineup.
+                // The other ESPN variants have already been moved to the bottom.
+                if(isEspn(a.title)&&isEspn(b.title)){
+                    int espnFirst=Boolean.compare(!isEspnFhd(a.title),!isEspnFhd(b.title));
+                    if(espnFirst!=0)return espnFirst;
+                }
                 int quality=Integer.compare(videoTier(a.title),videoTier(b.title));
                 if(quality!=0)return quality;
                 if(bucket.equals("NL")){
