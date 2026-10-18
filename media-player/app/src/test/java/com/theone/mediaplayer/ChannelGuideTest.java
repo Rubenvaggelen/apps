@@ -51,4 +51,25 @@ public class ChannelGuideTest {
         assertTrue(ChannelGuide.isAdult("Adult Movies","Film"));
         assertFalse(ChannelGuide.isAdult("NL Entertainment","NPO 1"));
     }
+
+    @Test public void espnFhdWinsAndAllOtherEspnChannelsSortLast(){
+        assertTrue(ChannelGuide.isEspnFhd("NL | ESPN FHD"));
+        assertTrue(ChannelGuide.isEspnFhd("US ESPN 2 FHD"));
+        assertFalse(ChannelGuide.isEspnFhd("NL ESPN HD"));
+        java.util.List<String> list=new java.util.ArrayList<>(java.util.Arrays.asList(
+            "NL - ESPN 2 HD","US ESPN FHD","NL - RTL 4",
+            "NL - ESPN FHD","NL - NPO 1","ESPN 3 HD"));
+        list.sort((a,b)->ChannelGuide.compareLive(a,b,"Alle landen"));
+        assertEquals("NL - ESPN FHD",list.get(0));
+        assertEquals("US ESPN FHD",list.get(3));
+        assertEquals("NL - ESPN 2 HD",list.get(4));
+        assertEquals("ESPN 3 HD",list.get(5));
+    }
+    @Test public void dutchGuidePlacesEspnHdLast(){
+        java.util.List<String> names=new java.util.ArrayList<>(java.util.Arrays.asList(
+            "NL - ESPN HD","NL - NPO 1","NL - ESPN FHD","NL - RTL 4"));
+        names.sort((a,b)->ChannelGuide.compareLive(a,b,"Nederland"));
+        assertEquals("NL - ESPN FHD",names.get(0));
+        assertEquals("NL - ESPN HD",names.get(names.size()-1));
+    }
 }

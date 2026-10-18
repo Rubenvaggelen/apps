@@ -810,18 +810,17 @@ public class XtreamCatalogActivity extends Activity {
                     String key=ChannelGuide.channelIdentity(item.name);
                     XtreamItem current=unique.get(key);
                     if(current == null)unique.put(key,item);
-                    else addAlternative(current,item);
+                    else if(ChannelGuide.isEspnFhd(item.name) && !ChannelGuide.isEspnFhd(current.name)){
+                        addAlternative(item,current);
+                        for(String backup:current.alternativeUrls)
+                            if(!item.alternativeUrls.contains(backup))item.alternativeUrls.add(backup);
+                        for(String backup:current.alternatives)
+                            if(!item.alternatives.contains(backup))item.alternatives.add(backup);
+                        unique.put(key,item);
+                    } else addAlternative(current,item);
                 }
                 channels.addAll(unique.values());
-                channels.sort((left,right)->{
-                    int a=ChannelGuide.videoTier(left.name),b=ChannelGuide.videoTier(right.name);
-                    if(a!=b)return Integer.compare(a,b);
-                    if("Nederland".equals(country)){
-                        a=ChannelGuide.ziggoOrder(left.name);b=ChannelGuide.ziggoOrder(right.name);
-                        if(a!=b)return Integer.compare(a,b);
-                    }
-                    return left.name.compareToIgnoreCase(right.name);
-                });
+                channels.sort((left,right)->ChannelGuide.compareLive(left.name,right.name,country));
             } catch(Exception ignored){}
             runOnUiThread(()->{
                 if(isFinishing())return;
@@ -878,7 +877,15 @@ public class XtreamCatalogActivity extends Activity {
                                 String key="live".equals(mode) ? ChannelGuide.channelIdentity(item.name) : ChannelGuide.normalize(item.name);
                                 XtreamItem existing=unique.get(key);
                                 if(existing==null)unique.put(key,item);
-                                else addAlternative(existing,item);
+                                else if("live".equals(mode) && ChannelGuide.isEspnFhd(item.name)
+                                        && !ChannelGuide.isEspnFhd(existing.name)){
+                                    addAlternative(item,existing);
+                                    for(String backup:existing.alternativeUrls)
+                                        if(!item.alternativeUrls.contains(backup))item.alternativeUrls.add(backup);
+                                    for(String backup:existing.alternatives)
+                                        if(!item.alternatives.contains(backup))item.alternatives.add(backup);
+                                    unique.put(key,item);
+                                }else addAlternative(existing,item);
                             }
                         } catch(Exception ignored) { /* one provider may be unavailable */ }
                     }
@@ -896,6 +903,8 @@ public class XtreamCatalogActivity extends Activity {
             }
 
             List<XtreamItem> result = new ArrayList<>(fresh);
+            if("live".equals(mode)) result.sort((left,right)->
+                    ChannelGuide.compareLive(left.name,right.name,""));
             runOnUiThread(() -> {
                 if (!result.isEmpty()) {
                     categoryItemCache.put(category.id, new ArrayList<>(result));

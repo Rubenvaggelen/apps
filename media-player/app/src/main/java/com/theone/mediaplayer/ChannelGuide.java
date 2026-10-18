@@ -50,6 +50,31 @@ public final class ChannelGuide {
         return text.isEmpty() ? normalize(name) : text;
     }
 
+    // A full-HD ESPN variant wins; every other ESPN stream is listed last.
+    public static boolean isEspn(String title) {
+        return includes(normalize(title),"espn");
+    }
+    public static boolean isEspnFhd(String title) {
+        String value=normalize(title);
+        return includes(value,"espn")&&includes(value,"fhd");
+    }
+    public static int compareLive(String a,String b,String country) {
+        boolean lastA=isEspn(a)&&!isEspnFhd(a),lastB=isEspn(b)&&!isEspnFhd(b);
+        if(lastA!=lastB)return Boolean.compare(lastA,lastB);
+        if("Alle landen".equals(country)){
+            int nl=Boolean.compare(!hasNlPrefix(a),!hasNlPrefix(b));
+            if(nl!=0)return nl;
+        }
+        int fhd=Boolean.compare(!isEspnFhd(a),!isEspnFhd(b));
+        if(fhd!=0)return fhd;
+        int quality=Integer.compare(videoTier(a),videoTier(b));
+        if(quality!=0)return quality;
+        if("Nederland".equals(country)){
+            int ziggo=Integer.compare(ziggoOrder(a),ziggoOrder(b));
+            if(ziggo!=0)return ziggo;
+        }
+        return a.compareToIgnoreCase(b);
+    }
     public static int videoTier(String title) {
         String t=normalize(title);
         if(includes(t,"16k"))return 3;
