@@ -12,8 +12,8 @@ public class CatalogPerformanceTest {
    preview.accept(Arrays.asList(entry(1),entry(2),entry(3)));
    return Arrays.asList(entry(1),entry(2),entry(3),entry(4));
   }),Collections.emptyList(),(rows,complete,successful)->{sizes.add(rows.size());completed.add(complete);});
-  assertEquals(Arrays.asList(2,4),sizes);
-  assertEquals(Arrays.asList(false,true),completed);
+  assertEquals(Arrays.asList(2,3,4),sizes);
+  assertEquals(Arrays.asList(false,false,true),completed);
  }
  @Test public void warmCacheRemainsVisibleUntilReplacementFinishes()throws Exception{
   List<Integer> ids=new ArrayList<>();AtomicInteger updates=new AtomicInteger();
