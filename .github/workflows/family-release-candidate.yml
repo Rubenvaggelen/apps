@@ -132,6 +132,14 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: cd cinema-tv && gradle :app:connectedDebugAndroidTest --no-daemon
+      - name: Temporary signed owner APK handover
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: The-One-Cinema-Android-v143-owner
+          path: cinema-tv/deliverable/The-One-Cinema-Android-v1.4.3.apk
+          retention-days: 1
+          if-no-files-found: error
       - name: Encrypt personal APK before artifact publication
         if: success()
         working-directory: cinema-tv
