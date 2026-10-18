@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Owner-initiated, one-off promotion: signed Android v1.0.10 + Google TV v1.0.13.
 # Source APKs: already signed and emulator-tested, private candidates only.
+# Owner-approved production deployment 2026-10-18: phone code 110; Google TV code 113.
 set -euo pipefail
 umask 077
 for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS SIGNING_KEY; do
