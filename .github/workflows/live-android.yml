@@ -146,6 +146,14 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: cd live-android && gradle :app:connectedDebugAndroidTest --no-daemon
+      - name: Temporary signed owner APK handover
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: The-One-TV-Android-v111-owner
+          path: live-android/deliverable/The-One-TV-Android-v1.0.11.apk
+          retention-days: 1
+          if-no-files-found: error
       - name: Encrypt personal APK before artifact publication
         if: success()
         working-directory: live-android
