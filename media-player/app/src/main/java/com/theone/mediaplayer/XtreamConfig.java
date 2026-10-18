@@ -45,6 +45,14 @@ public final class XtreamConfig {
             XtreamConfig source = new XtreamConfig(json.optString("server"), json.optString("username"), json.optString("password"));
             if (source.isConfigured() && !(source.server.equals(primary.server) && source.username.equals(primary.username))) primary.secondary = source;
         } catch (Exception ignored) { }
+        if (!primary.isConfigured() && primary.secondary != null && primary.secondary.isConfigured()) {
+            // Recovery path for TVs upgrading from a build with placeholder
+            // primary assets: keep Live TV usable through the valid second
+            // provider. An authenticated primary will be restored by v1027.
+            XtreamConfig fallback = primary.secondary;
+            fallback.catalogCacheDir = primary.catalogCacheDir;
+            return fallback;
+        }
         return primary;
     }
 
