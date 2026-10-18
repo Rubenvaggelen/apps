@@ -52,7 +52,46 @@ final class MediaRepository {
  private List<CatalogEntry> source(JSONObject source,boolean second,ProgressiveCatalog.Preview preview,boolean forceRefresh)throws Exception{Exception last=null;for(int attempt=0;attempt<2;attempt++)try{return sourceOnce(source,second,preview,forceRefresh);}catch(Exception e){last=e;if(Thread.currentThread().isInterrupted())throw e;}throw last;}
  private static String stringValue(JsonReader r)throws Exception{if(r.peek()==JsonToken.STRING||r.peek()==JsonToken.NUMBER)return r.nextString();if(r.peek()==JsonToken.BEGIN_ARRAY){List<String> values=new ArrayList<>();r.beginArray();while(r.hasNext()){String value=stringValue(r);if(!value.isEmpty())values.add(value);}r.endArray();return String.join(",",values);}r.skipValue();return "";}
  private static String categoryHint(Map<String,String> names,String ids){StringBuilder hint=new StringBuilder();for(String id:ids.split(",")){String name=names.get(id);if(name!=null)hint.append(name).append(" ");}return hint.toString();}
- private List<CatalogEntry> sourceOnce(JSONObject source,boolean second,ProgressiveCatalog.Preview preview,boolean forceRefresh)throws Exception{Map<String,String> countries=categories(source,second,forceRefresh);HttpURLConnection c=connect(api(source,"get_live_streams"));List<CatalogEntry> rows=new ArrayList<>();try{if(c.getResponseCode()!=200)throw new IOException("Channels unavailable");try(JsonReader reader=new JsonReader(new InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8))){reader.beginArray();while(reader.hasNext()){if(Thread.currentThread().isInterrupted())throw new IOException("Cancelled");int id=0;String title="",poster="",category="";reader.beginObject();while(reader.hasNext()){String key=reader.nextName();if(reader.peek()==JsonToken.NULL){reader.nextNull();continue;}switch(key){case "stream_id":try{id=Integer.parseInt(stringValue(reader));}catch(NumberFormatException ignored){}break;case "name":title=stringValue(reader);break;case "stream_icon":poster=stringValue(reader);break;case "category_id":category=stringValue(reader);break;default:reader.skipValue();}}reader.endObject();if(id<=0||id>=1000000000||title.isEmpty())continue;if(second)id+=1000000000;poster=PosterMetadata.resolve(poster,source.getString("server"));String categoryName=categoryHint(countries,category);rows.add(new CatalogEntry(id,title,"m3u8",poster,categoryName,"live",0));rows.add(new CatalogEntry(id,title,"ts",poster,categoryName,"live",0));if(rows.size()==32||rows.size()==256||rows.size()==1024||rows.size()==4096||(rows.size()>=8192&&(rows.size()&(rows.size()-1))==0))preview.accept(new ArrayList<>(rows));}reader.endArray();}}finally{c.disconnect();}if(rows.isEmpty())throw new IOException("Empty channel catalog");return rows;}
+ // Netherlands is located far down many provider catalogues. Load a small
+ // country-specific preview first, then continue the complete two-source fetch.
+ // This preview never replaces the complete provider cache.
+ private static List<CatalogEntry> previewWithPriority(List<CatalogEntry> early,List<CatalogEntry> streamed){
+  List<CatalogEntry> view=new ArrayList<>(early.size()+streamed.size());view.addAll(early);view.addAll(streamed);return view;
+ }
+ private List<CatalogEntry> earlyNetherlands(JSONObject source,Map<String,String> names,ProgressiveCatalog.Preview preview)throws Exception{
+  List<Map.Entry<String,String>> candidates=new ArrayList<>();
+  java.util.regex.Pattern pattern=java.util.regex.Pattern.compile("(?i)(?<![a-z])(?:NL|Nederland|Netherlands|Holland)(?![a-z])");
+  for(Map.Entry<String,String> entry:names.entrySet())if(pattern.matcher(entry.getValue()).find())candidates.add(entry);
+  candidates.sort(Comparator.comparing(Map.Entry<String,String>::getValue,String.CASE_INSENSITIVE_ORDER));
+  List<CatalogEntry> early=new ArrayList<>();
+  Set<Integer> seen=new HashSet<>();
+  int attempts=0;
+  for(Map.Entry<String,String> category:candidates){
+   if(attempts++>=6 || early.size()>=64 || Thread.currentThread().isInterrupted())break;
+   HttpURLConnection c=null;
+   try{
+    c=connect(api(source,"get_live_streams")+"&category_id="+enc(category.getKey()),2500,5000);
+    if(c.getResponseCode()!=200)continue;
+    JSONArray list;
+    try(InputStream in=c.getInputStream()){list=new JSONArray(read(in));}
+    for(int i=0;i<list.length();i++){
+     JSONObject row=list.optJSONObject(i);if(row==null)continue;
+     int id=row.optInt("stream_id",-1);String title=row.optString("name","");
+     if(id<=0||id>=1000000000||!ChannelLayout.hasNlPrefix(title)||!seen.add(id))continue;
+     int sourceId=id+1000000000;
+     String categoryName=categoryHint(names,row.optString("category_id",category.getKey()));
+     String poster=PosterMetadata.resolve(row.optString("stream_icon",""),source.getString("server"));
+     CatalogEntry hls=new CatalogEntry(sourceId,title,"m3u8",poster,categoryName,"live",0);
+     if(hls.isAdult())continue;
+     early.add(hls);early.add(new CatalogEntry(sourceId,title,"ts",poster,categoryName,"live",0));
+    }
+    if(!early.isEmpty())preview.accept(new ArrayList<>(early));
+   }catch(Exception ignored){ /* Full catalogue fetch remains authoritative. */ }
+   finally{if(c!=null)c.disconnect();}
+  }
+  return early;
+ }
+ private List<CatalogEntry> sourceOnce(JSONObject source,boolean second,ProgressiveCatalog.Preview preview,boolean forceRefresh)throws Exception{Map<String,String> countries=categories(source,second,forceRefresh);List<CatalogEntry> early=second?earlyNetherlands(source,countries,preview):Collections.emptyList();HttpURLConnection c=connect(api(source,"get_live_streams"));List<CatalogEntry> rows=new ArrayList<>();try{if(c.getResponseCode()!=200)throw new IOException("Channels unavailable");try(JsonReader reader=new JsonReader(new InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8))){reader.beginArray();while(reader.hasNext()){if(Thread.currentThread().isInterrupted())throw new IOException("Cancelled");int id=0;String title="",poster="",category="";reader.beginObject();while(reader.hasNext()){String key=reader.nextName();if(reader.peek()==JsonToken.NULL){reader.nextNull();continue;}switch(key){case "stream_id":try{id=Integer.parseInt(stringValue(reader));}catch(NumberFormatException ignored){}break;case "name":title=stringValue(reader);break;case "stream_icon":poster=stringValue(reader);break;case "category_id":category=stringValue(reader);break;default:reader.skipValue();}}reader.endObject();if(id<=0||id>=1000000000||title.isEmpty())continue;if(second)id+=1000000000;poster=PosterMetadata.resolve(poster,source.getString("server"));String categoryName=categoryHint(countries,category);rows.add(new CatalogEntry(id,title,"m3u8",poster,categoryName,"live",0));rows.add(new CatalogEntry(id,title,"ts",poster,categoryName,"live",0));if(rows.size()==32||rows.size()==256||rows.size()==1024||rows.size()==4096||(rows.size()>=8192&&(rows.size()&(rows.size()-1))==0))preview.accept(previewWithPriority(early,rows));}reader.endArray();}}finally{c.disconnect();}if(rows.isEmpty())throw new IOException("Empty channel catalog");return rows;}
  String stream(CatalogEntry entry){if(!entry.type.equals("live"))throw new IllegalArgumentException("Live TV only");JSONObject source=entry.id>=1000000000?secondary:primary;int id=entry.id>=1000000000?entry.id-1000000000:entry.id;try{return source.getString("server")+"/live/"+enc(source.getString("username"))+"/"+enc(source.getString("password"))+"/"+id+"."+entry.extension;}catch(Exception e){throw new IllegalStateException("Source unavailable");}}
  Map<String,String> headersForUri(String uri){return Collections.emptyMap();}
  List<String> posters(CatalogEntry e){return Collections.emptyList();}void clearPosterCache(){}boolean partialSources(){return successful<2;}
