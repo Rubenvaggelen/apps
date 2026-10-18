@@ -74,12 +74,10 @@ public class TvMainActivity extends Activity {
             });
         PremiumUi.addFamilyGridRow(this,root,
             new String[]{"✦","▦","↻"},
-            new String[]{"XXX 🔒","Bibliotheek","Updates"},
+            new String[]{"XXX 🔒","Favorieten","Updates"},
             new Runnable[]{
                 ()->startActivity(new Intent(this,AdultHubActivity.class)),
-                ()->Toast.makeText(this,
-                    "Alle zenders, films en series staan in de bibliotheek.",
-                    Toast.LENGTH_LONG).show(),
+                this::openFavorites,
                 ()->MediaPlayerUpdateChecker.checkForUpdateManual(this)
             });
 
@@ -119,6 +117,12 @@ public class TvMainActivity extends Activity {
         } catch (Throwable ignored) {
             castReceiver = null;
         }
+    }
+
+    private void openFavorites() {
+        Intent intent = new Intent(this, XtreamCatalogActivity.class);
+        intent.putExtra("favorites_only", true);
+        startActivity(intent);
     }
 
     private void openCatalog(String mode) {
