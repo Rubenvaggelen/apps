@@ -10,8 +10,8 @@ android {
         applicationId = "com.theone.mediaplayer.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1029
-        versionName = "1.0.29-secondary-first"
+        versionCode = 1030
+        versionName = "1.0.30-secondary-first"
     }
 
     buildTypes {

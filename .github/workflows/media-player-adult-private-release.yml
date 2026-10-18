@@ -1,4 +1,4 @@
-name: Media Player Android v2426 and Google TV secondary-first playback update
+name: Media Player Android v2427 and Google TV secondary-first playback update
 
 on:
   push:
@@ -233,11 +233,11 @@ jobs:
           set -euo pipefail
           grep -Fq 'queue.sort((left,right)->Boolean.compare(' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
           grep -Fq 'isSecondaryStreamUrl' media-player/app/src/main/java/com/theone/mediaplayer/XtreamConfig.java
-          grep -Fq 'versionCode = 2426' media-player/app/build.gradle.kts
+          grep -Fq 'versionCode = 2427' media-player/app/build.gradle.kts
       - name: Build and test Android only — TV release separate
         run: gradle -p media-player :app:testDebugUnitTest :app:assembleRelease --no-daemon
 
-      - name: Verify signed Android v2426, phone player and preserved package
+      - name: Verify signed Android v2427, phone player and preserved package
         shell: bash
         run: |
           set -euo pipefail
@@ -245,7 +245,7 @@ jobs:
           test -s "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" >/tmp/media-player-package.txt
-          grep -q "name='com.theone.mediaplayer'.*versionCode='2426'" /tmp/media-player-package.txt
+          grep -q "name='com.theone.mediaplayer'.*versionCode='2427'" /tmp/media-player-package.txt
           grep -q 'AndroidPornhubActivity' media-player/app/src/main/AndroidManifest.xml
           grep -q 'AndroidPornhubActivity.class' media-player/app/src/main/java/com/theone/mediaplayer/AdultHubActivity.java
           grep -q 'loadOfficialEmbed(video.id,tv)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
@@ -287,17 +287,17 @@ jobs:
           ! grep -q 'new String\[\]{"Bibliotheek","Stream naar TV"}' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
           # Existing Google TV binaries and releases must never be modified here.
           test -z "$(find media-player/tvapp -type f -path '*/build/outputs/*.apk' -print -quit)"
-          echo "ANDROID_ONLY_2426_SIGNED_TV_SEPARATE"
+          echo "ANDROID_ONLY_2427_SIGNED_TV_SEPARATE"
 
-      - name: Temporary signed Android v2426 APK handover
+      - name: Temporary signed Android v2427 APK handover
         uses: actions/upload-artifact@v4
         with:
-          name: The-One-Media-Player-Android-v2426-signed-owner
+          name: The-One-Media-Player-Android-v2427-signed-owner
           path: media-player/app/build/outputs/apk/release/app-release.apk
           retention-days: 1
           if-no-files-found: error
 
-      - name: Publish Android v2426 to authenticated Dev Hub only
+      - name: Publish Android v2427 to authenticated Dev Hub only
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}

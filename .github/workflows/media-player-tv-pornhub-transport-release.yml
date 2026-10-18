@@ -1,4 +1,4 @@
-name: Media Player Google TV v1029 Sony recovery and secondary-first playback
+name: Media Player Google TV v1030 Sony recovery and secondary-first playback
 on:
   push:
     branches: [feature/media-player-adult-5min-20261016]
@@ -127,8 +127,8 @@ jobs:
       - name: Verify TV-only version and transport changes
         run: |
           set -euo pipefail
-          grep -q 'versionCode = 1029' media-player/tvapp/build.gradle.kts
-          grep -q 'versionCode = 2425' media-player/app/build.gradle.kts
+          grep -q 'versionCode = 1030' media-player/tvapp/build.gradle.kts
+          grep -q 'versionCode = 2427' media-player/app/build.gradle.kts
           grep -q 'AdultVideoNavigation.adjacent' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
           grep -q 'tvPlayPauseButton' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
           grep -q 'TV_RELEASE_RUNS' media-player/app/src/main/java/com/theone/mediaplayer/MediaPlayerUpdateChecker.java
@@ -161,7 +161,7 @@ jobs:
               assert (first["server"],first["username"]) != (second["server"],second["username"])
           print("GOOGLE_TV_BOTH_IPTV_SOURCES_PRESENT_AND_CONFIGURED=1")
           PY_VERIFY
-      - name: Sign Google TV v1029 with permanent owner TV certificate
+      - name: Sign Google TV v1030 with permanent owner TV certificate
         shell: bash
         run: |
           set -euo pipefail
@@ -181,17 +181,17 @@ jobs:
           APK=media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" > /tmp/mediaplayer-tv-package.txt
-          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1029'" /tmp/mediaplayer-tv-package.txt
+          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1030'" /tmp/mediaplayer-tv-package.txt
           current=$("$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)
           expected=$(keytool -exportcert -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey | sha256sum | cut -d' ' -f1)
           test -n "$current" && test "$current" = "$expected"
       - name: Upload candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Media-Player-Google-TV-v1029-signed-private
+          name: Media-Player-Google-TV-v1030-signed-private
           path: media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
           if-no-files-found: error
-      - name: Publish signed v1029 only to authenticated Dev Hub
+      - name: Publish signed v1030 only to authenticated Dev Hub
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}

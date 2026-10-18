@@ -64,9 +64,16 @@ public final class ChannelGuide {
         if("Alle landen".equals(country)){
             int nl=Boolean.compare(!hasNlPrefix(a),!hasNlPrefix(b));
             if(nl!=0)return nl;
+            if(hasNlPrefix(a)&&hasNlPrefix(b)){
+                int dutch=Integer.compare(ziggoOrder(a),ziggoOrder(b));
+                if(dutch!=0)return dutch;
+            }
         }
-        int fhd=Boolean.compare(!isEspnFhd(a),!isEspnFhd(b));
-        if(fhd!=0)return fhd;
+        // ESPN FHD leads the other ESPN variants, not NPO and RTL.
+        if(isEspn(a)&&isEspn(b)){
+            int fhd=Boolean.compare(!isEspnFhd(a),!isEspnFhd(b));
+            if(fhd!=0)return fhd;
+        }
         int quality=Integer.compare(videoTier(a),videoTier(b));
         if(quality!=0)return quality;
         if("Nederland".equals(country)){
