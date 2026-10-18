@@ -97,4 +97,30 @@ public class ChannelLayoutTest {
   assertEquals("NL - NPO 1 HD",layout.countries.get("NL").get(0).title);
   assertEquals(2,layout.alternativeStreams.get(layout.countries.get("NL").get(0).key()).size());
  }
+
+    @Test public void espnFhdLeadsAndNonFhdEspnMovesToEnd(){
+        List<CatalogEntry> rows=Arrays.asList(
+            channel(1,"NL - ESPN HD","Nederland"),
+            channel(2,"NL - NPO 1","Nederland"),
+            channel(3,"NL - ESPN FHD","Nederland"),
+            channel(4,"NL - ESPN 2 HD","Nederland"),
+            channel(5,"NL - RTL 4","Nederland"),
+            channel(6,"US - ESPN 3","United States"));
+        ChannelLayout.Layout layout=ChannelLayout.prepare(rows,Collections.emptyMap());
+        List<CatalogEntry> dutch=layout.countries.get("NL");
+        assertEquals("NL - ESPN FHD",dutch.get(0).title);
+        assertEquals("NL - ESPN 2 HD",dutch.get(dutch.size()-1).title);
+        List<CatalogEntry> all=layout.countries.get("ALL");
+        assertEquals("NL - ESPN FHD",all.get(0).title);
+        assertEquals("US - ESPN 3",all.get(all.size()-1).title);
+        assertTrue(all.indexOf(dutch.get(0))<all.indexOf(dutch.get(dutch.size()-1)));
+    }
+    @Test public void espnFhdPreferredRepresentativeStillHasHdFallback(){
+        CatalogEntry hd=channel(11,"NL - ESPN HD","Nederland");
+        CatalogEntry fhd=channel(1000000012,"NL - ESPN FHD","Nederland");
+        ChannelLayout.Layout layout=ChannelLayout.prepare(Arrays.asList(hd,fhd),Collections.emptyMap());
+        CatalogEntry representative=layout.countries.get("NL").get(0);
+        assertEquals("NL - ESPN FHD",representative.title);
+        assertEquals(2,layout.alternativeStreams.get(representative.key()).size());
+    }
 }
