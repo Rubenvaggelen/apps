@@ -1412,6 +1412,12 @@ public class XtreamCatalogActivity extends Activity {
                 if(!queue.contains(fallback))queue.add(fallback);
             } catch(Exception ignored){}
         }
+        // The primary account is currently limited to one occupied connection.
+        // Prioritize stream URLs from the working secondary provider, retaining
+        // the primary and alternative transports for playback fallback.
+        queue.sort((left,right)->Boolean.compare(
+                !config.isSecondaryStreamUrl(left),
+                !config.isSecondaryStreamUrl(right)));
         startPlaybackWhenLineFree(queue, mode);
     }
 
