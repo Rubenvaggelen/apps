@@ -60,7 +60,7 @@ public class ChannelLayoutTest {
         assertEquals("NL - NPO 1 HD",layout.countries.get("NL").get(0).title);
     }
     @Test public void alternateFormatsAndSourcesAreStillPlayable(){
-        CatalogEntry hls=channel(1,"NL - NPO 2","Nederland");
+        CatalogEntry hls=new CatalogEntry(1,"NL - NPO 2","m3u8","","Nederland","live",0);
         CatalogEntry ts=new CatalogEntry(1,"NL - NPO 2","ts","","Nederland","live",0);
         CatalogEntry backup=new CatalogEntry(1000000002,"NL - NPO 2 HD","ts","","Nederland","live",0);
         ChannelLayout.Layout layout=ChannelLayout.prepare(Arrays.asList(hls,ts,backup),Collections.emptyMap());
