@@ -1,9 +1,6 @@
 name: Publish approved The One TV updates to apps
 on:
-  push:
-    branches: [feature/tv-android-autoupdate-20261014]
-    paths: [ci/promote-the-one-tv-family-ota.sh]
-  workflow_dispatch: {} # Authorized one-time TV v110/v113 promotion
+  workflow_dispatch: {} # Successful TV v110/v113 production release; future promotions require manual authorization
 permissions:
   contents: read
 concurrency:
