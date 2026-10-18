@@ -825,7 +825,9 @@ public class XtreamCatalogActivity extends Activity {
             } catch(Exception ignored){}
             runOnUiThread(()->{
                 if(isFinishing())return;
-                if(!channels.isEmpty())categoryItemCache.put("country:"+country,new ArrayList<>(channels));
+                // Never keep a one-provider snapshot as the complete country list.
+                if(!channels.isEmpty() && !config.isLastLiveCatalogPartial())
+                    categoryItemCache.put("country:"+country,new ArrayList<>(channels));
                 renderItems(new Category("country:"+country,country),channels);
             });
         }).start();
@@ -1164,6 +1166,22 @@ public class XtreamCatalogActivity extends Activity {
         TextView title = text(category.name, 25, Color.WHITE, true);
         title.setPadding(0, dp(14), 0, dp(10));
         content.addView(title);
+
+        if ("live".equals(mode) && category.id.startsWith("country:") &&
+                config.isLastLiveCatalogPartial()) {
+            TextView warning=text(
+                "Eén IPTV-bron reageerde niet op tijd. Dit zijn mogelijk nog niet alle zenders. " +
+                "De laatste volledige lijst blijft beschermd.", 16, BLUE, false);
+            warning.setPadding(0,dp(8),0,dp(10));
+            content.addView(warning);
+            Button retry=button("↻ Ontbrekende zenders opnieuw ophalen");
+            retry.setOnClickListener(v->{
+                categoryItemCache.remove(category.id);
+                config.refreshLiveCatalog();
+                loadCountry(category.name);
+            });
+            content.addView(retry);
+        }
 
         if ("live".equals(mode)) {
             addLiveCategorySearch(category);
