@@ -10,8 +10,8 @@ android {
         applicationId = "com.theone.mediaplayer.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1026
-        versionName = "1.0.26-restore-tv-channels"
+        versionCode = 1027
+        versionName = "1.0.27-restore-primary-source"
     }
 
     buildTypes {
