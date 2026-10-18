@@ -42,6 +42,12 @@ jobs:
       - name: Build TV APK
         run: gradle -p media-player :tvapp:assembleDebug --no-daemon
 
+      - name: Enable Linux KVM acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       - name: Smoke-test Google TV APK startup on reliable Android emulator
         timeout-minutes: 14
         uses: reactivecircus/android-emulator-runner@v2
