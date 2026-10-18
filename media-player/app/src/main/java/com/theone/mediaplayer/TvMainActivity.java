@@ -32,6 +32,11 @@ public class TvMainActivity extends Activity {
         });
     }
 
+    @Override protected void onResume() {
+        super.onResume();
+        MediaPlayerTvInstaller.resumeIfPending(this);
+    }
+
     private void showTvHome() {
         // Dedicated The One tile grid, not the old full-width list.
         LinearLayout screen=new LinearLayout(this);
