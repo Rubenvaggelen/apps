@@ -69,6 +69,18 @@ public final class AdultPornhubActivity extends Activity {
     private int previousSystemUiFlags=0;
     private View[] tvVideoChrome;
     private Button tvBackOverlay;
+    private LinearLayout tvPlaybackControls;
+    private Button tvPlayPauseButton;
+    private Button tvPreviousButton;
+    private Button tvNextButton;
+    private Video currentTvVideo;
+    private boolean tvPlaybackPaused=false;
+    private final Runnable hideTvPlaybackControls=()->{
+        if(tvFullscreen && tvPlaybackControls!=null){
+            if(tvPlaybackControls.findFocus()!=null && player!=null)player.requestFocus();
+            tvPlaybackControls.setVisibility(View.GONE);
+        }
+    };
     private TextView tvSeekOverlay;
     // Provider duration is validated before it enters the catalog. The
     // playback clock is a fallback estimate ONLY when the iframe keeps its
@@ -126,6 +138,7 @@ public final class AdultPornhubActivity extends Activity {
 
     private void showSearch(){
         if(!authorized())return;
+        currentTvVideo=null;
         leaveTvFullscreen();
         showingPlayer=false;
         destroyPlayer();
@@ -267,9 +280,18 @@ public final class AdultPornhubActivity extends Activity {
     }
 
     private void showEmbeddedVideo(Video video){
+        showEmbeddedVideo(video,false);
+    }
+
+    private void showEmbeddedVideo(Video video,boolean startFromNavigation){
         if(!authorized() || !AdultVideoDuration.allow(video.duration) ||
            !video.id.matches("[A-Za-z0-9]{1,64}"))return;
+        // Changing tracks intentionally replaces the old WebView. Do not
+        // abandon the previous WebView while it is still holding a decoder.
+        if(player!=null)destroyPlayer();
+        currentTvVideo=video;
         showingPlayer=true;
+        tvPlaybackPaused=false;
         tvClipDurationSeconds=AdultVideoDuration.parseSeconds(video.duration);
         tvEstimatedPositionSeconds=0;
         tvEstimatedPositionAtMs=0;
@@ -338,7 +360,7 @@ public final class AdultPornhubActivity extends Activity {
                     keyCode==KeyEvent.KEYCODE_ENTER ||
                     keyCode==KeyEvent.KEYCODE_NUMPAD_ENTER ||
                     keyCode==KeyEvent.KEYCODE_MEDIA_PLAY;
-                if(!select || fullscreenView!=null)return false;
+                if(!select || fullscreenView!=null || tvFullscreen)return false;
                 if(event.getAction()==KeyEvent.ACTION_UP)remotePlay.performClick();
                 return true;
             });
@@ -352,6 +374,17 @@ public final class AdultPornhubActivity extends Activity {
                     if(tv) {
                         playerStatus.setText("Videobeeld geladen. Selecteer ▶ Start video met OK om de grote afspeelknop in het beeld te bedienen.");
                         if(remotePlay!=null)remotePlay.requestFocus();
+                        if(startFromNavigation){
+                            // User explicitly selected Previous or Next.
+                            // Give the provider iframe time to mount before
+                            // sending the same authorized Play gesture.
+                            final WebView queued=view;
+                            queued.postDelayed(()->{
+                                if(showingPlayer && player==queued && !embedLoadFailed &&
+                                    !isFinishing() && !isDestroyed())
+                                    startTvPlayback(playerStatus);
+                            },1400);
+                        }
                     } else {
                         playerStatus.setText("Spelerpagina geladen. Tik op ▶ om af te spelen.");
                     }
@@ -485,6 +518,8 @@ public final class AdultPornhubActivity extends Activity {
             up.recycle();
         }
         if(deliveredDown || deliveredUp) {
+            tvPlaybackPaused=false;
+            updateTvPauseLabel();
             tvPlaybackRequested=true;
             tvEstimatedPositionAtMs=SystemClock.elapsedRealtime();
             status.setText("Afspelen gestart; overschakelen naar volledig scherm…");
@@ -525,6 +560,34 @@ public final class AdultPornhubActivity extends Activity {
         p.setMargins(dp(20),dp(20),0,0);
         outer.addView(tvBackOverlay,p);
         tvBackOverlay.bringToFront();
+        // The TV remote needs native focusable controls independent of the
+        // cross-origin provider iframe's inaccessible media controls.
+        tvPlaybackControls=new LinearLayout(this);
+        tvPlaybackControls.setOrientation(LinearLayout.HORIZONTAL);
+        tvPlaybackControls.setGravity(Gravity.CENTER);
+        tvPlaybackControls.setBackgroundColor(0xC8000000);
+        tvPreviousButton=button("⏮ Vorige",()->navigateTvVideo(-1));
+        tvPlayPauseButton=button("⏸ Pauze",this::toggleTvPause);
+        tvNextButton=button("Volgende ⏭",()->navigateTvVideo(1));
+        tvPreviousButton.setId(8811);
+        tvPlayPauseButton.setId(8812);
+        tvNextButton.setId(8813);
+        tvPreviousButton.setNextFocusRightId(8812);
+        tvPlayPauseButton.setNextFocusLeftId(8811);
+        tvPlayPauseButton.setNextFocusRightId(8813);
+        tvNextButton.setNextFocusLeftId(8812);
+        tvPreviousButton.setNextFocusUpId(8812);
+        tvPlayPauseButton.setNextFocusUpId(8812);
+        tvNextButton.setNextFocusUpId(8812);
+        tvPlaybackControls.addView(tvPreviousButton,new LinearLayout.LayoutParams(0,dp(56),1f));
+        tvPlaybackControls.addView(tvPlayPauseButton,new LinearLayout.LayoutParams(0,dp(56),1f));
+        tvPlaybackControls.addView(tvNextButton,new LinearLayout.LayoutParams(0,dp(56),1f));
+        FrameLayout.LayoutParams controlsLayout=new FrameLayout.LayoutParams(
+            -1,dp(70),Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);
+        controlsLayout.setMargins(dp(12),0,dp(12),dp(7));
+        outer.addView(tvPlaybackControls,controlsLayout);
+        updateTvTransportButtons();
+        showTvTransportControls(false);
         // Brief seek feedback is independent of the Back button overlay.
         tvSeekOverlay=label("",21,Color.WHITE);
         tvSeekOverlay.setBackgroundColor(0xB8000000);
@@ -537,6 +600,7 @@ public final class AdultPornhubActivity extends Activity {
         tvSeekOverlay.setVisibility(View.GONE);
         player.requestFocus();
         showTvBackOverlay(false);
+        showTvTransportControls(false);
     }
 
     private void showTvBackOverlay(boolean focus) {
@@ -546,6 +610,128 @@ public final class AdultPornhubActivity extends Activity {
         if(focus)tvBackOverlay.requestFocus();
         tvOverlayHandler.removeCallbacks(hideTvBack);
         tvOverlayHandler.postDelayed(hideTvBack,4500);
+    }
+
+
+    private int currentTvVideoIndex(){
+        if(currentTvVideo==null)return -1;
+        for(int i=0;i<displayed.size();i++)
+            if(displayed.get(i).id.equals(currentTvVideo.id))return i;
+        return -1;
+    }
+
+    private void navigateTvVideo(int direction){
+        if(!authorized() || direction==0 || currentTvVideo==null)return;
+        int index=currentTvVideoIndex();
+        int next=AdultVideoNavigation.adjacent(index,displayed.size(),direction);
+        if(next<0){
+            showTvSeekMessage(direction<0?"Geen vorige video":"Geen volgende video");
+            showTvTransportControls(false);
+            return;
+        }
+        // Only select a pre-filtered, duration-validated entry from the
+        // existing search results. Never follow provider recommendations.
+        Video video=displayed.get(next);
+        if(!AdultVideoDuration.allow(video.duration))return;
+        showEmbeddedVideo(video,true);
+    }
+
+    private void updateTvPauseLabel(){
+        if(tvPlayPauseButton!=null)
+            tvPlayPauseButton.setText(tvPlaybackPaused?"▶ Verder":"⏸ Pauze");
+    }
+
+    private void updateTvTransportButtons(){
+        int index=currentTvVideoIndex();
+        if(tvPreviousButton!=null)tvPreviousButton.setEnabled(index>0);
+        if(tvNextButton!=null)tvNextButton.setEnabled(index>=0 && index<displayed.size()-1);
+        updateTvPauseLabel();
+    }
+
+    private void showTvTransportControls(boolean focus){
+        if(!tvFullscreen || tvPlaybackControls==null)return;
+        tvOverlayHandler.removeCallbacks(hideTvPlaybackControls);
+        tvPlaybackControls.setVisibility(View.VISIBLE);
+        tvPlaybackControls.bringToFront();
+        updateTvTransportButtons();
+        if(focus && tvPlayPauseButton!=null)tvPlayPauseButton.requestFocus();
+        tvOverlayHandler.postDelayed(hideTvPlaybackControls,6500);
+    }
+
+    private void setTvPaused(boolean paused){
+        if(paused==tvPlaybackPaused)return;
+        if(paused){
+            tvEstimatedPositionSeconds=estimatedTvPosition();
+            tvEstimatedPositionAtMs=0;
+        }else{
+            tvEstimatedPositionAtMs=SystemClock.elapsedRealtime();
+        }
+        tvPlaybackPaused=paused;
+        updateTvPauseLabel();
+    }
+
+    private void sendTvProviderPauseTap(WebView active,boolean targetPause){
+        // If the HTML5 video is protected by another origin, use the official
+        // embed's own pause/play control near the lower-left timeline row.
+        // A tap being consumed is NOT proof the provider actually paused.
+        View surface=fullscreenView!=null?fullscreenView:active;
+        if(surface.getWidth()<=0 || surface.getHeight()<=0){
+            showTvSeekMessage("Bediening nog niet beschikbaar");
+            return;
+        }
+        float x=Math.max(dp(28),surface.getWidth()*0.04f);
+        float y=Math.max(dp(18),surface.getHeight()-dp(37));
+        long at=SystemClock.uptimeMillis();
+        MotionEvent down=MotionEvent.obtain(at,at,MotionEvent.ACTION_DOWN,x,y,0);
+        MotionEvent up=MotionEvent.obtain(at,at+75,MotionEvent.ACTION_UP,x,y,0);
+        down.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        up.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        boolean received=false;
+        try{
+            received=surface.dispatchTouchEvent(down);
+            received=surface.dispatchTouchEvent(up)||received;
+        }catch(RuntimeException ex){
+            Log.w("TheOneAdult","TV provider pause control rejected pointer");
+        }finally{down.recycle();up.recycle();}
+        if(received){
+            // Maintain a best-effort clock; Android cannot confirm that a
+            // cross-origin player honored a native pointer gesture.
+            setTvPaused(targetPause);
+            showTvSeekMessage(targetPause?"Pauze naar speler gestuurd":"Verder afspelen aangevraagd");
+        }else showTvSeekMessage("De speler reageert niet op pauze");
+        showTvTransportControls(false);
+    }
+
+    private void toggleTvPause(){
+        if(!tvFullscreen || player==null || !authorized() || embedLoadFailed)return;
+        final WebView active=player;
+        final boolean desiredPause=!tvPlaybackPaused;
+        // Prefer actual HTML5 pause()/play() over toggling a guessed UI state.
+        // Access iframe elements only where same-origin policy allows it.
+        String js="(function(){try{"+
+            "function find(doc,depth){if(!doc||depth>4)return null;"+
+            "var videos=doc.querySelectorAll('video');"+
+            "for(var i=0;i<videos.length;i++)if(videos[i].readyState>0)return videos[i];"+
+            "var frames=doc.querySelectorAll('iframe');"+
+            "for(var j=0;j<frames.length;j++){try{var v=find(frames[j].contentDocument,depth+1);"+
+            "if(v)return v;}catch(ignore){}}return null;}"+
+            "var v=find(document,0);if(!v)return 'PROTECTED_FRAME';"+
+            (desiredPause?
+                "v.pause();return v.paused?'PAUSED':'NO_CHANGE';":
+                "var p=v.play();return !v.paused?'PLAYING':'PLAY_REQUESTED';")+
+            "}catch(ex){return 'PROTECTED_FRAME';}})();";
+        active.evaluateJavascript(js,result->{
+            if(player!=active || !tvFullscreen || isFinishing() || isDestroyed())return;
+            if(result!=null && result.contains("PAUSED")){
+                setTvPaused(true);
+                showTvSeekMessage("Gepauzeerd");
+            }else if(result!=null &&
+                (result.contains("PLAYING") || result.contains("PLAY_REQUESTED"))){
+                setTvPaused(false);
+                showTvSeekMessage("Afspelen hervat");
+            }else sendTvProviderPauseTap(active,desiredPause);
+            showTvTransportControls(false);
+        });
     }
 
     private void showTvSeekMessage(String message){
@@ -568,7 +754,9 @@ public final class AdultPornhubActivity extends Activity {
     }
 
     private double estimatedTvPosition() {
-        if(!tvPlaybackRequested || tvEstimatedPositionAtMs<=0)return 0;
+        if(!tvPlaybackRequested)return 0;
+        if(tvPlaybackPaused)return Math.max(0,tvEstimatedPositionSeconds);
+        if(tvEstimatedPositionAtMs<=0)return 0;
         long elapsed=SystemClock.elapsedRealtime()-tvEstimatedPositionAtMs;
         double estimate=tvEstimatedPositionSeconds+Math.max(0,elapsed)/1000.0;
         if(tvClipDurationSeconds>0)estimate=Math.min(estimate,tvClipDurationSeconds-0.5);
@@ -682,6 +870,13 @@ public final class AdultPornhubActivity extends Activity {
     }
 
     private void leaveTvFullscreen() {
+        tvOverlayHandler.removeCallbacks(hideTvPlaybackControls);
+        if(tvPlaybackControls!=null){
+            if(tvPlaybackControls.getParent() instanceof ViewGroup)
+                ((ViewGroup)tvPlaybackControls.getParent()).removeView(tvPlaybackControls);
+            tvPlaybackControls=null;
+        }
+        tvPlayPauseButton=null;tvPreviousButton=null;tvNextButton=null;
         tvOverlayHandler.removeCallbacks(hideTvBack);
         tvOverlayHandler.removeCallbacks(hideTvSeek);
         if(tvSeekOverlay!=null){
@@ -703,6 +898,7 @@ public final class AdultPornhubActivity extends Activity {
         }
         tvVideoChrome=null;
         tvPlaybackRequested=false;
+        tvPlaybackPaused=false;
         tvEstimatedPositionAtMs=0;
     }
 
@@ -711,10 +907,37 @@ public final class AdultPornhubActivity extends Activity {
             if(event.getAction()==KeyEvent.ACTION_UP && !event.isCanceled())showSearch();
             return true; // Remote Back must work even after the overlay auto-hides.
         }
+        if(tvFullscreen && (event.getKeyCode()==KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ||
+            event.getKeyCode()==KeyEvent.KEYCODE_MEDIA_PAUSE ||
+            event.getKeyCode()==KeyEvent.KEYCODE_MEDIA_PLAY)) {
+            if(event.getAction()==KeyEvent.ACTION_DOWN && event.getRepeatCount()==0){
+                if(event.getKeyCode()==KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ||
+                   (event.getKeyCode()==KeyEvent.KEYCODE_MEDIA_PAUSE && !tvPlaybackPaused) ||
+                   (event.getKeyCode()==KeyEvent.KEYCODE_MEDIA_PLAY && tvPlaybackPaused))
+                    toggleTvPause();
+                showTvTransportControls(false);
+            }
+            return true;
+        }
+        if(tvFullscreen && event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN) {
+            if(event.getAction()==KeyEvent.ACTION_DOWN && event.getRepeatCount()==0)
+                showTvTransportControls(true);
+            return true;
+        }
+        if(tvFullscreen && event.getKeyCode()==KeyEvent.KEYCODE_DPAD_CENTER &&
+           getCurrentFocus()==player) {
+            if(event.getAction()==KeyEvent.ACTION_UP && !event.isCanceled())
+                toggleTvPause();
+            return true;
+        }
         if(tvFullscreen && (event.getKeyCode()==KeyEvent.KEYCODE_DPAD_LEFT ||
            event.getKeyCode()==KeyEvent.KEYCODE_DPAD_RIGHT ||
            event.getKeyCode()==KeyEvent.KEYCODE_MEDIA_REWIND ||
            event.getKeyCode()==KeyEvent.KEYCODE_MEDIA_FAST_FORWARD)) {
+            if(tvPlaybackControls!=null && tvPlaybackControls.findFocus()!=null){
+                showTvTransportControls(false);
+                return super.dispatchKeyEvent(event);
+            }
             if(event.getAction()==KeyEvent.ACTION_DOWN && event.getRepeatCount()==0) {
                 boolean backwards=event.getKeyCode()==KeyEvent.KEYCODE_DPAD_LEFT ||
                     event.getKeyCode()==KeyEvent.KEYCODE_MEDIA_REWIND;
@@ -781,6 +1004,7 @@ public final class AdultPornhubActivity extends Activity {
     @Override protected void onDestroy(){
         tvOverlayHandler.removeCallbacks(hideTvBack);
         tvOverlayHandler.removeCallbacks(hideTvSeek);
+        tvOverlayHandler.removeCallbacks(hideTvPlaybackControls);
         destroyPlayer();
         super.onDestroy();
     }
