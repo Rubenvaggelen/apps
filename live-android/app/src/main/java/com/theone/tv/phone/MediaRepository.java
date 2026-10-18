@@ -29,14 +29,28 @@ final class MediaRepository {
    return fresh;
   }catch(Exception ignored){return previous;}finally{if(c!=null)c.disconnect();}
  }
- private AtomicFile cache(){return new AtomicFile(new File(dir,"live-v2-adult-routed.bin"));}
+ private static final long FRESH_CATALOG_MS=20L*60L*1000L;
+ private AtomicFile cache(){return new AtomicFile(new File(dir,"live-v3-complete-providers.bin"));}
  private List<CatalogEntry> cached(){try(InputStream in=cache().openRead()){return CatalogCodec.read(in,"live");}catch(Exception ignored){return Collections.emptyList();}}
  private void save(List<CatalogEntry> rows){AtomicFile file=cache();FileOutputStream out=null;try{out=file.startWrite();CatalogCodec.write(out,rows);file.finishWrite(out);}catch(Exception ignored){if(out!=null)file.failWrite(out);}}
  void load(String type,ProgressiveCatalog.Listener listener)throws Exception{load(type,listener,false);}
  void load(String type,ProgressiveCatalog.Listener listener,boolean forceRefresh)throws Exception{
   if(!type.equals("live"))throw new IOException("Live TV only");
+  List<CatalogEntry> previous=cached();
+  long age=System.currentTimeMillis()-cache().getBaseFile().lastModified();
+  if(!forceRefresh && !previous.isEmpty() && age>=0 && age<FRESH_CATALOG_MS){
+    successful=2;
+    listener.update(previous,true,2);
+    return;
+  }
   List<ProgressiveCatalog.Source> sources=Arrays.asList(preview->source(primary,false,preview,forceRefresh),preview->source(secondary,true,preview,forceRefresh));
-  ProgressiveCatalog.loadStreaming(sources,cached(),(rows,complete,count)->{if(complete)successful=count;listener.update(rows,complete,count);if(complete&&count>0)save(rows);});
+  ProgressiveCatalog.loadStreaming(sources,previous,(rows,complete,count)->{
+    if(complete)successful=count;
+    listener.update(rows,complete,count);
+    // A one-source outage must never replace the last complete two-source snapshot.
+    if(complete && count==sources.size() && !rows.isEmpty()
+         && (previous.isEmpty() || rows.size()>=previous.size()/2))save(rows);
+  });
  }
  private List<CatalogEntry> source(JSONObject source,boolean second,ProgressiveCatalog.Preview preview,boolean forceRefresh)throws Exception{Exception last=null;for(int attempt=0;attempt<2;attempt++)try{return sourceOnce(source,second,preview,forceRefresh);}catch(Exception e){last=e;if(Thread.currentThread().isInterrupted())throw e;}throw last;}
  private static String stringValue(JsonReader r)throws Exception{if(r.peek()==JsonToken.STRING||r.peek()==JsonToken.NUMBER)return r.nextString();if(r.peek()==JsonToken.BEGIN_ARRAY){List<String> values=new ArrayList<>();r.beginArray();while(r.hasNext()){String value=stringValue(r);if(!value.isEmpty())values.add(value);}r.endArray();return String.join(",",values);}r.skipValue();return "";}

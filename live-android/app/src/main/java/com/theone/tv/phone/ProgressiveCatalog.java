@@ -12,7 +12,7 @@ final class ProgressiveCatalog {
   if(!cached.isEmpty())listener.update(new ArrayList<>(cached),false,0);
   Object lock=new Object();
   ExecutorService workers=Executors.newFixedThreadPool(sources.size());CompletionService<Result> completed=new ExecutorCompletionService<>(workers);List<Future<Result>> tasks=new ArrayList<>();
-  try{for(int i=0;i<sources.size();i++){final int source=i;tasks.add(completed.submit(()->new Result(source,sources.get(source).load(preview->{synchronized(lock){if(!warm[source]){parts.set(source,new ArrayList<>(preview));listener.update(merge(parts),false,0);}}}))));}
+  try{for(int i=0;i<sources.size();i++){final int source=i;tasks.add(completed.submit(()->new Result(source,sources.get(source).load(preview->{synchronized(lock){if(!warm[source]){warm[source]=true;parts.set(source,new ArrayList<>(preview));listener.update(merge(parts),false,0);}}}))));}
    int successful=0;
    for(int i=0;i<sources.size();i++){try{Result result=completed.take().get();synchronized(lock){parts.set(result.source,result.entries);}successful++;}catch(ExecutionException ignored){}
     boolean done=i+1==sources.size();if(successful>0||done){synchronized(lock){listener.update(merge(parts),done,successful);}}
