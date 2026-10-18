@@ -220,8 +220,8 @@ public class MainActivity extends Activity {
  public int getCount(){return visible.size();}public Object getItem(int p){return visible.get(p);}public long getItemId(int p){return visible.get(p).id;}
  public View getView(int position,View recycled,ViewGroup parent){
   CatalogEntry e=visible.get(position);LinearLayout box=new LinearLayout(MainActivity.this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(12),dp(7),dp(12),dp(7));box.setBackground(background(false));box.setContentDescription(e.displayTitle());
-  String shownCountry=section.equals("live")?ChannelLayout.countryName(ChannelLayout.country(e.title,CatalogEntry.countryName(e.category))):CatalogEntry.countryName(e.category);
-   String previousCountry=position==0?"":(section.equals("live")?ChannelLayout.countryName(ChannelLayout.country(visible.get(position-1).title,CatalogEntry.countryName(visible.get(position-1).category))):CatalogEntry.countryName(visible.get(position-1).category));
+  String shownCountry=section.equals("live")?ChannelLayout.countryName(ChannelLayout.channelCountry(e)):CatalogEntry.countryName(e.category);
+   String previousCountry=position==0?"":(section.equals("live")?ChannelLayout.countryName(ChannelLayout.channelCountry(visible.get(position-1))):CatalogEntry.countryName(visible.get(position-1).category));
    if(position==0||!shownCountry.equals(previousCountry)){TextView heading=label(shownCountry.toUpperCase(new Locale("nl")),12,BLUE);heading.setTypeface(null,Typeface.BOLD);heading.setPadding(0,dp(6),0,dp(8));box.addView(heading);}
   LinearLayout row=new LinearLayout(MainActivity.this);row.setGravity(Gravity.CENTER_VERTICAL);
   ImageView image=new ImageView(MainActivity.this);image.setScaleType(ImageView.ScaleType.FIT_CENTER);image.setImageResource(R.drawable.tv_logo);LinearLayout.LayoutParams icon=new LinearLayout.LayoutParams(dp(compact()?42:54),dp(compact()?42:54));icon.rightMargin=dp(14);row.addView(image,icon);
