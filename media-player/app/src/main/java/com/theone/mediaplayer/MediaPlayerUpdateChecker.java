@@ -34,6 +34,10 @@ public final class MediaPlayerUpdateChecker {
         "https://api.github.com/repos/Rubenvaggelen/apps/actions/workflows/" +
         "media-player-adult-private-release.yml/runs?branch=" +
         "feature%2Fmedia-player-adult-5min-20261016&status=success&per_page=20";
+    private static final String TV_RELEASE_RUNS =
+        "https://api.github.com/repos/Rubenvaggelen/apps/actions/workflows/" +
+        "media-player-tv-pornhub-transport-release.yml/runs?branch=" +
+        "feature%2Fmedia-player-adult-5min-20261016&status=success&per_page=20";
     private static final String PRIVATE_DOWNLOAD =
         "https://dev.rubenvanaggelen.com/family-download-20261013.php?app=";
     private static final String PREFS="the_one_player_updater";
@@ -66,7 +70,7 @@ public final class MediaPlayerUpdateChecker {
         new Thread(()->{
             HttpURLConnection conn=null;
             try{
-                conn=(HttpURLConnection)new URL(RELEASE_RUNS).openConnection();
+                conn=(HttpURLConnection)new URL(tv ? TV_RELEASE_RUNS : RELEASE_RUNS).openConnection();
                 conn.setRequestProperty("Accept","application/vnd.github+json");
                 conn.setRequestProperty("User-Agent","TheOneMediaPlayer-VersionCheck");
                 conn.setConnectTimeout(9000);
