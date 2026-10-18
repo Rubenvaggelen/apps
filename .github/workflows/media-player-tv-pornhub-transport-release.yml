@@ -47,6 +47,20 @@ jobs:
           grep -q 'tvPlayPauseButton' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
       - name: Build Google TV and run video navigation tests
         run: gradle -p media-player :app:testDebugUnitTest :tvapp:assembleDebug --no-daemon
+      - name: Sign Google TV v1022 with permanent owner TV certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
+          SIGNED=media-player/tvapp/build/outputs/apk/debug/tvapp-owner-signed.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" sign \
+            --ks "$HOME/.android/debug.keystore" \
+            --ks-key-alias androiddebugkey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --out "$SIGNED" "$APK"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$SIGNED"
+          mv -f "$SIGNED" "$APK"
       - name: Confirm private TV APK package and permanent signing identity
         run: |
           set -euo pipefail
@@ -63,3 +77,12 @@ jobs:
           name: Media-Player-Google-TV-v1022-signed-private
           path: media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
           if-no-files-found: error
+      - name: Publish signed v1022 only to authenticated Dev Hub
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: bash ci/publish-media-player-tv-devhub-v1022.sh
