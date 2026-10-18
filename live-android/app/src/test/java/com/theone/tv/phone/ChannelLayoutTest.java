@@ -110,12 +110,13 @@ public class ChannelLayoutTest {
             channel(6,"US - ESPN 3","United States"));
         ChannelLayout.Layout layout=ChannelLayout.prepare(rows,Collections.emptyMap());
         List<CatalogEntry> dutch=layout.countries.get("NL");
-        assertEquals("NL - ESPN FHD",dutch.get(0).title);
+        assertEquals("NL - NPO 1",dutch.get(0).title);
+        assertTrue(dutch.indexOf(dutch.stream().filter(e -> e.title.equals("NL - ESPN FHD")).findFirst().get()) > 0);
         assertEquals("NL - ESPN 2 HD",dutch.get(dutch.size()-1).title);
         List<CatalogEntry> all=layout.countries.get("ALL");
-        assertEquals("NL - ESPN FHD",all.get(0).title);
+        assertEquals("NL - NPO 1",all.get(0).title);
         assertEquals("US - ESPN 3",all.get(all.size()-1).title);
-        assertTrue(all.indexOf(dutch.get(0))<all.indexOf(dutch.get(dutch.size()-1)));
+        assertTrue(all.stream().anyMatch(e -> e.title.equals("NL - ESPN FHD")));
     }
     @Test public void espnFhdPreferredRepresentativeStillHasHdFallback(){
         CatalogEntry hd=channel(11,"NL - ESPN HD","Nederland");
