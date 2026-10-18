@@ -1,4 +1,4 @@
-name: Media Player Android v2422 phone Pornhub release (TV frozen)
+name: Media Player Android v2423 phone Pornhub release (shared favorites, phone APK only)
 
 on:
   push:
@@ -227,10 +227,10 @@ jobs:
           grep -q 'familyFooter(this)' media-player/app/src/main/java/com/theone/mediaplayer/AdultHubActivity.java
           ! grep -q 'R.drawable.ic_launcher' media-player/app/src/main/java/com/theone/mediaplayer/TvMainActivity.java
 
-      - name: Build and test Android only — TV build frozen
+      - name: Build and test Android only — TV release separate
         run: gradle -p media-player :app:testDebugUnitTest :app:assembleRelease --no-daemon
 
-      - name: Verify signed Android v2422, phone player and preserved package
+      - name: Verify signed Android v2423, phone player and preserved package
         shell: bash
         run: |
           set -euo pipefail
@@ -238,7 +238,7 @@ jobs:
           test -s "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" >/tmp/media-player-package.txt
-          grep -q "name='com.theone.mediaplayer'.*versionCode='2422'" /tmp/media-player-package.txt
+          grep -q "name='com.theone.mediaplayer'.*versionCode='2423'" /tmp/media-player-package.txt
           grep -q 'AndroidPornhubActivity' media-player/app/src/main/AndroidManifest.xml
           grep -q 'AndroidPornhubActivity.class' media-player/app/src/main/java/com/theone/mediaplayer/AdultHubActivity.java
           grep -q 'loadOfficialEmbed(video.id,tv)' media-player/app/src/main/java/com/theone/mediaplayer/AndroidPornhubActivity.java
@@ -280,9 +280,9 @@ jobs:
           ! grep -q 'new String\[\]{"Bibliotheek","Stream naar TV"}' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
           # Existing Google TV binaries and releases must never be modified here.
           test -z "$(find media-player/tvapp -type f -path '*/build/outputs/*.apk' -print -quit)"
-          echo "ANDROID_ONLY_2422_SIGNED_TV_FROZEN"
+          echo "ANDROID_ONLY_2423_SIGNED_TV_SEPARATE"
 
-      - name: Publish Android v2422 to authenticated Dev Hub only
+      - name: Publish Android v2423 to authenticated Dev Hub only
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
