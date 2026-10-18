@@ -400,7 +400,7 @@ try {
         addNavButton(nav, "Series", () -> openXtreamCatalog("series"));
         addNavButton(nav, "XXX 🔒", () -> startActivity(new Intent(this, AdultHubActivity.class)));
         addNavButton(nav, "Verder kijken", () -> showSection("Verder kijken", "Je kijkvoortgang verschijnt hier."));
-        addNavButton(nav, "Favorieten", () -> showSection("Favorieten", "Je favoriete zenders, films en series verschijnen hier."));
+        addNavButton(nav, "Favorieten", this::openFavorites);
         // Stream naar TV remains implemented but is intentionally hidden
         // until Cast/phone-to-TV integration has passed end-to-end testing.
         addNavButton(nav, "Instellingen", this::showSettings);
@@ -468,10 +468,8 @@ try {
                 ()->startActivity(new Intent(this,AdultHubActivity.class))});
         PremiumUi.addFamilyGridRow(this,root,
             new String[]{"▦","⚙","↻"},
-            new String[]{"Bibliotheek","Instellingen","Updates"},
-            new Runnable[]{()->Toast.makeText(this,
-                "Live TV, films en series staan samen in jouw bibliotheek.",
-                Toast.LENGTH_LONG).show(),
+            new String[]{"Favorieten","Instellingen","Updates"},
+            new Runnable[]{this::openFavorites,
                 this::showSettings,
                 ()->MediaPlayerUpdateChecker.checkForUpdateManual(this)});
 
@@ -822,6 +820,12 @@ try {
         } catch (Throwable ignored) {
             return "";
         }
+    }
+
+    private void openFavorites() {
+        Intent intent = new Intent(this, XtreamCatalogActivity.class);
+        intent.putExtra("favorites_only", true);
+        startActivity(intent);
     }
 
     private void openXtreamCatalog(String mode) {
