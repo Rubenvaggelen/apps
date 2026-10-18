@@ -16,10 +16,28 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - name: Install Android 36 build tools
+        shell: bash
+        run: |
+          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -name sdkmanager | head -1)"; fi
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.6.0'
+      - name: Restore permanent Google TV signing certificate
+        shell: bash
+        env:
+          TV_SIGNING_KEY: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$TV_SIGNING_KEY"
+          mkdir -p ~/.android
+          printf '%s' "$TV_SIGNING_KEY" | base64 -d > ~/.android/debug.keystore
+          chmod 600 ~/.android/debug.keystore
+          keytool -list -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey >/dev/null
       - name: Verify TV-only version and transport changes
         run: |
           set -euo pipefail
@@ -29,9 +47,19 @@ jobs:
           grep -q 'tvPlayPauseButton' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
       - name: Build Google TV and run video navigation tests
         run: gradle -p media-player :app:testDebugUnitTest :tvapp:assembleDebug --no-daemon
+      - name: Confirm private TV APK package and permanent signing identity
+        run: |
+          set -euo pipefail
+          APK=media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$APK"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" > /tmp/mediaplayer-tv-package.txt
+          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1022'" /tmp/mediaplayer-tv-package.txt
+          current=$("$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)
+          expected=$(keytool -exportcert -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey | sha256sum | cut -d' ' -f1)
+          test -n "$current" && test "$current" = "$expected"
       - name: Upload candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Media-Player-Google-TV-v1022-unsigned-candidate
+          name: Media-Player-Google-TV-v1022-signed-private
           path: media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
           if-no-files-found: error
