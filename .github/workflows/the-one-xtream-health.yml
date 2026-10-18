@@ -61,6 +61,13 @@ jobs:
                           if len(payload)>30000000: raise ValueError('oversize')
                           rows=json.loads(payload.decode('utf-8'))
                           count=len(rows) if isinstance(rows,list) else 0
+                          if action=='get_live_streams' and isinstance(rows,list):
+                              import re
+                              valid=[x for x in rows if isinstance(x,dict) and x.get('name')]
+                              strict=[(i,x) for i,x in enumerate(valid) if re.match(r'^\s*NL(?:$|[^a-zA-Z0-9])',str(x.get('name','')),re.I)]
+                              npo=[(i,x) for i,x in enumerate(valid) if re.search(r'(?i)\bnpo\s*[12]\b',str(x.get('name','')))]
+                              first_strict=next((i+1 for i,_ in strict),0)
+                              results.append(f'{action}:nl_prefix_count={len(strict)},first_nl_position={first_strict},first_2000_nl={sum(i<2000 for i,_ in strict)},npo12_count={len(npo)},npo12_first_positions={[i+1 for i,_ in npo[:8]]}')
                           ok=status==200 and count>0
                           results.append(f'{action}:status={status},records={count},ms={elapsed},ok={str(ok).lower()}')
                           if action=='get_live_categories' and isinstance(rows,list):
