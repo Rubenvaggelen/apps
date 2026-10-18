@@ -52,6 +52,7 @@ public class XtreamCatalogActivity extends Activity {
     private XtreamConfig config;
     private String mode;
     private boolean adultOnly = false;
+    private boolean favoritesOnly = false;
     private LinearLayout root;
     private LinearLayout content;
     // Keep the existing channel list alive while MainActivity plays a stream.
@@ -75,6 +76,7 @@ public class XtreamCatalogActivity extends Activity {
         super.onCreate(savedInstanceState);
         config = XtreamConfig.load(this);
         adultOnly = getIntent().getBooleanExtra("adult_only", false);
+        favoritesOnly = getIntent().getBooleanExtra("favorites_only", false);
         if (adultOnly && !MediaPlayerAdultGate.isUnlocked()) {
             finish();
             return;
@@ -82,6 +84,10 @@ public class XtreamCatalogActivity extends Activity {
         mode = getIntent().getStringExtra("mode");
         if (!"movie".equals(mode) && !"series".equals(mode)) mode = "live";
         renderShell();
+        if (favoritesOnly) {
+            renderFavorites();
+            return;
+        }
         if (!config.isConfigured()) {
             showMessage("Privé Xtream-bron ontbreekt in deze APK.");
             return;
@@ -116,7 +122,8 @@ public class XtreamCatalogActivity extends Activity {
         root.addView(top);
 
         TextView sub = text(
-                "Live TV, films en series uit jouw gekoppelde Xtream-bronnen.",
+                favoritesOnly ? "Je opgeslagen zenders, films en series op dit apparaat." :
+                    "Live TV, films en series uit jouw gekoppelde Xtream-bronnen.",
                 15,
                 MUTED,
                 false
@@ -132,6 +139,7 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private String heading() {
+        if (favoritesOnly) return "Mijn favorieten";
         if (adultOnly) return "XXX • " + ("movie".equals(mode) ? "Films" : "series".equals(mode) ? "Series" : "Live TV");
         if ("movie".equals(mode)) return "Films";
         if ("series".equals(mode)) return "Series";
@@ -1068,6 +1076,82 @@ public class XtreamCatalogActivity extends Activity {
         return false;
     }
 
+
+    private void renderFavorites() {
+        content.removeAllViews();
+        Button back = button("← Terug naar hoofdmenu");
+        back.setOnClickListener(v -> finish());
+        content.addView(back);
+
+        List<MediaFavorites.Item> favorites = MediaFavorites.list(this);
+        TextView header = text("★ Mijn favorieten • " + favorites.size(), 24, Color.WHITE, true);
+        header.setPadding(0, dp(16), 0, dp(12));
+        content.addView(header);
+
+        if (favorites.isEmpty()) {
+            content.addView(text("Nog geen favorieten. Open Live TV, Films of Series en kies ☆ Toevoegen aan favorieten.", 16, MUTED, false));
+            return;
+        }
+        if (!config.isConfigured()) {
+            content.addView(text("Je bron is niet verbonden. Verbind je Xtream-bron om favorieten af te spelen.", 15, MUTED, false));
+        }
+        for (MediaFavorites.Item favorite : favorites) {
+            LinearLayout card = new LinearLayout(this);
+            card.setOrientation(LinearLayout.VERTICAL);
+            card.setPadding(dp(12), dp(12), dp(12), dp(12));
+            card.setBackground(PremiumUi.card(this));
+            TextView title = text(favorite.name, 19, Color.WHITE, true);
+            title.setMaxLines(2);
+            card.addView(title);
+            TextView type = text(favorite.label() + (favorite.year.isEmpty() ? "" : " • " + favorite.year), 14, BLUE, false);
+            type.setPadding(0, dp(5), 0, dp(8));
+            card.addView(type);
+
+            Button open = button("series".equals(favorite.kind) ? "▶ Afleveringen openen" : "▶ Afspelen");
+            open.setOnClickListener(v -> {
+                if (!config.isConfigured()) {
+                    showMessage("Verbind eerst je Xtream-bron.");
+                    return;
+                }
+                mode = favorite.kind;
+                XtreamItem item = new XtreamItem(favorite.id, favorite.name, favorite.extension, "", "", favorite.year);
+                if ("series".equals(favorite.kind)) {
+                    loadSeriesEpisodes(item);
+                } else {
+                    lastPlayedChannelButton = open;
+                    channelListScrollY = catalogScroll == null ? 0 : catalogScroll.getScrollY();
+                    restoreChannelFocusOnResume = true;
+                    play(item);
+                }
+            });
+            card.addView(open);
+            Button remove = PremiumUi.chipButton(this, "★ Verwijderen uit favorieten");
+            remove.setOnClickListener(v -> {
+                MediaFavorites.toggle(this, favorite);
+                renderFavorites();
+            });
+            card.addView(remove);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+            lp.bottomMargin = dp(10);
+            content.addView(card, lp);
+        }
+    }
+
+    private void addFavoriteAction(LinearLayout target, XtreamItem item) {
+        if (adultOnly || favoritesOnly) return;
+        MediaFavorites.Item saved = new MediaFavorites.Item(mode, item.id, item.name, item.extension, item.year);
+        if (!MediaFavorites.valid(saved)) return;
+        Button favorite = PremiumUi.chipButton(this,
+                MediaFavorites.contains(this, mode, item.id) ? "★ In favorieten" : "☆ Toevoegen aan favorieten");
+        favorite.setOnClickListener(v -> {
+            boolean added = MediaFavorites.toggle(this, saved);
+            favorite.setText(added ? "★ In favorieten" : "☆ Toevoegen aan favorieten");
+        });
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.topMargin = dp(6);
+        target.addView(favorite, lp);
+    }
+
     private void renderItems(Category category, List<XtreamItem> items) {
         categoryItems.clear();
         categoryItems.addAll(items);
@@ -1238,6 +1322,7 @@ public class XtreamCatalogActivity extends Activity {
             );
             openLp.topMargin = dp(3);
             info.addView(open, openLp);
+            addFavoriteAction(info, item);
 
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1555,12 +1640,13 @@ public class XtreamCatalogActivity extends Activity {
         content.removeAllViews();
 
         Button back = button("← Terug");
-        back.setOnClickListener(v -> loadCategories());
+        back.setOnClickListener(v -> { if (favoritesOnly) renderFavorites(); else loadCategories(); });
         content.addView(back);
 
         TextView title = text(series.name, 25, Color.WHITE, true);
         title.setPadding(0, dp(14), 0, dp(12));
         content.addView(title);
+        addFavoriteAction(content, series);
 
         if (episodes.isEmpty()) {
             content.addView(text("Geen afleveringen gevonden.", 16, MUTED, false));
