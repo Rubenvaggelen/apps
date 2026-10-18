@@ -92,7 +92,10 @@ final class MediaFavorites {
     static synchronized boolean toggle(Context context, Item candidate) {
         if (!valid(candidate)) return false;
         List<Item> items = list(context);
-        boolean removed = items.removeIf(item -> item.key().equals(candidate.key()));
+        boolean removed = false;
+        for (int i = items.size() - 1; i >= 0; i--) {
+            if (items.get(i).key().equals(candidate.key())) { items.remove(i); removed = true; }
+        }
         if (!removed) items.add(0, candidate);
         if (items.size() > MAX) items = new ArrayList<>(items.subList(0, MAX));
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
