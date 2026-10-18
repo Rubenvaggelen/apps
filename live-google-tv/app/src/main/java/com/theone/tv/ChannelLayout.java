@@ -102,7 +102,7 @@ public final class ChannelLayout {
     }
     public static Layout prepare(List<CatalogEntry> entries,Map<String,List<CatalogEntry>> existingVariants){
         Map<String,LinkedHashMap<String,CatalogEntry>> grouped=new LinkedHashMap<>();
-        Map<String,LinkedHashMap<Integer,CatalogEntry>> streams=new LinkedHashMap<>();
+        Map<String,LinkedHashMap<String,CatalogEntry>> streams=new LinkedHashMap<>();
         for(String code:CODES)grouped.put(code,new LinkedHashMap<>());
         for(CatalogEntry e:entries){
             if(e.isAdult())continue;
@@ -115,10 +115,10 @@ public final class ChannelLayout {
                 String key=bucket+"|"+identity;
                 CatalogEntry winner=group.get(identity);
                 if(winner==null){group.put(identity,e);winner=e;}
-                LinkedHashMap<Integer,CatalogEntry> values=streams.computeIfAbsent(winner.key(),k->new LinkedHashMap<>());
+                LinkedHashMap<String,CatalogEntry> values=streams.computeIfAbsent(winner.key(),k->new LinkedHashMap<>());
                 List<CatalogEntry> variants=existingVariants.get(e.key());
                 if(variants==null)variants=Collections.singletonList(e);
-                for(CatalogEntry variant:variants)values.putIfAbsent(variant.id,variant);
+                for(CatalogEntry variant:variants)values.putIfAbsent(variant.id+"|"+variant.extension,variant);
             }
         }
         Map<String,List<CatalogEntry>> countries=new LinkedHashMap<>();
@@ -127,13 +127,9 @@ public final class ChannelLayout {
             values.sort((a,b)->{
                 String ca=channelCountry(a);
                 String cb=channelCountry(b);
-                if(bucket.equals("ALL")){
-                    int byCountry=Integer.compare(order(ca),order(cb));
-                    if(byCountry!=0)return byCountry;
-                }
                 int quality=Integer.compare(videoTier(a.title),videoTier(b.title));
                 if(quality!=0)return quality;
-                if(bucket.equals("NL")||bucket.equals("ALL")&&ca.equals("NL")&&cb.equals("NL")){
+                if(bucket.equals("NL")){
                     int ziggo=Integer.compare(ziggoOrder(a.title),ziggoOrder(b.title));
                     if(ziggo!=0)return ziggo;
                 }
@@ -142,7 +138,7 @@ public final class ChannelLayout {
             countries.put(bucket,Collections.unmodifiableList(values));
         }
         Map<String,List<CatalogEntry>> choices=new HashMap<>();
-        for(Map.Entry<String,LinkedHashMap<Integer,CatalogEntry>> item:streams.entrySet())
+        for(Map.Entry<String,LinkedHashMap<String,CatalogEntry>> item:streams.entrySet())
             choices.put(item.getKey(),new ArrayList<>(item.getValue().values()));
         return new Layout(countries,choices);
     }
