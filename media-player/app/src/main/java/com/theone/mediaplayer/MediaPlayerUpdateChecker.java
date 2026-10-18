@@ -42,7 +42,7 @@ public final class MediaPlayerUpdateChecker {
         "https://dev.rubenvanaggelen.com/family-download-20261013.php?app=";
     private static final String PREFS="the_one_player_updater";
     private static final String LAST_CHECK="last_check";
-    private static final long CHECK_INTERVAL_MS=4L*60L*60L*1000L;
+    private static final long CHECK_INTERVAL_MS=15L*60L*1000L;
     private static final Pattern ANDROID_PATTERN=Pattern.compile("Android\\s+v(\\d+)");
     private static final Pattern TV_PATTERN=Pattern.compile("TV\\s+v(\\d+)");
     private static final AtomicBoolean inProgress=new AtomicBoolean(false);
@@ -145,12 +145,7 @@ public final class MediaPlayerUpdateChecker {
     }
 
     private static void openPrivateDownload(Activity activity,boolean tv){
-        if(tv){ MediaPlayerTvInstaller.open(activity); return; }
-        String target=PRIVATE_DOWNLOAD+(tv?"media-player-tv":"media-player");
-        Intent browser=new Intent(Intent.ACTION_VIEW,Uri.parse(target));
-        browser.addCategory(Intent.CATEGORY_BROWSABLE);
-        try{activity.startActivity(browser);}
-        catch(Exception e){Toast.makeText(activity,
-            "Dev Hub kon niet worden geopend.",Toast.LENGTH_LONG).show();}
+        if(tv)MediaPlayerTvInstaller.open(activity);
+        else MediaPlayerPhoneInstaller.open(activity);
     }
 }

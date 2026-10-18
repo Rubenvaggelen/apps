@@ -1564,6 +1564,12 @@ try {
     }
 
     @Override
+    protected void onResume(){
+        super.onResume();
+        MediaPlayerPhoneInstaller.resumeIfPending(this);
+    }
+
+    @Override
     protected void onDestroy() {
         releasePlayer();
         if (castReceiver != null) {

@@ -15,8 +15,8 @@ android {
         applicationId = "com.theone.mediaplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2425
-        versionName = "2.4.25-secondary-first"
+        versionCode = 2426
+        versionName = "2.4.26-secondary-first"
     }
 
     signingConfigs {

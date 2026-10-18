@@ -18,6 +18,14 @@
         <meta-data
             android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
             android:value="com.theone.mediaplayer.CastOptionsProvider" />
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.theone.mediaplayer.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/media_player_phone_update_paths" />
+        </provider>
         <activity
             android:name=".YouTubeActivity"
             android:exported="false" />
