@@ -1192,7 +1192,19 @@ try {
         root.setBackgroundColor(Color.BLACK);
 
         activePlayerView = new PlayerView(this);
-        player = new ExoPlayer.Builder(this).build();
+        boolean usePcm=isTvBuild() && SonyBraviaAudioPolicy.usePcm(
+                prefs != null && prefs.contains("compat_pcm_audio")
+                    ? prefs.getBoolean("compat_pcm_audio",false) : null,
+                android.os.Build.MANUFACTURER,android.os.Build.BRAND,android.os.Build.MODEL);
+        ExoPlayer.Builder playerBuilder=usePcm
+                ? new ExoPlayer.Builder(this,new CompatibleAudioRenderersFactory(this))
+                : new ExoPlayer.Builder(this);
+        player=playerBuilder.build();
+        player.setAudioAttributes(new androidx.media3.common.AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),true);
+        player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO,false).build());
+        player.setVolume(1f);
         activePlayerView.setPlayer(player);
         activePlayerView.setUseController(true);
         activePlayerView.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT);
@@ -1342,6 +1354,27 @@ try {
             root.addView(subtitles, subtitleLp);
             autoHidePlayerButtons.add(subtitles);
 
+            if(isTvBuild()){
+                LinearLayout audioControls=new LinearLayout(this);
+                audioControls.setOrientation(LinearLayout.HORIZONTAL);
+                Button tracks=PremiumUi.chipButton(this,"Geluid");
+                tracks.setOnClickListener(v->showAudioTracks());
+                audioControls.addView(tracks);
+                Button info=PremiumUi.chipButton(this,"Audio-info");
+                info.setOnClickListener(v->PlaybackAudioDiagnostics.show(this,player));
+                audioControls.addView(info);
+                Button output=PremiumUi.chipButton(this,"Audio-uitvoer");
+                output.setOnClickListener(v->switchAudioOutput());
+                audioControls.addView(output);
+                FrameLayout.LayoutParams audioLp=new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);
+                audioLp.bottomMargin=dp(20);
+                root.addView(audioControls,audioLp);
+                autoHidePlayerButtons.add(audioControls);
+            }
+
             boolean movieOrSeries = "movie".equals(playKind) || "series".equals(playKind);
 
             // Fallback voor oudere/openstaande intents zonder play_kind.
@@ -1369,6 +1402,68 @@ try {
             Log.w("TheOneMediaPlayer", "Subtitle controls unavailable; playback continues", subtitleUiError);
         }
 
+    }
+
+    private void showAudioTracks(){
+        if(player==null)return;
+        List<Tracks.Group> groups=new ArrayList<>();
+        List<Integer> indices=new ArrayList<>();
+        List<String> labels=new ArrayList<>();
+        labels.add("Automatisch (geluid inschakelen)");
+        for(Tracks.Group group:player.getCurrentTracks().getGroups()){
+            if(group.getType()!=C.TRACK_TYPE_AUDIO)continue;
+            for(int n=0;n<group.length;n++){
+                if(!group.isTrackSupported(n))continue;
+                Format format=group.getTrackFormat(n);
+                labels.add((format.language==null?"Taal onbekend":format.language)
+                        +" · "+(format.sampleMimeType==null?"Onbekend formaat":format.sampleMimeType)
+                        +(format.channelCount>0?" · "+format.channelCount+" kanalen":"")
+                        +(group.isTrackSelected(n)?" ✓":""));
+                groups.add(group);
+                indices.add(n);
+            }
+        }
+        if(groups.isEmpty()){
+            new AlertDialog.Builder(this).setTitle("Geen ondersteund geluidsspoor")
+                    .setMessage("Bekijk Audio-info. Je kunt een andere bron of versie kiezen.")
+                    .setPositiveButton("OK",null).show();
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("Geluidsspoor")
+                .setItems(labels.toArray(new String[0]),(dialog,which)->{
+                    if(player==null)return;
+                    androidx.media3.common.TrackSelectionParameters.Builder p=
+                        player.getTrackSelectionParameters().buildUpon()
+                            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO,false);
+                    if(which>0)p.setOverrideForType(
+                        new TrackSelectionOverride(groups.get(which-1).getMediaTrackGroup(),indices.get(which-1)));
+                    player.setTrackSelectionParameters(p.build());
+                    player.setVolume(1f);
+                }).setNegativeButton("Terug",null).show();
+    }
+
+    private void switchAudioOutput(){
+        if(!isTvBuild()||player==null||prefs==null)return;
+        boolean oldPcm=SonyBraviaAudioPolicy.usePcm(
+                prefs.contains("compat_pcm_audio")?prefs.getBoolean("compat_pcm_audio",false):null,
+                android.os.Build.MANUFACTURER,android.os.Build.BRAND,android.os.Build.MODEL);
+        boolean pcm=!oldPcm;
+        int current=player.getCurrentMediaItemIndex();
+        long position=Math.max(0L,player.getCurrentPosition());
+        List<String> sources=new ArrayList<>();
+        for(int i=0;i<player.getMediaItemCount();i++){
+            MediaItem item=player.getMediaItemAt(i);
+            if(item.localConfiguration!=null)sources.add(item.localConfiguration.uri.toString());
+        }
+        if(sources.isEmpty())return;
+        prefs.edit().putBoolean("compat_pcm_audio",pcm).apply();
+        showPlayerQueue(sources);
+        if(player!=null&&player.getMediaItemCount()>0){
+            player.seekTo(Math.min(Math.max(current,0),player.getMediaItemCount()-1),position);
+            player.play();
+        }
+        Toast.makeText(this,pcm?"Geluid: PCM (geen Dolby-passthrough)":"Geluid: standaarduitvoer",Toast.LENGTH_LONG).show();
     }
 
     private void showSubtitleSelector() {
