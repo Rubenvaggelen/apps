@@ -75,6 +75,10 @@ jobs:
                               from collections import Counter
                               counts=Counter(str(rows[i].get('category_id','')) for i in positions)
                               results.append(f'NL_ACTIVE_CATEGORIES={len(counts)},NL_LARGEST_CATEGORY_COUNTS={list(v for k,v in counts.most_common(12))}')
+                              category_names={str(c.get('category_id')):str(c.get('category_name','')) for c in category_rows if isinstance(c,dict)}
+                              ordered=sorted(nl_categories,key=lambda cid:category_names.get(cid,'').lower())
+                              results.append(f'NL_SORTED_FIRST_3_COVERAGE={sum(counts.get(cid,0) for cid in ordered[:3])},FIRST_6_COVERAGE={sum(counts.get(cid,0) for cid in ordered[:6])},FIRST_10_COVERAGE={sum(counts.get(cid,0) for cid in ordered[:10])}')
+
                               if counts:
                                   category_id=counts.most_common(1)[0][0]
                                   test_url=cfg['server'].rstrip('/')+'/player_api.php?'+urllib.parse.urlencode({'username':cfg['username'],'password':cfg['password'],'action':'get_live_streams','category_id':category_id})
