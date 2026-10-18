@@ -1,0 +1,37 @@
+name: Media Player Google TV v1022 transport release
+on:
+  push:
+    branches: [feature/media-player-adult-5min-20261016]
+    paths: [.github/workflows/media-player-tv-pornhub-transport-release.yml]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+      - name: Verify TV-only version and transport changes
+        run: |
+          set -euo pipefail
+          grep -q 'versionCode = 1022' media-player/tvapp/build.gradle.kts
+          grep -q 'versionCode = 2422' media-player/app/build.gradle.kts
+          grep -q 'AdultVideoNavigation.adjacent' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
+          grep -q 'tvPlayPauseButton' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
+      - name: Build Google TV and run video navigation tests
+        run: gradle -p media-player :app:testDebugUnitTest :tvapp:assembleDebug --no-daemon
+      - name: Upload candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: Media-Player-Google-TV-v1022-unsigned-candidate
+          path: media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
+          if-no-files-found: error
