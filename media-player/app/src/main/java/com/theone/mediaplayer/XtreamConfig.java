@@ -316,6 +316,12 @@ public final class XtreamConfig {
         finally {connection.disconnect();}
     }
 
+    /** Identify the recovered second provider without changing its account or IDs. */
+    public boolean isSecondaryStreamUrl(String url) {
+        return secondary != null && secondary.isConfigured() && url != null
+                && url.startsWith(secondary.server + "/");
+    }
+
     public String stream(String type, String id, String extension) {
         if (id != null && id.startsWith("source2:")) {
             if (secondary == null) throw new IllegalStateException("Source unavailable");
