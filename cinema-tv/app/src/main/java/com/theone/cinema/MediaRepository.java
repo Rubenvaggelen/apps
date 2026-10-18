@@ -1,0 +1,17 @@
+package com.theone.cinema;
+import android.content.Context;
+import android.util.JsonReader;
+import android.util.JsonToken;
+import org.json.*;
+import java.io.*;import java.net.*;import java.nio.charset.StandardCharsets;import java.util.*;
+final class MediaRepository {
+ private final String server,token;
+ MediaRepository(Context c)throws Exception{try(InputStream in=c.getAssets().open("private_cinema.json")){JSONObject x=new JSONObject(read(in));server=x.getString("relay_url");token=x.getString("relay_token");}if(!server.startsWith("https://rubenvanaggelen.com/")||token.isEmpty())throw new IOException("Source unavailable");}
+ private static String enc(String s){try{return URLEncoder.encode(s,"UTF-8").replace("+","%20");}catch(Exception e){throw new IllegalArgumentException();}}
+ private String api(String action,String extra)throws Exception{String query=action.equals("get_series_info")?"action=episodes"+extra.replace("series_id", "id"):"action=catalog&type="+(action.equals("get_series")?"series":"movies");HttpURLConnection c=(HttpURLConnection)new URL(server+"?"+query).openConnection();c.setConnectTimeout(15000);c.setReadTimeout(60000);c.setRequestProperty("X-Cinema-Token",token);try{if(c.getResponseCode()!=200)throw new IOException("Catalog unavailable");return read(c.getInputStream());}finally{c.disconnect();}}
+ private static String read(InputStream in)throws Exception{ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[16384];int n;while((n=in.read(b))!=-1){out.write(b,0,n);if(out.size()>100*1024*1024)throw new IOException("Catalog exceeds limit");}return out.toString("UTF-8");}
+ List<CatalogEntry> load(String type)throws Exception{HttpURLConnection c=(HttpURLConnection)new URL(server+"?action=catalog&type="+type).openConnection();c.setConnectTimeout(15000);c.setReadTimeout(90000);c.setRequestProperty("X-Cinema-Token",token);List<CatalogEntry> list=new ArrayList<>();try{if(c.getResponseCode()!=200)throw new IOException("Catalog unavailable");try(JsonReader reader=new JsonReader(new InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8))){reader.beginArray();while(reader.hasNext()){if(Thread.currentThread().isInterrupted())throw new IOException("Cancelled");int id=0,adult=0;String title="",extension="mp4",poster="",category="";long added=0;reader.beginObject();while(reader.hasNext()){String key=reader.nextName();if(reader.peek()==JsonToken.NULL){reader.nextNull();continue;}switch(key){case "stream_id":case "series_id":id=(int)number(reader);break;case "name":title=reader.nextString();break;case "container_extension":extension=reader.nextString();break;case "stream_icon":case "cover":poster=reader.nextString();break;case "category_id":category=reader.nextString();break;case "is_adult":adult=(int)number(reader);break;case "added":case "last_modified":added=number(reader);break;default:reader.skipValue();}}reader.endObject();if(id>0&&adult!=1&&!title.isEmpty())list.add(new CatalogEntry(id,title,extension,poster,category,type,added));}reader.endArray();}}finally{c.disconnect();}list.sort((a,b)->Long.compare(b.added,a.added));return list;}
+ private static long number(JsonReader r)throws Exception{try{return Long.parseLong(r.nextString());}catch(NumberFormatException e){return 0;}}
+ Map<String,String> streamHeaders(){return Collections.singletonMap("X-Cinema-Token",token);}
+ String stream(CatalogEntry x){return server+"?action=stream&id="+x.id+"&ext="+x.extension+"&type=movies";}
+}
