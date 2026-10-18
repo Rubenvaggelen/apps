@@ -81,4 +81,20 @@ public class ChannelLayoutTest {
   assertEquals(3,layout.alternativeStreams.get(first.key()).size());
   assertNotEquals(ChannelLayout.channelIdentity("USA Network"),ChannelLayout.channelIdentity("US - Hulu Network"));
  }
+
+ @Test public void nlPrefixWinsInEveryCountryListingAndKeepsProviderBackup(){
+  CatalogEntry foreign=channel(7,"US - CNN 8K","United States");
+  CatalogEntry withoutPrefix=channel(8,"NPO 1","Nederland");
+  CatalogEntry withPrefix=channel(9,"NL - NPO 1 HD","Nederland");
+  CatalogEntry anotherNl=channel(10,"NL | RTL 4 4K","Nederland");
+  ChannelLayout.Layout layout=ChannelLayout.prepare(
+      Arrays.asList(foreign,withoutPrefix,withPrefix,anotherNl),Collections.emptyMap());
+  List<CatalogEntry> all=layout.countries.get("ALL");
+  assertTrue(ChannelLayout.hasNlPrefix(all.get(0).title));
+  assertTrue(ChannelLayout.hasNlPrefix(all.get(1).title));
+  assertEquals(3,all.size());
+  assertEquals(2,layout.countries.get("NL").size());
+  assertEquals("NL - NPO 1 HD",layout.countries.get("NL").get(0).title);
+  assertEquals(2,layout.alternativeStreams.get(layout.countries.get("NL").get(0).key()).size());
+ }
 }
