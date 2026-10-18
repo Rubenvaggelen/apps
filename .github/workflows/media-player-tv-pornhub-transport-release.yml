@@ -1,4 +1,4 @@
-name: Media Player Google TV v1024 browserless updater release
+name: Media Player Google TV v1025 browserless updater and TV release detection
 on:
   push:
     branches: [feature/media-player-adult-5min-20261016]
@@ -41,13 +41,17 @@ jobs:
       - name: Verify TV-only version and transport changes
         run: |
           set -euo pipefail
-          grep -q 'versionCode = 1024' media-player/tvapp/build.gradle.kts
+          grep -q 'versionCode = 1025' media-player/tvapp/build.gradle.kts
           grep -q 'versionCode = 2423' media-player/app/build.gradle.kts
           grep -q 'AdultVideoNavigation.adjacent' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
           grep -q 'tvPlayPauseButton' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
+          grep -q 'TV_RELEASE_RUNS' media-player/app/src/main/java/com/theone/mediaplayer/MediaPlayerUpdateChecker.java
+          grep -q 'MediaPlayerTvInstaller.open(activity)' media-player/app/src/main/java/com/theone/mediaplayer/MediaPlayerUpdateChecker.java
+          grep -q 'com.theone.mediaplayer.tv.updates' media-player/tvapp/src/main/AndroidManifest.xml
+          test -s media-player/tvapp/src/main/res/xml/media_player_tv_update_paths.xml
       - name: Build Google TV and run video navigation tests
         run: gradle -p media-player :app:testDebugUnitTest :tvapp:assembleDebug --no-daemon
-      - name: Sign Google TV v1024 with permanent owner TV certificate
+      - name: Sign Google TV v1025 with permanent owner TV certificate
         shell: bash
         run: |
           set -euo pipefail
@@ -67,17 +71,17 @@ jobs:
           APK=media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" > /tmp/mediaplayer-tv-package.txt
-          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1024'" /tmp/mediaplayer-tv-package.txt
+          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1025'" /tmp/mediaplayer-tv-package.txt
           current=$("$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)
           expected=$(keytool -exportcert -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey | sha256sum | cut -d' ' -f1)
           test -n "$current" && test "$current" = "$expected"
       - name: Upload candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Media-Player-Google-TV-v1024-signed-private
+          name: Media-Player-Google-TV-v1025-signed-private
           path: media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
           if-no-files-found: error
-      - name: Publish signed v1024 only to authenticated Dev Hub
+      - name: Publish signed v1025 only to authenticated Dev Hub
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
