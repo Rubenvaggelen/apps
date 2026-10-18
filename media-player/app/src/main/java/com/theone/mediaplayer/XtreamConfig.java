@@ -18,6 +18,15 @@ public final class XtreamConfig {
     public final String password;
     private XtreamConfig secondary;
     private java.io.File catalogCacheDir;
+    private volatile boolean lastLiveCatalogPartial;
+    private volatile boolean forceLiveCatalogRefresh;
+
+    /** True if at least one configured provider could not supply a live catalog. */
+    public boolean isLastLiveCatalogPartial(){return lastLiveCatalogPartial;}
+
+    /** Retry a previously missing provider without throwing away the last complete catalog. */
+    public void refreshLiveCatalog(){forceLiveCatalogRefresh=true;}
+
 
     private XtreamConfig(String server, String username, String password) {
         this.server = normalize(server);
@@ -132,47 +141,73 @@ public final class XtreamConfig {
         // The country picker requests the entire TV catalog. A short, private
         // disk cache avoids re-downloading tens of thousands of rows on every
         // return from playback. Never expose usernames or URLs in filenames.
-        boolean cacheable = "get_live_streams".equals(action) || action.endsWith("_categories");
-        String cacheIdentity = action + "|" + server + "|" + username + "|" +
+        // v2 deliberately ignores the old aggregate cache: prior releases
+        // incorrectly stored partial results when one provider timed out.
+        boolean live="get_live_streams".equals(action);
+        boolean cacheable=live || action.endsWith("_categories");
+        boolean force=live && forceLiveCatalogRefresh;
+        if(live){forceLiveCatalogRefresh=false;lastLiveCatalogPartial=false;}
+        String cacheIdentity = "complete-v2|" + action + "|" + server + "|" + username + "|" +
                 (secondary==null?"":secondary.server+"|"+secondary.username);
         java.io.File cacheFile = catalogCacheDir==null?null:
             new java.io.File(catalogCacheDir,"catalog-"+hashCacheKey(cacheIdentity)+".json");
-        String previous=cacheable?readCachedCatalog(cacheFile,false):null;
+        String previous=cacheable && !force?readCachedCatalog(cacheFile,false):null;
         if(previous!=null)return previous;
 
-        java.util.List<java.util.concurrent.Callable<org.json.JSONArray>> jobs = new java.util.ArrayList<>();
-        for(int index=0;index<(secondary==null?1:2);index++) {
+        java.util.List<java.util.concurrent.Callable<org.json.JSONArray>> jobs=new java.util.ArrayList<>();
+        for(int index=0;index<(secondary==null?1:2);index++){
             final int sourceIndex=index;
             jobs.add(()->{
                 XtreamConfig source=sourceIndex==0?this:secondary;
-                String raw=source.download(source.account()+"&action="+query(action));
-                return decorate(new org.json.JSONArray(raw),sourceIndex==1,action);
+                // Keep a separate known-good catalog for EACH provider. A slow
+                // source must never erase the other provider's channel list.
+                String key="provider-v2|"+action+"|"+source.server+"|"+source.username;
+                java.io.File providerFile=catalogCacheDir==null?null:
+                    new java.io.File(catalogCacheDir,"catalog-"+hashCacheKey(key)+".json");
+                String cached=cacheable&&!force?readCachedCatalog(providerFile,false):null;
+                if(cached!=null)return decorate(new org.json.JSONArray(cached),sourceIndex==1,action);
+                try{
+                    String raw=source.download(source.account()+"&action="+query(action));
+                    org.json.JSONArray rows=new org.json.JSONArray(raw);
+                    // An unexpectedly empty provider response cannot replace
+                    // its last valid catalog.
+                    if(cacheable && rows.length()>0)writeCachedCatalog(providerFile,raw);
+                    return decorate(rows,sourceIndex==1,action);
+                }catch(Exception error){
+                    String stale=cacheable?readCachedCatalog(providerFile,true):null;
+                    if(stale!=null)return decorate(new org.json.JSONArray(stale),sourceIndex==1,action);
+                    throw error;
+                }
             });
         }
         java.util.concurrent.ExecutorService pool=java.util.concurrent.Executors.newFixedThreadPool(jobs.size());
         org.json.JSONArray merged=new org.json.JSONArray();
         int completed=0;
-        try {
-            // Two accounts are queried simultaneously, rather than serially
-            // waiting 45s per provider before showing the first channels.
+        try{
+            // 18 seconds was too short for a large IPTV catalog on Sony TVs.
+            // A 70-second shared deadline is used only on cache misses.
             java.util.List<java.util.concurrent.Future<org.json.JSONArray>> futures =
-                pool.invokeAll(jobs,18,java.util.concurrent.TimeUnit.SECONDS);
-            for(java.util.concurrent.Future<org.json.JSONArray> future:futures) {
+                pool.invokeAll(jobs,70,java.util.concurrent.TimeUnit.SECONDS);
+            for(java.util.concurrent.Future<org.json.JSONArray> future:futures){
                 if(future.isCancelled())continue;
-                try {
+                try{
                     org.json.JSONArray rows=future.get();
                     for(int j=0;j<rows.length();j++)merged.put(rows.get(j));
                     completed++;
                 }catch(Exception ignored){}
             }
         }finally{pool.shutdownNow();}
-        if(completed==0){
+        boolean partial=completed<jobs.size();
+        if(live)lastLiveCatalogPartial=partial;
+        if(partial){
+            // Prefer a previous COMPLETE two-source snapshot over an incomplete
+            // current scan; never overwrite it with a single-provider result.
             String stale=cacheable?readCachedCatalog(cacheFile,true):null;
             if(stale!=null)return stale;
-            throw new java.io.IOException("Catalog unavailable");
         }
+        if(completed==0)throw new java.io.IOException("Catalog unavailable");
         String combined=merged.toString();
-        if(cacheable && combined.length()<16*1024*1024)writeCachedCatalog(cacheFile,combined);
+        if(cacheable && !partial)writeCachedCatalog(cacheFile,combined);
         return combined;
     }
 
@@ -188,9 +223,9 @@ public final class XtreamConfig {
 
     private String readCachedCatalog(java.io.File file,boolean allowStale) {
         try{
-            if(file==null||!file.isFile()||file.length()>16*1024*1024)return null;
+            if(file==null||!file.isFile()||file.length()>64*1024*1024)return null;
             long age=System.currentTimeMillis()-file.lastModified();
-            if(age<0 || age>(allowStale?24L*3600000L:12L*60000L))return null;
+            if(age<0 || age>(allowStale?7L*24L*3600000L:12L*60000L))return null;
             byte[] data=java.nio.file.Files.readAllBytes(file.toPath());
             String value=new String(data,java.nio.charset.StandardCharsets.UTF_8);
             new org.json.JSONArray(value);
@@ -199,7 +234,7 @@ public final class XtreamConfig {
     }
 
     private void writeCachedCatalog(java.io.File file,String content) {
-        if(file==null)return;
+        if(file==null||content.length()>64*1024*1024)return;
         try{
             java.io.File parent=file.getParentFile();
             if(parent==null||(!parent.isDirectory()&&!parent.mkdirs()))return;
