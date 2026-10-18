@@ -10,8 +10,8 @@ android {
         applicationId = "com.theone.mediaplayer.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1023
-        versionName = "1.0.23-favorites"
+        versionCode = 1024
+        versionName = "1.0.24-native-updater"
     }
 
     buildTypes {
@@ -36,6 +36,7 @@ android {
 }
 
 dependencies {
+    implementation("androidx.core:core:1.16.0")
     implementation("androidx.media3:media3-exoplayer:1.11.0")
     implementation("androidx.media3:media3-exoplayer-hls:1.11.0")
     implementation("androidx.media3:media3-exoplayer-dash:1.11.0")
