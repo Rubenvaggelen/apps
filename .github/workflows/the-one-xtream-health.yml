@@ -72,6 +72,21 @@ jobs:
                               nl_categories={str(c.get('category_id')) for c in category_rows if isinstance(c,dict) and re.search(r'(^|[^a-zA-Z])(nl|nederland|netherlands|holland)(?=$|[^a-zA-Z])',str(c.get('category_name','')),re.I)}
                               covered=sum(any(cid.strip() in nl_categories for cid in str(rows[i].get('category_id','')).split(',')) for i in positions)
                               results.append(f'NL_CATEGORY_CANDIDATES={len(nl_categories)},NL_PREFIX_COVERED_BY_COUNTRY_CATEGORY={covered}/{len(positions)}')
+                              from collections import Counter
+                              counts=Counter(str(rows[i].get('category_id','')) for i in positions)
+                              results.append(f'NL_ACTIVE_CATEGORIES={len(counts)},NL_LARGEST_CATEGORY_COUNTS={list(v for k,v in counts.most_common(12))}')
+                              if counts:
+                                  category_id=counts.most_common(1)[0][0]
+                                  test_url=cfg['server'].rstrip('/')+'/player_api.php?'+urllib.parse.urlencode({'username':cfg['username'],'password':cfg['password'],'action':'get_live_streams','category_id':category_id})
+                                  test_start=time.monotonic()
+                                  try:
+                                      with urllib.request.urlopen(urllib.request.Request(test_url,headers={'User-Agent':'TheOneTV/1.0'}),timeout=15) as category_res:
+                                          test_status=category_res.status
+                                          test_rows=json.loads(category_res.read(30000001).decode('utf-8'))
+                                      matched=sum(1 for row in test_rows if isinstance(row,dict) and strict(row)) if isinstance(test_rows,list) else 0
+                                      results.append(f'NL_CATEGORY_FILTER_HTTP={test_status},NL_MATCHING_ROWS={matched},MS={int((time.monotonic()-test_start)*1000)}')
+                                  except Exception as err:
+                                      results.append(f'NL_CATEGORY_FILTER_ERROR={type(err).__name__}')
                           if not ok: alive=False
                       except urllib.error.HTTPError as err:
                           results.append(f'{action}:status={err.code},ok=false'); alive=False
