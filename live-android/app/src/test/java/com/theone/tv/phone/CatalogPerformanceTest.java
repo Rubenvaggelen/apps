@@ -45,4 +45,18 @@ public class CatalogPerformanceTest {
   });
   assertEquals(Arrays.asList(false,true,true),seenUs);
  }
+ @Test public void nlPriorityPreviewsStayVisibleWhileInternationalRowsArrive()throws Exception{
+  CatalogEntry nl=entry(1000000042);
+  CatalogEntry us=new CatalogEntry(1000000043,"US - CNN","ts","","US","live",0);
+  List<Boolean> seenNl=new ArrayList<>();
+  ProgressiveCatalog.loadStreaming(Collections.singletonList(preview->{
+   preview.accept(Collections.singletonList(nl));
+   preview.accept(Arrays.asList(nl,us));
+   return Arrays.asList(us,nl);
+  }),Collections.emptyList(),(rows,complete,successful)->{
+   boolean found=false;for(CatalogEntry item:rows)if(item.category.equals("NL"))found=true;
+   seenNl.add(found);
+  });
+  assertEquals(Arrays.asList(true,true,true),seenNl);
+ }
 }
