@@ -170,6 +170,7 @@ public final class XtreamConfig {
                 try{
                     String raw=source.download(source.account()+"&action="+query(action));
                     org.json.JSONArray rows=new org.json.JSONArray(raw);
+                    if(live && rows.length()==0)throw new java.io.IOException("Provider supplied no live channels");
                     String previousProvider=cacheable?readCachedCatalog(providerFile,true):null;
                     if(previousProvider!=null){
                         org.json.JSONArray last=new org.json.JSONArray(previousProvider);
