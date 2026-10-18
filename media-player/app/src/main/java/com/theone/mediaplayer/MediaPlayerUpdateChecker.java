@@ -141,6 +141,7 @@ public final class MediaPlayerUpdateChecker {
     }
 
     private static void openPrivateDownload(Activity activity,boolean tv){
+        if(tv){ MediaPlayerTvInstaller.open(activity); return; }
         String target=PRIVATE_DOWNLOAD+(tv?"media-player-tv":"media-player");
         Intent browser=new Intent(Intent.ACTION_VIEW,Uri.parse(target));
         browser.addCategory(Intent.CATEGORY_BROWSABLE);
