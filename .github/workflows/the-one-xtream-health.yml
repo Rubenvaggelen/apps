@@ -48,7 +48,7 @@ jobs:
           def probe(label,filename):
               try:
                   cfg=json.loads((base/filename).read_text())
-                  alive=True; results=[]
+                  alive=True; results=[]; category_rows=[]
                   for action,key in [('get_live_categories','category_id'),('get_live_streams','stream_id')]:
                       url=cfg['server'].rstrip('/')+'/player_api.php?'+urllib.parse.urlencode({'username':cfg['username'],'password':cfg['password'],'action':action})
                       start=time.monotonic()
@@ -63,10 +63,15 @@ jobs:
                           count=len(rows) if isinstance(rows,list) else 0
                           ok=status==200 and count>0
                           results.append(f'{action}:status={status},records={count},ms={elapsed},ok={str(ok).lower()}')
+                          if action=='get_live_categories' and isinstance(rows,list):
+                              category_rows=rows
                           if action=='get_live_streams' and isinstance(rows,list):
                               strict=lambda row:bool(re.match(r'^\s*NL(?=$|[^A-Za-z0-9])',str(row.get('name','')),re.I))
                               positions=[i for i,row in enumerate(rows) if isinstance(row,dict) and strict(row)]
                               results.append(f'NL_PREFIX_TOTAL={len(positions)},FIRST_NL_INDEX={positions[0] if positions else -1},NL_IN_FIRST_1170={sum(p<1170 for p in positions)},NL_IN_FIRST_2341={sum(p<2341 for p in positions)},NL_IN_FIRST_4096={sum(p<4096 for p in positions)}')
+                              nl_categories={str(c.get('category_id')) for c in category_rows if isinstance(c,dict) and re.search(r'(^|[^a-zA-Z])(nl|nederland|netherlands|holland)(?=$|[^a-zA-Z])',str(c.get('category_name','')),re.I)}
+                              covered=sum(any(cid.strip() in nl_categories for cid in str(rows[i].get('category_id','')).split(',')) for i in positions)
+                              results.append(f'NL_CATEGORY_CANDIDATES={len(nl_categories)},NL_PREFIX_COVERED_BY_COUNTRY_CATEGORY={covered}/{len(positions)}')
                           if not ok: alive=False
                       except urllib.error.HTTPError as err:
                           results.append(f'{action}:status={err.code},ok=false'); alive=False
