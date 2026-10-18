@@ -37,10 +37,12 @@ public final class ChannelLayout {
             && (n.length()==2 || !Character.isLetterOrDigit(n.charAt(2)));
     }
     public static String channelIdentity(String name){
-        String text=normalize(name);
-        text=text.replaceAll("^(nl|nederland|netherlands|be|belgie|de|uk|us|fr)\\s+","");
+        String raw=name==null?"":name;
+        String withoutCountryPrefix=raw.replaceFirst("(?i)^\\s*\\[?(?:nl|nld|ned|nederland|netherlands|be|belgie|de|uk|gb|gbr|eng|us|usa|united\\s+states|fr|sr|sur|suriname)\\]?\\s*[-|:]\\s*","");
+        String text=normalize(withoutCountryPrefix);
+        text=text.replaceAll("^(nl|be|de|uk|us|fr|sr)\\s+","");
         text=text.replaceAll("\\b(hd|fhd|sd|fullhd|1080p|720p|50fps|60fps|hevc|h265|h264)\\b"," ");
-        text=text.replaceAll("\\b(nl|nederland|netherlands)\\s*$","").trim();
+        text=text.replaceAll("\\b(nl|nederland|netherlands|us|usa|united states|uk|gb|england)\\s*$","").trim();
         text=text.replaceAll("\\s+"," ").trim();
         return text.isEmpty()?normalize(name):text;
     }
