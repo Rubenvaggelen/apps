@@ -106,9 +106,12 @@ public final class ChannelLayout {
         Map<String,LinkedHashMap<String,CatalogEntry>> grouped=new LinkedHashMap<>();
         Map<String,LinkedHashMap<String,CatalogEntry>> streams=new LinkedHashMap<>();
         for(String code:CODES)grouped.put(code,new LinkedHashMap<>());
-        for(CatalogEntry e:entries){
-            if(e.isAdult())continue;
-            String code=channelCountry(e);
+        // Two passes: preserve NL-prefixed channels as the primary visible tiles
+        // even if another provider returned a non-prefixed alias first.
+        for(int pass=0;pass<2;pass++)for(CatalogEntry e:entries){
+            boolean nlPriority=hasNlPrefix(e.title);
+            if(e.isAdult()||nlPriority!=(pass==0))continue;
+            String code=nlPriority?"NL":channelCountry(e);
             String identity=channelIdentity(e.title);
             for(String bucket:new String[]{"ALL",code}){
                 if(bucket.equals("NL")&&!hasNlPrefix(e.title))continue;
@@ -127,8 +130,10 @@ public final class ChannelLayout {
         for(String bucket:CODES){
             List<CatalogEntry> values=new ArrayList<>(grouped.get(bucket).values());
             values.sort((a,b)->{
-                String ca=channelCountry(a);
-                String cb=channelCountry(b);
+                if(bucket.equals("ALL")){
+                    int nlFirst=Boolean.compare(!hasNlPrefix(a.title),!hasNlPrefix(b.title));
+                    if(nlFirst!=0)return nlFirst;
+                }
                 int quality=Integer.compare(videoTier(a.title),videoTier(b.title));
                 if(quality!=0)return quality;
                 if(bucket.equals("NL")){
