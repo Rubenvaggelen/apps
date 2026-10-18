@@ -1,8 +1,6 @@
 name: Signed Family release candidate live-android
 on:
-  push:
-    branches: [feature/tv-android-autoupdate-20261014]
-    paths: [live-android/**, .github/workflows/family-release-candidate.yml]
+  workflow_dispatch: {} # Legacy v107 candidate only; current v110 builds use live-android.yml
 permissions:
   contents: read
 concurrency:
