@@ -110,7 +110,7 @@ jobs:
           set -euo pipefail
           grep -Fq 'catalogs.put("xxx",adult)' live-android/app/src/main/java/com/theone/tv/phone/MainActivity.java
           grep -Fq 'adultConfirmed=true;switchSection("xxx")' live-android/app/src/main/java/com/theone/tv/phone/MainActivity.java
-          grep -Fq 'live-v2-adult-routed.bin' live-android/app/src/main/java/com/theone/tv/phone/MediaRepository.java
+          grep -Fq 'live-v3-complete-providers.bin' live-android/app/src/main/java/com/theone/tv/phone/MediaRepository.java
           grep -Fq 'this.category=(adultTitle(title)||adultTitle(category))?"XXX"' live-android/app/src/main/java/com/theone/tv/phone/CatalogEntry.java
       - name: Build and unit test independent TV APK
         working-directory: live-android
