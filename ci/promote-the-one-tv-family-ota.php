@@ -21,8 +21,8 @@ $input=json_decode((string)file_get_contents($metadata),true,512,JSON_THROW_ON_E
 if (!is_array($input) || !isset($input['builds']) || !is_array($input['builds'])
     || count($input['builds'])!==2) exit(4);
 $approved=[
- 'tv-phone'=>['package'=>'com.theone.tv.phone','code'=>109,'name'=>'1.0.9','apk'=>'The-One-TV-Android-v1.0.9.apk'],
- 'tv-google-tv'=>['package'=>'com.theone.tv','code'=>112,'name'=>'1.0.12','apk'=>'The-One-TV-Google-TV-v1.0.12.apk']
+ 'tv-phone'=>['package'=>'com.theone.tv.phone','code'=>110,'name'=>'1.0.10','apk'=>'The-One-TV-Android-v1.0.10.apk'],
+ 'tv-google-tv'=>['package'=>'com.theone.tv','code'=>113,'name'=>'1.0.13','apk'=>'The-One-TV-Google-TV-v1.0.13.apk']
 ];
 $byId=[];
 foreach($input['builds'] as $build){
@@ -63,11 +63,11 @@ try{
    $seen[$id]=true;
    $approvedBuild=$approved[$id];
    $oldVersion=(string)($row['version_name']??'0.0.0');
-   if(version_compare($oldVersion,$approvedBuild['name'],'>'))exit(17);
+   if(version_compare($oldVersion,$approvedBuild['name'],'>') || (int)($row['version_code']??0)>$approvedBuild['code'])exit(17);
    if(isset($row['package_badging']) && is_string($row['package_badging'])
       && preg_match("/^package: name='([^']+)'/",$row['package_badging'],$m)
       && $m[1]!==$approvedBuild['package'])exit(18);
-   foreach(['apk','version_name','size_bytes','sha256','commit','package_badging','created_date'] as $key)
+   foreach(['apk','version_name','version_code','size_bytes','sha256','commit','package_badging','created_date'] as $key)
      $row[$key]=$byId[$id][$key];
    $row['dev_hub_status']='published';
  }
@@ -103,6 +103,7 @@ try{
  foreach($approved as $id=>$expected){
    $matches=array_values(array_filter($published,static fn($r)=>($r['id']??'')===$id));
    if(count($matches)!==1 || $matches[0]['version_name']!==$expected['name'] ||
+      (int)($matches[0]['version_code']??0)!==$expected['code'] ||
       $matches[0]['sha256']!==$byId[$id]['sha256'] ||
       hash_file('sha256',$apkDirectory.'/'.$expected['apk'])!==$byId[$id]['sha256'])exit(28);
    echo 'FAMILY_OTA_PUBLISHED='.$id.' version='.$expected['name'].
