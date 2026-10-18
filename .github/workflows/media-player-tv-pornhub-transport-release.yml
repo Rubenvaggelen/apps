@@ -1,4 +1,4 @@
-name: Media Player Google TV v1025 browserless updater and TV release detection
+name: Media Player Google TV v1026 restore both IPTV sources and NL channels
 on:
   push:
     branches: [feature/media-player-adult-5min-20261016]
@@ -38,20 +38,78 @@ jobs:
           printf '%s' "$TV_SIGNING_KEY" | base64 -d > ~/.android/debug.keystore
           chmod 600 ~/.android/debug.keystore
           keytool -list -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey >/dev/null
+      - name: Restore encrypted secondary IPTV source for Google TV
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test -s .github/media-player-secondary-source.enc.b64
+          test -s "$HOME/.android/debug.keystore"
+          keytool -importkeystore \
+            -srckeystore "$HOME/.android/debug.keystore" \
+            -srcstorepass android \
+            -srcalias androiddebugkey \
+            -destkeystore /tmp/media-player-tv-signing.p12 \
+            -deststoretype PKCS12 \
+            -deststorepass changeit \
+            -destkeypass changeit \
+            -noprompt >/dev/null
+          openssl pkcs12 \
+            -in /tmp/media-player-tv-signing.p12 \
+            -passin pass:changeit \
+            -nodes -nocerts \
+            -out /tmp/media-player-tv-private.pem >/dev/null 2>&1
+          base64 -d .github/media-player-secondary-source.enc.b64 > /tmp/media-player-tv-source.enc
+          openssl pkeyutl -decrypt \
+            -inkey /tmp/media-player-tv-private.pem \
+            -in /tmp/media-player-tv-source.enc \
+            -out media-player/app/src/main/assets/private_xtream_secondary.json \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256
+          python3 - <<'PY_SOURCE'
+          import json,pathlib
+          primary=json.loads(pathlib.Path("media-player/app/src/main/assets/private_xtream.json").read_text())
+          secondary=json.loads(pathlib.Path("media-player/app/src/main/assets/private_xtream_secondary.json").read_text())
+          assert set(secondary)=={"server","username","password"} and all(secondary.values())
+          assert secondary["server"].startswith("http")
+          assert (secondary["server"],secondary["username"])!=(primary.get("server"),primary.get("username"))
+          print("GOOGLE_TV_SECONDARY_IPTV_SOURCE_RESTORED=1")
+          PY_SOURCE
+          rm -f /tmp/media-player-tv-signing.p12 /tmp/media-player-tv-private.pem /tmp/media-player-tv-source.enc
       - name: Verify TV-only version and transport changes
         run: |
           set -euo pipefail
-          grep -q 'versionCode = 1025' media-player/tvapp/build.gradle.kts
+          grep -q 'versionCode = 1026' media-player/tvapp/build.gradle.kts
           grep -q 'versionCode = 2423' media-player/app/build.gradle.kts
           grep -q 'AdultVideoNavigation.adjacent' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
           grep -q 'tvPlayPauseButton' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
           grep -q 'TV_RELEASE_RUNS' media-player/app/src/main/java/com/theone/mediaplayer/MediaPlayerUpdateChecker.java
           grep -q 'MediaPlayerTvInstaller.open(activity)' media-player/app/src/main/java/com/theone/mediaplayer/MediaPlayerUpdateChecker.java
           grep -q 'com.theone.mediaplayer.tv.updates' media-player/tvapp/src/main/AndroidManifest.xml
+          test -s media-player/app/src/main/assets/private_xtream_secondary.json
+          grep -q 'suspiciousCatalogShrink' media-player/app/src/main/java/com/theone/mediaplayer/XtreamConfig.java
+          grep -q 'isLastLiveCatalogPartial' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
           test -s media-player/tvapp/src/main/res/xml/media_player_tv_update_paths.xml
       - name: Build Google TV and run video navigation tests
         run: gradle -p media-player :app:testDebugUnitTest :tvapp:assembleDebug --no-daemon
-      - name: Sign Google TV v1025 with permanent owner TV certificate
+      - name: Verify both IPTV catalog sources are bundled in Google TV APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_VERIFY'
+          import json,zipfile,pathlib
+          apk=pathlib.Path("media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk")
+          with zipfile.ZipFile(apk) as z:
+              assert "assets/private_xtream.json" in z.namelist()
+              assert "assets/private_xtream_secondary.json" in z.namelist()
+              first=json.loads(z.read("assets/private_xtream.json"))
+              second=json.loads(z.read("assets/private_xtream_secondary.json"))
+              assert all(first.get(k) for k in ("server","username","password"))
+              assert all(second.get(k) for k in ("server","username","password"))
+              assert (first["server"],first["username"]) != (second["server"],second["username"])
+          print("GOOGLE_TV_BOTH_IPTV_SOURCES_PRESENT=1")
+          PY_VERIFY
+      - name: Sign Google TV v1026 with permanent owner TV certificate
         shell: bash
         run: |
           set -euo pipefail
@@ -71,17 +129,17 @@ jobs:
           APK=media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" > /tmp/mediaplayer-tv-package.txt
-          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1025'" /tmp/mediaplayer-tv-package.txt
+          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1026'" /tmp/mediaplayer-tv-package.txt
           current=$("$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)
           expected=$(keytool -exportcert -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey | sha256sum | cut -d' ' -f1)
           test -n "$current" && test "$current" = "$expected"
       - name: Upload candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Media-Player-Google-TV-v1025-signed-private
+          name: Media-Player-Google-TV-v1026-signed-private
           path: media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
           if-no-files-found: error
-      - name: Publish signed v1025 only to authenticated Dev Hub
+      - name: Publish signed v1026 only to authenticated Dev Hub
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
