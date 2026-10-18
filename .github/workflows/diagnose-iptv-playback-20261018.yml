@@ -1,0 +1,121 @@
+name: Diagnose private IPTV playback (no credentials in logs)
+on:
+  push:
+    branches: [feature/cinema-android-autoupdate-20261014]
+    paths: [.github/workflows/diagnose-iptv-playback-20261018.yml]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  verify-provider-streams:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore both protected sources for isolated connectivity tests
+        shell: bash
+        env:
+          SIGNING_KEY: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p ~/.android /tmp/the-one-iptv-check
+          echo "$SIGNING_KEY" | base64 -d > ~/.android/debug.keystore
+          curl -fLsS --max-time 90 'https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2400/The-One-Media-Player-v2400.apk' -o /tmp/the-one-iptv-check/original.apk
+          echo 'a76dfa81c8670d1c044776fa1f10264eff958eca64339d6dd0d6f6ccedb3e04b  /tmp/the-one-iptv-check/original.apk' | sha256sum -c -
+          python3 - <<'PY'
+          import zipfile,json,pathlib
+          root=pathlib.Path('/tmp/the-one-iptv-check')
+          with zipfile.ZipFile(root/'original.apk') as zipfile_handle:
+              src=json.loads(zipfile_handle.read('assets/private_xtream.json'))
+          assert all(src.get(i) for i in ['server','username','password'])
+          assert not any(str(src[i]).startswith("PRIVATE_") for i in ['username','password'])
+          (root/'primary.json').write_text(json.dumps(src))
+          print('PRIMARY_CONFIG_VALID=1')
+          PY
+          keytool -importkeystore -srckeystore ~/.android/debug.keystore -srcstorepass android -srcalias androiddebugkey -destkeystore /tmp/the-one-iptv-check/signing.p12 -deststoretype PKCS12 -deststorepass changeit -destkeypass changeit -noprompt >/dev/null
+          openssl pkcs12 -in /tmp/the-one-iptv-check/signing.p12 -passin pass:changeit -nodes -nocerts -out /tmp/the-one-iptv-check/key.pem >/dev/null 2>&1
+          base64 -d cinema-tv/secondary-source.enc.b64 > /tmp/the-one-iptv-check/source.enc
+          openssl pkeyutl -decrypt -inkey /tmp/the-one-iptv-check/key.pem -in /tmp/the-one-iptv-check/source.enc -out /tmp/the-one-iptv-check/secondary.json -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
+          python3 - <<'PY'
+          import json,pathlib
+          root=pathlib.Path('/tmp/the-one-iptv-check')
+          p=json.loads((root/'primary.json').read_text())
+          s=json.loads((root/'secondary.json').read_text())
+          assert all(s.get(i) for i in ['server','username','password'])
+          assert (p['server'],p['username'])!=(s['server'],s['username'])
+          print('SECONDARY_CONFIG_VALID=1')
+          PY
+      - name: Diagnose authentication, catalog and a few video responses (no URLs or credentials)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, pathlib, urllib.request, urllib.error, urllib.parse, socket, itertools
+          root=pathlib.Path('/tmp/the-one-iptv-check')
+          def fetch(url,limit=12000000,range_header=False):
+              headers={"User-Agent":"VLC/3.0.21 LibVLC/3.0.21","Accept":"*/*"}
+              if range_header: headers["Range"]="bytes=0-4095"
+              req=urllib.request.Request(url,headers=headers)
+              try:
+                  with urllib.request.urlopen(req,timeout=12) as r:
+                      code=r.status; data=r.read(limit+1)
+                      return code, data[:limit],len(data)>limit
+              except urllib.error.HTTPError as e: return e.code,b"",False
+              except (TimeoutError,urllib.error.URLError,socket.timeout):return 0,b"",False
+              except Exception:return -1,b"",False
+          def json_fetch(url):
+              code,data,truncated=fetch(url,10000000)
+              if code!=200 or truncated: return code,None
+              try:return code,json.loads(data)
+              except Exception:return code,None
+          def getlist(src,action,cat=None):
+              p={'username':src['username'],'password':src['password'],'action':action}
+              if cat is not None:p['category_id']=str(cat)
+              url=src['server'].rstrip('/')+'/player_api.php?'+urllib.parse.urlencode(p)
+              status,result=json_fetch(url)
+              return status,result
+          def playable_sample(src,kind):
+              cat_action={"live":"get_live_categories","movie":"get_vod_categories","series":"get_series_categories"}[kind]
+              item_action={"live":"get_live_streams","movie":"get_vod_streams","series":"get_series"}[kind]
+              code,cats=getlist(src,cat_action)
+              if code!=200 or not isinstance(cats,list):return "categories_"+str(code),None
+              clean=[x for x in cats if isinstance(x,dict) and not any(w in x.get('category_name','').lower() for w in ('xxx','adult','erot','sex','18+'))]
+              nl=[x for x in clean if 'nl' in x.get('category_name','').lower() or 'nederland' in x.get('category_name','').lower()]
+              chosen=(nl+clean)[:14]
+              checked=0
+              for cat in chosen:
+                  code,rows=getlist(src,item_action,cat.get('category_id',''))
+                  checked+=1
+                  if code!=200 or not isinstance(rows,list):continue
+                  for row in rows[:8]:
+                      if not isinstance(row,dict) or 'xxx' in str(row.get('name','')).lower(): continue
+                      identity=row.get('series_id') if kind=='series' else row.get('stream_id')
+                      if identity is not None:return "found",row
+              return "no_sample_queried_"+str(checked),None
+          for label in ("primary","secondary"):
+              src=json.loads((root/(label+'.json')).read_text())
+              url=src['server'].rstrip('/')+'/player_api.php?'+urllib.parse.urlencode({'username':src['username'],'password':src['password']})
+              status,info=json_fetch(url)
+              account=(info or {}).get('user_info',{}) if isinstance(info,dict) else {}
+              conn=account.get('active_cons','?');allowed=account.get('max_connections','?')
+              print(f"{label.upper()} ACCOUNT_HTTP={status} AUTH={account.get('auth','?')} STATE={account.get('status','?')} ACTIVE_CONNECTIONS={conn} MAX_CONNECTIONS={allowed}")
+              for kind in ("live","movie","series"):
+                  sample_status,row=playable_sample(src,kind)
+                  if row is None:
+                      print(f"{label.upper()} {kind.upper()} SAMPLE={sample_status}")
+                      continue
+                  if kind=="series":
+                      code,detail=getlist(src,"get_series_info")
+                      # No playback URI is guessed when episode metadata is not present.
+                      print(f"{label.upper()} SERIES CATALOG_SAMPLE=1")
+                      continue
+                  ext=str(row.get('container_extension') or ('ts' if kind=='live' else 'mp4')).strip('.')
+                  itemid=row.get('stream_id')
+                  url=src['server'].rstrip('/')+'/'+('live' if kind=='live' else 'movie')+'/'+urllib.parse.quote(str(src['username']),safe='')+'/'+urllib.parse.quote(str(src['password']),safe='')+'/'+str(itemid)+'.'+ext
+                  stream_status,data,trunc=fetch(url,65536,True)
+                  print(f"{label.upper()} {kind.upper()} STREAM_HTTP={stream_status} READ_BYTES={len(data)}")
+          PY
+      - name: Clean recovered authentication materials
+        if: always()
+        run: rm -rf /tmp/the-one-iptv-check ~/.android/debug.keystore
