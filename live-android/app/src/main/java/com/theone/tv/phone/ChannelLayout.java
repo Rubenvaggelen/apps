@@ -46,6 +46,18 @@ public final class ChannelLayout {
         text=text.replaceAll("\\s+"," ").trim();
         return text.isEmpty()?normalize(name):text;
     }
+    // ESPN FHD should lead its own group; every other ESPN variant belongs
+    // after non-ESPN channels, without affecting the NL-only country filter.
+    public static boolean isEspn(String name){
+        return includes(normalize(name),"espn");
+    }
+    public static boolean isEspnFhd(String name){
+        String normalized=normalize(name);
+        return includes(normalized,"espn") && includes(normalized,"fhd");
+    }
+    public static int espnOrder(String name){
+        return isEspnFhd(name)?0:(isEspn(name)?2:1);
+    }
     public static int videoTier(String name){
         String n=normalize(name);
         if(includes(n,"16k"))return 3;
@@ -120,6 +132,10 @@ public final class ChannelLayout {
                 String key=bucket+"|"+identity;
                 CatalogEntry winner=group.get(identity);
                 if(winner==null){group.put(identity,e);winner=e;}
+                else if(isEspnFhd(e.title) && !isEspnFhd(winner.title)
+                         && (!hasNlPrefix(winner.title)||hasNlPrefix(e.title))){
+                    group.put(identity,e);winner=e;
+                }
                 LinkedHashMap<String,CatalogEntry> values=streams.computeIfAbsent(winner.key(),k->new LinkedHashMap<>());
                 List<CatalogEntry> variants=existingVariants.get(e.key());
                 if(variants==null)variants=Collections.singletonList(e);
@@ -130,10 +146,16 @@ public final class ChannelLayout {
         for(String bucket:CODES){
             List<CatalogEntry> values=new ArrayList<>(grouped.get(bucket).values());
             values.sort((a,b)->{
+                // All non-FHD ESPN variants are last even if they start with NL.
+                boolean bottomA=isEspn(a.title)&&!isEspnFhd(a.title);
+                boolean bottomB=isEspn(b.title)&&!isEspnFhd(b.title);
+                if(bottomA!=bottomB)return Boolean.compare(bottomA,bottomB);
                 if(bucket.equals("ALL")){
                     int nlFirst=Boolean.compare(!hasNlPrefix(a.title),!hasNlPrefix(b.title));
                     if(nlFirst!=0)return nlFirst;
                 }
+                int espnFirst=Boolean.compare(!isEspnFhd(a.title),!isEspnFhd(b.title));
+                if(espnFirst!=0)return espnFirst;
                 int quality=Integer.compare(videoTier(a.title),videoTier(b.title));
                 if(quality!=0)return quality;
                 if(bucket.equals("NL")){
