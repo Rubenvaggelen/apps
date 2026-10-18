@@ -289,6 +289,14 @@ jobs:
           test -z "$(find media-player/tvapp -type f -path '*/build/outputs/*.apk' -print -quit)"
           echo "ANDROID_ONLY_2424_SIGNED_TV_SEPARATE"
 
+      - name: Temporary signed Android v2424 APK handover
+        uses: actions/upload-artifact@v4
+        with:
+          name: The-One-Media-Player-Android-v2424-signed-owner
+          path: media-player/app/build/outputs/apk/release/app-release.apk
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Publish Android v2424 to authenticated Dev Hub only
         shell: bash
         env:
