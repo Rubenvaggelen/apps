@@ -153,6 +153,12 @@ public final class ChannelLayout {
                 if(bucket.equals("ALL")){
                     int nlFirst=Boolean.compare(!hasNlPrefix(a.title),!hasNlPrefix(b.title));
                     if(nlFirst!=0)return nlFirst;
+                    // Retain the Dutch channel positions in the combined view:
+                    // NPO/RTL precede ESPN FHD; the other ESPN variants remain last.
+                    if(hasNlPrefix(a.title)&&hasNlPrefix(b.title)){
+                        int ziggo=Integer.compare(ziggoOrder(a.title),ziggoOrder(b.title));
+                        if(ziggo!=0)return ziggo;
+                    }
                 }
                 // ESPN FHD leads ESPN variants, never the Dutch channel lineup.
                 // The other ESPN variants have already been moved to the bottom.
