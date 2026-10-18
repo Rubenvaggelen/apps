@@ -1,4 +1,4 @@
-name: Export verified The One TV Family APKs for owner
+name: Export verified The One TV and Cinema APKs for owner
 on:
   push:
     branches: [feature/media-player-adult-5min-20261016]
@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - name: Export three exact previously tested signed owner APKs
+      - name: Export Cinema and TV previously tested owner APKs
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
@@ -39,11 +39,9 @@ jobs:
           opts=(-i "$folder/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$folder/known_hosts" -o ConnectTimeout=15)
           remote="$DEPLOY_USER@$DEPLOY_HOST"
           mkdir -p owner-apks
-          scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$remote:/home/vanawiwj/the-one-private-builds/2026-10-13/apks/The-One-Series-Google-TV-v1.2.0.apk" owner-apks/The-One-Series-Google-TV-v1.2.0.apk
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$remote:/home/vanawiwj/dev.vanaggelen.com/sony-bravia-audio-tests/The-One-Cinema-Google-TV-Sony-1.4.3.apk" owner-apks/The-One-Cinema-Google-TV-v1.4.3.apk
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$remote:/home/vanawiwj/the-one-private-builds/2026-10-13/apks/The-One-TV-Google-TV-v1.0.13.apk" owner-apks/The-One-TV-Google-TV-v1.0.13.apk
           cat > "$folder/expected" <<'SHA'
-          a6c2fe0d44b52fb0583a1b9d62f216d4f3e50aa647a75fe6e500a823db77d553  owner-apks/The-One-Series-Google-TV-v1.2.0.apk
           5ef9ee5dd216f3923414155c58555af43034e2861febe8162643088ad6e88239  owner-apks/The-One-Cinema-Google-TV-v1.4.3.apk
           660c3ba78d408360bd2e9c0d128f530ef9c49b990412b4ca8953bb6115f3c845  owner-apks/The-One-TV-Google-TV-v1.0.13.apk
           SHA
@@ -52,11 +50,11 @@ jobs:
             test "$(stat -c '%s' "$file")" -gt 100000
             unzip -tq "$file" > /dev/null
           done
-          echo VERIFIED_OWNER_TV_APKS=3
+          echo VERIFIED_OWNER_TV_APKS=2
       - name: Temporary owner-only handover artifact
         uses: actions/upload-artifact@v4
         with:
-          name: The-One-Series-TV-Cinema-Google-TV-owner-verified
+          name: The-One-TV-Cinema-Google-TV-owner-verified
           path: owner-apks/*.apk
           retention-days: 1
           if-no-files-found: error
