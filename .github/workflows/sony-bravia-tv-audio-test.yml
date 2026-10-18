@@ -158,6 +158,14 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: cd live-google-tv && gradle :app:connectedDebugAndroidTest --no-daemon
+      - name: Temporary signed owner APK handover
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: The-One-TV-Google-TV-v114-owner
+          path: live-google-tv/deliverable/The-One-TV-Google-TV-v1.0.14.apk
+          retention-days: 1
+          if-no-files-found: error
       - name: Encrypt personal APK before artifact publication
         if: success()
         working-directory: live-google-tv
