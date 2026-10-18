@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.Assert.*;
 public class CatalogPerformanceTest {
  private CatalogEntry entry(int id){return new CatalogEntry(id,"NL - Test "+id,"m3u8","","NL","live",0);}
- @Test public void coldStartRendersFirstPreviewOnlyThenFullCatalog()throws Exception{
+ @Test public void coldStartRendersMultiplePreviewsThenFullCatalog()throws Exception{
   List<Integer> sizes=new ArrayList<>();List<Boolean> completed=new ArrayList<>();
   ProgressiveCatalog.loadStreaming(Collections.singletonList(preview->{
    preview.accept(Arrays.asList(entry(1),entry(2)));
@@ -32,5 +32,17 @@ public class CatalogPerformanceTest {
   ),warm,(rows,complete,successful)->{if(complete){last.clear();last.addAll(rows);successes.set(successful);}});
   assertEquals(1,successes.get());assertEquals(2,last.size());
   assertEquals(1,last.get(0).id);assertEquals(1000000003,last.get(1).id);
+ }
+ @Test public void americanChannelsAppearBeforeFullCatalogCompletes()throws Exception{
+  List<Boolean> seenUs=new ArrayList<>();
+  ProgressiveCatalog.loadStreaming(Collections.singletonList(preview->{
+   preview.accept(Collections.singletonList(entry(1)));
+   preview.accept(Arrays.asList(entry(1),new CatalogEntry(2,"US - Hulu Network","ts","","US","live",0)));
+   return Arrays.asList(entry(1),new CatalogEntry(2,"US - Hulu Network","ts","","US","live",0));
+  }),Collections.emptyList(),(rows,complete,successful)->{
+   boolean hasUs=false;for(CatalogEntry e:rows)if(e.category.equals("US"))hasUs=true;
+   seenUs.add(hasUs);
+  });
+  assertEquals(Arrays.asList(false,true,true),seenUs);
  }
 }

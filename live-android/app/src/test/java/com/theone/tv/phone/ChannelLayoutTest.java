@@ -73,4 +73,14 @@ public class ChannelLayoutTest {
         assertFalse(ChannelLayout.hasNlPrefix("NLD - Channel"));
         assertFalse(ChannelLayout.hasNlPrefix("NPO 1"));
     }
+ @Test public void usCountryAliasesKeepAlternativeProviderStreams(){
+  CatalogEntry first=channel(21,"US - Hulu Network HD","United States");
+  CatalogEntry second=channel(1000000022,"USA | Hulu Network FHD","United States");
+  CatalogEntry third=channel(1000000023,"Hulu Network USA","United States");
+  CatalogEntry unrelated=channel(30,"US - USA Network","United States");
+  ChannelLayout.Layout layout=ChannelLayout.prepare(Arrays.asList(first,second,third,unrelated),Collections.emptyMap());
+  assertEquals(2,layout.countries.get("US").size());
+  assertEquals(3,layout.alternativeStreams.get(first.key()).size());
+  assertNotEquals(ChannelLayout.channelIdentity("USA Network"),ChannelLayout.channelIdentity("US - Hulu Network"));
+ }
 }
