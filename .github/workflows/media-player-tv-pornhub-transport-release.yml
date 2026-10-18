@@ -154,8 +154,12 @@ jobs:
               second=json.loads(z.read("assets/private_xtream_secondary.json"))
               assert all(first.get(k) for k in ("server","username","password"))
               assert all(second.get(k) for k in ("server","username","password"))
+              assert first["server"].startswith(("http://","https://"))
+              assert second["server"].startswith(("http://","https://"))
+              assert not any(str(first[k]).startswith("PRIVATE_") for k in ("username","password"))
+              assert not any(str(second[k]).startswith("PRIVATE_") for k in ("username","password"))
               assert (first["server"],first["username"]) != (second["server"],second["username"])
-          print("GOOGLE_TV_BOTH_IPTV_SOURCES_PRESENT=1")
+          print("GOOGLE_TV_BOTH_IPTV_SOURCES_PRESENT_AND_CONFIGURED=1")
           PY_VERIFY
       - name: Sign Google TV v1026 with permanent owner TV certificate
         shell: bash
