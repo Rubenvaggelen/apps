@@ -5,15 +5,15 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.Assert.*;
 public class CatalogPerformanceTest {
  private CatalogEntry entry(int id){return new CatalogEntry(id,"NL - Test "+id,"m3u8","","NL","live",0);}
- @Test public void coldStartEmitsSeveralPreviewsAndThenFinal()throws Exception{
+ @Test public void coldStartRendersFirstPreviewOnlyThenFullCatalog()throws Exception{
   List<Integer> sizes=new ArrayList<>();List<Boolean> completed=new ArrayList<>();
   ProgressiveCatalog.loadStreaming(Collections.singletonList(preview->{
    preview.accept(Arrays.asList(entry(1),entry(2)));
    preview.accept(Arrays.asList(entry(1),entry(2),entry(3)));
    return Arrays.asList(entry(1),entry(2),entry(3),entry(4));
   }),Collections.emptyList(),(rows,complete,successful)->{sizes.add(rows.size());completed.add(complete);});
-  assertEquals(Arrays.asList(2,3,4),sizes);
-  assertEquals(Arrays.asList(false,false,true),completed);
+  assertEquals(Arrays.asList(2,4),sizes);
+  assertEquals(Arrays.asList(false,true),completed);
  }
  @Test public void warmCacheRemainsVisibleUntilReplacementFinishes()throws Exception{
   List<Integer> ids=new ArrayList<>();AtomicInteger updates=new AtomicInteger();

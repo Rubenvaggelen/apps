@@ -48,6 +48,23 @@ public class ChannelLayoutTest {
         assertEquals("NL - RTL 4",displayed.get(1).title);
         assertEquals("NL - NPO 1 4K",displayed.get(2).title);
     }
+    @Test public void explicitNlPrefixSurvivesEarlyProviderDedup(){
+        CatalogEntry withoutPrefix=channel(100,"NPO 1","Nederland");
+        CatalogEntry withPrefix=channel(101,"NL - NPO 1 HD","Nederland");
+        java.util.Map<String,java.util.List<CatalogEntry>> grouped=CatalogEntry.group(
+            Arrays.asList(withoutPrefix,withPrefix));
+        ChannelLayout.Layout layout=ChannelLayout.prepare(Arrays.asList(withoutPrefix,withPrefix),grouped);
+        assertEquals(1,layout.countries.get("NL").size());
+        assertEquals("NL - NPO 1 HD",layout.countries.get("NL").get(0).title);
+    }
+    @Test public void alternateFormatsAndSourcesAreStillPlayable(){
+        CatalogEntry hls=channel(1,"NL - NPO 2","Nederland");
+        CatalogEntry ts=new CatalogEntry(1,"NL - NPO 2","ts","","Nederland","live",0);
+        CatalogEntry backup=new CatalogEntry(1000000002,"NL - NPO 2 HD","ts","","Nederland","live",0);
+        ChannelLayout.Layout layout=ChannelLayout.prepare(Arrays.asList(hls,ts,backup),Collections.emptyMap());
+        assertEquals(1,layout.countries.get("NL").size());
+        assertEquals(3,layout.alternativeStreams.get(layout.countries.get("NL").get(0).key()).size());
+    }
     @Test public void prefixesFollowMediaPlayerBoundaries(){
         assertTrue(ChannelLayout.hasNlPrefix("NL | SBS 6"));
         assertTrue(ChannelLayout.hasNlPrefix("nl-RTL 4"));
