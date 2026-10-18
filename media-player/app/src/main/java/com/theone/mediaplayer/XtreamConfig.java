@@ -154,6 +154,7 @@ public final class XtreamConfig {
         String previous=cacheable && !force?readCachedCatalog(cacheFile,false):null;
         if(previous!=null)return previous;
 
+        java.util.concurrent.atomic.AtomicBoolean usedStaleProvider=new java.util.concurrent.atomic.AtomicBoolean(false);
         java.util.List<java.util.concurrent.Callable<org.json.JSONArray>> jobs=new java.util.ArrayList<>();
         for(int index=0;index<(secondary==null?1:2);index++){
             final int sourceIndex=index;
@@ -169,13 +170,24 @@ public final class XtreamConfig {
                 try{
                     String raw=source.download(source.account()+"&action="+query(action));
                     org.json.JSONArray rows=new org.json.JSONArray(raw);
-                    // An unexpectedly empty provider response cannot replace
-                    // its last valid catalog.
+                    String previousProvider=cacheable?readCachedCatalog(providerFile,true):null;
+                    if(previousProvider!=null){
+                        org.json.JSONArray last=new org.json.JSONArray(previousProvider);
+                        // Preserve a known-good provider listing if the latest
+                        // response mysteriously loses most of its channels.
+                        if(suspiciousCatalogShrink(last,rows,live)){
+                            usedStaleProvider.set(true);
+                            return decorate(last,sourceIndex==1,action);
+                        }
+                    }
                     if(cacheable && rows.length()>0)writeCachedCatalog(providerFile,raw);
                     return decorate(rows,sourceIndex==1,action);
                 }catch(Exception error){
                     String stale=cacheable?readCachedCatalog(providerFile,true):null;
-                    if(stale!=null)return decorate(new org.json.JSONArray(stale),sourceIndex==1,action);
+                    if(stale!=null){
+                        usedStaleProvider.set(true);
+                        return decorate(new org.json.JSONArray(stale),sourceIndex==1,action);
+                    }
                     throw error;
                 }
             });
@@ -197,7 +209,7 @@ public final class XtreamConfig {
                 }catch(Exception ignored){}
             }
         }finally{pool.shutdownNow();}
-        boolean partial=completed<jobs.size();
+        boolean partial=completed<jobs.size()||usedStaleProvider.get();
         if(live)lastLiveCatalogPartial=partial;
         if(partial){
             // Prefer a previous COMPLETE two-source snapshot over an incomplete
@@ -209,6 +221,23 @@ public final class XtreamConfig {
         String combined=merged.toString();
         if(cacheable && !partial)writeCachedCatalog(cacheFile,combined);
         return combined;
+    }
+
+    /** Keep previously known Dutch channels if the provider unexpectedly drops most of them. */
+    static boolean suspiciousCatalogShrink(org.json.JSONArray previous,org.json.JSONArray now,boolean live){
+        if(previous==null || now==null)return false;
+        if(previous.length()>=100 && now.length()*4<previous.length())return true;
+        if(!live)return false;
+        int oldNl=countDutchPrefix(previous),newNl=countDutchPrefix(now);
+        return oldNl>=20 && newNl*4<oldNl;
+    }
+    private static int countDutchPrefix(org.json.JSONArray rows){
+        int count=0;
+        for(int i=0;i<rows.length();i++){
+            org.json.JSONObject row=rows.optJSONObject(i);
+            if(row!=null && ChannelGuide.hasNlPrefix(row.optString("name",row.optString("title",""))))count++;
+        }
+        return count;
     }
 
     private String hashCacheKey(String value) {
