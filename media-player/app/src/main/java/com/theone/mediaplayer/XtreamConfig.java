@@ -337,7 +337,7 @@ public final class XtreamConfig {
 
     private static void streamSeriesRows(java.io.Reader input, java.io.Writer snapshot,
             java.io.File pending,boolean second,int batchSize,SeriesBatchListener listener)throws Exception {
-        android.util.JsonReader reader=new android.util.JsonReader(input);
+        com.google.gson.stream.JsonReader reader=new com.google.gson.stream.JsonReader(input);
         org.json.JSONArray batch=new org.json.JSONArray();
         boolean first=true;
         if(snapshot!=null)snapshot.write("[");
@@ -356,10 +356,10 @@ public final class XtreamConfig {
                     reader.skipValue();
                     continue;
                 }
-                android.util.JsonToken type=reader.peek();
-                if(type==android.util.JsonToken.STRING||type==android.util.JsonToken.NUMBER)
+                com.google.gson.stream.JsonToken type=reader.peek();
+                if(type==com.google.gson.stream.JsonToken.STRING||type==com.google.gson.stream.JsonToken.NUMBER)
                     row.put(key,reader.nextString());
-                else if(type==android.util.JsonToken.BOOLEAN)row.put(key,String.valueOf(reader.nextBoolean()));
+                else if(type==com.google.gson.stream.JsonToken.BOOLEAN)row.put(key,String.valueOf(reader.nextBoolean()));
                 else reader.skipValue();
             }
             reader.endObject();
