@@ -1196,9 +1196,16 @@ try {
                 prefs != null && prefs.contains("compat_pcm_audio")
                     ? prefs.getBoolean("compat_pcm_audio",false) : null,
                 android.os.Build.MANUFACTURER,android.os.Build.BRAND,android.os.Build.MODEL);
+        // TV-only: retain the original Android audio output route, but allow
+        // MediaCodec fallback if the preferred codec cannot decode the track.
+        // Phone playback remains unchanged.
         ExoPlayer.Builder playerBuilder=usePcm
                 ? new ExoPlayer.Builder(this,new CompatibleAudioRenderersFactory(this))
-                : new ExoPlayer.Builder(this);
+                : isTvBuild()
+                    ? new ExoPlayer.Builder(this,
+                        new androidx.media3.exoplayer.DefaultRenderersFactory(this)
+                            .setEnableDecoderFallback(true))
+                    : new ExoPlayer.Builder(this);
         player=playerBuilder.build();
         player.setAudioAttributes(new androidx.media3.common.AudioAttributes.Builder()
                 .setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),true);
