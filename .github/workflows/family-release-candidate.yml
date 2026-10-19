@@ -1,12 +1,12 @@
-name: Signed Family release candidate series-google-tv
+name: Recovery A-B Test Series Google TV October 15 audio baseline
 on:
   push:
-    branches: [feature/series-tv-autoupdate-20261014]
+    branches: [feature/series-google-tv-oct15-audio-baseline-20261019]
     paths: [series-google-tv/**, .github/workflows/family-release-candidate.yml]
 permissions:
   contents: read
 concurrency:
-  group: family-release-candidate-series-google-tv
+  group: series-tv-oct15-audio-baseline
   cancel-in-progress: true
 jobs:
   build:
@@ -118,7 +118,7 @@ jobs:
           OWNER_SHA=$(sha256sum /tmp/cinema-owner.der | cut -d " " -f1)
           grep -i "certificate SHA-256 digest: $OWNER_SHA" /tmp/cinema-signature.txt
           "$BT/aapt" dump badging "$APK" > /tmp/cinema-badging.txt
-          grep "package: name='com.theone.series.tv' versionCode='120'" /tmp/cinema-badging.txt
+          grep "package: name='com.theone.series.tv' versionCode='123'" /tmp/cinema-badging.txt
           grep 'leanback-launchable-activity' /tmp/cinema-badging.txt
           python3 - <<'PY_ASSETS'
           import zipfile,gzip,json
@@ -127,8 +127,8 @@ jobs:
                   assert len(json.loads(gzip.decompress(z.read('assets/bootstrap-series.bin'))))==256
           PY_ASSETS
           mkdir -p deliverable
-          cp "$APK" deliverable/The-One-Series-Google-TV-v1.2.0.apk
-          sha256sum deliverable/The-One-Series-Google-TV-v1.2.0.apk > deliverable/SHA256SUMS.txt
+          cp "$APK" deliverable/The-One-Series-Google-TV-v1.2.3.apk
+          sha256sum deliverable/The-One-Series-Google-TV-v1.2.3.apk > deliverable/SHA256SUMS.txt
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -152,7 +152,7 @@ jobs:
           umask 077
           mkdir -p protected-deliverable
           openssl rand -hex 32 > /tmp/cinema-artifact-key
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/cinema-artifact-key -in deliverable/The-One-Series-Google-TV-v1.2.0.apk -out protected-deliverable/The-One-Series-Google-TV-v1.2.0.apk.enc
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/cinema-artifact-key -in deliverable/The-One-Series-Google-TV-v1.2.3.apk -out protected-deliverable/The-One-Series-Google-TV-v1.2.3.apk.enc
           openssl pkeyutl -encrypt -pubin -inkey owner-artifact-public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in /tmp/cinema-artifact-key -out protected-deliverable/key.enc
           cp deliverable/SHA256SUMS.txt protected-deliverable/SHA256SUMS.txt
           rm /tmp/cinema-artifact-key
@@ -160,7 +160,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: the-one-series-google-tv-v120
+          name: the-one-series-google-tv-v123
           path: series-google-tv/protected-deliverable/
           retention-days: 7
       - name: Verify private update service is deployed
@@ -168,7 +168,7 @@ jobs:
           curl --fail --silent --show-error --max-time 15 https://rubenvanaggelen.com/the-one-remote-api/family-updates.php?action=health |
             python3 -c 'import json,sys; x=json.load(sys.stdin); assert x.get("ok") is True and x.get("service") == "The One Family Secure Updates"'
       - name: Publish signed app to private Dev Hub after tests
-        if: false # applicant-name test build; publish after real-device verification
+        if: false # SAFE: never publish this historical A/B diagnostic to any update channel
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
@@ -177,9 +177,17 @@ jobs:
           DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           BUILD_APP_ID: series-google-tv
-          BUILD_APK_PATH: series-google-tv/deliverable/The-One-Series-Google-TV-v1.2.0.apk
-          BUILD_VERSION_NAME: 1.2.0
+          BUILD_APK_PATH: series-google-tv/deliverable/The-One-Series-Google-TV-v1.2.3.apk
+          BUILD_VERSION_NAME: 1.2.3-audio-baseline
         run: bash ci/publish-family-private.sh
+      - name: Owner-only signed audio baseline APK for side-by-side diagnosis
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: The-One-Series-Google-TV-v123-October15-Audio-Baseline-owner
+          path: series-google-tv/deliverable/The-One-Series-Google-TV-v1.2.3.apk
+          if-no-files-found: error
+          retention-days: 7
       - name: Save test reports
         if: always()
         uses: actions/upload-artifact@v4
