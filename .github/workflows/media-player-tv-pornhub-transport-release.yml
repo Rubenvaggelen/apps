@@ -201,7 +201,7 @@ jobs:
           APK=media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" > /tmp/mediaplayer-tv-package.txt
-          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1032'" /tmp/mediaplayer-tv-package.txt
+          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1033'" /tmp/mediaplayer-tv-package.txt
           current=$("$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)
           expected=$(keytool -exportcert -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey | sha256sum | cut -d' ' -f1)
           test -n "$current" && test "$current" = "$expected"
