@@ -1,4 +1,4 @@
-name: The One Media Player Google TV v1.0.36 definitive baseline
+name: Media Player Google TV v1036 stable baseline
 on:
   push:
     branches: [release/media-player-google-tv-v1036-stable-20261019]
@@ -205,14 +205,14 @@ jobs:
           current=$("$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)
           expected=$(keytool -exportcert -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey | sha256sum | cut -d' ' -f1)
           test -n "$current" && test "$current" = "$expected"
-      - name: Upload verified definitive owner APK
+      - name: Upload signed owner stable baseline
         uses: actions/upload-artifact@v4
         with:
-          name: The-One-Media-Player-Google-TV-v1.0.36-Final-Owner
+          name: The-One-Media-Player-Google-TV-v1.0.36-STABLE-owner
           path: media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
           if-no-files-found: error
-      - name: Publish signed v1036 only to authenticated Dev Hub
-        if: ${{ false }} # Stable owner APK only: do not auto-install on three TVs before explicit device rollout.
+      - name: Publish signed v1036 to authenticated Dev Hub after real-device validation
+        if: ${{ false }} # Release baseline: no automatic installation until all 3 devices are validated.
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
