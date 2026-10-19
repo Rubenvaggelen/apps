@@ -131,7 +131,29 @@ public final class XtreamConfig {
             if (source == null) throw new java.io.IOException("Source unavailable");
             String id = second ? scoped.substring(8) : scoped;
             if (!id.matches("[0-9]+")) throw new java.io.IOException("Invalid ID");
-            String raw = source.download(source.account() + "&action=" + query(action) + "&" + (category != null ? "category_id" : "series_id") + "=" + query(id));
+            // Large series categories must not be downloaded again every time
+            // users return from an episode. Keep independent provider/category
+            // snapshots; only use a stale snapshot when that source fails.
+            boolean cacheSeriesCategory = category != null && "get_series".equals(action);
+            java.io.File scopedCache = cacheSeriesCategory && catalogCacheDir != null
+                ? new java.io.File(catalogCacheDir,"catalog-"+hashCacheKey(
+                    "series-category-v1|"+source.server+"|"+source.username+"|"+id)+".json")
+                : null;
+            String raw = scopedCache==null ? null : readCachedCatalog(scopedCache,false);
+            if(raw==null){
+                try {
+                    raw = source.download(source.account() + "&action=" + query(action) +
+                        "&" + (category != null ? "category_id" : "series_id") + "=" + query(id));
+                    if(cacheSeriesCategory){
+                        org.json.JSONArray rows=new org.json.JSONArray(raw);
+                        if(rows.length()>0)writeCachedCatalog(scopedCache,raw);
+                    }
+                }catch(Exception unavailable){
+                    String previous=scopedCache==null ? null : readCachedCatalog(scopedCache,true);
+                    if(previous==null)throw unavailable;
+                    raw=previous;
+                }
+            }
             if (series != null) {
                 JSONObject result = new JSONObject(raw);
                 if (second) {
@@ -152,7 +174,9 @@ public final class XtreamConfig {
         // v2 deliberately ignores the old aggregate cache: prior releases
         // incorrectly stored partial results when one provider timed out.
         boolean live="get_live_streams".equals(action);
-        boolean cacheable=live || action.endsWith("_categories");
+        // Also protect the full series library. The two providers can return
+        // thousands of shows; repeated uncached downloads caused timeouts.
+        boolean cacheable=live || action.endsWith("_categories") || "get_series".equals(action);
         boolean force=live && forceLiveCatalogRefresh;
         if(live){forceLiveCatalogRefresh=false;lastLiveCatalogPartial=false;}
         String cacheIdentity = "complete-v2|" + action + "|" + server + "|" + username + "|" +

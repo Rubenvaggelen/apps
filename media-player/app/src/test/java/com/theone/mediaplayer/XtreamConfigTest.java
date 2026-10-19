@@ -57,4 +57,48 @@ public class XtreamConfigTest {
   assertTrue(XtreamConfig.suspiciousCatalogShrink(original,partial,false));
  }
  @Test public void primarySurvivesUnavailableSecondary()throws Exception {two.stop(0);JSONArray a=new JSONArray(config.fetchCatalog(config.api("get_live_streams")));assertEquals(1,a.length());assertEquals("7",a.getJSONObject(0).optString("stream_id"));}
+
+ @Test public void seriesCatalogUsesCompleteSnapshotWhenProvidersGoOffline()throws Exception {
+  java.io.File dir=java.nio.file.Files.createTempDirectory("theone-series-catalog-test").toFile();
+  Field cacheField=XtreamConfig.class.getDeclaredField("catalogCacheDir");
+  cacheField.setAccessible(true);cacheField.set(config,dir);
+  try {
+   JSONArray available=new JSONArray(config.fetchCatalog(config.api("get_series")));
+   assertEquals(2,available.length());
+   assertEquals("source2:7",available.getJSONObject(1).getString("stream_id"));
+   one.stop(0);two.stop(0);
+   JSONArray offline=new JSONArray(config.fetchCatalog(config.api("get_series")));
+   assertEquals(2,offline.length());
+   assertEquals("source2:7",offline.getJSONObject(1).getString("stream_id"));
+  } finally {
+   java.io.File[] contents=dir.listFiles();
+   if(contents!=null)for(java.io.File f:contents)f.delete();
+   dir.delete();
+  }
+ }
+ @Test public void seriesCategoryCacheRecoversWhenSecondarySourceDisconnects()throws Exception {
+  java.io.File dir=java.nio.file.Files.createTempDirectory("theone-series-category-test").toFile();
+  Field cacheField=XtreamConfig.class.getDeclaredField("catalogCacheDir");
+  cacheField.setAccessible(true);cacheField.set(config,dir);
+  try {
+   String query=config.api("get_series","category_id","source2:1");
+   JSONArray first=new JSONArray(config.fetchCatalog(query));
+   assertEquals(1,first.length());
+   assertEquals("source2:7",first.getJSONObject(0).getString("stream_id"));
+   two.stop(0);
+   JSONArray recovered=new JSONArray(config.fetchCatalog(query));
+   assertEquals("source2:7",recovered.getJSONObject(0).getString("stream_id"));
+   java.io.File[] files=dir.listFiles();
+   assertNotNull(files);
+   assertTrue(files.length>0);
+   for(java.io.File file:files) {
+    assertFalse(file.getName().contains("fixture-password"));
+    assertFalse(file.getName().contains("fixture-user"));
+   }
+  }finally{
+   java.io.File[] contents=dir.listFiles();
+   if(contents!=null)for(java.io.File f:contents)f.delete();
+   dir.delete();
+  }
+ }
 }

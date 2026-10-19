@@ -10,8 +10,8 @@ android {
         applicationId = "com.theone.mediaplayer.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1032
-        versionName = "1.0.32-tv-audio-fallback"
+        versionCode = 1033
+        versionName = "1.0.33-series-catalog-recovery"
     }
 
     buildTypes {

@@ -866,19 +866,40 @@ public class XtreamCatalogActivity extends Activity {
             for (int attempt = 0; attempt < 2 && fresh.isEmpty(); attempt++) {
                 try {
                     java.util.LinkedHashMap<String, XtreamItem> unique=new java.util.LinkedHashMap<>();
-                    for (String sourceId : category.ids) {
-                        try {
-                            JSONArray arr = new JSONArray(get(config.api(action, "category_id", sourceId)));
-                            for (int j=0;j<arr.length();j++) {
-                                JSONObject row=arr.optJSONObject(j);
-                                if(row==null || !allowItem(row))continue;
-                                XtreamItem item=parseItem(row);
-                                if(item==null)continue;
-                                String key="live".equals(mode) ? ChannelGuide.channelIdentity(item.name) : ChannelGuide.normalize(item.name);
+                    // Do not make a working series source wait behind a slow
+                    // source: category requests run concurrently with one shared
+                    // deadline, while results merge in stable provider order.
+                    java.util.List<String> sourceIds=new java.util.ArrayList<>(category.ids);
+                    if(sourceIds.isEmpty())sourceIds.add(category.id);
+                    java.util.concurrent.ExecutorService readers=java.util.concurrent.Executors
+                        .newFixedThreadPool(Math.min(2,sourceIds.size()));
+                    try{
+                        java.util.List<java.util.concurrent.Callable<List<XtreamItem>>> tasks=new java.util.ArrayList<>();
+                        for(String sourceId:sourceIds){
+                            tasks.add(()->{
+                                JSONArray arr=new JSONArray(get(config.api(action,"category_id",sourceId)));
+                                List<XtreamItem> items=new ArrayList<>();
+                                for(int j=0;j<arr.length();j++){
+                                    JSONObject row=arr.optJSONObject(j);
+                                    if(row==null||!allowItem(row))continue;
+                                    XtreamItem item=parseItem(row);
+                                    if(item!=null)items.add(item);
+                                }
+                                return items;
+                            });
+                        }
+                        java.util.List<java.util.concurrent.Future<List<XtreamItem>>> results=
+                            readers.invokeAll(tasks,35,java.util.concurrent.TimeUnit.SECONDS);
+                        for(java.util.concurrent.Future<List<XtreamItem>> result:results){
+                            if(result.isCancelled())continue;
+                            List<XtreamItem> rows;
+                            try{rows=result.get();}catch(Exception sourceUnavailable){continue;}
+                            for(XtreamItem item:rows){
+                                String key="live".equals(mode)?ChannelGuide.channelIdentity(item.name):ChannelGuide.normalize(item.name);
                                 XtreamItem existing=unique.get(key);
                                 if(existing==null)unique.put(key,item);
-                                else if("live".equals(mode) && ChannelGuide.isEspnFhd(item.name)
-                                        && !ChannelGuide.isEspnFhd(existing.name)){
+                                else if("live".equals(mode)&&ChannelGuide.isEspnFhd(item.name)
+                                        &&!ChannelGuide.isEspnFhd(existing.name)){
                                     addAlternative(item,existing);
                                     for(String backup:existing.alternativeUrls)
                                         if(!item.alternativeUrls.contains(backup))item.alternativeUrls.add(backup);
@@ -887,8 +908,8 @@ public class XtreamCatalogActivity extends Activity {
                                     unique.put(key,item);
                                 }else addAlternative(existing,item);
                             }
-                        } catch(Exception ignored) { /* one provider may be unavailable */ }
-                    }
+                        }
+                    }finally{readers.shutdownNow();}
                     fresh = new ArrayList<>(unique.values());
                 } catch (Throwable ignored) {
                 }
@@ -945,7 +966,9 @@ public class XtreamCatalogActivity extends Activity {
         content.addView(back);
 
         TextView message = text(
-                "Deze map gaf tijdelijk geen resultaten.",
+                "series".equals(mode)
+                    ? "De seriebron reageert niet of deze seriemap is tijdelijk leeg. Je instellingen en favorieten zijn behouden."
+                    : "Deze map gaf tijdelijk geen resultaten.",
                 17,
                 Color.WHITE,
                 false

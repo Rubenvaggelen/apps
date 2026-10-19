@@ -1,8 +1,8 @@
-name: Media Player Google TV v1032 Sony recovery and secondary-first playback
+name: Media Player Google TV v1033 Series catalog recovery - diagnostic only
 on:
   push:
-    branches: [feature/media-player-adult-5min-20261016]
-    paths: [.github/workflows/media-player-tv-pornhub-transport-release.yml]
+    branches: [feature/media-player-series-catalog-recovery-20261019]
+    paths: [media-player/app/src/main/java/com/theone/mediaplayer/XtreamConfig.java, media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java, media-player/app/src/test/java/com/theone/mediaplayer/XtreamConfigTest.java, media-player/tvapp/build.gradle.kts, .github/workflows/media-player-tv-pornhub-transport-release.yml]
   workflow_dispatch: {}
 permissions:
   contents: read
@@ -127,7 +127,7 @@ jobs:
       - name: Verify TV-only version and transport changes
         run: |
           set -euo pipefail
-          grep -q 'versionCode = 1032' media-player/tvapp/build.gradle.kts
+          grep -q 'versionCode = 1033' media-player/tvapp/build.gradle.kts
           grep -q 'versionCode = 2428' media-player/app/build.gradle.kts
           grep -q 'AdultVideoNavigation.adjacent' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
           grep -q 'tvPlayPauseButton' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
@@ -181,7 +181,7 @@ jobs:
             adb shell am start -W -n com.theone.mediaplayer.tv/com.theone.mediaplayer.TvMainActivity
             sleep 6
             adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity'
-      - name: Sign Google TV v1032 with permanent owner TV certificate
+      - name: Sign Google TV v1033 with permanent owner TV certificate
         shell: bash
         run: |
           set -euo pipefail
@@ -208,10 +208,10 @@ jobs:
       - name: Upload candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Media-Player-Google-TV-v1032-signed-private
+          name: Media-Player-Google-TV-v1033-signed-private
           path: media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
           if-no-files-found: error
-      - name: Publish signed v1032 only to authenticated Dev Hub
+      - name: Publish signed v1033 only to authenticated Dev Hub
         if: ${{ false }} # Candidate only: do not promote until E-AC3 playback is verified on hardware.
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
