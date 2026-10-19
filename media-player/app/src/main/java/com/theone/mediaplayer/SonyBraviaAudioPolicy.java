@@ -21,6 +21,8 @@ final class SonyBraviaAudioPolicy {
     }
 
     static boolean usePcm(Boolean explicitSetting, String manufacturer, String brand, String model) {
-        // Restore the pre-October-18 default ExoPlayer output path. PCM remains an\n        // explicit compatibility option rather than a forced default.\n        return explicitSetting != null && explicitSetting;
+        // Restore the pre-October-18 default ExoPlayer output path. PCM remains an
+        // explicit compatibility option rather than a forced default.
+        return explicitSetting != null && explicitSetting;
     }
 }
