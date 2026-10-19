@@ -10,8 +10,8 @@ android {
         applicationId = "com.theone.mediaplayer.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1033
-        versionName = "1.0.33-series-catalog-recovery"
+        versionCode = 1034
+        versionName = "1.0.34-tv-controls-autohide"
     }
 
     buildTypes {

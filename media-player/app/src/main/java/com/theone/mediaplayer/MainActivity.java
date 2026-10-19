@@ -14,6 +14,7 @@ import android.os.Looper;
 import android.text.InputType;
 import android.util.Log;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
@@ -81,6 +82,12 @@ public class MainActivity extends Activity {
     private FrameLayout content;
     private ExoPlayer player;
     private PlayerView activePlayerView;
+    // Independent TV inactivity timer: Media3 can keep focused controls visible
+    // indefinitely on a Sony remote even with ControllerShowTimeoutMs.
+    private static final long TV_CONTROLS_TIMEOUT_MS = 5000L;
+    private final Handler tvControlsHandler = new Handler(Looper.getMainLooper());
+    private final ArrayList<View> tvPlayerOverlays = new ArrayList<>();
+    private final Runnable hideTvControlsRunnable = this::hideTvPlayerControls;
     private SharedPreferences prefs;
     private boolean playerFullscreen = false;
     private static final int MAX_PLAYBACK_RETRIES = 15;
@@ -1309,15 +1316,16 @@ try {
         setContentView(root);
         root.post(this::enterImmersiveFullscreen);
 
-        // Overlays die samen met de Media3-bediening automatisch verdwijnen.
-        // De lijst blijft mutabel zodat ook The One TV later kan worden toegevoegd.
-        final ArrayList<View> autoHidePlayerButtons = new ArrayList<>();
+        // These controls must share the same five-second inactivity window.
+        // The independent TV timer also hides a currently focused audio button.
+        tvPlayerOverlays.clear();
+        final ArrayList<View> autoHidePlayerButtons = tvPlayerOverlays;
 
         // The same Media3 controls work for touch screens, Android TV and Google TV.
         // Back and subtitles follow controller visibility; no permanent overlays
         // during playback, and a tap/OK reveals controls again.
         activePlayerView.setControllerAutoShow(false);
-        activePlayerView.setControllerShowTimeoutMs(4000);
+        activePlayerView.setControllerShowTimeoutMs(isTvBuild() ? (int)TV_CONTROLS_TIMEOUT_MS : 4000);
         activePlayerView.setControllerVisibilityListener(
                 (androidx.media3.ui.PlayerView.ControllerVisibilityListener) visibility -> {
             boolean visible = visibility == View.VISIBLE;
@@ -1399,9 +1407,11 @@ try {
             if (movieOrSeries) {
                 // Tijdens de film/serie zelf staat CC niet in beeld.
                 // Tik/OK toont de Media3-bediening én tijdelijk de CC-knop.
-                subtitles.setVisibility(View.GONE);
-                activePlayerView.setControllerAutoShow(false);
-                activePlayerView.hideController();
+                if (!isTvBuild()) {
+                    subtitles.setVisibility(View.GONE);
+                    activePlayerView.setControllerAutoShow(false);
+                    activePlayerView.hideController();
+                }
 
 
             }
@@ -1409,6 +1419,39 @@ try {
             Log.w("TheOneMediaPlayer", "Subtitle controls unavailable; playback continues", subtitleUiError);
         }
 
+        // Start timeout only after all overlay views exist and are attached.
+        if (isTvBuild()) root.post(this::showTvPlayerControls);
+    }
+
+    private void showTvPlayerControls() {
+        if (!isTvBuild() || !playerFullscreen || activePlayerView == null) return;
+        activePlayerView.showController();
+        for (View overlay : tvPlayerOverlays) overlay.setVisibility(View.VISIBLE);
+        tvControlsHandler.removeCallbacks(hideTvControlsRunnable);
+        tvControlsHandler.postDelayed(hideTvControlsRunnable, TV_CONTROLS_TIMEOUT_MS);
+    }
+
+    private void hideTvPlayerControls() {
+        if (!isTvBuild() || !playerFullscreen || activePlayerView == null) return;
+        // Do not trust Media3 focus-based auto-hide for the Sony TV remote.
+        activePlayerView.hideController();
+        for (View overlay : tvPlayerOverlays) overlay.setVisibility(View.GONE);
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        // Sony/Google TV DPAD and OK always reset the shared inactivity timer.
+        if (event.getAction() == KeyEvent.ACTION_DOWN && playerFullscreen && isTvBuild()) {
+            showTvPlayerControls();
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override
+    public void onUserInteraction() {
+        super.onUserInteraction();
+        // Android invokes this for touch input as well as remote interaction.
+        if (playerFullscreen && isTvBuild()) showTvPlayerControls();
     }
 
     private void showAudioTracks(){
@@ -1638,6 +1681,8 @@ try {
     }
 
     private void releasePlayer() {
+        tvControlsHandler.removeCallbacks(hideTvControlsRunnable);
+        tvPlayerOverlays.clear();
         playbackRetryHandler.removeCallbacksAndMessages(null);
         playbackRetryCount = 0;
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
