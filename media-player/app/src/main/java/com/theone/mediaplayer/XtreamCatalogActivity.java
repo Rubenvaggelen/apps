@@ -65,6 +65,7 @@ public class XtreamCatalogActivity extends Activity {
     private final List<XtreamItem> categoryItems = new ArrayList<>();
     private final List<XtreamItem> globalItems = new ArrayList<>();
     private boolean globalLoaded = false;
+    private int globalSearchGeneration = 0;
     private final List<Category> categoryCache = new ArrayList<>();
     private volatile boolean categoriesLoading = false;
     private final java.util.Map<String, List<XtreamItem>> categoryItemCache = new java.util.HashMap<>();
@@ -147,6 +148,7 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private void loadCategories() {
+        globalSearchGeneration++;
         List<Category> available = categoryCache.isEmpty()
                 ? loadCachedCategories()
                 : new ArrayList<>(categoryCache);
@@ -428,6 +430,10 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private void searchGlobal(String query) {
+        if ("series".equals(mode) && !globalLoaded) {
+            searchSeriesInBatches(query);
+            return;
+        }
         if (globalLoaded) {
             renderGlobalResults(query);
             return;
@@ -460,6 +466,89 @@ public class XtreamCatalogActivity extends Activity {
                 runOnUiThread(() -> showMessage("De volledige bibliotheek kon niet worden geladen."));
             }
         }).start();
+    }
+
+
+    /** Progressive results for slow Google TV devices: first cards appear as
+     * the provider sends rows, without waiting for every country/category. */
+    private void searchSeriesInBatches(String query) {
+        final int generation=++globalSearchGeneration;
+        globalItems.clear();
+        showLoading("Seriebibliotheek in blokken ophalen…");
+        content.removeAllViews();
+        Button back=button("← Terug naar categorieën");
+        back.setOnClickListener(v->loadCategories());
+        content.addView(back);
+        TextView title=text("Zoekresultaten voor “"+query+"”",24,Color.WHITE,true);
+        title.setPadding(0,dp(14),0,dp(6));
+        content.addView(title);
+        TextView status=text("Bronnen laden… eerste resultaten verschijnen zodra ze beschikbaar zijn.",
+            15,BLUE,false);
+        status.setPadding(0,0,0,dp(12));
+        content.addView(status);
+        addSearchAgainBox();
+        TextView label=text("XTREAM • Series",16,BLUE,true);
+        content.addView(label);
+        LinearLayout resultHolder=new LinearLayout(this);
+        resultHolder.setOrientation(LinearLayout.VERTICAL);
+        content.addView(resultHolder);
+        addYouTubeResults(query);
+        final String needle=normalize(query);
+        final java.util.HashSet<String> seen=new java.util.HashSet<>();
+        final int[] shown={0};
+        new Thread(()->{
+            final int[] accepted={0};
+            boolean complete=false;
+            try{
+                complete=config.streamSeriesCatalog(100,(rows,second)->{
+                    final List<XtreamItem> parsed=new ArrayList<>();
+                    for(int i=0;i<rows.length();i++){
+                        JSONObject row=rows.optJSONObject(i);
+                        if(row==null||!allowItem(row))continue;
+                        XtreamItem item=parseItem(row);
+                        if(item!=null)parsed.add(item);
+                    }
+                    if(parsed.isEmpty())return;
+                    runOnUiThread(()->{
+                        if(isFinishing()||isDestroyed()||generation!=globalSearchGeneration)return;
+                        for(XtreamItem item:parsed){
+                            if(!seen.add(item.id))continue;
+                            globalItems.add(item);
+                            accepted[0]++;
+                            if(shown[0]<60&&matchesQuery(item.name,needle)){
+                                appendCards(resultHolder,java.util.Collections.singletonList(item),0,1);
+                                shown[0]++;
+                            }
+                        }
+                        status.setText("Bibliotheek wordt aangevuld • "+accepted[0]+
+                            " series ontvangen • resultaten verschijnen direct");
+                    });
+                });
+            }catch(Exception unavailable){
+                android.util.Log.w(LOG_TAG,"Series catalog progressive loading unavailable");
+            }
+            final boolean allSourcesComplete=complete;
+            runOnUiThread(()->{
+                if(isFinishing()||isDestroyed()||generation!=globalSearchGeneration)return;
+                if(globalItems.isEmpty()){
+                    status.setText("Bibliotheek reageert niet. Probeer opnieuw; andere onderdelen blijven werken.");
+                    Button retry=button("↻ Seriebibliotheek opnieuw laden");
+                    retry.setOnClickListener(v->searchSeriesInBatches(query));
+                    content.addView(retry);
+                    return;
+                }
+                if(allSourcesComplete){
+                    globalLoaded=true;
+                    renderGlobalResults(query);
+                }else{
+                    status.setText("Gedeeltelijke bibliotheek beschikbaar • "+globalItems.size()+
+                        " series ontvangen. Eén bron reageerde niet volledig.");
+                    Button retry=button("↻ Ontbrekende series opnieuw ophalen");
+                    retry.setOnClickListener(v->searchSeriesInBatches(query));
+                    content.addView(retry);
+                }
+            });
+        },"series-library-stream").start();
     }
 
     private void renderGlobalResults(String query) {
@@ -844,6 +933,7 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private void loadItems(Category category) {
+        globalSearchGeneration++;
         List<XtreamItem> cached = categoryItemCache.get(category.id);
         List<XtreamItem> fallback = cached == null
                 ? new ArrayList<>()
@@ -1280,6 +1370,10 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private void appendCards(List<XtreamItem> items,int start,int pageSize) {
+        appendCards(content,items,start,pageSize);
+    }
+
+    private void appendCards(LinearLayout target,List<XtreamItem> items,int start,int pageSize) {
         int limit=Math.min(start+pageSize,items.size());
         for (int i=start; i<limit; i++) {
             XtreamItem item = items.get(i);
@@ -1379,17 +1473,17 @@ public class XtreamCatalogActivity extends Activity {
                     ViewGroup.LayoutParams.WRAP_CONTENT
             );
             lp.bottomMargin = dp(9);
-            content.addView(card, lp);
+            target.addView(card, lp);
         }
 
         if (items.size() > limit) {
             Button more=button("Meer laden • " + Math.min(pageSize,items.size()-limit) +
                 " van " + (items.size()-limit) + " resterende");
             more.setOnClickListener(v -> {
-                content.removeView(more);
-                appendCards(items,limit,pageSize);
+                target.removeView(more);
+                appendCards(target,items,limit,pageSize);
             });
-            content.addView(more);
+            target.addView(more);
         }
     }
 
@@ -1529,6 +1623,7 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private void loadSeriesEpisodes(XtreamItem series) {
+        globalSearchGeneration++;
         List<XtreamItem> cached = seriesEpisodeCache.get(series.id);
         List<XtreamItem> fallback = cached == null
                 ? new ArrayList<>()
@@ -1921,6 +2016,7 @@ public class XtreamCatalogActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        globalSearchGeneration++;
         imagePool.shutdownNow();
         super.onDestroy();
     }

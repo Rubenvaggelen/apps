@@ -256,6 +256,136 @@ public final class XtreamConfig {
         return combined;
     }
 
+
+    /** Deliver series rows as they arrive; do not wait for both large provider responses. */
+    public interface SeriesBatchListener {
+        void onBatch(org.json.JSONArray rows, boolean secondarySource);
+    }
+
+    public boolean streamSeriesCatalog(int requestedBatchSize, SeriesBatchListener listener) throws Exception {
+        if(!isConfigured())throw new java.io.IOException("Source unavailable");
+        final int batchSize=Math.max(25,Math.min(requestedBatchSize,250));
+        java.util.List<java.util.concurrent.Callable<Boolean>> workers=new java.util.ArrayList<>();
+        workers.add(()->streamSeriesProvider(this,false,batchSize,listener));
+        if(secondary!=null&&secondary.isConfigured())
+            workers.add(()->streamSeriesProvider(secondary,true,batchSize,listener));
+        java.util.concurrent.ExecutorService pool=java.util.concurrent.Executors.newFixedThreadPool(workers.size());
+        int successful=0;
+        try{
+            // The caller receives the first rows immediately. A slow second provider
+            // must not block rendering, and timed-out work is cancelled.
+            for(java.util.concurrent.Future<Boolean> future:
+                pool.invokeAll(workers,75,java.util.concurrent.TimeUnit.SECONDS)){
+                if(future.isCancelled())continue;
+                try{if(future.get())successful++;}catch(Exception ignored){}
+            }
+        }finally{pool.shutdownNow();}
+        return successful==workers.size()&&successful>0;
+    }
+
+    private boolean streamSeriesProvider(XtreamConfig source, boolean second, int batchSize,
+                                         SeriesBatchListener listener) {
+        java.io.File providerFile=catalogCacheDir==null?null:new java.io.File(catalogCacheDir,
+            "catalog-"+hashCacheKey("provider-v2|get_series|"+source.server+"|"+source.username)+".json");
+        String cached=readCachedCatalog(providerFile,false);
+        if(cached!=null){
+            try{
+                streamSeriesRows(new java.io.StringReader(cached),null,null,second,batchSize,listener);
+                return true;
+            }catch(Exception ignored){/* Damaged cache: try the source. */}
+        }
+        java.net.HttpURLConnection connection=null;
+        java.io.File pending=null;
+        java.io.Writer writer=null;
+        try{
+            connection=(java.net.HttpURLConnection)new java.net.URL(
+                source.account()+"&action=get_series").openConnection();
+            connection.setConnectTimeout(9000);
+            connection.setReadTimeout(20000);
+            connection.setUseCaches(false);
+            connection.setRequestProperty("User-Agent","TheOneMediaPlayer/2.4.1");
+            if(connection.getResponseCode()!=200)throw new java.io.IOException("Series catalog unavailable");
+            if(providerFile!=null){
+                java.io.File parent=providerFile.getParentFile();
+                if(parent!=null&&(parent.isDirectory()||parent.mkdirs())){
+                    pending=new java.io.File(parent,providerFile.getName()+".stream.tmp");
+                    writer=new java.io.BufferedWriter(new java.io.OutputStreamWriter(
+                        new java.io.FileOutputStream(pending),java.nio.charset.StandardCharsets.UTF_8));
+                }
+            }
+            try(java.io.Reader input=new java.io.InputStreamReader(
+                connection.getInputStream(),java.nio.charset.StandardCharsets.UTF_8)){
+                streamSeriesRows(input,writer,pending,second,batchSize,listener);
+                writer=null;
+            }
+            if(pending!=null&&pending.exists()&&pending.length()<64L*1024L*1024L)
+                if(!pending.renameTo(providerFile))pending.delete();
+            return true;
+        }catch(Exception unavailable){
+            String stale=readCachedCatalog(providerFile,true);
+            if(stale!=null)try{
+                streamSeriesRows(new java.io.StringReader(stale),null,null,second,batchSize,listener);
+                return true;
+            }catch(Exception ignored){}
+            return false;
+        }finally{
+            if(writer!=null)try{writer.close();}catch(Exception ignored){}
+            if(pending!=null&&pending.exists())pending.delete();
+            if(connection!=null)connection.disconnect();
+        }
+    }
+
+    private static void streamSeriesRows(java.io.Reader input, java.io.Writer snapshot,
+            java.io.File pending,boolean second,int batchSize,SeriesBatchListener listener)throws Exception {
+        android.util.JsonReader reader=new android.util.JsonReader(input);
+        org.json.JSONArray batch=new org.json.JSONArray();
+        boolean first=true;
+        if(snapshot!=null)snapshot.write("[");
+        reader.beginArray();
+        while(reader.hasNext()){
+            reader.beginObject();
+            org.json.JSONObject row=new org.json.JSONObject();
+            while(reader.hasNext()){
+                String key=reader.nextName();
+                // Only fields used by Media Player cards are retained.
+                if(!("series_id".equals(key)||"stream_id".equals(key)||"category_id".equals(key)
+                    ||"name".equals(key)||"title".equals(key)||"cover".equals(key)
+                    ||"cover_big".equals(key)||"stream_icon".equals(key)||"poster".equals(key)
+                    ||"rating".equals(key)||"year".equals(key)||"releaseDate".equals(key)
+                    ||"release_date".equals(key)||"added".equals(key))){
+                    reader.skipValue();
+                    continue;
+                }
+                android.util.JsonToken type=reader.peek();
+                if(type==android.util.JsonToken.STRING||type==android.util.JsonToken.NUMBER)
+                    row.put(key,reader.nextString());
+                else if(type==android.util.JsonToken.BOOLEAN)row.put(key,String.valueOf(reader.nextBoolean()));
+                else reader.skipValue();
+            }
+            reader.endObject();
+            if(snapshot!=null){
+                if(!first)snapshot.write(",");
+                snapshot.write(row.toString());
+                // Prevent a huge catalog from exhausting disk on budget TVs.
+                if(pending!=null&&pending.length()>64L*1024L*1024L)
+                    throw new java.io.IOException("Series snapshot too large");
+            }
+            first=false;
+            if(second){
+                for(String key:new String[]{"series_id","stream_id","category_id"})
+                    prefixId(row,key);
+            }
+            batch.put(row);
+            if(batch.length()>=batchSize){
+                listener.onBatch(batch,second);
+                batch=new org.json.JSONArray();
+            }
+        }
+        reader.endArray();
+        if(snapshot!=null){snapshot.write("]");snapshot.close();}
+        if(batch.length()>0)listener.onBatch(batch,second);
+    }
+
     /** Keep previously known Dutch channels if the provider unexpectedly drops most of them. */
     static boolean suspiciousCatalogShrink(org.json.JSONArray previous,org.json.JSONArray now,boolean live){
         if(previous==null || now==null)return false;
