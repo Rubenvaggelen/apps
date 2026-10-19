@@ -824,7 +824,7 @@ public class XtreamCatalogActivity extends Activity {
         Button find = button("Opnieuw zoeken");
         find.setOnClickListener(v -> {
             String q = search.getText().toString().trim();
-            if (!q.isEmpty()) renderGlobalResults(q);
+            if (!q.isEmpty()) searchGlobal(q);
         });
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -837,23 +837,11 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private boolean matchesQuery(String name, String normalizedQuery) {
-        if (normalizedQuery.isEmpty()) return true;
-
-        String normalizedName = normalize(name);
-        String[] words = normalizedQuery.split("\\s+");
-
-        for (String word : words) {
-            if (!word.isEmpty() && !normalizedName.contains(word)) return false;
-        }
-        return true;
+        return CatalogTitleSearch.matchesNormalized(name, normalizedQuery);
     }
 
     private String normalize(String value) {
-        String s = value == null ? "" : value.toLowerCase(Locale.ROOT);
-        s = Normalizer.normalize(s, Normalizer.Form.NFD);
-        s = s.replaceAll("\\p{M}+", "");
-        s = s.replaceAll("[^a-z0-9]+", " ").trim();
-        return s;
+        return CatalogTitleSearch.normalize(value);
     }
 
     private String categoryNameFor(String id) {
