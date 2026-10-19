@@ -101,4 +101,36 @@ public class XtreamConfigTest {
    dir.delete();
   }
  }
+
+ @Test public void progressiveSeriesCatalogStreamsEachProviderInBatches()throws Exception {
+  java.util.List<String> ids=java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+  boolean complete=config.streamSeriesCatalog(1,(rows,second)->{
+   for(int i=0;i<rows.length();i++) {
+    org.json.JSONObject row=rows.optJSONObject(i);
+    if(row!=null)ids.add(row.optString("stream_id"));
+   }
+  });
+  assertTrue(complete);
+  assertEquals(2,ids.size());
+  assertTrue(ids.contains("7"));
+  assertTrue(ids.contains("source2:7"));
+ }
+ @Test public void progressiveSeriesLoadsPreviousSnapshotOffline()throws Exception {
+  java.io.File dir=java.nio.file.Files.createTempDirectory("theone-batched-series").toFile();
+  Field cacheField=XtreamConfig.class.getDeclaredField("catalogCacheDir");
+  cacheField.setAccessible(true);cacheField.set(config,dir);
+  try{
+   java.util.concurrent.atomic.AtomicInteger initial=new java.util.concurrent.atomic.AtomicInteger();
+   assertTrue(config.streamSeriesCatalog(50,(batch,second)->initial.addAndGet(batch.length())));
+   assertEquals(2,initial.get());
+   one.stop(0);two.stop(0);
+   java.util.concurrent.atomic.AtomicInteger recovered=new java.util.concurrent.atomic.AtomicInteger();
+   assertTrue(config.streamSeriesCatalog(50,(batch,second)->recovered.addAndGet(batch.length())));
+   assertEquals(2,recovered.get());
+  }finally{
+   java.io.File[] files=dir.listFiles();
+   if(files!=null)for(java.io.File f:files)f.delete();
+   dir.delete();
+  }
+ }
 }

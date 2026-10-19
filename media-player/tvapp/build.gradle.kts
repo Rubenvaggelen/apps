@@ -10,8 +10,8 @@ android {
         applicationId = "com.theone.mediaplayer.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1034
-        versionName = "1.0.34-tv-controls-autohide"
+        versionCode = 1035
+        versionName = "1.0.35-progressive-series-candidate"
     }
 
     buildTypes {
@@ -36,6 +36,7 @@ android {
 }
 
 dependencies {
+    implementation("com.google.code.gson:gson:2.13.2")
     implementation("androidx.core:core:1.16.0")
     implementation("androidx.media3:media3-exoplayer:1.11.0")
     implementation("androidx.media3:media3-exoplayer-hls:1.11.0")
