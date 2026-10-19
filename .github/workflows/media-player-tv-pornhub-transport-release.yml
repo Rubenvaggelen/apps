@@ -1,8 +1,8 @@
-name: Media Player Google TV v1036 stable baseline
+name: The One Media Player Google TV v1.0.37 title search fix candidate
 on:
   push:
-    branches: [release/media-player-google-tv-v1036-stable-20261019]
-    paths: [media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java, media-player/app/build.gradle.kts, media-player/app/src/main/java/com/theone/mediaplayer/XtreamConfig.java, media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java, media-player/app/src/test/java/com/theone/mediaplayer/XtreamConfigTest.java, media-player/tvapp/build.gradle.kts, .github/workflows/media-player-tv-pornhub-transport-release.yml]
+    branches: [fix/media-player-google-tv-queens-men-search-v1037-20261019]
+    paths: [media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java, media-player/app/build.gradle.kts, media-player/app/src/main/java/com/theone/mediaplayer/XtreamConfig.java, media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java, media-player/app/src/main/java/com/theone/mediaplayer/CatalogTitleSearch.java, media-player/app/src/test/java/com/theone/mediaplayer/CatalogTitleSearchTest.java, media-player/app/src/test/java/com/theone/mediaplayer/XtreamConfigTest.java, media-player/tvapp/build.gradle.kts, .github/workflows/media-player-tv-pornhub-transport-release.yml]
   workflow_dispatch: {}
 permissions:
   contents: read
@@ -127,7 +127,7 @@ jobs:
       - name: Verify TV-only version and transport changes
         run: |
           set -euo pipefail
-          grep -q 'versionCode = 1036' media-player/tvapp/build.gradle.kts
+          grep -q 'versionCode = 1037' media-player/tvapp/build.gradle.kts
           grep -q 'versionCode = 2428' media-player/app/build.gradle.kts
           grep -q 'AdultVideoNavigation.adjacent' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
           grep -q 'tvPlayPauseButton' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
@@ -181,7 +181,7 @@ jobs:
             adb shell am start -W -n com.theone.mediaplayer.tv/com.theone.mediaplayer.TvMainActivity
             sleep 6
             adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity'
-      - name: Sign Google TV v1036 with permanent owner TV certificate
+      - name: Sign Google TV v1037 with permanent owner TV certificate
         shell: bash
         run: |
           set -euo pipefail
@@ -201,17 +201,17 @@ jobs:
           APK=media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" > /tmp/mediaplayer-tv-package.txt
-          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1036'" /tmp/mediaplayer-tv-package.txt
+          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1037'" /tmp/mediaplayer-tv-package.txt
           current=$("$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)
           expected=$(keytool -exportcert -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey | sha256sum | cut -d' ' -f1)
           test -n "$current" && test "$current" = "$expected"
-      - name: Upload signed owner stable baseline
+      - name: Upload signed owner title search fix candidate
         uses: actions/upload-artifact@v4
         with:
-          name: The-One-Media-Player-Google-TV-v1.0.36-STABLE-owner
+          name: The-One-Media-Player-Google-TV-v1.0.37-Search-Fix-Owner
           path: media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
           if-no-files-found: error
-      - name: Publish signed v1036 to authenticated Dev Hub after real-device validation
+      - name: Publish signed v1037 to authenticated Dev Hub after real-device validation
         if: ${{ false }} # Release baseline: no automatic installation until all 3 devices are validated.
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
