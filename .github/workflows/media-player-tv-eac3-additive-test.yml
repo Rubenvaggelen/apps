@@ -1,0 +1,315 @@
+name: Media Player Google TV v1039 EAC3 safe candidate
+on:
+  push:
+    branches: [fix/media-player-google-tv-eac3-audio-additive-20261020]
+    paths: ['media-player/**', '.github/workflows/media-player-tv-eac3-additive-test.yml']
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Android 36 build tools
+        shell: bash
+        run: |
+          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -type f -name sdkmanager | head -1)"; fi
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+      - name: Restore permanent Google TV signing certificate
+        shell: bash
+        env:
+          TV_SIGNING_KEY: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$TV_SIGNING_KEY"
+          mkdir -p ~/.android
+          printf '%s' "$TV_SIGNING_KEY" | base64 -d > ~/.android/debug.keystore
+          chmod 600 ~/.android/debug.keystore
+          keytool -list -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey >/dev/null
+      - name: Restore verified primary IPTV account for Google TV
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test -s .github/media-player-private-source.enc.b64
+          test -s "$HOME/.android/debug.keystore"
+          keytool -importkeystore \
+            -srckeystore "$HOME/.android/debug.keystore" \
+            -srcstorepass android \
+            -srcalias androiddebugkey \
+            -destkeystore /tmp/media-player-primary-signing.p12 \
+            -deststoretype PKCS12 \
+            -deststorepass changeit \
+            -destkeypass changeit \
+            -noprompt >/dev/null
+          openssl pkcs12 \
+            -in /tmp/media-player-primary-signing.p12 \
+            -passin pass:changeit \
+            -nodes -nocerts \
+            -out /tmp/media-player-primary-private.pem >/dev/null 2>&1
+          base64 -d .github/media-player-private-source.enc.b64 > /tmp/media-player-primary.enc
+          openssl pkeyutl -decrypt \
+            -inkey /tmp/media-player-primary-private.pem \
+            -in /tmp/media-player-primary.enc \
+            -out /tmp/media-player-primary.json \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256
+          python3 - <<'PY_PRIMARY'
+          from pathlib import Path
+          from urllib.parse import urlsplit, parse_qs
+          import json
+          src=json.loads(Path("/tmp/media-player-primary.json").read_text())
+          parsed=urlsplit(str(src.get("m3u_url","")).strip())
+          query=parse_qs(parsed.query)
+          user=(query.get("username") or [""])[0]
+          password=(query.get("password") or [""])[0]
+          host=parsed.hostname or ""
+          server=parsed.scheme+"://"+parsed.netloc
+          if parsed.scheme not in ("http","https") or not host or not user or not password:
+              raise SystemExit("Encrypted primary IPTV source is invalid")
+          if user.startswith("PRIVATE_") or password.startswith("PRIVATE_"):
+              raise SystemExit("Placeholder credentials are forbidden in signed TV releases")
+          out=Path("media-player/app/src/main/assets/private_xtream.json")
+          out.write_text(json.dumps({"server":server,"username":user,"password":password})+"\n")
+          print("GOOGLE_TV_PRIMARY_IPTV_SOURCE_RESTORED=1")
+          PY_PRIMARY
+          rm -f /tmp/media-player-primary-signing.p12 /tmp/media-player-primary-private.pem /tmp/media-player-primary.enc /tmp/media-player-primary.json
+      - name: Restore encrypted secondary IPTV source for Google TV
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test -s .github/media-player-secondary-source.enc.b64
+          test -s "$HOME/.android/debug.keystore"
+          keytool -importkeystore \
+            -srckeystore "$HOME/.android/debug.keystore" \
+            -srcstorepass android \
+            -srcalias androiddebugkey \
+            -destkeystore /tmp/media-player-tv-signing.p12 \
+            -deststoretype PKCS12 \
+            -deststorepass changeit \
+            -destkeypass changeit \
+            -noprompt >/dev/null
+          openssl pkcs12 \
+            -in /tmp/media-player-tv-signing.p12 \
+            -passin pass:changeit \
+            -nodes -nocerts \
+            -out /tmp/media-player-tv-private.pem >/dev/null 2>&1
+          base64 -d .github/media-player-secondary-source.enc.b64 > /tmp/media-player-tv-source.enc
+          openssl pkeyutl -decrypt \
+            -inkey /tmp/media-player-tv-private.pem \
+            -in /tmp/media-player-tv-source.enc \
+            -out media-player/app/src/main/assets/private_xtream_secondary.json \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256
+          python3 - <<'PY_SOURCE'
+          import json,pathlib
+          primary=json.loads(pathlib.Path("media-player/app/src/main/assets/private_xtream.json").read_text())
+          secondary=json.loads(pathlib.Path("media-player/app/src/main/assets/private_xtream_secondary.json").read_text())
+          assert set(secondary)=={"server","username","password"} and all(secondary.values())
+          assert secondary["server"].startswith("http")
+          assert (secondary["server"],secondary["username"])!=(primary.get("server"),primary.get("username"))
+          print("GOOGLE_TV_SECONDARY_IPTV_SOURCE_RESTORED=1")
+          PY_SOURCE
+          rm -f /tmp/media-player-tv-signing.p12 /tmp/media-player-tv-private.pem /tmp/media-player-tv-source.enc
+      - name: Verify TV-only version and transport changes
+        run: |
+          set -euo pipefail
+          grep -q 'versionCode = 1039' media-player/tvapp/build.gradle.kts
+          grep -q 'versionCode = 2428' media-player/app/build.gradle.kts
+          grep -q 'AdultVideoNavigation.adjacent' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
+          grep -q 'tvPlayPauseButton' media-player/app/src/main/java/com/theone/mediaplayer/AdultPornhubActivity.java
+          grep -q 'TV_RELEASE_RUNS' media-player/app/src/main/java/com/theone/mediaplayer/MediaPlayerUpdateChecker.java
+          grep -q 'MediaPlayerTvInstaller.open(activity)' media-player/app/src/main/java/com/theone/mediaplayer/MediaPlayerUpdateChecker.java
+          grep -q 'com.theone.mediaplayer.tv.updates' media-player/tvapp/src/main/AndroidManifest.xml
+          test -s media-player/app/src/main/assets/private_xtream_secondary.json
+          grep -q 'suspiciousCatalogShrink' media-player/app/src/main/java/com/theone/mediaplayer/XtreamConfig.java
+          grep -q 'isLastLiveCatalogPartial' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
+          test -s media-player/tvapp/src/main/res/xml/media_player_tv_update_paths.xml
+      - name: Build Google TV and run video navigation tests
+        run: gradle -p media-player :app:testDebugUnitTest :tvapp:assembleDebug --no-daemon
+      - name: Verify EAC3 add-on native libraries in APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
+          unzip -Z1 "$APK" | grep -E '^lib/(armeabi-v7a|arm64-v8a|x86|x86_64)/.*\\.so
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_VERIFY'
+          import json,zipfile,pathlib
+          apk=pathlib.Path("media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk")
+          with zipfile.ZipFile(apk) as z:
+              assert "assets/private_xtream.json" in z.namelist()
+              assert "assets/private_xtream_secondary.json" in z.namelist()
+              first=json.loads(z.read("assets/private_xtream.json"))
+              second=json.loads(z.read("assets/private_xtream_secondary.json"))
+              assert all(first.get(k) for k in ("server","username","password"))
+              assert all(second.get(k) for k in ("server","username","password"))
+              assert first["server"].startswith(("http://","https://"))
+              assert second["server"].startswith(("http://","https://"))
+              assert not any(str(first[k]).startswith("PRIVATE_") for k in ("username","password"))
+              assert not any(str(second[k]).startswith("PRIVATE_") for k in ("username","password"))
+              assert (first["server"],first["username"]) != (second["server"],second["username"])
+          print("GOOGLE_TV_BOTH_IPTV_SOURCES_PRESENT_AND_CONFIGURED=1")
+          PY_VERIFY
+      - name: Enable KVM acceleration for emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Validate Google TV startup in Android emulator before signing
+        timeout-minutes: 14
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb install -r media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
+            adb shell am start -W -n com.theone.mediaplayer.tv/com.theone.mediaplayer.TvMainActivity
+            sleep 6
+            adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity'
+      - name: Sign Google TV v1039 EAC3 candidate with permanent owner TV certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
+          SIGNED=media-player/tvapp/build/outputs/apk/debug/tvapp-owner-signed.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" sign \
+            --ks "$HOME/.android/debug.keystore" \
+            --ks-key-alias androiddebugkey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --out "$SIGNED" "$APK"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$SIGNED"
+          mv -f "$SIGNED" "$APK"
+      - name: Confirm private TV APK package and permanent signing identity
+        run: |
+          set -euo pipefail
+          APK=media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$APK"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" > /tmp/mediaplayer-tv-package.txt
+          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1039'" /tmp/mediaplayer-tv-package.txt
+          current=$("$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)
+          expected=$(keytool -exportcert -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey | sha256sum | cut -d' ' -f1)
+          test -n "$current" && test "$current" = "$expected"
+      - name: Upload signed owner EAC3 test candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: The-One-Media-Player-Google-TV-v1.0.39-EAC3-TEST-owner
+          path: media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
+          if-no-files-found: error
+      - name: Do not publish EAC3 candidate to Dev Hub
+        if: ${{ false }} # EAC3 trial ONLY. No OTA or Dev Hub distribution.
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: bash ci/publish-media-player-tv-devhub-v1022.sh
+ >/tmp/mp-eac3-native-libs.txt
+          test -s /tmp/mp-eac3-native-libs.txt
+          echo "TV_EAC3_NATIVE_LIBRARIES_PRESENT=1"
+          test -f media-player/tvapp/src/main/java/com/theone/mediaplayer/TvEac3Support.java
+          ! grep -R -q 'nextlib-media3ext' media-player/app/build.gradle.kts
+
+      - name: Verify both IPTV catalog sources are bundled in Google TV APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_VERIFY'
+          import json,zipfile,pathlib
+          apk=pathlib.Path("media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk")
+          with zipfile.ZipFile(apk) as z:
+              assert "assets/private_xtream.json" in z.namelist()
+              assert "assets/private_xtream_secondary.json" in z.namelist()
+              first=json.loads(z.read("assets/private_xtream.json"))
+              second=json.loads(z.read("assets/private_xtream_secondary.json"))
+              assert all(first.get(k) for k in ("server","username","password"))
+              assert all(second.get(k) for k in ("server","username","password"))
+              assert first["server"].startswith(("http://","https://"))
+              assert second["server"].startswith(("http://","https://"))
+              assert not any(str(first[k]).startswith("PRIVATE_") for k in ("username","password"))
+              assert not any(str(second[k]).startswith("PRIVATE_") for k in ("username","password"))
+              assert (first["server"],first["username"]) != (second["server"],second["username"])
+          print("GOOGLE_TV_BOTH_IPTV_SOURCES_PRESENT_AND_CONFIGURED=1")
+          PY_VERIFY
+      - name: Enable KVM acceleration for emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Validate Google TV startup in Android emulator before signing
+        timeout-minutes: 14
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb install -r media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
+            adb shell am start -W -n com.theone.mediaplayer.tv/com.theone.mediaplayer.TvMainActivity
+            sleep 6
+            adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity'
+      - name: Sign Google TV v1039 EAC3 candidate with permanent owner TV certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
+          SIGNED=media-player/tvapp/build/outputs/apk/debug/tvapp-owner-signed.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" sign \
+            --ks "$HOME/.android/debug.keystore" \
+            --ks-key-alias androiddebugkey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --out "$SIGNED" "$APK"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$SIGNED"
+          mv -f "$SIGNED" "$APK"
+      - name: Confirm private TV APK package and permanent signing identity
+        run: |
+          set -euo pipefail
+          APK=media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$APK"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" > /tmp/mediaplayer-tv-package.txt
+          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1039'" /tmp/mediaplayer-tv-package.txt
+          current=$("$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)
+          expected=$(keytool -exportcert -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey | sha256sum | cut -d' ' -f1)
+          test -n "$current" && test "$current" = "$expected"
+      - name: Upload signed owner EAC3 test candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: The-One-Media-Player-Google-TV-v1.0.39-EAC3-TEST-owner
+          path: media-player/tvapp/build/outputs/apk/debug/tvapp-debug.apk
+          if-no-files-found: error
+      - name: Do not publish EAC3 candidate to Dev Hub
+        if: ${{ false }} # EAC3 trial ONLY. No OTA or Dev Hub distribution.
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: bash ci/publish-media-player-tv-devhub-v1022.sh

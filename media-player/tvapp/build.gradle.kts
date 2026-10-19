@@ -10,8 +10,8 @@ android {
         applicationId = "com.theone.mediaplayer.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1036
-        versionName = "1.0.36-stable"
+        versionCode = 1039
+        versionName = "1.0.39-eac3-test"
     }
 
     buildTypes {
@@ -42,5 +42,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.11.0")
     implementation("androidx.media3:media3-exoplayer-dash:1.11.0")
     implementation("androidx.media3:media3-ui:1.11.0")
+    // Google TV test candidate only: FFmpeg fallback after working Android decoders.
+    implementation("io.github.anilbeesetti:nextlib-media3ext:1.11.0-0.15.0")
     implementation("com.google.android.gms:play-services-cast-framework:22.1.0")
 }

@@ -1210,8 +1210,7 @@ try {
                 ? new ExoPlayer.Builder(this,new CompatibleAudioRenderersFactory(this))
                 : isTvBuild()
                     ? new ExoPlayer.Builder(this,
-                        new androidx.media3.exoplayer.DefaultRenderersFactory(this)
-                            .setEnableDecoderFallback(true))
+                        TvAudioRendererFactory.create(this))
                     : new ExoPlayer.Builder(this);
         player=playerBuilder.build();
         player.setAudioAttributes(new androidx.media3.common.AudioAttributes.Builder()
