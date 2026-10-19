@@ -21,8 +21,6 @@ final class SonyBraviaAudioPolicy {
     }
 
     static boolean usePcm(Boolean explicitSetting, String manufacturer, String brand, String model) {
-        // The TV-only caller enables PCM on all Android TV devices by default.
-        // Respect an existing explicit user choice, including passthrough.
-        return explicitSetting != null ? explicitSetting : true;
+        // Restore the pre-October-18 default ExoPlayer output path. PCM remains an\n        // explicit compatibility option rather than a forced default.\n        return explicitSetting != null && explicitSetting;
     }
 }
