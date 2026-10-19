@@ -21,7 +21,8 @@ final class SonyBraviaAudioPolicy {
     }
 
     static boolean usePcm(Boolean explicitSetting, String manufacturer, String brand, String model) {
-        return explicitSetting != null ? explicitSetting :
-            autoPcmFor(manufacturer, brand, model);
+        // The TV-only caller enables PCM on all Android TV devices by default.
+        // Respect an existing explicit user choice, including passthrough.
+        return explicitSetting != null ? explicitSetting : true;
     }
 }
