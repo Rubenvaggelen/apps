@@ -6,8 +6,8 @@ android {
   applicationId 'com.theone.series.tv'
   minSdk 23
   targetSdk 35
-  versionCode 123
-  versionName '1.2.3-oct15-audio-baseline'
+  versionCode 124
+  versionName '1.2.4-auto-next-audio-baseline'
   testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
  }
  buildFeatures { buildConfig true }
