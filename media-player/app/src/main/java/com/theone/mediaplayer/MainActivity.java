@@ -1223,10 +1223,22 @@ try {
         activePlayerView.setUseController(true);
         activePlayerView.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT);
 
+        ArrayList<String> episodeTitles = getIntent().getStringArrayListExtra("play_titles");
+        boolean episodePlaylist = "series".equals(getIntent().getStringExtra("play_kind"));
         ArrayList<MediaItem> items = new ArrayList<>();
+        int episodeIndex = 0;
         for (String url : urls) {
             if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
-                items.add(MediaItem.fromUri(url));
+                MediaItem.Builder item = new MediaItem.Builder().setUri(url);
+                if (episodePlaylist) {
+                    String title = episodeTitles != null && episodeIndex < episodeTitles.size()
+                            ? episodeTitles.get(episodeIndex) : "Aflevering " + (episodeIndex + 1);
+                    item.setMediaId("episode-" + episodeIndex)
+                            .setMediaMetadata(new androidx.media3.common.MediaMetadata.Builder()
+                                    .setTitle(title).build());
+                }
+                items.add(item.build());
+                episodeIndex++;
             }
         }
 
@@ -1281,11 +1293,27 @@ try {
                     },isLive?600:1000);
                 }
                 @Override
+                public void onMediaItemTransition(MediaItem mediaItem, int reason) {
+                    // ExoPlayer advances to the next MediaItem on natural completion.
+                    // This reports the transition, not another manual seek that
+                    // could accidentally skip an episode.
+                    if ("series".equals(playKind) && mediaItem != null
+                            && reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                        CharSequence name = mediaItem.mediaMetadata.title;
+                        Toast.makeText(MainActivity.this,
+                                "Volgende aflevering: " + (name == null ? "Aflevering" : name),
+                                Toast.LENGTH_SHORT).show();
+                    }
+                }
+                @Override
                 public void onPlaybackStateChanged(int state) {
                     if(player==null)return;
                     playbackRetryHandler.removeCallbacksAndMessages(null);
                     if(state==Player.STATE_READY){
                         playbackRetryCount=0;
+                    }else if("series".equals(playKind)&&state==Player.STATE_ENDED){
+                        Toast.makeText(MainActivity.this,
+                                "Laatste aflevering afgelopen",Toast.LENGTH_SHORT).show();
                     }else if(isLive&&state==Player.STATE_BUFFERING){
                         final int startingIndex=player.getCurrentMediaItemIndex();
                         playbackRetryHandler.postDelayed(()->{
@@ -1299,6 +1327,9 @@ try {
             });
         }
 
+        // Play the queued episodes exactly once, in season/episode order.
+        // Back/manual stop still releases the player instead of advancing.
+        player.setRepeatMode(Player.REPEAT_MODE_OFF);
         player.setMediaItems(items);
         player.prepare();
         player.play();

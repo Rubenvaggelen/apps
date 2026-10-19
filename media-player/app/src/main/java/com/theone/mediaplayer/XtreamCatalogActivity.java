@@ -1547,6 +1547,13 @@ public class XtreamCatalogActivity extends Activity {
         startPlaybackWhenLineFree(queue, mode);
     }
 
+    private void startPlaybackWhenLineFree(ArrayList<String> queue, String kind, ArrayList<String> titles) {
+        // Only explicitly chosen series episodes get metadata for automatic
+        // continuation; Live TV fallback queues remain unchanged.
+        if (queue == null || queue.isEmpty()) return;
+        launchPlayback(queue, kind, titles);
+    }
+
     private void startPlaybackWhenLineFree(ArrayList<String> queue, String kind) {
         if (queue == null || queue.isEmpty()) return;
 
@@ -1574,6 +1581,10 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private void launchPlayback(ArrayList<String> queue, String kind) {
+        launchPlayback(queue, kind, null);
+    }
+
+    private void launchPlayback(ArrayList<String> queue, String kind, ArrayList<String> titles) {
         if (isFinishing() || queue == null || queue.isEmpty()) return;
 
         Intent intent = new Intent(this, MainActivity.class);
@@ -1583,6 +1594,8 @@ public class XtreamCatalogActivity extends Activity {
             intent.putStringArrayListExtra("play_queue", queue);
         }
         intent.putExtra("play_kind", kind);
+        if ("series".equals(kind) && titles != null && titles.size() == queue.size())
+            intent.putStringArrayListExtra("play_titles", titles);
         startActivity(intent);
     }
 
@@ -1848,17 +1861,13 @@ public class XtreamCatalogActivity extends Activity {
             Button play = button("▶ Afspelen");
             play.setOnClickListener(v -> {
                 ArrayList<String> queue = new ArrayList<>();
-
-                for (int i = startIndex; i < episodes.size(); i++) {
+                ArrayList<String> titles = new ArrayList<>();
+                for (int i : EpisodeAutoplayQueue.upcomingIndices(startIndex, episodes.size())) {
                     XtreamItem queuedEpisode = episodes.get(i);
-                    queue.add(config.stream(
-                            "series",
-                            queuedEpisode.id,
-                            queuedEpisode.extension
-                    ));
+                    queue.add(config.stream("series",queuedEpisode.id,queuedEpisode.extension));
+                    titles.add(queuedEpisode.name);
                 }
-
-                startPlaybackWhenLineFree(queue, "series");
+                startPlaybackWhenLineFree(queue, "series", titles);
             });
 
             LinearLayout.LayoutParams playLp = new LinearLayout.LayoutParams(
