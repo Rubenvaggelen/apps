@@ -45,7 +45,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(Space(this), LinearLayout.LayoutParams(1, 0, 0.35f))
 
         val logo = ImageView(this).apply {
-            setImageResource(R.drawable.the_one_remote_access_logo)
+            setImageResource(R.drawable.the_one_remote_neon_logo)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             contentDescription = "The One"
         }
