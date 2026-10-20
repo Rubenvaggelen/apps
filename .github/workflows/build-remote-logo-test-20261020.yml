@@ -19,7 +19,14 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - name: Use the Android SDK preinstalled on the GitHub runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          SDKMANAGER=$(find "${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}/cmdline-tools" -type f -name sdkmanager | head -n 1)
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --version
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
