@@ -6,9 +6,9 @@
     <application
         android:allowBackup="true"
         android:hardwareAccelerated="true"
-        android:icon="@drawable/the_one_logo"
+        android:icon="@drawable/the_one_remote_access_logo"
         android:label="@string/app_name"
-        android:roundIcon="@drawable/the_one_logo"
+        android:roundIcon="@drawable/the_one_remote_access_logo"
         android:supportsRtl="true"
         android:theme="@style/Theme.TheOneRemote"
         android:usesCleartextTraffic="false">

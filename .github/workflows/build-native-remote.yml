@@ -59,8 +59,8 @@ jobs:
           set -euo pipefail
 
           mkdir -p native-remote/res/drawable-nodpi
-          cp app/src/main/res/drawable-nodpi/the_one_logo.png \
-             native-remote/res/drawable-nodpi/the_one_logo.png
+          base64 -d .github/assets/the_one_remote_access_logo.webp.b64 \
+             > native-remote/res/drawable-nodpi/the_one_remote_access_logo.webp
 
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
@@ -77,8 +77,8 @@ jobs:
               raise SystemExit("No application node found")
 
           app.set(android + "label", "The One Remote")
-          app.set(android + "icon", "@drawable/the_one_logo")
-          app.set(android + "roundIcon", "@drawable/the_one_logo")
+          app.set(android + "icon", "@drawable/the_one_remote_access_logo")
+          app.set(android + "roundIcon", "@drawable/the_one_remote_access_logo")
 
           main = None
           for activity in app.findall("activity"):

@@ -65,9 +65,9 @@ jobs:
           cd rustdesk-src
 
           mkdir -p flutter/android/app/src/main/res/drawable-nodpi
-          base64 -d ../.github/assets/the_one_remote_logo.webp.b64 \
-            > flutter/android/app/src/main/res/drawable-nodpi/the_one_logo.webp
-          rm -f flutter/android/app/src/main/res/drawable-nodpi/the_one_logo.png
+          base64 -d ../.github/assets/the_one_remote_access_logo.webp.b64 \
+            > flutter/android/app/src/main/res/drawable-nodpi/the_one_remote_access_logo.webp
+          test -s flutter/android/app/src/main/res/drawable-nodpi/the_one_remote_access_logo.webp
 
           python3 - <<'PY'
           from pathlib import Path
@@ -99,8 +99,8 @@ jobs:
               raise SystemExit("application node missing")
 
           app.set(ANDROID + "label", "The One Remote")
-          app.set(ANDROID + "icon", "@drawable/the_one_logo")
-          app.set(ANDROID + "roundIcon", "@drawable/the_one_logo")
+          app.set(ANDROID + "icon", "@drawable/the_one_remote_access_logo")
+          app.set(ANDROID + "roundIcon", "@drawable/the_one_remote_access_logo")
 
           # This phone is controller-only. Remove Android host/remote-control services.
           remove_components = {
