@@ -1,0 +1,95 @@
+name: Rutu Bedrijf v942 - Spicy Wings EUR 4,00
+on:
+  push:
+    branches: [feature/rutu-spicy-wings-eur4-20261021]
+    paths: [ci/rutu-spicy-wings-business-v942-release-marker.txt]
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: rutu-spicy-wings-business-v942
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reconfirm tested API and client source
+        run: |
+          set -euo pipefail
+          git diff --quiet 89eb4d0ff7f04ac2d005099b393fcbc1094e1aa7 HEAD -- rutu-server/index.php rutubusinessandroid/src/main/assets/rutu-pos.js rutubusinessandroid/src/main/assets/menu/menu_rutu_spicy_wings.webp jadeorders/src/main/java/com/vanaggelen/jadeorders/MainActivity.kt jadeorders/src/main/res/drawable-nodpi/menu_rutu_spicy_wings.webp
+          php -l rutu-server/index.php
+          python3 - <<'PY'
+          from pathlib import Path
+          assert "'Rutu Spicy Wings' => 4.00" in Path("rutu-server/index.php").read_text()
+          assert "menu_rutu_spicy_wings.webp" in Path("rutubusinessandroid/src/main/assets/rutu-pos.js").read_text()
+          PY
+          bash -n ci/deploy-rutu-spicy-wings-business-v942.sh
+      - uses: actions/download-artifact@v4
+        with:
+          name: rutu-bedrijf-v942-spicy-wings-candidate
+          run-id: 39648525687
+          github-token: ${{ github.token }}
+          path: /tmp/rutu-v942-spicy
+      - name: Publish Business v942 APK and Spicy Wings menu price only
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for key in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS;do
+            test -n "$(printenv "$key")" || { echo "Missing required deployment config"; exit 1; }
+          done
+          apk='/tmp/rutu-v942-spicy/rutubusinessandroid-debug.apk'
+          test -s "$apk"
+          old_php="$(git show 8c239ae7681872b11f5653cd5908228b8a9d0886:rutu-server/index.php | sha256sum | awk '{print $1}')"
+          new_php="$(sha256sum rutu-server/index.php | awk '{print $1}')"
+          new_apk="$(sha256sum "$apk" | awk '{print $1}')"
+          meta="$(mktemp)"
+          printf '{"versionCode":942,"url":"https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Bedrijf-Android.apk","sha256":"%s"}\n' "$new_apk" > "$meta"
+          umask 077
+          d="$(mktemp -d)"
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$d" "$meta"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$d/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$d/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$d/askpass"
+          chmod 0600 "$d/key" "$d/known_hosts"
+          chmod 0700 "$d/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$d/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$d/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          opts=(-i "$d/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$d/known_hosts" -o ConnectTimeout=20)
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          stage="$(ssh -p "$DEPLOY_PORT" ${opts[@]} "$remote" 'mktemp -d "$HOME/.rutu-klantenbeheer-stage.XXXXXXXX"')"
+          scp -O -P "$DEPLOY_PORT" ${opts[@]} rutu-server/index.php "$remote:$stage/api.php"
+          scp -O -P "$DEPLOY_PORT" ${opts[@]} "$apk" "$remote:$stage/business.apk"
+          scp -O -P "$DEPLOY_PORT" ${opts[@]} "$meta" "$remote:$stage/business.json"
+          ssh -p "$DEPLOY_PORT" ${opts[@]} "$remote" "bash -s -- '$stage' '$old_php' '$new_php' '$new_apk'" < ci/deploy-rutu-spicy-wings-business-v942.sh
+          echo 'RUTU Business v942 Spicy Wings for EUR 4,00 deployed; existing Customer APK left unchanged.' >> "$GITHUB_STEP_SUMMARY"
+          curl -fsS --max-time 20 'https://rubenvanaggelen.com/rutu-api/index.php?action=menu_availability' | python3 -c 'import sys,json;o=json.load(sys.stdin);assert o["ok"] and isinstance(o["sold_out"],list)'
+          cp "$apk" RUTU-Bedrijf-v942-Spicy-Wings.apk
+      - name: Publish signed APK in Apps releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: rutu-bedrijf-v942
+          target_commitish: feature/rutu-spicy-wings-eur4-20261021
+          name: Rutu Bedrijf v942 - Rutu Spicy Wings EUR 4,00
+          prerelease: false
+          make_latest: false
+          body: |
+            Rutu Bedrijf v942: Rutu Spicy Wings voor EUR 4,00 met de gekozen donkere serveerschaal-foto. Het gerecht is onder Extra's te vinden.
+            De Rutu-server accepteert Rutu Spicy Wings voor EUR 4,00 en handhaaft Uitverkocht-beheer; bestaande bestellingen en andere prijzen blijven ongewijzigd.
+            Bestaand: Klantenbeheer, Gratis met naam, scherm draaien zonder opnieuw ontgrendelen.
+            De klant-APK is niet door deze Business-release vervangen.
+          files: RUTU-Bedrijf-v942-Spicy-Wings.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
