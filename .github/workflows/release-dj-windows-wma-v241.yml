@@ -1,0 +1,73 @@
+name: The One DJ Windows v241 WMA fix (Windows only)
+on:
+  push:
+    branches: [fix/dj-wma-playback-20261021]
+    paths: [.github/workflows/release-dj-windows-wma-v241.yml]
+permissions:
+  contents: write
+concurrency:
+  group: dj-windows-v241-wma-only
+  cancel-in-progress: false
+jobs:
+  package-and-release-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Validate Windows DJ JavaScript and nonregression tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $dir='windows/the-one-dj'
+          $version=Get-Content "$dir/version.json" -Raw|ConvertFrom-Json
+          if([int]$version.build -ne 241 -or $version.version -ne '2.4.1'){throw 'Wrong independent Windows DJ version'}
+          node "$dir/tests/wma-playback.cjs"
+          if($LASTEXITCODE -ne 0){throw 'WMA regression test failed'}
+          node "$dir/tests/smart-selection.cjs"
+          if($LASTEXITCODE -ne 0){throw 'Auto DJ regression'}
+          node "$dir/tests/background-playback.cjs"
+          if($LASTEXITCODE -ne 0){throw 'Background playback regression'}
+          $raw=Get-Content "$dir/index.html" -Raw
+          $scripts=[regex]::Matches($raw,'(?s)<script[^>]*>(.*?)</script>')
+          if($scripts.Count -eq 0){throw 'No DJ script found'}
+          $script=($scripts | ForEach-Object {$_.Groups[1].Value}) -join [Environment]::NewLine
+          $js=Join-Path $env:RUNNER_TEMP 'dj-inline.js'
+          [IO.File]::WriteAllText($js,$script)
+          node --check $js
+          if($LASTEXITCODE -ne 0){throw 'DJ browser JavaScript invalid'}
+          $t=$null;$errors=$null
+          [Management.Automation.Language.Parser]::ParseFile((Resolve-Path "$dir/Serve-The-One-DJ.ps1").Path,[ref]$t,[ref]$errors)|Out-Null
+          if($errors.Count -gt 0){throw 'DJ Windows local audio server syntax invalid'}
+          if($raw -notmatch '/decode-audio' -or $raw -notmatch 'decodeWithWindowsWma'){throw 'WMA UI integration missing'}
+          $server=Get-Content "$dir/Serve-The-One-DJ.ps1" -Raw
+          if($server -notmatch 'Convert-LocalDjWma' -or $server -notmatch "ContentType='audio/mpeg'"){throw 'Native WMA decoder missing'}
+          Write-Output 'ALL_DJ_WINDOWS_TESTS_PASSED'
+      - name: Package The One DJ Windows only
+        shell: pwsh
+        run: |
+          Compress-Archive -Path .\windows\the-one-dj\* -DestinationPath .\The-One-DJ-Windows-v241-WMA.zip -CompressionLevel Optimal -Force
+          if((Get-Item .\The-One-DJ-Windows-v241-WMA.zip).Length -lt 50000){throw 'DJ Windows archive unexpectedly small'}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: the-one-dj-windows-v241-wma
+          path: The-One-DJ-Windows-v241-WMA.zip
+          if-no-files-found: error
+      - name: Publish Windows-only DJ update
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dj-windows-v241
+          target_commitish: fix/dj-wma-playback-20261021
+          name: The One DJ Windows v241 - WMA afspelen
+          prerelease: true
+          make_latest: false
+          body: |
+            Windows-only DJ update. WMA/ASF wordt op de eigen Windows-pc naar tijdelijk MP3 omgezet via FFmpeg, zonder de oorspronkelijke muziekbestanden aan te passen.
+            Bestaande MP3- en andere audiobestanden blijven op het normale afspeelpad.
+            Vereist ffmpeg.exe op PATH (op THEONE-HUB gecontroleerd).
+            Download het ZIP-bestand, pak uit en start Start-The-One-DJ.cmd. Android DJ is niet aangepast of gepubliceerd.
+          files: The-One-DJ-Windows-v241-WMA.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
