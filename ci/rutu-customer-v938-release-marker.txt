@@ -1,0 +1,1 @@
+Rutu Klant v938: toon uitverkocht per gerecht, laat klant niet bestellen wat niet beschikbaar is. Klant-build groen GitHub Actions 39642937333, originele handtekening bevestigd. Release met preflight v937-APK/QR-URL, v941 Business invariant, backup en rollback. Originele registraties en klantgegevens ongemoeid.
