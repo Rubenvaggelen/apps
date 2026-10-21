@@ -45,11 +45,25 @@ jobs:
           $server=Get-Content "$dir/Serve-The-One-DJ.ps1" -Raw
           if($server -notmatch 'Convert-LocalDjWma' -or $server -notmatch "ContentType='audio/mpeg'"){throw 'Native WMA decoder missing'}
           Write-Output 'ALL_DJ_WINDOWS_TESTS_PASSED'
-      - name: Package The One DJ Windows only
+      - name: Package The One DJ Windows only with launch-ready app
         shell: pwsh
         run: |
-          Compress-Archive -Path .\windows\the-one-dj\* -DestinationPath .\The-One-DJ-Windows-v241-WMA.zip -CompressionLevel Optimal -Force
+          $ErrorActionPreference='Stop'
+          $stage=Join-Path $env:RUNNER_TEMP 'TheOneDJWindowsV241'
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          Copy-Item -Path .\windows\the-one-dj\* -Destination $stage -Recurse -Force
+          $app=Join-Path $stage 'app'
+          New-Item -ItemType Directory -Path $app -Force | Out-Null
+          Copy-Item -LiteralPath (Join-Path $stage 'index.html') -Destination (Join-Path $app 'index.html') -Force
+          Copy-Item -LiteralPath (Join-Path $stage 'dj-logo.jpg') -Destination (Join-Path $app 'dj-logo.jpg') -Force
+          Compress-Archive -Path "$stage\*" -DestinationPath .\The-One-DJ-Windows-v241-WMA.zip -CompressionLevel Optimal -Force
           if((Get-Item .\The-One-DJ-Windows-v241-WMA.zip).Length -lt 50000){throw 'DJ Windows archive unexpectedly small'}
+          $check=Join-Path $env:RUNNER_TEMP 'dj-package-check'
+          Expand-Archive -LiteralPath .\The-One-DJ-Windows-v241-WMA.zip -DestinationPath $check -Force
+          $expected=(Get-FileHash -LiteralPath (Join-Path $check 'index.html') -Algorithm SHA256).Hash
+          $actual=(Get-FileHash -LiteralPath (Join-Path $check 'app/index.html') -Algorithm SHA256).Hash
+          if($expected -ne $actual){throw 'Bundled app/index.html does not match current WMA-enabled DJ'}
+          Write-Output 'WINDOWS_DJ_ZIP_READY_FOR_EXISTING_AND_FRESH_INSTALL'
       - uses: actions/upload-artifact@v4
         with:
           name: the-one-dj-windows-v241-wma
