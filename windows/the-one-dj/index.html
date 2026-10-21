@@ -944,6 +944,25 @@ async function decodeWithAndroid(file,ab,ac){
     return await new Promise((resolve,reject)=>ac.decodeAudioData(wav,resolve,reject));
   }finally{native.discard(id);}
 }
+async function decodeWithWindowsWma(file,ab,ac){
+  // Windows DJ is a localhost browser UI. Keep the original WMA unchanged;
+  // only upload the selected track to the local FFmpeg process for decoding.
+  if(window.TheOneAudioDecoder||!/^127\.0\.0\.1$/.test(location.hostname)
+     ||!/^\.?wma$/i.test(String(file?.name||"").split(".").pop()||""))return null;
+  const response=await fetch("/decode-audio",{
+    method:"POST",headers:{"Content-Type":"application/octet-stream"},
+    body:ab,cache:"no-store"
+  });
+  if(!response.ok){
+    const err=new Error("Local WMA decoder failed: HTTP "+response.status);
+    err.userMsg=response.status===503
+      ?"WMA kan op deze pc nog niet worden voorbereid. Installeer FFmpeg en probeer opnieuw."
+      :"WMA kon niet worden gedecodeerd. Controleer het originele bestand.";
+    throw err;
+  }
+  const wav=await response.arrayBuffer();
+  return await new Promise((resolve,reject)=>ac.decodeAudioData(wav,resolve,reject));
+}
 async function decodeAnyAudio(file,ac){
   ac=ac||ctx;
   const ab=await mediaBytes(file);
@@ -962,6 +981,8 @@ async function decodeAnyAudio(file,ac){
   }
   const android=await decodeWithAndroid(file,ab,ac);
   if(android)return android;
+  const windows=await decodeWithWindowsWma(file,ab,ac);
+  if(windows)return windows;
   const what=r&&r.unsupported?r.unsupported:sniffName(dv,file.name);
   const err=new Error("unsupported");
   err.userMsg=what+" kan hier niet worden afgespeeld. Zet het om naar MP3, FLAC of WAV.";
