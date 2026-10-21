@@ -36,8 +36,8 @@ jobs:
           PY
       - uses: actions/download-artifact@v4
         with:
-          name: rutu-bedrijf-v940-rotation-candidate
-          run-id: 39637982898
+          name: rutu-bedrijf-v940-rotation-fast-candidate
+          run-id: 39638774769
           github-token: ${{ github.token }}
           path: /tmp/rutu-v940-candidate
       - name: Publish Business update only, with preflight backups and rollback
