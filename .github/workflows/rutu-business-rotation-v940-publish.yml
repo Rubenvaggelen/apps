@@ -1,0 +1,104 @@
+name: RUTU Bedrijf v940 - safe publish and Apps APK
+on:
+  push:
+    branches: [fix/rutu-bedrijf-rotation-keeps-session-v940-20261021]
+    paths: [ci/rutu-business-rotation-v940-release-marker.txt]
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: rutu-business-v940-release-only
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate reviewed rotation source and release-only shell
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --quiet 0a0ed9fb4b0966cbbc0d53d411b536ed03c063b6 HEAD -- rutubusinessandroid/src/main/AndroidManifest.xml rutubusinessandroid/src/main/java/com/vanaggelen/rutubusiness/MainActivity.kt
+          bash -n ci/deploy-rutu-business-rotation-v940.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          tree=ET.parse('rutubusinessandroid/src/main/AndroidManifest.xml')
+          activity=tree.find('application/activity')
+          changes=set(activity.attrib['{http://schemas.android.com/apk/res/android}configChanges'].split('|'))
+          assert {'orientation','screenSize','keyboardHidden'} <= changes
+          kotlin=Path('rutubusinessandroid/src/main/java/com/vanaggelen/rutubusiness/MainActivity.kt').read_text()
+          assert 'onConfigurationChanged(newConfig: Configuration)' in kotlin
+          print('ROTATION_SOURCE_VERIFIED')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: rutu-bedrijf-v940-rotation-candidate
+          run-id: 39637982898
+          github-token: ${{ github.token }}
+          path: /tmp/rutu-v940-candidate
+      - name: Publish Business update only, with preflight backups and rollback
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for key in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "$(printenv "$key")" || { echo "Required deploy config missing: $key"; exit 1; }
+          done
+          apk=/tmp/rutu-v940-candidate/rutubusinessandroid-debug.apk
+          test -s "$apk"
+          new_sha="$(sha256sum "$apk" | awk '{print $1}')"
+          old_sha='ea4e7efe647a666b5b3b5f0137b660d2ae4b2e8d7f15c28266760b3272a12eb0'
+          live_sha="$(curl -fLsS --retry 2 --max-time 80 https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Bedrijf-Android.apk | sha256sum | awk '{print $1}')"
+          test "$live_sha" = "$old_sha" || { echo 'Current Business v939 changed; refusing overwrite'; exit 1; }
+          meta="$(mktemp)"
+          printf '{"versionCode":940,"url":"https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Bedrijf-Android.apk","sha256":"%s"}\n' "$new_sha" > "$meta"
+          umask 077
+          d="$(mktemp -d)"
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$d" "$meta"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$d/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$d/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$d/askpass"
+          chmod 0600 "$d/key" "$d/known_hosts"
+          chmod 0700 "$d/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$d/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$d/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          opts=(-i "$d/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$d/known_hosts" -o ConnectTimeout=20)
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          stage="$(ssh -p "$DEPLOY_PORT" ${opts[@]} "$remote" 'mktemp -d "$HOME/.rutu-rotation-940.XXXXXXXX"')"
+          scp -O -P "$DEPLOY_PORT" ${opts[@]} "$apk" "$remote:$stage/business.apk"
+          scp -O -P "$DEPLOY_PORT" ${opts[@]} "$meta" "$remote:$stage/business.json"
+          ssh -p "$DEPLOY_PORT" ${opts[@]} "$remote" "bash -s -- '$stage' '$new_sha'" < ci/deploy-rutu-business-rotation-v940.sh
+          live_sha="$(curl -fLsS --retry 2 --max-time 80 https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Bedrijf-Android.apk | sha256sum | awk '{print $1}')"
+          test "$live_sha" = "$new_sha" || { echo 'Live download differs after publish'; exit 1; }
+          curl -fsS --max-time 20 https://rubenvanaggelen.com/rutu-updates/business-android.json | python3 -c 'import sys,json;x=json.load(sys.stdin);assert x["versionCode"]==940'
+          cp "$apk" RUTU-Bedrijf-v940-Rotatie-Fix.apk
+          echo "Business v940 live / Dev Hub; exact sha256: $new_sha" >> "$GITHUB_STEP_SUMMARY"
+      - name: Add signed Business v940 APK to Apps releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: rutu-bedrijf-v940
+          target_commitish: fix/rutu-bedrijf-rotation-keeps-session-v940-20261021
+          name: Rutu Bedrijf v940 - scherm draaien zonder code opnieuw
+          make_latest: false
+          prerelease: false
+          body: |
+            Alleen Rutu Bedrijf voor Android, versie 940.
+            Fix: draai je telefoon van staand naar liggend of terug zonder opnieuw de bedrijfscode in te voeren. De bestaande kassa/WebView en een reeds ontgrendelde sessie blijven actief.
+            Bij het opnieuw starten van de app wordt de bedrijfscode nog steeds gevraagd.
+            Bestaand: Klantenbeheer, Gratis met verplicht naamveld, Contant, PIN, Nog te betalen.
+            De Klant-app, klantregistraties, bestelgegevens en betaalserver zijn ongewijzigd.
+            Installeer over Rutu Bedrijf v939, zonder eerst de oude app te verwijderen.
+          files: RUTU-Bedrijf-v940-Rotatie-Fix.apk
+        env:
+          GITHUB_TOKEN: RELEASE_${{ github.token }}
