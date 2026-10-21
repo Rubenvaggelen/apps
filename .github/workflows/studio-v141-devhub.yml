@@ -47,3 +47,5 @@ jobs:
           ls -ld "$HOME/dev.vanaggelen.com/downloads/studio/1.4.1" "$HOME/dev.vanaggelen.com/updates/studio/latest.json" 2>/dev/null || true
           echo 'READ-ONLY INSPECTION COMPLETE'
           REMOTE
+
+# Check the latest server-side transfer checkpoint.
