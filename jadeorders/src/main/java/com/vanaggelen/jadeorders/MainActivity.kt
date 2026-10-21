@@ -46,7 +46,7 @@ class MainActivity : AppCompatActivity() {
     private enum class Role { NONE, CUSTOMER, BUSINESS }
     data class Product(val name: String, val price: Double, val category: String, val description: String, val imageRes: Int = 0)
     data class Order(val id: Int, val items: LinkedHashMap<String, Int>, val total: Double, var status: String, val trackingToken: String = "", val delivery: Boolean = false, val address: String = "", val postcode: String = "", val deliveryFee: Double = 0.0, val paymentMethod: String = "", val paymentUrl: String = "", val paymentStatus: String = "")
-    data class Announcement(val title: String = "", val message: String = "", val from: String = "", val until: String = "", val active: Boolean = false, val orderingBlocked: Boolean = false, val orderingMessage: String = "", val testOrderAllowed: Boolean = false)
+    data class Announcement(val title: String = "", val message: String = "", val from: String = "", val until: String = "", val active: Boolean = false, val orderingBlocked: Boolean = false, val orderingMessage: String = "", val testOrderAllowed: Boolean = false, val soldOut: Set<String> = emptySet())
 
     private val products = listOf(
         Product("BBQ Regular", 10.00, "BBQ", "1 bout • 2 stokjes saté • salade", R.drawable.menu_bbq_regular),
@@ -1163,11 +1163,14 @@ class MainActivity : AppCompatActivity() {
                         active = obj.optBoolean("active", false),
                         orderingBlocked = obj.optBoolean("ordering_blocked", false),
                         orderingMessage = obj.optString("ordering_message", ""),
-                        testOrderAllowed = obj.optBoolean("test_order_allowed", false)
+                        testOrderAllowed = obj.optBoolean("test_order_allowed", false),
+                        soldOut = obj.optJSONArray("sold_out")?.let { array ->
+                            (0 until array.length()).map { i -> array.optString(i, "") }.filter { it.isNotBlank() }.toSet()
+                        } ?: emptySet()
                     )
                     val changed = next != announcement
                     announcement = next
-                    if (refreshVisibleScreen && changed) runOnUiThread {
+                    if (changed && (refreshVisibleScreen || screen == "customer")) runOnUiThread {
                         if (screen == "landing") landing()
                         else if (screen == "customer") renderCustomer()
                     }
@@ -1424,8 +1427,10 @@ class MainActivity : AppCompatActivity() {
             section(category)
             items.forEach { p ->
                 val qty = cart[p.name] ?: 0
-                card("${p.name}\n${p.description}\n${money.format(p.price)}${if (qty > 0) "   •   $qty× in mand" else ""}", p.imageRes.takeIf { it != 0 }) {
-                    button("+ Toevoegen / Add") { cart[p.name] = qty + 1; saveCart(); renderCustomer() }
+                val soldOut = p.name in announcement.soldOut
+                card("${p.name}\n${p.description}\n${money.format(p.price)}${if (soldOut) "\n⛔ UITVERKOCHT / SOLD OUT" else if (qty > 0) "   •   $qty× in mand" else ""}", p.imageRes.takeIf { it != 0 }) {
+                    if (soldOut) label("Tijdelijk uitverkocht / Temporarily sold out", Color.rgb(88, 46, 25))
+                    else button("+ Toevoegen / Add") { cart[p.name] = qty + 1; saveCart(); renderCustomer() }
                 }
             }
         }
@@ -1455,10 +1460,17 @@ class MainActivity : AppCompatActivity() {
             val p = products.first { it.name == name }; total += p.price * qty
             card("$qty× $name\n${money.format(p.price * qty)}") {
                 smallButton("−") { if (qty <= 1) cart.remove(name) else cart[name] = qty - 1; saveCart(); cartScreen() }
-                smallButton("+") { cart[name] = qty + 1; saveCart(); cartScreen() }
+                if (name !in announcement.soldOut) smallButton("+") { cart[name] = qty + 1; saveCart(); cartScreen() }
+                else label("⛔ Uitverkocht: verwijder dit gerecht voor je bestelt", Color.rgb(88, 46, 25))
             }
         }
         val productTotal = total
+        val soldInCart = cart.keys.filter { it in announcement.soldOut }
+        if (soldInCart.isNotEmpty()) {
+            hero("⛔ Uitverkocht / Sold out",
+                "Verwijder eerst deze gerechten uit de winkelmand: ${soldInCart.joinToString(", ")}.\nRemove sold-out items before ordering.")
+            return
+        }
         if (!announcement.testOrderAllowed) {
             testOrderMode = false
             testOrderCode = ""
