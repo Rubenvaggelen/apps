@@ -11,10 +11,9 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - name: Resume verified Studio 1.4.1 release with persistent deployment connection
+      - name: Inspect current upload sizes and detached release state
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -38,109 +37,13 @@ jobs:
           sshdo() { ssh -p "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=20 -o ServerAliveInterval=20 -o ServerAliveCountMax=3 "$remote" "$@"; }
           scpdo() { scp -O -P "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=20 -o ServerAliveInterval=20 -o ServerAliveCountMax=3 "$@"; }
           
-          for file in family-installaties.php windows-dj-studio-20261016.php; do
-           scpdo "$remote:dev.vanaggelen.com/$file" "$tmp/$file"
-          done
-          family_sha="$(sha256sum "$tmp/family-installaties.php" | cut -d' ' -f1)"
-          component_sha="$(sha256sum "$tmp/windows-dj-studio-20261016.php" | cut -d' ' -f1)"
-          python3 scripts/publish-studio141-catalog.py "$tmp"
-          php -l "$tmp/family-installaties.php"
-          php -l "$tmp/windows-dj-studio-20261016.php"
-          for file in family-installaties.php windows-dj-studio-20261016.php; do
-           scpdo "$tmp/$file" "$remote:.studio141-release-20261021/$file.next"
-          done
-          sshdo "bash -s -- '$family_sha' '$component_sha'" <<'REMOTE'
-          set -Eeuo pipefail
-          expected_family="$1"; expected_component="$2"
-          dir="$HOME/dev.vanaggelen.com"
-          stage="$HOME/.studio141-release-20261021"
-          dest="$dir/downloads/studio/1.4.1"
-          manifest="$dir/updates/studio/latest.json"
-          test "$(sha256sum "$dir/family-installaties.php" | cut -d' ' -f1)" = "$expected_family"
-          test "$(sha256sum "$dir/windows-dj-studio-20261016.php" | cut -d' ' -f1)" = "$expected_component"
-          # Stop only a detached older invocation of this same exact Studio promotion.
-          while read -r oldpid; do
-           if test -n "$oldpid" && test "$oldpid" != "$"; then kill -TERM "$oldpid"; echo 'Stopped detached older Studio promotion'; fi
-          done < <(ps -u "$(id -u)" -o pid=,args= | awk -v f="$expected_family" -v c="$expected_component" '$2=="bash" && $3=="-s" && $4=="--" && $5==f && $6==c {print $1}')
-          auth_sha="$(sha256sum "$dir/.htaccess" | cut -d' ' -f1)"
-          for attempt in $(seq 1 240); do
-           if test "$(stat -c %s "$stage/Portable.part" 2>/dev/null || true)" = "100175661" && test "$(stat -c %s "$stage/Setup.part" 2>/dev/null || true)" = "100400711"; then break; fi
-           if test "$attempt" = 240; then echo 'Upload not complete; no publication performed'; exit 1; fi
-           if test "$((attempt % 6))" = 1; then echo "Waiting for complete artifact transfer: Portable $(stat -c %s "$stage/Portable.part" 2>/dev/null || true), Setup $(stat -c %s "$stage/Setup.part" 2>/dev/null || true)"; fi
-           sleep 5
-          done
-          printf '%s  %s\n' '082f1367e72ed1b5895a97a64bff08af4a37a91164a3ce3dbab257ff5d0a14ad' "$stage/Portable.part" 'd017f931231ad4be7215c47390cc9308c1334875b2c4b46b10affa438c67bdf9' "$stage/Setup.part" | sha256sum -c -
-          test "$(stat -c %s "$stage/Portable.part")" = "100175661"
-          test "$(stat -c %s "$stage/Setup.part")" = "100400711"
-          for file in family-installaties.php windows-dj-studio-20261016.php; do php -l "$stage/$file.next"; done
-          test "$(sha256sum "$dir/family-installaties.php" | cut -d' ' -f1)" = "$expected_family"
-          test "$(sha256sum "$dir/windows-dj-studio-20261016.php" | cut -d' ' -f1)" = "$expected_component"
-          test ! -e "$dest"
-          test ! -e "$manifest"
-          mkdir -p "$HOME/.the-one-remote-backups"
-          backup="$(mktemp -d "$HOME/.the-one-remote-backups/studio141-20261021.XXXXXXXX")"
-          cp -p "$dir/family-installaties.php" "$dir/windows-dj-studio-20261016.php" "$backup/"
-          sha256sum "$backup/family-installaties.php" "$backup/windows-dj-studio-20261016.php" > "$backup/SHA256SUMS-before.txt"
-          mkdir -p "$dest" "$(dirname "$manifest")"
-          rollback() {
-           cp -p "$backup/family-installaties.php" "$dir/family-installaties.php"
-           cp -p "$backup/windows-dj-studio-20261016.php" "$dir/windows-dj-studio-20261016.php"
-           rm -f "$manifest"
-           if test -d "$dest"; then mv "$dest" "$backup/failed-release"; fi
-           echo 'ROLLBACK: previous Studio catalogue restored'
-          }
-          trap rollback ERR
-          cp "$stage/Portable.part" "$dest/The-One-Music-Studio-1.4.1-Portable.exe"
-          cp "$stage/Setup.part" "$dest/The-One-Music-Studio-1.4.1-Setup.exe"
-          cp -p "$dir/.htaccess" "$dest/.htaccess"
-          chmod 644 "$dest/"*.exe
-          (cd "$dest"; sha256sum *.exe > SHA256SUMS.txt)
-          cat > "$manifest.next" <<'JSON'
-          {
-            "appId": "com.theone.musicstudio",
-            "version": "1.4.1",
-            "platform": "win32",
-            "arch": "x64",
-            "downloadUrl": "https://dev.rubenvanaggelen.com/downloads/studio/1.4.1/The-One-Music-Studio-1.4.1-Setup.exe",
-            "sha256": "d017f931231ad4be7215c47390cc9308c1334875b2c4b46b10affa438c67bdf9",
-            "size": 100400711,
-            "portableUrl": "https://dev.rubenvanaggelen.com/downloads/studio/1.4.1/The-One-Music-Studio-1.4.1-Portable.exe",
-            "portableSha256": "082f1367e72ed1b5895a97a64bff08af4a37a91164a3ce3dbab257ff5d0a14ad",
-            "portableSize": 100175661,
-            "notes": "The One Music Studio 1.4.1 voor Windows. Setup en Portable, met toegang via The One Main en behoud van bestaande Studio-projecten en instellingen.",
-            "authenticode": "unsigned",
-            "publishedAt": "2026-10-21"
-          }
-          JSON
-          php -r 'json_decode(file_get_contents($argv[1]),true,512,JSON_THROW_ON_ERROR);' "$manifest.next"
-          mv "$manifest.next" "$manifest"
-          for file in family-installaties.php windows-dj-studio-20261016.php; do
-           cp "$stage/$file.next" "$dir/$file.studio141-next"
-           chmod --reference="$dir/$file" "$dir/$file.studio141-next"
-           mv "$dir/$file.studio141-next" "$dir/$file"
-           php -l "$dir/$file"
-          done
-          php "$dir/family-installaties.php" > "$stage/family-rendered.html"
-          php "$dir/windows-dj-studio-20261016.php" > "$stage/builds-component-rendered.html"
-          for kind in Portable Setup; do
-           grep -q "downloads/studio/1.4.1/The-One-Music-Studio-1.4.1-$kind.exe" "$stage/family-rendered.html"
-           grep -q "downloads/studio/1.4.1/The-One-Music-Studio-1.4.1-$kind.exe" "$stage/builds-component-rendered.html"
-          done
-          test "$(sha256sum "$dir/.htaccess" | cut -d' ' -f1)" = "$auth_sha"
-          (cd "$dest"; sha256sum -c SHA256SUMS.txt)
-          # This exact release download directory uses the existing Dev Hub password protection.
-          for kind in Portable Setup; do
-           status="$(curl -sS -o /dev/null -w '%{http_code}' -I "https://dev.rubenvanaggelen.com/downloads/studio/1.4.1/The-One-Music-Studio-1.4.1-$kind.exe")"
-           test "$status" = 401
-          done
-          rm -f "$dir/studio141-transfer-20261021/receive.php" "$dir/studio141-transfer-20261021/.htaccess"
-          rmdir "$dir/studio141-transfer-20261021"
-          trap - ERR
-          cp "$manifest" "$backup/release.json"
-          echo "STUDIO 1.4.1 PUBLISHED: Setup and Portable with verified SHA-256"
-          echo "Protected Dev Hub downloads return HTTP 401 without login, as expected"
-          echo "Catalog: https://dev.rubenvanaggelen.com/family-installaties.php"
-          echo "Builds component: two Studio 1.4.1 download links rendered"
-          echo "Rollback backup: $backup"
-          cat "$dest/SHA256SUMS.txt"
+          sshdo 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo 'CURRENT RELEASE UPLOAD FILES'
+          ls -l "$HOME/.studio141-release-20261021"
+          echo 'RUNNING SHELL INVOCATIONS'
+          ps -u "$(id -u)" -o pid=,ppid=,args= | grep '[b]ash -s' || true
+          echo 'LIVE RELEASE STATE'
+          ls -ld "$HOME/dev.vanaggelen.com/downloads/studio/1.4.1" "$HOME/dev.vanaggelen.com/updates/studio/latest.json" 2>/dev/null || true
+          echo 'READ-ONLY INSPECTION COMPLETE'
           REMOTE
