@@ -30,7 +30,8 @@ function posDrawCart(){
    '<div class="pos-qty-controls"><button type="button" class="gray" aria-label="Minder '+esc(p.name)+'" onclick="posChange('+i+',-1)">−</button>'+
    '<span>'+q+'</span><button type="button" class="gray" aria-label="Meer '+esc(p.name)+'" onclick="posChange('+i+',1)">+</button></div></div>';
  }).join(''):'<div class="hint">Nog geen gerechten geselecteerd.</div>';
- document.getElementById('posTotal').textContent=money(posTotalCents()/100);
+ document.getElementById('posTotal').textContent=document.getElementById('posPayment').value==='free'?money(0):money(posTotalCents()/100);
+ document.getElementById('posFreeOriginal').textContent=money(posTotalCents()/100);
  document.getElementById('posSubmit').disabled=posState.submitting||!lines.length;
 }
 function posAdd(index){posChange(index,1)}
@@ -45,30 +46,45 @@ function posClear(){
  if(posState.submitting)return;
  posState.quantities={};posState.requestId=null;
  document.getElementById('posMessage').textContent='';
+ document.getElementById('posFreeName').value='';
+ document.getElementById('posPayment').value='later';
+ posPaymentChanged();
  posDrawCart();
 }
 function posId(){
  const random=typeof crypto!=='undefined'&&crypto.randomUUID?crypto.randomUUID():String(Date.now())+'-'+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2);
  return 'cashier-'+random;
 }
+function posPaymentChanged(){
+ const free=document.getElementById('posPayment').value==='free';
+ document.getElementById('posFreeDetails').hidden=!free;
+ document.getElementById('posFreeName').required=free;
+ posState.requestId=null;
+ posDrawCart();
+}
 async function posSave(){
  if(posState.submitting||!posTotalCents())return;
  const pay=document.getElementById('posPayment').value;
- const customer=document.getElementById('posCustomer').value.trim().slice(0,80)||'Balie';
+ const freeName=pay==='free'?document.getElementById('posFreeName').value.trim():'';
+ if(pay==='free'&&!freeName){document.getElementById('posMessage').textContent='Vul in voor wie de bestelling gratis is.';document.getElementById('posFreeName').focus();return;}
+ const customer=document.getElementById('posCustomer').value.trim().slice(0,80)||(pay==='free'?freeName:'Balie');
  const total=money(posTotalCents()/100);
- if(!confirm('Bestelling voor '+customer+' toevoegen?\nTotaal: '+total+'\nBetaalkeuze: '+document.getElementById('posPayment').selectedOptions[0].textContent))return;
+ const amount=pay==='free'?money(0):total;
+ if(!confirm('Bestelling voor '+customer+' toevoegen?\nTe betalen: '+amount+(pay==='free'?'\nOorspronkelijke waarde: '+total+'\nGratis voor: '+freeName:'')+'\nBetaalkeuze: '+document.getElementById('posPayment').selectedOptions[0].textContent))return;
  if(!posState.requestId)posState.requestId=posId();
  const requestId=posState.requestId;
  const message=document.getElementById('posMessage'),submit=document.getElementById('posSubmit');
  posState.submitting=true;submit.disabled=true;message.className='pos-status hint';message.textContent='Bestelling wordt opgeslagen…';
  try{
   const response=await api('business_create_order','POST',{
-    request_id:requestId,customer,payment:pay,items:Object.assign({},posState.quantities)
+    request_id:requestId,customer,payment:pay,free_name:freeName,items:Object.assign({},posState.quantities)
   });
   // Success, including a replay after a lost response. Never submit the same order twice.
   posState.quantities={};posState.requestId=null;
   document.getElementById('posCustomer').value='';
   document.getElementById('posPayment').value='later';
+  document.getElementById('posFreeName').value='';
+  posPaymentChanged();
   message.className='pos-status ok';
   message.textContent='Bestelling #'+response.order.id+' opgeslagen ✓'+(response.existing?' (al eerder verwerkt)':'');
   await sync();
@@ -77,4 +93,8 @@ async function posSave(){
   message.className='pos-status error';message.textContent='Niet bevestigd: '+err.message+' — probeer opnieuw (zonder dubbele bestelling).';
  }finally{posState.submitting=false;posDrawCart()}
 }
+document.getElementById('posPayment').addEventListener('change',posPaymentChanged);
+document.getElementById('posCustomer').addEventListener('input',()=>{posState.requestId=null});
+document.getElementById('posFreeName').addEventListener('input',()=>{posState.requestId=null});
+posPaymentChanged();
 posDraw();
