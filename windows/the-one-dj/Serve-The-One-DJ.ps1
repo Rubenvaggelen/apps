@@ -329,7 +329,8 @@ function Convert-LocalDjWma($ctx){
       }
     }finally{$dest.Dispose()}
     if($amount -lt 16 -or ($length -gt 0 -and $amount -ne $length)){JsonResponse $ctx @{error='incomplete WMA upload'} 400;return}
-    $magic=[IO.File]::ReadAllBytes($input)[0..3]
+    $readHeader=[IO.File]::OpenRead($input)
+    try{$magic=New-Object byte[] 4;[void]$readHeader.Read($magic,0,4)}finally{$readHeader.Dispose()}
     if($magic[0] -ne 0x30 -or $magic[1] -ne 0x26 -or $magic[2] -ne 0xB2 -or $magic[3] -ne 0x75){
       JsonResponse $ctx @{error='not WMA/ASF audio'} 415;return
     }
