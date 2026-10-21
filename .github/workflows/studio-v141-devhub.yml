@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Inspect current Studio links and protected download layout
+      - name: Reset only incomplete files from this release transfer
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -39,15 +39,8 @@ jobs:
           
           sshdo 'bash -s' <<'REMOTE'
           set -euo pipefail
-          dir="$HOME/dev.vanaggelen.com"
-          echo 'CURRENT WINDOWS DOWNLOAD COMPONENT'
-          cat "$dir/windows-dj-studio-20261016.php"
-          echo 'CURRENT FAMILY CATALOG TOP'
-          head -45 "$dir/family-installaties.php"
-          echo 'UPDATES EXISTING FILES'
-          find "$dir/updates" -maxdepth 2 -type f -name '.htaccess' -o -path '*/studio/*' 2>/dev/null || true
-          echo 'DOCUMENT ROOT AUTH'
-          cat "$dir/.htaccess" | sed -E 's/^(AuthUserFile|AuthGroupFile).*/\1 [redacted]/'
-          echo 'CHUNK UPLOAD PROGRESS'
-          ls -lh "$HOME/.studio141-release-20261021"
+          stage="$HOME/.studio141-release-20261021"
+          test -d "$stage"
+          rm -f "$stage/Portable.part" "$stage/Setup.part"
+          echo 'READY: superseded incomplete uncompressed transfers cleared'
           REMOTE
