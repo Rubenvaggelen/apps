@@ -315,7 +315,7 @@ function Convert-LocalDjWma($ctx){
   [void](New-Item -ItemType Directory -Path $cache -Force)
   $id=[guid]::NewGuid().ToString('N')
   $input=Join-Path $cache ($id+'.wma')
-  $output=Join-Path $cache ($id+'.wav')
+  $output=Join-Path $cache ($id+'.mp3')
   $err=Join-Path $cache ($id+'.stderr.log')
   try{
     $amount=[int64]0
@@ -336,7 +336,7 @@ function Convert-LocalDjWma($ctx){
     }
     $psi=New-Object Diagnostics.ProcessStartInfo
     $psi.FileName=$command.Source
-    $psi.Arguments='-hide_banner -loglevel error -nostdin -y -protocol_whitelist file,pipe -i "'+$input+'" -map 0:a:0 -vn -sn -dn -ac 2 -ar 44100 -c:a pcm_s16le -fs '+$maxOutput+' -f wav "'+$output+'"'
+    $psi.Arguments='-hide_banner -loglevel error -nostdin -y -protocol_whitelist file,pipe -i "'+$input+'" -map 0:a:0 -vn -sn -dn -ac 2 -ar 44100 -c:a libmp3lame -b:a 192k -fs '+$maxOutput+' -f wav "'+$output+'"'
     $psi.UseShellExecute=$false
     $psi.CreateNoWindow=$true
     $psi.RedirectStandardError=$true
@@ -353,9 +353,9 @@ function Convert-LocalDjWma($ctx){
       }
     }finally{$proc.Dispose()}
     $wav=[IO.FileInfo]$output
-    if($wav.Length -lt 44 -or $wav.Length -ge $maxOutput){JsonResponse $ctx @{error='decoded WMA exceeds safe limit'} 413;return}
+    if($wav.Length -lt 128 -or $wav.Length -ge $maxOutput){JsonResponse $ctx @{error='decoded WMA exceeds safe limit'} 413;return}
     $ctx.Response.StatusCode=200
-    $ctx.Response.ContentType='audio/wav'
+    $ctx.Response.ContentType='audio/mpeg'
     $ctx.Response.Headers['Cache-Control']='no-store'
     $ctx.Response.Headers['X-Content-Type-Options']='nosniff'
     $ctx.Response.ContentLength64=$wav.Length
