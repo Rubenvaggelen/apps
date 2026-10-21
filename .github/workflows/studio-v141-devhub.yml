@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Prepare bounded authenticated Windows artifact transfer
+      - name: Inspect current Studio links and protected download layout
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -37,54 +37,17 @@ jobs:
           sshdo() { ssh -p "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=20 "$remote" "$@"; }
           scpdo() { scp -O -P "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=20 "$@"; }
           
-          cat > "$tmp/receive.php" <<'PHP'
-          <?php
-          declare(strict_types=1);
-          header('Content-Type: application/json');
-          header('Cache-Control: no-store');
-          function fail(int $code,string $msg): never {http_response_code($code);echo json_encode(['error'=>$msg]);exit;}
-          if(time()>filemtime(__FILE__)+5400)fail(410,'expired');
-          if(!hash_equals('9e9c0e63f35e75dae7154883a32973a4fb176662bd7037bdf38df2b58211adaa',hash('sha256',$_SERVER['HTTP_X_STUDIO_UPLOAD']??'')))fail(403,'forbidden');
-          if($_SERVER['REQUEST_METHOD']!=='POST')fail(405,'POST required');
-          $kind=$_GET['kind']??'';
-          $expected=['Portable'=>386523633,'Setup'=>387457413];
-          if(!isset($expected[$kind]))fail(400,'kind');
-          $offset=filter_var($_GET['offset']??null,FILTER_VALIDATE_INT);
-          if($offset===false||$offset===null||$offset<0)fail(400,'offset');
-          $root=dirname(__DIR__,2).'/.studio141-release-20261021';
-          $f=fopen($root.'/'.$kind.'.part','c+b');
-          if(!$f||!flock($f,LOCK_EX))fail(500,'lock');
-          $len=fstat($f)['size'];
-          $body=file_get_contents('php://input',false,null,0,4194305);
-          if($body===false||strlen($body)<1||strlen($body)>4194304)fail(400,'chunk');
-          if($offset+strlen($body)>$expected[$kind])fail(413,'size');
-          if($len===$offset){
-           fseek($f,0,SEEK_END);if(fwrite($f,$body)!==strlen($body))fail(500,'write');fflush($f);$len+=strlen($body);
-          }elseif($offset+strlen($body)<=$len){
-           fseek($f,$offset);if(!hash_equals($body,fread($f,strlen($body))))fail(409,'retry mismatch');
-          }else fail(409,'offset mismatch');
-          flock($f,LOCK_UN);fclose($f);
-          echo json_encode(['bytes'=>$len,'total'=>$expected[$kind]]);
-          PHP
-          php -l "$tmp/receive.php"
           sshdo 'bash -s' <<'REMOTE'
           set -euo pipefail
           dir="$HOME/dev.vanaggelen.com"
-          test -f "$dir/family-installaties.php"
-          test "$(df -Pk "$HOME" | awk 'NR==2 {print $4}')" -gt 1800000
-          mkdir -p "$HOME/.studio141-release-20261021"
-          chmod 700 "$HOME/.studio141-release-20261021"
-          test ! -e "$dir/studio141-transfer-20261021"
-          mkdir "$dir/studio141-transfer-20261021"
-          printf 'AuthType None\nRequire all granted\nOptions -Indexes\n' > "$dir/studio141-transfer-20261021/.htaccess"
-          echo 'LIVE STUDIO CATALOG:'
-          grep -in -C 5 'studio' "$dir/family-installaties.php" || true
-          echo 'LIVE STUDIO BUILD LINKS:'
-          grep -in -C 2 'studio' "$dir/builds.php" || true
-          echo 'EXISTING STUDIO UPDATE FEED:'
-          if test -f "$dir/updates/studio/latest.json"; then cat "$dir/updates/studio/latest.json"; fi
+          echo 'CURRENT WINDOWS DOWNLOAD COMPONENT'
+          cat "$dir/windows-dj-studio-20261016.php"
+          echo 'CURRENT FAMILY CATALOG TOP'
+          head -45 "$dir/family-installaties.php"
+          echo 'UPDATES EXISTING FILES'
+          find "$dir/updates" -maxdepth 2 -type f -name '.htaccess' -o -path '*/studio/*' 2>/dev/null || true
+          echo 'DOCUMENT ROOT AUTH'
+          cat "$dir/.htaccess" | sed -E 's/^(AuthUserFile|AuthGroupFile).*/\1 [redacted]/'
+          echo 'CHUNK UPLOAD PROGRESS'
+          ls -lh "$HOME/.studio141-release-20261021"
           REMOTE
-          scpdo "$tmp/receive.php" "$remote:dev.vanaggelen.com/studio141-transfer-20261021/receive.php"
-          code="$(curl -sS -o /dev/null -w '%{http_code}' https://dev.rubenvanaggelen.com/studio141-transfer-20261021/receive.php)"
-          test "$code" = 403
-          echo 'READY: upload route accepts only the private one-time token; files remain outside document root'
