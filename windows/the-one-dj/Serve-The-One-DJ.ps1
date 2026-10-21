@@ -1,6 +1,6 @@
-param([int]$Port=18765)
+param([int]$Port=18765,[string]$AppRoot='')
 $ErrorActionPreference='Stop'
-$root=Join-Path $env:LOCALAPPDATA 'Programs\The One Family\The One DJ\app'
+$root=if($AppRoot){[IO.Path]::GetFullPath($AppRoot)}else{Join-Path $env:LOCALAPPDATA 'Programs\The One Family\The One DJ\app'}
 $imports=Join-Path $root 'imports'
 $prefix="http://127.0.0.1:$Port/"
 $listener=[System.Net.HttpListener]::new()
@@ -296,10 +296,83 @@ function SharedFile($ctx){
   }finally{$response.Close();$ctx.Response.Close()}
 }
 
+
+# Decode WMA exclusively on loopback. Never rewrite source tracks or import paths.
+function Convert-LocalDjWma($ctx){
+  $origin=[string]$ctx.Request.Headers['Origin']
+  $expected="http://127.0.0.1:$Port"
+  if($origin -ne '' -and $origin -ne $expected){JsonResponse $ctx @{error='origin not permitted'} 403;return}
+  $length=[int64]$ctx.Request.ContentLength64
+  $maxInput=256L*1024*1024
+  $maxOutput=512L*1024*1024
+  if($length -eq 0 -or $length -gt $maxInput){JsonResponse $ctx @{error='invalid WMA length'} 413;return}
+  if(!([string]$ctx.Request.ContentType).StartsWith('application/octet-stream',[StringComparison]::OrdinalIgnoreCase)){
+    JsonResponse $ctx @{error='unexpected media type'} 415;return
+  }
+  $command=Get-Command ffmpeg.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+  if(!$command){JsonResponse $ctx @{error='FFmpeg missing on this Windows computer'} 503;return}
+  $cache=Join-Path ([IO.Path]::GetTempPath()) 'TheOneDJ-Decode'
+  [void](New-Item -ItemType Directory -Path $cache -Force)
+  $id=[guid]::NewGuid().ToString('N')
+  $input=Join-Path $cache ($id+'.wma')
+  $output=Join-Path $cache ($id+'.wav')
+  $err=Join-Path $cache ($id+'.stderr.log')
+  try{
+    $amount=[int64]0
+    $dest=[IO.File]::Open($input,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+    try{
+      $buf=New-Object byte[] 65536
+      while(($count=$ctx.Request.InputStream.Read($buf,0,$buf.Length)) -gt 0){
+        $amount+=$count
+        if($amount -gt $maxInput){JsonResponse $ctx @{error='WMA too large'} 413;return}
+        $dest.Write($buf,0,$count)
+      }
+    }finally{$dest.Dispose()}
+    if($amount -lt 16 -or ($length -gt 0 -and $amount -ne $length)){JsonResponse $ctx @{error='incomplete WMA upload'} 400;return}
+    $magic=[IO.File]::ReadAllBytes($input)[0..3]
+    if($magic[0] -ne 0x30 -or $magic[1] -ne 0x26 -or $magic[2] -ne 0xB2 -or $magic[3] -ne 0x75){
+      JsonResponse $ctx @{error='not WMA/ASF audio'} 415;return
+    }
+    $psi=New-Object Diagnostics.ProcessStartInfo
+    $psi.FileName=$command.Source
+    $psi.Arguments='-hide_banner -loglevel error -nostdin -y -protocol_whitelist file,pipe -i "'+$input+'" -map 0:a:0 -vn -sn -dn -ac 2 -ar 44100 -c:a pcm_s16le -fs '+$maxOutput+' -f wav "'+$output+'"'
+    $psi.UseShellExecute=$false
+    $psi.CreateNoWindow=$true
+    $psi.RedirectStandardError=$true
+    $proc=[Diagnostics.Process]::Start($psi)
+    try{
+      $stderrTask=$proc.StandardError.ReadToEndAsync()
+      if(!$proc.WaitForExit(120000)){
+        $proc.Kill()
+        JsonResponse $ctx @{error='WMA decoder timed out'} 504;return
+      }
+      [void]$stderrTask.GetAwaiter().GetResult()
+      if($proc.ExitCode -ne 0 -or !(Test-Path -LiteralPath $output -PathType Leaf)){
+        JsonResponse $ctx @{error='WMA decoder rejected audio'} 422;return
+      }
+    }finally{$proc.Dispose()}
+    $wav=[IO.FileInfo]$output
+    if($wav.Length -lt 44 -or $wav.Length -ge $maxOutput){JsonResponse $ctx @{error='decoded WMA exceeds safe limit'} 413;return}
+    $ctx.Response.StatusCode=200
+    $ctx.Response.ContentType='audio/wav'
+    $ctx.Response.Headers['Cache-Control']='no-store'
+    $ctx.Response.Headers['X-Content-Type-Options']='nosniff'
+    $ctx.Response.ContentLength64=$wav.Length
+    $stream=[IO.File]::OpenRead($output)
+    try{$stream.CopyTo($ctx.Response.OutputStream)}finally{$stream.Dispose();$ctx.Response.Close()}
+  }finally{
+    foreach($p in @($input,$output,$err)){if(Test-Path -LiteralPath $p -PathType Leaf){Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue}}
+  }
+}
+
 while($listener.IsListening){
   try{
     $ctx=$listener.GetContext()
     $path=$ctx.Request.Url.AbsolutePath
+    if($ctx.Request.HttpMethod -eq 'POST' -and $path -eq '/decode-audio'){
+      try{Convert-LocalDjWma $ctx}catch{try{JsonResponse $ctx @{error='WMA preparation failed'} 503}catch{$ctx.Response.Close()}}
+      continue
+    }
     if($ctx.Request.HttpMethod -eq 'GET' -and $path -eq '/shared-media/inbox'){
       try{JsonResponse $ctx (DjInbox)}catch{JsonResponse $ctx @{error='DJ inbox unavailable'} 502}
       continue
