@@ -3,6 +3,7 @@ package com.vanaggelen.rutubusiness
 import android.app.Activity
 import android.app.AlertDialog
 import android.os.Bundle
+import android.content.res.Configuration
 import android.text.InputType
 import android.widget.EditText
 import android.widget.Toast
@@ -88,6 +89,13 @@ class MainActivity : Activity() {
             }
         }
         dialog.show()
+    }
+
+    // Keep the current authenticated Activity and WebView alive when the user
+    // rotates the phone. Do NOT persist businessUnlocked across app restarts.
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (::webView.isInitialized) webView.requestLayout()
     }
 
     @Deprecated("Deprecated in Android SDK")
