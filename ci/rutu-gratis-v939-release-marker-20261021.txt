@@ -1,0 +1,1 @@
+RUTU Bedrijf v939: Betaalwijze Gratis, verplicht veld Gratis voor (naam), nul verschuldigd, oorspronkelijke productwaarde in de administratie. Alleen bedrijfs-APK en geautoriseerde POS-API. Geïsoleerde testen plus ondertekende build geslaagd in GitHub Actions 39635724029. De productieserver moet op v938 staan. Wijzig geen Klant-app, QR-code, bestellingen of betaalprovider.
