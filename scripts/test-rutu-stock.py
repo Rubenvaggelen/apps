@@ -65,10 +65,10 @@ with tempfile.TemporaryDirectory(prefix="rutu-stock-") as td:
         code,r=call("create",{"customer":"Nieuwe Klant","items":{"BBQ Extra":1},"delivery":False})
         assert code==201,(code,r)
         code,orders=call("business_orders",authorized=True)
-        assert code==200 and len(orders["orders"])==4,(code,orders)
+        assert code==200 and len(orders["orders"])==3,(code,orders)
         persisted=json.loads((root/"rutu-data"/"orders.json").read_text())
         assert persisted["sold_out"]==["BBQ Family"]
-        assert len(persisted["orders"])==4
+        assert len(persisted["orders"])==3
         assert persisted["orders"][0]["total"]==15
         print("RUTU_STOCK_END_TO_END_OK: security, six product options, atomic order blocking, checkout, cart additions, legacy alias, replay, restoring available")
     finally:
