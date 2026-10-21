@@ -29,3 +29,16 @@
 .pos-free-details{display:grid;gap:8px;background:#241b10;border:1px solid #987132;border-radius:12px;padding:12px}
 .pos-free-details[hidden]{display:none!important}
 .pos-free-details .hint{margin:0}
+
+/* Rutu Uitverkocht beheer */
+.pos-stock-controls{display:grid;grid-template-columns:repeat(auto-fill,minmax(275px,1fr));gap:10px}
+.pos-stock-line{display:flex;gap:12px;justify-content:space-between;align-items:center;background:#17130e;border:1px solid #66502d;border-radius:12px;padding:12px}
+.pos-stock-line strong,.pos-stock-line small{display:block}
+.pos-stock-line strong{font-size:14px}
+.pos-stock-line small{font-size:12px;margin-top:5px;font-weight:700}
+.pos-available-state{color:#9fe6b0}
+.pos-sold-state{color:#ffc0aa}
+.pos-stock-line button{min-width:135px}
+.pos-product-sold{opacity:.72}
+.pos-product-sold .pos-add{background:#56382b;color:#ffcdac}
+.pos-product .pos-add:disabled{cursor:not-allowed;opacity:.75}
