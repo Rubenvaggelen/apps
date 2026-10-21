@@ -1,0 +1,1 @@
+Productieuitrol alleen Rutu Bedrijf v941 + API voor menubeschikbaarheid. Geïsoleerde tests en bouw groen GitHub Actions 39642060085. Start met v940, backup plus rollback. Bewaak originele klant APK checksum; geen orders/betalingen wijzigen.
