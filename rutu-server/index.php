@@ -370,6 +370,8 @@ function clean_order_for_business(array $order): array {
     $out = clean_order_for_customer($order, false);
     $out['payment_phone'] = (string)($order['payment_phone'] ?? '');
     $out['payment_reference'] = (string)($order['payment_request_token'] ?? '');
+    $out['free_name'] = (string)($order['free_name'] ?? '');
+    $out['original_total'] = (float)($order['original_total'] ?? $order['total']);
     $out['source'] = (string)($order['source'] ?? 'Klantapp');
     $out['history_hidden'] = (bool)($order['history_hidden'] ?? false);
     $out['history_cleared'] = (bool)($order['history_cleared'] ?? false);
@@ -849,12 +851,19 @@ if ($action === 'business_create_order') {
     $customer = trim((string)($body['customer'] ?? 'Balie'));
     $customer = mb_substr($customer === '' ? 'Balie' : $customer, 0, 80);
     $payment = strtolower(trim((string)($body['payment'] ?? 'later')));
-    if (!in_array($payment, ['later', 'cash', 'pin'], true)) {
+    $freeName = '';
+    if ($payment === 'free') {
+        $freeName = trim((string)($body['free_name'] ?? ''));
+        if ($freeName === '' || mb_strlen($freeName) > 80 || preg_match('/[\\x00-\\x1F\\x7F]/u', $freeName)) {
+            respond(400, ['ok' => false, 'error' => "Vul een geldige naam in voor de gratis bestelling.\nEnter a valid recipient name for the free order."]);
+        }
+    }
+    if (!in_array($payment, ['later', 'cash', 'pin', 'free'], true)) {
         respond(400, ['ok' => false, 'error' => "Ongeldige betaalkeuze.\nInvalid payment selection."]);
     }
     // Existing orders are idempotently returned if a response was lost and the cashier retries.
     // The DB/state file is locked while checking and adding the order.
-    $result = with_state($stateFile, true, function (&$state) use ($requestId, $items, $total, $customer, $payment) {
+    $result = with_state($stateFile, true, function (&$state) use ($requestId, $items, $total, $customer, $payment, $freeName) {
         foreach ($state['orders'] as $previous) {
             if (($previous['pos_request_id'] ?? '') === $requestId) {
                 return ['order' => $previous, 'existing' => true];
@@ -863,11 +872,14 @@ if ($action === 'business_create_order') {
         $id = max(1046, (int)$state['next_id']);
         $state['next_id'] = $id + 1;
         $created = time();
-        $method = $payment === 'cash' ? 'Cash' : ($payment === 'pin' ? 'Pin' : 'Later');
+        $method = $payment === 'cash' ? 'Cash' : ($payment === 'pin' ? 'Pin' : ($payment === 'free' ? 'Gratis' : 'Later'));
+        $chargedTotal = $payment === 'free' ? 0.0 : $total;
         $order = [
             'id' => $id,
             'items' => $items,
-            'total' => $total,
+            'total' => $chargedTotal,
+            'original_total' => $total,
+            'free_name' => $freeName,
             'status' => 'Nieuw',
             'customer' => $customer,
             'delivery' => false,
@@ -877,7 +889,7 @@ if ($action === 'business_create_order') {
             'payment_method' => $method,
             'payment_phone' => '',
             // Cashier records a received cash/PIN payment; no bank payment is initiated here.
-            'payment_status' => $payment === 'later' ? 'Openstaand' : 'Ontvangen aan kassa',
+            'payment_status' => $payment === 'free' ? 'Gratis verstrekt' : ($payment === 'later' ? 'Openstaand' : 'Ontvangen aan kassa'),
             'payment_url' => '',
             'payment_request_token' => '',
             'created' => gmdate('c', $created),
