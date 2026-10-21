@@ -336,7 +336,7 @@ function Convert-LocalDjWma($ctx){
     }
     $psi=New-Object Diagnostics.ProcessStartInfo
     $psi.FileName=$command.Source
-    $psi.Arguments='-hide_banner -loglevel error -nostdin -y -protocol_whitelist file,pipe -i "'+$input+'" -map 0:a:0 -vn -sn -dn -ac 2 -ar 44100 -c:a libmp3lame -b:a 192k -fs '+$maxOutput+' -f wav "'+$output+'"'
+    $psi.Arguments='-hide_banner -loglevel error -nostdin -y -protocol_whitelist file,pipe -i "'+$input+'" -map 0:a:0 -vn -sn -dn -ac 2 -ar 44100 -c:a libmp3lame -b:a 192k -fs '+$maxOutput+' -f mp3 "'+$output+'"'
     $psi.UseShellExecute=$false
     $psi.CreateNoWindow=$true
     $psi.RedirectStandardError=$true
