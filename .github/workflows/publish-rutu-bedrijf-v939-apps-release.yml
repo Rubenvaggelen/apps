@@ -1,0 +1,54 @@
+name: Publish Rutu Bedrijf v939 APK to Apps releases
+on:
+  push:
+    branches: [feature/rutu-bedrijf-gratis-betaling-v939-20261021]
+    paths: [.github/workflows/publish-rutu-bedrijf-v939-apps-release.yml]
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: rutu-bedrijf-v939-apps-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: rutu-bedrijf-gratis-v939-candidate
+          run-id: 39635724029
+          github-token: ${{ github.token }}
+          path: /tmp/rutu-v939-build
+      - name: Verify production-identical signed APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=/tmp/rutu-v939-build/rutubusinessandroid-debug.apk
+          test -s "$apk"
+          expected=ea4e7efe647a666b5b3b5f0137b660d2ae4b2e8d7f15c28266760b3272a12eb0
+          test "$(sha256sum "$apk" | awk '{print $1}')" = "$expected" || { echo 'Artifact differs from the live validated Business v939 APK'; exit 1; }
+          live="$(curl -fLsS --retry 3 --max-time 100 https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Bedrijf-Android.apk | sha256sum | awk '{print $1}')"
+          test "$live" = "$expected" || { echo 'Live APK changed since v939 verification; stop'; exit 1; }
+          cp "$apk" ./RUTU-Bedrijf-v939-Gratis-Naam.apk
+          ls -lh ./RUTU-Bedrijf-v939-Gratis-Naam.apk
+          echo 'APK_VERIFIED_IDENTICAL_TO_LIVE_V939'
+      - name: Release only Rutu Bedrijf to Apps
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: rutu-bedrijf-v939
+          target_commitish: feature/rutu-bedrijf-gratis-betaling-v939-20261021
+          name: Rutu Bedrijf v939 - Gratis met naam
+          make_latest: false
+          prerelease: false
+          body: |
+            Rutu Bedrijf Android v939 (ondertekende APK) - zelfstandig te downloaden.
+            Nieuw: Betaalwijze Gratis; verplicht naamveld "Gratis voor (naam)"; te betalen € 0,00 en oorspronkelijke productwaarde in het besteloverzicht.
+            Bestaand: Contant, PIN, Nog te betalen en Klantenbeheer.
+            Installeer over de bestaande Rutu Bedrijf-app; verwijder deze niet.
+            Deze release wijzigt of publiceert NIET de Rutu Klant-app, QR-code, bestellingen of betalingen.
+            APK is gecontroleerd tegen de succesvol gepubliceerde en ondertekende v939-liveversie.
+          files: RUTU-Bedrijf-v939-Gratis-Naam.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
