@@ -7,7 +7,7 @@ const posMenu=[
  {name:'Extra bout',price:6.00,desc:'Los bij te bestellen',photo:'menu_extra_bout.webp'},
  {name:'Extra salade',price:2.50,desc:'Los bij te bestellen',photo:'menu_extra_salade.webp'},
  {name:'Portie saté',price:7.00,desc:'Los bij te bestellen',photo:'menu_portie_sate.webp'},
- {name:'Rutu Spicy Wings',price:4.00,desc:'Pittig gegrilde kipvleugels',photo:''}
+ {name:'Rutu Spicy Wings',price:4.00,desc:'NIEUW · Pittig gegrilde kipvleugels',photo:'menu_rutu_spicy_wings.webp'}
 ];
 const posState={quantities:{},requestId:null,submitting:false};
 const posStock={sold:new Set(),loaded:false,busy:false,loading:false,lastLoaded:0};
