@@ -1,7 +1,7 @@
 {
-  "build": 240,
-  "version": "2.4.0",
-  "notes": "Independent Android DJ update discovery, in-app download and verified Android installation; correct Windows engine build number. Smart Auto DJ tempo and energy selection retained.",
+  "build": 241,
+  "version": "2.4.1",
+  "notes": "Windows DJ: WMA playback via loopback-only FFmpeg conversion to compact MP3. Source WMA unchanged. Android release unaffected.",
   "sha256": "",
   "files": [
     "Update-The-One-DJ.ps1",
