@@ -1,0 +1,73 @@
+name: Rutu Klant v938 - show sold-out dishes
+on:
+  push:
+    branches: [feature/rutu-uitverkocht-v941-20261021]
+    paths: [.github/workflows/rutu-customer-soldout-v938-candidate.yml]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Verify customer app stock render and prior API regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l rutu-server/index.php
+          python3 scripts/test-rutu-stock.py
+          python3 - <<'PY'
+          from pathlib import Path
+          src=Path('jadeorders/src/main/java/com/vanaggelen/jadeorders/MainActivity.kt').read_text()
+          assert 'soldOut: Set<String> = emptySet()' in src
+          assert 'obj.optJSONArray("sold_out")' in src
+          assert 'if (soldOut) label(' in src
+          assert 'if (name !in announcement.soldOut)' in src
+          assert 'val soldInCart = cart.keys.filter' in src
+          print('CUSTOMER_SOLD_OUT_VIEW_AND_CART_CONTRACT_OK')
+          PY
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+      - name: Use original RUTU Android signing key
+        shell: bash
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$DEBUG_KEYSTORE_BASE64"
+          install -d -m 0700 "$HOME/.android"
+          printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 -d > "$HOME/.android/debug.keystore"
+          chmod 0600 "$HOME/.android/debug.keystore"
+      - name: Compile only RUTU Klant v938
+        run: gradle :jadeorders:assembleDebug --no-daemon --no-build-cache -PappVersionCode=938
+      - name: Verify version, package and signing identity against current customer app
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=jadeorders/build/outputs/apk/debug/jadeorders-debug.apk
+          test -s "$apk"
+          sdk="$(find "$ANDROID_SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          signer="$sdk/apksigner"
+          aapt="$sdk/aapt"
+          "$aapt" dump badging "$apk" | grep -F "versionCode='938'"
+          "$aapt" dump badging "$apk" | grep -F "package: name='com.vanaggelen.jadeorders'"
+          curl -fLsS --max-time 90 'https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Android.apk' -o /tmp/rutu-customer-v937.apk
+          test "$(sha256sum /tmp/rutu-customer-v937.apk | awk '{print $1}')" = 60d606b73aa44e3610902aad37df0b5e5f077f79b699589fbbd88c3699da534e
+          "$aapt" dump badging /tmp/rutu-customer-v937.apk | grep -F "versionCode='937'"
+          "$signer" verify --print-certs "$apk" >/tmp/new-client-cert
+          "$signer" verify --print-certs /tmp/rutu-customer-v937.apk >/tmp/old-client-cert
+          old="$(sed -n 's/.*certificate SHA-256 digest: //p' /tmp/old-client-cert | head -1)"
+          new="$(sed -n 's/.*certificate SHA-256 digest: //p' /tmp/new-client-cert | head -1)"
+          test -n "$old" && test "$old" = "$new"
+          echo 'RUTU_CUSTOMER_V938_COMPATIBLE_SIGNING_OK'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rutu-klant-v938-uitverkocht-candidate
+          path: jadeorders/build/outputs/apk/debug/jadeorders-debug.apk
+          if-no-files-found: error
