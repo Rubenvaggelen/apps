@@ -6,7 +6,8 @@ const posMenu=[
  {name:'BBQ Family',price:25.00,desc:'3 bouten · 6 stokjes saté · 3 salades',photo:'menu_bbq_family.webp'},
  {name:'Extra bout',price:6.00,desc:'Los bij te bestellen',photo:'menu_extra_bout.webp'},
  {name:'Extra salade',price:2.50,desc:'Los bij te bestellen',photo:'menu_extra_salade.webp'},
- {name:'Portie saté',price:7.00,desc:'Los bij te bestellen',photo:'menu_portie_sate.webp'}
+ {name:'Portie saté',price:7.00,desc:'Los bij te bestellen',photo:'menu_portie_sate.webp'},
+ {name:'Rutu Spicy Wings',price:4.00,desc:'Pittig gegrilde kipvleugels',photo:''}
 ];
 const posState={quantities:{},requestId:null,submitting:false};
 const posStock={sold:new Set(),loaded:false,busy:false,loading:false,lastLoaded:0};
