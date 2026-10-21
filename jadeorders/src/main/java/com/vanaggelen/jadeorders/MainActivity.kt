@@ -54,7 +54,8 @@ class MainActivity : AppCompatActivity() {
         Product("BBQ Family", 25.00, "BBQ", "3 bouten • 6 stokjes saté • 3 salades", R.drawable.menu_bbq_family),
         Product("Extra bout", 6.00, "Extra's", "Los bij te bestellen", R.drawable.menu_extra_bout),
         Product("Extra salade", 2.50, "Extra's", "Los bij te bestellen", R.drawable.menu_extra_salade),
-        Product("Portie saté", 7.00, "Extra's", "Los bij te bestellen", R.drawable.menu_portie_sate)
+        Product("Portie saté", 7.00, "Extra's", "Los bij te bestellen", R.drawable.menu_portie_sate),
+        Product("Rutu Spicy Wings", 4.00, "Extra's", "Pittig gegrilde kipvleugels")
     )
     private val cart = linkedMapOf<String, Int>()
     private var deliverySelected = false
