@@ -1,0 +1,1 @@
+Rutu Klant v939: nieuw menu-item Rutu Spicy Wings EUR4 met gekozen afbeelding in donkere serveerschaal, onder Extra's. Groene Android build en handtekeningcontrole run 39648584847; Business v942 en nieuwe catalogus bevestigd live. Alleen klant-APK plus oorspronkelijke android.json bijwerken na exacte hash- en backupcontrole; QR en klantregistraties behouden.
