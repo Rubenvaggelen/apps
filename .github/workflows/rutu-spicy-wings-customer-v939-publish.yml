@@ -1,0 +1,91 @@
+name: Rutu Klant v939 - Spicy Wings
+on:
+  push:
+    branches: [feature/rutu-spicy-wings-eur4-20261021]
+    paths: [ci/rutu-spicy-wings-customer-v939-release-marker.txt]
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: rutu-customer-v939-spicy-wings
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify reviewed customer source, stock API and deployment guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --quiet 89eb4d0ff7f04ac2d005099b393fcbc1094e1aa7 HEAD -- jadeorders/src/main/java/com/vanaggelen/jadeorders/MainActivity.kt jadeorders/src/main/res/drawable-nodpi/menu_rutu_spicy_wings.webp
+          php -l rutu-server/index.php
+          bash -n ci/deploy-rutu-spicy-wings-customer-v939.sh
+      - uses: actions/download-artifact@v4
+        with:
+          name: rutu-klant-v939-spicy-wings-candidate
+          run-id: 39648584847
+          github-token: ${{ github.token }}
+          path: /tmp/rutu-client-v939
+      - name: Publish Customer v939 photo update only, keep Business v942 and backend unchanged
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for key in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS;do
+            test -n "$(printenv "$key")" || { echo "Missing deployment configuration: $key"; exit 1; }
+          done
+          apk=/tmp/rutu-client-v939/jadeorders-debug.apk
+          test -s "$apk"
+          new_sha="$(sha256sum "$apk" | awk '{print $1}')"
+          current="$(curl -fLsS --retry 2 --max-time 90 https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Android.apk | sha256sum | awk '{print $1}')"
+          test "$current" = '668651f13408998ab0a70a080c011f464faba3b3ae49019357d06d5a524ed53c' || { echo 'Customer v938 changed';exit 1; }
+          umask 077
+          d="$(mktemp -d)"
+          meta="$(mktemp)"
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$d" "$meta"' EXIT
+          printf '{"versionCode":939,"url":"https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Android.apk","sha256":"%s"}\n' "$new_sha" > "$meta"
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$d/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$d/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$d/askpass"
+          chmod 0600 "$d/key" "$d/known_hosts"
+          chmod 0700 "$d/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$d/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$d/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          opts=(-i "$d/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$d/known_hosts" -o ConnectTimeout=20)
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          stage="$(ssh -p "$DEPLOY_PORT" ${opts[@]} "$remote" 'mktemp -d "$HOME/.rutu-customer-spicy-939.XXXXXXXX"')"
+          scp -O -P "$DEPLOY_PORT" ${opts[@]} "$apk" "$remote:$stage/customer.apk"
+          scp -O -P "$DEPLOY_PORT" ${opts[@]} "$meta" "$remote:$stage/android.json"
+          ssh -p "$DEPLOY_PORT" ${opts[@]} "$remote" "bash -s -- '$stage' '$new_sha'" < ci/deploy-rutu-spicy-wings-customer-v939.sh
+          verified="$(curl -fLsS --retry 2 --max-time 90 https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Android.apk | sha256sum | awk '{print $1}')"
+          test "$verified" = "$new_sha"
+          curl -fsS --max-time 20 https://rubenvanaggelen.com/rutu-updates/android.json | python3 -c 'import json,sys;x=json.load(sys.stdin);assert x["versionCode"]==939'
+          cp "$apk" RUTU-Klant-v939-Spicy-Wings.apk
+          echo "Customer v939 Spicy Wings update live and compatible, original QR URL retained" >> "$GITHUB_STEP_SUMMARY"
+      - name: Add signed customer v938 to Apps releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: rutu-klant-v939-spicy-wings
+          target_commitish: feature/rutu-spicy-wings-eur4-20261021
+          name: Rutu Klant v939 - Rutu Spicy Wings
+          make_latest: false
+          prerelease: false
+          body: |
+            Rutu Klant Android v939: Rutu Spicy Wings voor EUR 4,00 met de gekozen productfoto, onder de categorie Extras.
+            Uitverkocht-beheer blijft behouden. De Rutu-server controleert de bestelprijs.
+            Originele registratie, QR-code, bedrijfsapp, betalingen en bestaande bestellingen blijven behouden.
+            Installeer over v938, verwijder de oude app niet.
+          files: RUTU-Klant-v939-Spicy-Wings.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
