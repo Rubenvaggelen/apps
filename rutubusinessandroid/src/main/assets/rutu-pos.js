@@ -9,6 +9,50 @@ const posMenu=[
  {name:'Portie saté',price:7.00,desc:'Los bij te bestellen',photo:'menu_portie_sate.webp'}
 ];
 const posState={quantities:{},requestId:null,submitting:false};
+const posStock={sold:new Set(),loaded:false,busy:false,loading:false,lastLoaded:0};
+function posSold(name){return posStock.sold.has(name)}
+function posDrawStock(){
+ const target=document.getElementById('posStockControls');
+ if(!target)return;
+ if(!posStock.loaded){target.textContent='Beschikbaarheid ophalen… Controleer de verbinding.';return}
+ target.innerHTML=posMenu.map((p,index)=>{
+  const sold=posSold(p.name);
+  return '<div class="pos-stock-line"><div><strong>'+esc(p.name)+'</strong><small class="'+(sold?'pos-sold-state':'pos-available-state')+'">'+(sold?'Uitverkocht':'Beschikbaar')+'</small></div>'+
+   '<button type="button" class="'+(sold?'green':'red')+'" aria-pressed="'+sold+'" '+(posStock.busy?'disabled':'')+' onclick="posToggleStock('+index+')">'+(sold?'Weer beschikbaar':'Uitverkocht zetten')+'</button></div>';
+ }).join('');
+}
+async function posRefreshStock(force=false){
+ if(posStock.loading||posStock.busy||(!force&&Date.now()-posStock.lastLoaded<12000)||!key())return;
+ posStock.loading=true;
+ try{
+  const r=await api('business_menu_stock');
+  if(!Array.isArray(r.sold_out)||!r.sold_out.every(n=>typeof n==='string'))throw Error('Ongeldige voorraadgegevens');
+  posStock.sold=new Set(r.sold_out);
+  posStock.loaded=true;posStock.lastLoaded=Date.now();
+  if(force)document.getElementById('posStockMessage').textContent='Voorraad bijgewerkt ✓';
+  posDrawStock();posDraw();posDrawCart();
+ }catch(e){
+  document.getElementById('posStockMessage').textContent='Voorraad ophalen mislukt: '+e.message;
+  posDrawStock();
+ }finally{posStock.loading=false}
+}
+async function posToggleStock(index){
+ if(!posStock.loaded||posStock.busy)return;
+ const p=posMenu[index];if(!p)return;
+ const before=posSold(p.name);
+ if(!confirm(p.name+(before?' weer beschikbaar maken?':' op UITVERKOCHT zetten?')))return;
+ posStock.busy=true;posDrawStock();
+ const msg=document.getElementById('posStockMessage');msg.textContent='Opslaan…';
+ try{
+  const r=await api('business_menu_stock','POST',{product:p.name,available:before});
+  if(!Array.isArray(r.sold_out))throw Error('Geen bevestiging ontvangen');
+  posStock.sold=new Set(r.sold_out);posStock.lastLoaded=Date.now();
+  posState.requestId=null;
+  msg.textContent=p.name+(before?' weer beschikbaar ✓':' uitverkocht ✓');
+ }catch(e){msg.textContent='Niet opgeslagen: '+e.message}
+ finally{posStock.busy=false;posDrawStock();posDraw();posDrawCart()}
+}
+
 const posImages=document.querySelector('header .brand-logo').getAttribute('src').replace(/rutu-logo\.png(?:\?.*)?$/,'menu/');
 function posTotalCents(){return posMenu.reduce((sum,p)=>sum+Math.round(p.price*100)*(posState.quantities[p.name]||0),0)}
 function posDraw(){
@@ -16,9 +60,10 @@ function posDraw(){
  if(!wrap||!cart)return;
  wrap.innerHTML=posMenu.map((p,i)=>{
   const visual=p.photo?'<img src="'+posImages+p.photo+'" alt="'+esc(p.name)+'" loading="lazy" decoding="async">':'<div class="pos-image-fallback" role="img" aria-label="'+esc(p.name)+'">🔥</div>';
-  return '<article class="pos-product">'+visual+'<div class="pos-product-name">'+esc(p.name)+'</div>'+
+  const sold=posSold(p.name),blocked=!posStock.loaded||sold;
+  return '<article class="pos-product'+(sold?' pos-product-sold':'')+'">'+visual+'<div class="pos-product-name">'+esc(p.name)+'</div>'+
    '<div class="pos-product-desc">'+esc(p.desc)+'</div><div class="pos-product-price">'+money(p.price)+'</div>'+
-   '<button type="button" class="gold pos-add" onclick="posAdd('+i+')">+ Toevoegen</button></article>';
+   '<button type="button" class="gold pos-add" '+(blocked?'disabled':'')+' onclick="posAdd('+i+')">'+(sold?'Uitverkocht':(!posStock.loaded?'Even laden…':'+ Toevoegen'))+'</button></article>';
  }).join('');
  posDrawCart();
 }
@@ -32,12 +77,12 @@ function posDrawCart(){
  }).join(''):'<div class="hint">Nog geen gerechten geselecteerd.</div>';
  document.getElementById('posTotal').textContent=document.getElementById('posPayment').value==='free'?money(0):money(posTotalCents()/100);
  document.getElementById('posFreeOriginal').textContent=money(posTotalCents()/100);
- document.getElementById('posSubmit').disabled=posState.submitting||!lines.length;
+ document.getElementById('posSubmit').disabled=posState.submitting||!lines.length||!posStock.loaded||lines.some(p=>posSold(p.name));
 }
 function posAdd(index){posChange(index,1)}
 function posChange(index,change){
  if(posState.submitting)return;
- const p=posMenu[index];if(!p)return;
+ const p=posMenu[index];if(!p||!posStock.loaded||posSold(p.name))return;
  const next=Math.min(25,Math.max(0,(posState.quantities[p.name]||0)+change));
  if(next)posState.quantities[p.name]=next;else delete posState.quantities[p.name];
  posState.requestId=null;posDrawCart();
@@ -63,7 +108,9 @@ function posPaymentChanged(){
  posDrawCart();
 }
 async function posSave(){
- if(posState.submitting||!posTotalCents())return;
+ if(posState.submitting||!posTotalCents()||!posStock.loaded)return;
+ const unavailable=Object.keys(posState.quantities).filter(posSold);
+ if(unavailable.length){document.getElementById('posMessage').textContent='Uitverkocht: '+unavailable.join(', ')+'. Verwijder dit gerecht uit de bestelling.';return}
  const pay=document.getElementById('posPayment').value;
  const freeName=pay==='free'?document.getElementById('posFreeName').value.trim():'';
  if(pay==='free'&&!freeName){document.getElementById('posMessage').textContent='Vul in voor wie de bestelling gratis is.';document.getElementById('posFreeName').focus();return;}
@@ -97,4 +144,5 @@ document.getElementById('posPayment').addEventListener('change',posPaymentChange
 document.getElementById('posCustomer').addEventListener('input',()=>{posState.requestId=null});
 document.getElementById('posFreeName').addEventListener('input',()=>{posState.requestId=null});
 posPaymentChanged();
+posDrawStock();
 posDraw();
