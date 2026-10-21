@@ -11,10 +11,10 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - name: Verify and publish Studio 1.4.1 Setup and Portable to Dev Hub
+      - name: Resume verified Studio 1.4.1 release with persistent deployment connection
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -35,8 +35,8 @@ jobs:
           SSH_ASKPASS="$tmp/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$tmp/key" </dev/null
           unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
           remote="$DEPLOY_USER@$DEPLOY_HOST"
-          sshdo() { ssh -p "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=20 "$remote" "$@"; }
-          scpdo() { scp -O -P "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=20 "$@"; }
+          sshdo() { ssh -p "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=20 -o ServerAliveInterval=20 -o ServerAliveCountMax=3 "$remote" "$@"; }
+          scpdo() { scp -O -P "$DEPLOY_PORT" -i "$tmp/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=20 -o ServerAliveInterval=20 -o ServerAliveCountMax=3 "$@"; }
           
           for file in family-installaties.php windows-dj-studio-20261016.php; do
            scpdo "$remote:dev.vanaggelen.com/$file" "$tmp/$file"
@@ -58,16 +58,23 @@ jobs:
           manifest="$dir/updates/studio/latest.json"
           test "$(sha256sum "$dir/family-installaties.php" | cut -d' ' -f1)" = "$expected_family"
           test "$(sha256sum "$dir/windows-dj-studio-20261016.php" | cut -d' ' -f1)" = "$expected_component"
+          # Stop only a detached older invocation of this same exact Studio promotion.
+          while read -r oldpid; do
+           if test -n "$oldpid" && test "$oldpid" != "$"; then kill -TERM "$oldpid"; echo 'Stopped detached older Studio promotion'; fi
+          done < <(ps -u "$(id -u)" -o pid=,args= | awk -v f="$expected_family" -v c="$expected_component" '$2=="bash" && $3=="-s" && $4=="--" && $5==f && $6==c {print $1}')
           auth_sha="$(sha256sum "$dir/.htaccess" | cut -d' ' -f1)"
-          for attempt in $(seq 1 120); do
+          for attempt in $(seq 1 240); do
            if test "$(stat -c %s "$stage/Portable.part" 2>/dev/null || true)" = "100175661" && test "$(stat -c %s "$stage/Setup.part" 2>/dev/null || true)" = "100400711"; then break; fi
-           if test "$attempt" = 120; then echo 'Upload not complete; no publication performed'; exit 1; fi
+           if test "$attempt" = 240; then echo 'Upload not complete; no publication performed'; exit 1; fi
+           if test "$((attempt % 6))" = 1; then echo "Waiting for complete artifact transfer: Portable $(stat -c %s "$stage/Portable.part" 2>/dev/null || true), Setup $(stat -c %s "$stage/Setup.part" 2>/dev/null || true)"; fi
            sleep 5
           done
           printf '%s  %s\n' '082f1367e72ed1b5895a97a64bff08af4a37a91164a3ce3dbab257ff5d0a14ad' "$stage/Portable.part" 'd017f931231ad4be7215c47390cc9308c1334875b2c4b46b10affa438c67bdf9' "$stage/Setup.part" | sha256sum -c -
           test "$(stat -c %s "$stage/Portable.part")" = "100175661"
           test "$(stat -c %s "$stage/Setup.part")" = "100400711"
           for file in family-installaties.php windows-dj-studio-20261016.php; do php -l "$stage/$file.next"; done
+          test "$(sha256sum "$dir/family-installaties.php" | cut -d' ' -f1)" = "$expected_family"
+          test "$(sha256sum "$dir/windows-dj-studio-20261016.php" | cut -d' ' -f1)" = "$expected_component"
           test ! -e "$dest"
           test ! -e "$manifest"
           mkdir -p "$HOME/.the-one-remote-backups"
