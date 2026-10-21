@@ -1,0 +1,91 @@
+name: Rutu Klant v938 - safe stock UI update
+on:
+  push:
+    branches: [feature/rutu-uitverkocht-v941-20261021]
+    paths: [ci/rutu-customer-v938-release-marker.txt]
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: rutu-customer-v938-stock-only
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify reviewed customer source, stock API and deployment guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --quiet bb6f2f24dea810a47475d7c57e64a18be1b74d87 HEAD -- jadeorders/src/main/java/com/vanaggelen/jadeorders/MainActivity.kt
+          php -l rutu-server/index.php
+          bash -n ci/deploy-rutu-customer-soldout-v938.sh
+      - uses: actions/download-artifact@v4
+        with:
+          name: rutu-klant-v938-uitverkocht-candidate
+          run-id: 39642937333
+          github-token: ${{ github.token }}
+          path: /tmp/rutu-client-v938
+      - name: Publish Customer update only, keep Business v941 and backend unchanged
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for key in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS;do
+            test -n "$(printenv "$key")" || { echo "Missing deployment configuration: $key"; exit 1; }
+          done
+          apk=/tmp/rutu-client-v938/jadeorders-debug.apk
+          test -s "$apk"
+          new_sha="$(sha256sum "$apk" | awk '{print $1}')"
+          current="$(curl -fLsS --retry 2 --max-time 90 https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Android.apk | sha256sum | awk '{print $1}')"
+          test "$current" = '60d606b73aa44e3610902aad37df0b5e5f077f79b699589fbbd88c3699da534e' || { echo 'Customer v937 changed';exit 1; }
+          umask 077
+          d="$(mktemp -d)"
+          meta="$(mktemp)"
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$d" "$meta"' EXIT
+          printf '{"versionCode":938,"url":"https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Android.apk","sha256":"%s"}\n' "$new_sha" > "$meta"
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$d/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$d/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$d/askpass"
+          chmod 0600 "$d/key" "$d/known_hosts"
+          chmod 0700 "$d/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$d/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$d/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          opts=(-i "$d/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$d/known_hosts" -o ConnectTimeout=20)
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          stage="$(ssh -p "$DEPLOY_PORT" ${opts[@]} "$remote" 'mktemp -d "$HOME/.rutu-customer-stock-938.XXXXXXXX"')"
+          scp -O -P "$DEPLOY_PORT" ${opts[@]} "$apk" "$remote:$stage/customer.apk"
+          scp -O -P "$DEPLOY_PORT" ${opts[@]} "$meta" "$remote:$stage/android.json"
+          ssh -p "$DEPLOY_PORT" ${opts[@]} "$remote" "bash -s -- '$stage' '$new_sha'" < ci/deploy-rutu-customer-soldout-v938.sh
+          verified="$(curl -fLsS --retry 2 --max-time 90 https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Android.apk | sha256sum | awk '{print $1}')"
+          test "$verified" = "$new_sha"
+          curl -fsS --max-time 20 https://rubenvanaggelen.com/rutu-updates/android.json | python3 -c 'import json,sys;x=json.load(sys.stdin);assert x["versionCode"]==938'
+          cp "$apk" RUTU-Klant-v938-Uitverkocht.apk
+          echo "Customer v938 update live and compatible, original QR URL retained" >> "$GITHUB_STEP_SUMMARY"
+      - name: Add signed customer v938 to Apps releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: rutu-klant-v938-uitverkocht
+          target_commitish: feature/rutu-uitverkocht-v941-20261021
+          name: Rutu Klant v938 - uitverkochte gerechten zichtbaar
+          make_latest: false
+          prerelease: false
+          body: |
+            Rutu Klant Android v938: zichtbaar "Uitverkocht" bij gerechten die de Bedrijfsapp op Uitverkocht zet, zonder toevoegen aan de winkelmand.
+            Een bestaand uitverkocht product in de winkelmand kan worden verwijderd. De server blokkeert verouderde bestellingen.
+            Originele registratie, QR-code, bedrijfsapp, betalingen en bestaande bestellingen blijven behouden.
+            Installeer over v937, verwijder de oude app niet.
+          files: RUTU-Klant-v938-Uitverkocht.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
