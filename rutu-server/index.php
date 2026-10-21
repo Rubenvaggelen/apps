@@ -390,6 +390,58 @@ $catalog = [
 
 $action = (string)($_GET['action'] ?? 'health');
 
+// Menu stock is independent from previous order status. Absent state means everything available.
+function rutu_sold_out(array $state, array $catalog): array {
+    $raw = $state['sold_out'] ?? [];
+    if (!is_array($raw)) return [];
+    $allowed = array_fill_keys(array_keys($catalog), true);
+    $sold = [];
+    foreach ($raw as $item) {
+        if (!is_string($item) || !isset($allowed[$item])) continue;
+        if ($item === 'BBQ Gezin') $item = 'BBQ Family';
+        $sold[$item] = true;
+    }
+    return array_keys($sold);
+}
+function rutu_first_unavailable(array $items, array $sold): string {
+    foreach (array_keys($items) as $name) {
+        if ($name === 'BBQ Gezin') $name = 'BBQ Family';
+        if (in_array($name, $sold, true)) return $name;
+    }
+    return '';
+}
+function rutu_reject_unavailable(string $product): never {
+    respond(409, ['ok'=>false,'sold_out'=>true,'product'=>$product,
+        'error'=>$product." is uitverkocht. Verwijder dit gerecht en probeer opnieuw.\n".$product." is sold out. Remove it from your order and try again."]);
+}
+if ($action === 'menu_availability') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'GET') respond(405,['ok'=>false,'error'=>'GET required']);
+    $stock=with_state($stateFile,false,fn($state)=>rutu_sold_out($state,$catalog));
+    respond(200,['ok'=>true,'sold_out'=>$stock]);
+}
+if ($action === 'business_menu_stock') {
+    if (!business_authorized($keyFile)) respond(401,['ok'=>false,'error'=>'Niet geautoriseerd / Not authorized']);
+    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+        $stock=with_state($stateFile,false,fn($state)=>rutu_sold_out($state,$catalog));
+        respond(200,['ok'=>true,'sold_out'=>$stock]);
+    }
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405,['ok'=>false,'error'=>'POST required']);
+    $body=body_json();
+    $name=trim((string)($body['product']??''));
+    $available=$body['available']??null;
+    if (!array_key_exists($name,$catalog)||$name==='BBQ Gezin'||!is_bool($available)) {
+        respond(400,['ok'=>false,'error'=>'Ongeldig gerecht of voorraadstatus / Invalid product or availability']);
+    }
+    $stock=with_state($stateFile,true,function (&$state) use ($catalog,$name,$available) {
+        $items=array_fill_keys(rutu_sold_out($state,$catalog),true);
+        if ($available) unset($items[$name]);else $items[$name]=true;
+        $state['sold_out']=array_keys($items);
+        $state['stock_updated']=gmdate('c');
+        return $state['sold_out'];
+    });
+    respond(200,['ok'=>true,'sold_out'=>$stock]);
+}
+
 if ($action === 'health') {
     respond(200, ['ok' => true, 'service' => 'Rutu BBQ Online Orders', 'version' => 3, 'tikkie_configured' => tikkie_config($dataDir) !== null]);
 }
@@ -584,7 +636,9 @@ if ($action === 'create') {
     $total = round($subtotal + $deliveryFee, 2);
 
     $tikkie = tikkie_config($dataDir);
-    $order = with_state($stateFile, true, function (&$state) use ($items, $total, $customer, $delivery, $address, $postcode, $deliveryFee, $paymentMethod, $paymentPhone, $tikkie) {
+    $order = with_state($stateFile, true, function (&$state) use ($catalog, $items, $total, $customer, $delivery, $address, $postcode, $deliveryFee, $paymentMethod, $paymentPhone, $tikkie) {
+        $sold=rutu_first_unavailable($items,rutu_sold_out($state,$catalog));
+        if ($sold!=='') return ['rutu_stock_error'=>$sold];
         $id = max(1046, (int)$state['next_id']);
         $state['next_id'] = $id + 1;
         $createdTs = time();
@@ -614,6 +668,7 @@ if ($action === 'create') {
         return $order;
     });
 
+    if (isset($order['rutu_stock_error'])) rutu_reject_unavailable($order['rutu_stock_error']);
     if ($paymentMethod === 'Tikkie' && $tikkie !== null) {
         tikkie_create_one($stateFile, $tikkie, $order);
         $order = with_state($stateFile, false, function ($state) use ($order) {
@@ -644,12 +699,14 @@ if ($action === 'add_items') {
     }
     $extraTotal = round($extraTotal, 2);
 
-    $updated = with_state($stateFile, true, function (&$state) use ($id, $tracking, $items, $extraTotal) {
+    $updated = with_state($stateFile, true, function (&$state) use ($catalog, $id, $tracking, $items, $extraTotal) {
         foreach ($state['orders'] as &$order) {
             if ((int)$order['id'] !== $id) continue;
             if (!hash_equals((string)($order['tracking'] ?? ''), $tracking)) return false;
             if (in_array((string)($order['status'] ?? ''), ['Afgerond', 'Geannuleerd', 'Uitverkocht', 'Geweigerd'], true)) return 'closed';
             if (($order['payment_method'] ?? '') === 'Tikkie' && !empty($order['payment_request_token'])) return 'tikkie_locked';
+            $sold=rutu_first_unavailable($items,rutu_sold_out($state,$catalog));
+            if ($sold!=='') return ['rutu_stock_error'=>$sold];
             foreach ($items as $name => $qty) {
                 $newQty = (int)($order['items'][$name] ?? 0) + $qty;
                 if ($newQty > 25) return 'too_many';
@@ -661,6 +718,7 @@ if ($action === 'add_items') {
         }
         return null;
     });
+    if (is_array($updated) && isset($updated['rutu_stock_error'])) rutu_reject_unavailable($updated['rutu_stock_error']);
     if ($updated === false) respond(403, ['ok' => false, 'error' => "Bestelling kan niet worden geverifieerd.\nThe order could not be verified."]);
     if ($updated === 'closed') respond(409, ['ok' => false, 'error' => "Deze bestelling staat niet meer open.\nThis order is no longer open."]);
     if ($updated === 'too_many') respond(409, ['ok' => false, 'error' => "Het totale aantal van een product is te hoog.\nThe total quantity of a product is too high."]);
@@ -720,7 +778,7 @@ if ($action === 'cancel') {
 
 if ($action === 'announcement') {
     $customerForAvailability = trim((string)($_GET['customer'] ?? ''));
-    $announcement = with_state($stateFile, false, function ($state) use ($customerForAvailability) {
+    $announcement = with_state($stateFile, false, function ($state) use ($customerForAvailability, $catalog) {
         $a = $state['announcement'] ?? ['title'=>'','message'=>'','from'=>'','until'=>'','active'=>false,'updated'=>''];
         if (!is_array($a)) $a = ['title'=>'','message'=>'','from'=>'','until'=>'','active'=>false,'updated'=>''];
 
@@ -746,7 +804,8 @@ if ($action === 'announcement') {
             'ordering_blocked' => !$orderingAllowed,
             'ordering_allowed' => $orderingAllowed,
             'ordering_message' => $manualBlocked ? "Vandaag is Rutu BBQ gesloten voor bestellingen.\nRutu BBQ is closed for orders today." : (string)$scheduleStatus['message'],
-            'test_order_allowed' => $tester
+            'test_order_allowed' => $tester,
+            'sold_out' => rutu_sold_out($state, $catalog)
         ];
     });
     // Payment-provider onboarding is business-only; never show that notice in customer apps.
@@ -863,12 +922,14 @@ if ($action === 'business_create_order') {
     }
     // Existing orders are idempotently returned if a response was lost and the cashier retries.
     // The DB/state file is locked while checking and adding the order.
-    $result = with_state($stateFile, true, function (&$state) use ($requestId, $items, $total, $customer, $payment, $freeName) {
+    $result = with_state($stateFile, true, function (&$state) use ($catalog, $requestId, $items, $total, $customer, $payment, $freeName) {
         foreach ($state['orders'] as $previous) {
             if (($previous['pos_request_id'] ?? '') === $requestId) {
                 return ['order' => $previous, 'existing' => true];
             }
         }
+        $sold=rutu_first_unavailable($items,rutu_sold_out($state,$catalog));
+        if ($sold!=='') return ['rutu_stock_error'=>$sold];
         $id = max(1046, (int)$state['next_id']);
         $state['next_id'] = $id + 1;
         $created = time();
@@ -903,6 +964,7 @@ if ($action === 'business_create_order') {
         array_unshift($state['orders'], $order);
         return ['order' => $order, 'existing' => false];
     });
+    if (isset($result['rutu_stock_error'])) rutu_reject_unavailable($result['rutu_stock_error']);
     respond($result['existing'] ? 200 : 201, [
         'ok' => true,
         'existing' => $result['existing'],
