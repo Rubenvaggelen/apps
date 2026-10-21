@@ -61,7 +61,13 @@ button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:1
           <option value="later">Nog te betalen</option>
           <option value="cash">Contant ontvangen</option>
           <option value="pin">PIN ontvangen</option>
+          <option value="free">Gratis</option>
         </select>
+        <div id="posFreeDetails" class="pos-free-details" hidden>
+          <label for="posFreeName">Gratis voor (naam) *</label>
+          <input id="posFreeName" maxlength="80" autocomplete="off" placeholder="Naam ontvanger" aria-required="true">
+          <p class="hint">Oorspronkelijke waarde: <b id="posFreeOriginal">€ 0,00</b> • Te betalen: € 0,00</p>
+        </div>
         <button type="button" id="posSubmit" class="gold pos-submit" onclick="posSave()" disabled>Bestelling toevoegen</button>
         <button type="button" class="gray" onclick="posClear()">Bon leegmaken</button>
         <div id="posMessage" class="pos-status hint" role="status" aria-live="polite"></div>
@@ -317,7 +323,7 @@ async function api(action,method='GET',body=null){
   if(!r.ok||data.ok===false)throw new Error(data.error||('HTTP '+r.status));
   return data;
 }
-function normalize(o){return{id:Number(o.id),items:Object.entries(o.items||{}).map(([name,qty])=>({name,qty:Number(qty)})),total:Number(o.total||0),customer:String(o.customer||'Online klant'),delivery:!!o.delivery,address:String(o.address||''),postcode:String(o.postcode||''),deliveryFee:Number(o.delivery_fee||0),paymentMethod:String(o.payment_method||''),paymentPhone:String(o.payment_phone||''),paymentStatus:String(o.payment_status||''),paymentUrl:String(o.payment_url||''),created:String(o.created||o.created_display||''),status:String(o.status||'Nieuw'),source:String(o.source||'Klantapp'),historyHidden:!!o.history_hidden,historyCleared:!!o.history_cleared}}
+function normalize(o){return{id:Number(o.id),items:Object.entries(o.items||{}).map(([name,qty])=>({name,qty:Number(qty)})),total:Number(o.total||0),customer:String(o.customer||'Online klant'),delivery:!!o.delivery,address:String(o.address||''),postcode:String(o.postcode||''),deliveryFee:Number(o.delivery_fee||0),paymentMethod:String(o.payment_method||''),paymentPhone:String(o.payment_phone||''),freeName:String(o.free_name||''),originalTotal:Number(o.original_total??o.total??0),paymentStatus:String(o.payment_status||''),paymentUrl:String(o.payment_url||''),created:String(o.created||o.created_display||''),status:String(o.status||'Nieuw'),source:String(o.source||'Klantapp'),historyHidden:!!o.history_hidden,historyCleared:!!o.history_cleared}}
 function copyPaymentLink(id){
  const o=orders.find(x=>Number(x.id)===Number(id));if(!o||!/^https:\/\/(?:www\.)?tikkie\.me\//.test(o.paymentUrl||''))return;
  const url=o.paymentUrl;
@@ -334,6 +340,7 @@ function paymentLine(o){
  const status=o.paymentStatus||'Niet gekoppeld';
  return '<div class="meta">Betaalwijze: <b>'+esc(o.paymentMethod)+'</b>'+
  (o.paymentMethod==='Tikkie'&&o.paymentPhone?' • Telefoonnummer: <b>'+esc(o.paymentPhone)+'</b>':'')+
+ (o.paymentMethod==='Gratis'&&o.freeName?'<br>Gratis voor: <b>'+esc(o.freeName)+'</b> • oorspronkelijke waarde: '+money(o.originalTotal):'')+
  (o.paymentMethod==='Tikkie'||o.source==='Kassa'?'<br>Betaalstatus: <b>'+esc(status)+'</b>':'')+
  (o.paymentMethod==='Tikkie'&&/^https:\/\/(?:www\.)?tikkie\.me\//.test(o.paymentUrl||'')?'<br><button type="button" class="gray" onclick="copyPaymentLink('+Number(o.id)+')">Kopieer Tikkie-link</button>':'')+
  '</div>';
