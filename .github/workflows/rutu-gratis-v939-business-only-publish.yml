@@ -1,0 +1,71 @@
+name: Publish RUTU Business v939 Gratis + naam safely
+on:
+  push:
+    branches: [feature/rutu-bedrijf-gratis-betaling-v939-20261021]
+    paths: [ci/rutu-gratis-v939-release-marker-20261021.txt]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: rutu-gratis-v939-production
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reconfirm tested API and client source
+        run: |
+          set -euo pipefail
+          git diff --quiet cecc14a63d6b62d461332e52c0528cfefd52b075 HEAD -- rutu-server/index.php rutubusinessandroid/src/main/assets/business.html rutubusinessandroid/src/main/assets/rutu-pos.js rutubusinessandroid/src/main/assets/rutu-pos.css
+          php -l rutu-server/index.php
+          bash -n ci/deploy-rutu-v939-gratis-20261021.sh
+      - uses: actions/download-artifact@v4
+        with:
+          name: rutu-bedrijf-gratis-v939-candidate
+          run-id: 39635724029
+          github-token: ${{ github.token }}
+          path: /tmp/rutu-v939-gratis
+      - name: Publish Business APK v939 and complimentary POS API only
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for key in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS;do
+            test -n "$(printenv "$key")" || { echo "Missing required deployment config"; exit 1; }
+          done
+          apk='/tmp/rutu-v939-gratis/rutubusinessandroid-debug.apk'
+          test -s "$apk"
+          old_php="$(git show c198f853e7fb88b9d32513a39ee2ee3980a5d49c:rutu-server/index.php | sha256sum | awk '{print $1}')"
+          new_php="$(sha256sum rutu-server/index.php | awk '{print $1}')"
+          new_apk="$(sha256sum "$apk" | awk '{print $1}')"
+          meta="$(mktemp)"
+          printf '{"versionCode":939,"url":"https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Bedrijf-Android.apk","sha256":"%s"}\n' "$new_apk" > "$meta"
+          umask 077
+          d="$(mktemp -d)"
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$d" "$meta"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$d/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$d/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$d/askpass"
+          chmod 0600 "$d/key" "$d/known_hosts"
+          chmod 0700 "$d/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$d/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$d/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          opts=(-i "$d/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$d/known_hosts" -o ConnectTimeout=20)
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          stage="$(ssh -p "$DEPLOY_PORT" ${opts[@]} "$remote" 'mktemp -d "$HOME/.rutu-klantenbeheer-stage.XXXXXXXX"')"
+          scp -O -P "$DEPLOY_PORT" ${opts[@]} rutu-server/index.php "$remote:$stage/api.php"
+          scp -O -P "$DEPLOY_PORT" ${opts[@]} "$apk" "$remote:$stage/business.apk"
+          scp -O -P "$DEPLOY_PORT" ${opts[@]} "$meta" "$remote:$stage/business.json"
+          ssh -p "$DEPLOY_PORT" ${opts[@]} "$remote" "bash -s -- '$stage' '$old_php' '$new_php' '$new_apk'" < ci/deploy-rutu-v939-gratis-20261021.sh
+          echo 'RUTU Business v939 gratis betaling published; existing Customer APK left unchanged.' >> "$GITHUB_STEP_SUMMARY"
