@@ -430,6 +430,44 @@ if ($action === 'device_heartbeat') {
     respond(200, ['ok' => true, 'blocked' => (bool)$device['blocked']]);
 }
 
+// Read-only RUTU Business customer-registration list.
+// Each persisted heartbeat device is a registration, not a unique human customer.
+// Never expose raw device IDs, order customers or the business credential.
+if ($action === 'business_customer_registrations') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+        respond(405, ['ok' => false, 'error' => "GET vereist.\nGET required."]);
+    }
+    if (!business_authorized($keyFile)) {
+        respond(401, ['ok' => false, 'error' => "Niet geautoriseerd.\nNot authorized."]);
+    }
+    if (!is_file($devicesFile)) {
+        respond(503, ['ok' => false, 'error' => "Registratieopslag niet beschikbaar.\nRegistration storage unavailable."]);
+    }
+    $idKey = trim((string)file_get_contents($keyFile));
+    $registrations = with_devices_state($devicesFile, false, function ($state) use ($idKey) {
+        $items = [];
+        foreach ($state['devices'] as $deviceId => $device) {
+            if (!is_array($device)) continue;
+            $registered = trim((string)($device['registered'] ?? ''));
+            if ($registered === '') continue;
+            $customer = mb_substr(trim((string)($device['customer'] ?? '')), 0, 80);
+            $items[] = [
+                'id' => substr(hash_hmac('sha256', 'rutu-registration:'.(string)$deviceId, $idKey), 0, 24),
+                'name' => $customer,
+                'registered_at' => $registered
+            ];
+        }
+        usort($items, fn($a, $b) => strcmp($b['registered_at'], $a['registered_at']));
+        return $items;
+    });
+    respond(200, [
+        'ok' => true,
+        'registration_type' => 'customer_devices',
+        'count' => count($registrations),
+        'registrations' => $registrations
+    ]);
+}
+
 if ($action === 'devices_list' || $action === 'device_set_blocked') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['ok' => false, 'error' => "POST vereist.\nPOST required."]);
     $body = body_json();

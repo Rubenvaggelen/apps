@@ -20,6 +20,19 @@ button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:1
 .qr-panel{text-align:center}.qr-preview{display:inline-flex;align-items:center;justify-content:center;background:#fff;border:2px solid var(--gold);border-radius:15px;padding:14px;min-width:196px;min-height:196px;cursor:zoom-in}.qr-preview img{display:block;width:164px;height:164px;image-rendering:pixelated;image-rendering:crisp-edges}.qr-preview:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
 .qr-modal{display:none;position:fixed;inset:0;background:#000e;z-index:130;align-items:center;justify-content:center;padding:16px}.qr-modal.open{display:flex}.qr-modal-card{width:min(540px,100%);max-height:95vh;overflow:auto;background:linear-gradient(145deg,#201a12,var(--panel));border:1px solid var(--gold);border-radius:20px;padding:18px;text-align:center}.qr-modal-card .modal-head{margin-bottom:14px}.qr-enlarged{display:block;width:min(76vw,390px);height:auto;aspect-ratio:1;margin:0 auto;background:#fff;border-radius:12px;padding:16px;image-rendering:pixelated;image-rendering:crisp-edges}
 @media(min-width:760px){.summary{grid-template-columns:repeat(5,1fr)}.notice-grid{grid-template-columns:2fr 1fr 1fr}.notice-grid textarea{grid-column:1/-1}}
+
+
+/* Rutu Klantenbeheer — bedrĳfsapp, read-only, bestaande huisstijl */
+.rutu-customers-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:16px 0}
+.rutu-customers-meta>div{background:#17140f;border:1px solid var(--line);border-radius:12px;padding:16px}
+.rutu-customers-meta strong{display:block;color:var(--light);font-size:26px;line-height:1.3}
+.rutu-customers-toolbar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:16px 0}
+.rutu-customers-toolbar input{flex:1;min-width:180px;background:#17140f;border:1px solid var(--line);border-radius:9px;padding:13px;color:#f8f2e8;font-size:15px}
+.rutu-customer{display:flex;gap:13px;justify-content:space-between;align-items:center;padding:12px 14px;background:#17140f;border:1px solid var(--line);border-radius:11px;margin-bottom:9px}
+.rutu-customer-name{font-size:16px;font-weight:700;color:#f8f2e8;word-break:break-word}
+.rutu-customer-sub{font-size:13px;color:var(--muted)}
+.rutu-customer-state{padding:3px 9px;border:1px solid #725825;color:var(--light);border-radius:50px;white-space:nowrap;font-size:12px}
+@media(max-width:430px){.rutu-customers-meta{grid-template-columns:1fr}}
 </style>
 <link rel="stylesheet" href="rutu-pos.css">
 </head>
@@ -29,7 +42,7 @@ button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:1
   <div class="row"><button class="gray" onclick="openKeyModal()">Koppeling</button><button id="count" class="badge" style="display:none" onclick="openOpenOrders()">0 nieuw</button></div>
 </header>
 <main class="wrap" id="dashboard">
-  <section class="hero"><img class="hero-logo" src="rutu-logo.png" alt="Rutu BBQ" width="150" height="150"><div class="eyebrow">RUTU BBQ • BEDRIJF</div><h1>Jouw keuken. Alles in beeld.</h1><div id="connection" class="hint">Verbinden met online bestellingen…</div><div class="row" style="margin-top:12px"><button type="button" class="gray" onclick="checkBusinessUpdates()">Controleer op updates</button></div></section>
+  <section class="hero"><img class="hero-logo" src="rutu-logo.png" alt="Rutu BBQ" width="150" height="150"><div class="eyebrow">RUTU BBQ • BEDRIJF</div><h1>Jouw keuken. Alles in beeld.</h1><div id="connection" class="hint">Verbinden met online bestellingen…</div><div class="row" style="margin-top:12px"><button type="button" class="gray" onclick="checkBusinessUpdates()">Controleer op updates</button><button type="button" class="gold" id="openCustomers" onclick="openCustomerScreen()">Klantenbeheer</button></div></section>
   <div class="summary" id="summary"></div>
   <section class="panel pos-panel" id="posPanel" aria-labelledby="posTitle">
     <div class="eyebrow">KASSA • HANDMATIGE BESTELLING</div>
@@ -92,6 +105,27 @@ button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:1
     <span>Part of The One Family</span>
   </footer>
 </main>
+
+<main class="wrap" id="customerScreen" style="display:none" aria-label="Klantenbeheer">
+  <section class="hero">
+    <div class="orders-screen-title">
+      <button type="button" class="gray" id="backFromCustomers" onclick="backFromCustomerScreen()">← Terug naar overzicht</button>
+      <h1>Klantenbeheer</h1>
+    </div>
+    <div class="eyebrow">RUTU BBQ • BEVEILIGD KLANTENOVERZICHT</div>
+    <p class="hint">Dit overzicht toont uitsluitend registratiegegevens die de Rutu-server voor de bedrijfsapp vrijgeeft. Bestellingen zijn geen klantregistraties.</p>
+    <div class="rutu-customers-meta" aria-live="polite">
+      <div><span class="hint">Geregistreerde klantapparaten</span><strong id="registeredDeviceCount">—</strong></div>
+      <div><span class="hint">Registraties met naam</span><strong id="registeredNamedCount">—</strong></div>
+    </div>
+    <div class="rutu-customers-toolbar">
+      <input id="customerSearch" type="search" maxlength="80" placeholder="Zoek op klantnaam" autocomplete="off" aria-label="Zoek op klantnaam" oninput="renderCustomers()">
+      <button type="button" class="gold" id="reloadCustomers" onclick="loadCustomers()">Verversen</button>
+    </div>
+    <p id="customerStatus" class="hint" role="status" aria-live="polite">Open Klantenbeheer om registraties op te halen.</p>
+    <div id="customerList" aria-live="polite"></div>
+  </section>
+</main>
 <main class="wrap" id="newOrdersScreen" style="display:none">
   <section class="hero">
     <div class="orders-screen-title">
@@ -119,6 +153,95 @@ button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:1
 <div class="key-modal" id="keyModal"><div class="modal-card"><h2>Bedrijfsapp koppelen</h2><p class="hint">Voer de bedrijfsleutel één keer in. Deze wordt alleen op dit Android-apparaat opgeslagen en staat niet in de APK of Dev Hub.</p><input id="businessKey" class="key-input" type="password" autocomplete="off" placeholder="Bedrijfsleutel"><div id="keyResult" class="hint" style="margin-top:8px"></div><div class="row" style="margin-top:14px"><button class="gold" onclick="saveBusinessKey()">Opslaan en verbinden</button><button class="gray" onclick="closeKeyModal()">Annuleren</button></div></div></div>
 
 <script>
+
+// Klantregistraties (alleen lezen): de bestaande bedrijfsleutel gaat via api().
+// BACKEND CONTRACT: action=business_customer_registrations (GET), uitsluitend voor
+// geautoriseerde bedrijfsapp, {ok:true,registrations:[{id,name,registered_at?}]}.
+// Niet afleiden uit bestellingen; dezelfde persoon kan meerdere apparaten hebben.
+let registeredCustomers=[];
+let customersLoading=false;
+function openCustomerScreen(){
+  document.getElementById('dashboard').style.display='none';
+  document.getElementById('newOrdersScreen').style.display='none';
+  document.getElementById('historyScreen').style.display='none';
+  document.getElementById('customerScreen').style.display='block';
+  document.getElementById('customerSearch').value='';
+  document.getElementById('registeredDeviceCount').textContent='—';
+  document.getElementById('registeredNamedCount').textContent='—';
+  registeredCustomers=[];
+  document.getElementById('customerList').replaceChildren();
+  window.scrollTo?.(0,0);
+  loadCustomers();
+}
+function backFromCustomerScreen(){
+  document.getElementById('customerScreen').style.display='none';
+  document.getElementById('dashboard').style.display='block';
+  // Geen persoonsgegevens in lokale opslag of een tweede scherm bewaren.
+  registeredCustomers=[];
+  document.getElementById('customerSearch').value='';
+  document.getElementById('customerList').replaceChildren();
+  document.getElementById('registeredDeviceCount').textContent='—';
+  document.getElementById('registeredNamedCount').textContent='—';
+  window.scrollTo?.(0,0);
+}
+function customerDate(value){
+  if(typeof value!=='string'||!value.trim())return '';
+  const d=new Date(value);
+  return Number.isFinite(d.valueOf())?d.toLocaleDateString('nl-NL'):'';
+}
+function renderCustomers(){
+  const list=document.getElementById('customerList');
+  list.replaceChildren();
+  const term=document.getElementById('customerSearch').value.trim().toLocaleLowerCase('nl-NL');
+  const results=registeredCustomers.filter(c=>!term||c.name.toLocaleLowerCase('nl-NL').includes(term));
+  if(!results.length){
+    const p=document.createElement('p');p.className='hint';
+    p.textContent=registeredCustomers.length?'Geen klanten met deze naam gevonden.':'Geen registraties aangetroffen.';
+    list.appendChild(p);return;
+  }
+  for(const c of results){
+    const article=document.createElement('article');article.className='rutu-customer';
+    const main=document.createElement('div');
+    const name=document.createElement('div');name.className='rutu-customer-name';name.textContent=c.name||'Naam niet ingevuld';
+    main.appendChild(name);
+    if(c.registered_at){const date=customerDate(c.registered_at);if(date){const meta=document.createElement('div');meta.className='rutu-customer-sub';meta.textContent='Geregistreerd: '+date;main.appendChild(meta)}}
+    article.appendChild(main);
+    const badge=document.createElement('span');badge.className='rutu-customer-state';badge.textContent='Registratie';article.appendChild(badge);
+    list.appendChild(article);
+  }
+}
+async function loadCustomers(){
+  if(customersLoading)return;
+  customersLoading=true;
+  const reload=document.getElementById('reloadCustomers');reload.disabled=true;
+  const status=document.getElementById('customerStatus');
+  // Wist eerdere gevoelige informatie VOORDAT de volgende API-aanvraag start.
+  registeredCustomers=[];
+  document.getElementById('customerList').replaceChildren();
+  document.getElementById('registeredDeviceCount').textContent='—';
+  document.getElementById('registeredNamedCount').textContent='—';
+  status.textContent='Beveiligde registraties worden opgehaald…';
+  try{
+    const response=await api('business_customer_registrations');
+    if(response.registration_type!=='customer_devices'||!Array.isArray(response.registrations)||!Number.isSafeInteger(response.count)||response.count!==response.registrations.length)throw new Error('De server biedt nog geen controleerbaar klantenregistratie-overzicht.');
+    if(response.registrations.some(row=>row===null||typeof row!=='object'||!Object.prototype.hasOwnProperty.call(row,'id')))
+      throw new Error('Het antwoord bevat geen geldige individuele registraties.');
+    if(document.getElementById('customerScreen').style.display==='none')return;
+    registeredCustomers=response.registrations.map(row=>({
+      id:String(row.id),
+      name:typeof row.name==='string'?row.name.trim().slice(0,120):'',
+      registered_at:typeof row.registered_at==='string'?row.registered_at:''
+    }));
+    document.getElementById('registeredDeviceCount').textContent=String(registeredCustomers.length);
+    document.getElementById('registeredNamedCount').textContent=String(registeredCustomers.filter(c=>c.name).length);
+    status.textContent=registeredCustomers.length+' individuele app-registratie'+(registeredCustomers.length===1?'':'s')+' gevonden. Eén klant kan meerdere apparaten hebben.';
+    renderCustomers();
+  }catch(error){
+    // Geen schijn-telling op basis van kassaklanten, bestelgeschiedenis of foutresponses.
+    status.textContent='Klantenregistraties niet beschikbaar: '+String(error.message||'onbekende fout')+'. Controleer de bedrijfsverbinding en de serverfunctie.';
+  }finally{customersLoading=false;reload.disabled=false}
+}
+
 const API='https://rubenvanaggelen.com/rutu-api/index.php';
 let orders=[];
 function checkBusinessUpdates(){window.location.href='rutuupdate://check'}

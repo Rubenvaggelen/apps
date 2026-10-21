@@ -1,0 +1,1 @@
+Goedgekeurde scope: RUTU Bedrijf v938 Klantenbeheer en uitsluitend de nieuwe read-only registratie-API. Gebaseerd op groene test-build 39614298818. Publicatie moet falen zonder overschrijven bij iedere gewijzigde productiehash. RUTU Klant v937, QR, bestellingen en betalingen blijven ongewijzigd.
