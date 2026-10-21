@@ -1,0 +1,54 @@
+name: Rutu Bedrijf v941 - publish Apps release only
+on:
+  push:
+    branches: [feature/rutu-uitverkocht-v941-20261021]
+    paths: [.github/workflows/rutu-v941-apps-release.yml]
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: rutu-bedrijf-v941-apps-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: rutu-bedrijf-v941-stock-candidate
+          run-id: 39642060085
+          github-token: ${{ github.token }}
+          path: /tmp/rutu-v941-build
+      - name: Verify production-identical signed APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=/tmp/rutu-v941-build/rutubusinessandroid-debug.apk
+          test -s "$apk"
+          expected=0dcf87d440724ecd694c64eb2e1da82b1130c8f61caa39f1655969e97452455a
+          test "$(sha256sum "$apk" | awk '{print $1}')" = "$expected" || { echo 'Artifact differs from the live validated Business v939 APK'; exit 1; }
+          live="$(curl -fLsS --retry 3 --max-time 100 https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Bedrijf-Android.apk | sha256sum | awk '{print $1}')"
+          test "$live" = "$expected" || { echo 'Live APK changed since v939 verification; stop'; exit 1; }
+          cp "$apk" ./RUTU-Bedrijf-v941-Uitverkocht.apk
+          ls -lh ./RUTU-Bedrijf-v941-Uitverkocht.apk
+          echo 'APK_VERIFIED_IDENTICAL_TO_LIVE_V939'
+      - name: Release only Rutu Bedrijf to Apps
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: rutu-bedrijf-v941
+          target_commitish: feature/rutu-uitverkocht-v941-20261021
+          name: Rutu Bedrijf v941 - Uitverkocht per gerecht
+          make_latest: false
+          prerelease: false
+          body: |
+            Rutu Bedrijf Android v941 (ondertekende APK) - zelfstandig te downloaden.
+            Nieuw: Uitverkocht beheren per gerecht, weer beschikbaar maken, en servervalidatie van nieuwe bestellingen.
+            Bestaand: Contant, PIN, Gratis met naam, Klantenbeheer en rotatie zonder code opnieuw.
+            Installeer over de bestaande Rutu Bedrijf-app; verwijder deze niet.
+            Deze release wijzigt of publiceert NIET de Rutu Klant-app, QR-code, bestellingen of betalingen.
+            APK is gecontroleerd tegen de succesvol gepubliceerde en ondertekende v941-liveversie.
+          files: RUTU-Bedrijf-v941-Uitverkocht.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
