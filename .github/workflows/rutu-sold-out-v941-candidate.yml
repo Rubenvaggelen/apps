@@ -133,3 +133,5 @@ jobs:
           name: rutu-bedrijf-v941-stock-candidate
           path: rutubusinessandroid/build/outputs/apk/debug/rutubusinessandroid-debug.apk
           if-no-files-found: error
+
+# Retest after fixing the fixture's expected number of stored orders.
