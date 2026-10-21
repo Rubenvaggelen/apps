@@ -44,6 +44,13 @@ button{min-height:44px;border:1px solid transparent;border-radius:11px;padding:1
 <main class="wrap" id="dashboard">
   <section class="hero"><img class="hero-logo" src="rutu-logo.png" alt="Rutu BBQ" width="150" height="150"><div class="eyebrow">RUTU BBQ • BEDRIJF</div><h1>Jouw keuken. Alles in beeld.</h1><div id="connection" class="hint">Verbinden met online bestellingen…</div><div class="row" style="margin-top:12px"><button type="button" class="gray" onclick="checkBusinessUpdates()">Controleer op updates</button><button type="button" class="gold" id="openCustomers" onclick="openCustomerScreen()">Klantenbeheer</button></div></section>
   <div class="summary" id="summary"></div>
+  <section class="panel pos-stock-panel" id="posStockPanel" aria-labelledby="posStockTitle">
+    <div class="eyebrow">MENUBEHEER • VOORRAAD</div>
+    <div class="row"><h2 id="posStockTitle" class="grow">Uitverkocht beheren</h2><button type="button" class="gray" onclick="posRefreshStock(true)">Vernieuwen</button></div>
+    <p class="hint">Zet gerechten uit als ze op zijn. Klanten kunnen ze dan niet bestellen. Via Weer beschikbaar zet je ze terug. Bestaande bestellingen blijven ongewijzigd.</p>
+    <div id="posStockControls" class="pos-stock-controls" aria-live="polite">Voorraad wordt opgehaald…</div>
+    <p id="posStockMessage" class="pos-status hint" role="status" aria-live="polite"></p>
+  </section>
   <section class="panel pos-panel" id="posPanel" aria-labelledby="posTitle">
     <div class="eyebrow">KASSA • HANDMATIGE BESTELLING</div>
     <h2 id="posTitle">Menu &amp; kassa</h2>
@@ -375,7 +382,7 @@ function render(){
 }
 async function sync(){
  if(!key()){document.getElementById('connection').textContent='Niet gekoppeld / Not connected';openKeyModal();return}
- try{const r=await api('business_orders');orders=(r.orders||[]).map(normalize);document.getElementById('connection').innerHTML='<span class="ok">Online gekoppeld ✓</span> • automatisch verversen';render()}
+ try{const r=await api('business_orders'); if(typeof posRefreshStock==='function')posRefreshStock();orders=(r.orders||[]).map(normalize);document.getElementById('connection').innerHTML='<span class="ok">Online gekoppeld ✓</span> • automatisch verversen';render()}
  catch(e){document.getElementById('connection').innerHTML='<span class="error">Verbinding mislukt / Connection failed: '+esc(e.message)+'</span>'}
 }
 async function setStatus(id,status){try{await api('business_status','POST',{id:Number(id),status});await sync()}catch(e){alert(e.message)}}
