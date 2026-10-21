@@ -24,3 +24,8 @@
 .pos-status{min-height:20px}
 @media(max-width:740px){.pos-layout{grid-template-columns:1fr}.pos-checkout{position:static}.pos-products{grid-template-columns:repeat(2,minmax(0,1fr))}.pos-product img,.pos-image-fallback{height:125px}}
 @media(max-width:360px){.pos-products{grid-template-columns:1fr}}
+
+/* Rutu Gratis: alleen zichtbaar voor betaalwijze Gratis. */
+.pos-free-details{display:grid;gap:8px;background:#241b10;border:1px solid #987132;border-radius:12px;padding:12px}
+.pos-free-details[hidden]{display:none!important}
+.pos-free-details .hint{margin:0}
