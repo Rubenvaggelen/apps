@@ -19,6 +19,7 @@ internal object FamilyAccessRequestGrouping {
             MainDeviceRegistry.ACCESS_SERIES,
             MainDeviceRegistry.ACCESS_TV,
             MainDeviceRegistry.ACCESS_USER_APP,
+            MainDeviceRegistry.ACCESS_KIDS_ANDROID,
             MainDeviceRegistry.ACCESS_MEDIA_PLAYER_XXX
         )
         for (request in requests) {
@@ -41,6 +42,7 @@ internal object FamilyAccessRequestGrouping {
             val scopes = ordered.map {
                 when (it.scope) {
                     MainDeviceRegistry.ACCESS_USER_APP -> "The One"
+                    MainDeviceRegistry.ACCESS_KIDS_ANDROID -> "The One Kids"
                     MainDeviceRegistry.ACCESS_CINEMA -> "Cinema"
                     MainDeviceRegistry.ACCESS_SERIES -> "Series"
                     MainDeviceRegistry.ACCESS_TV -> "TV"

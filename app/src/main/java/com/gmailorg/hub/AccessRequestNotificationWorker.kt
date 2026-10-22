@@ -207,6 +207,7 @@ object AccessRequestNotifications {
         MainDeviceRegistry.ACCESS_TV -> "TV"
         MainDeviceRegistry.ACCESS_ORGANIZE -> "muziek organiseren"
         MainDeviceRegistry.ACCESS_FILE_DOWNLOADS -> "bestanden downloaden"
+        MainDeviceRegistry.ACCESS_KIDS_ANDROID -> "The One Kids"
         else -> scope
     }
 

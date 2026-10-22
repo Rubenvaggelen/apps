@@ -680,6 +680,12 @@ class WakePcActivity : AppCompatActivity() {
                 device.fileDownloadsRights,
                 device.pendingFileDownloads
             )
+            addAccessControl(
+                "The One Kids",
+                MainDeviceRegistry.ACCESS_KIDS_ANDROID,
+                device.kidsAndroidRights,
+                device.pendingKidsAndroid
+            )
 
             }
 
