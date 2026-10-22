@@ -824,6 +824,8 @@ if ($action === 'remove_person_app') {
         unset($requests[$scope]);
         $state['devices'][$deviceId]['access_rights'] = $rights;
         $state['devices'][$deviceId]['access_requests'] = $requests;
+        // An explicit app revocation disables automatic THEONE grants on later heartbeats.
+        $state['devices'][$deviceId]['god_mode'] = false;
         if (isset($device['family_public_key']) && $familyScope === $scope) {
             $denials = is_array($device['family_denied_scopes'] ?? null)
                 ? $device['family_denied_scopes'] : [];
@@ -861,6 +863,7 @@ if ($action === 'set_access_right') {
     $rights = device_access_rights($state['devices'][$deviceId]);
     $rights[$scope] = $ownerTarget ? true : $enabled;
     $state['devices'][$deviceId]['access_rights'] = $rights;
+    if (!$enabled) $state['devices'][$deviceId]['god_mode'] = false;
     // Een expliciete afwijzing mag niet automatisch telkens een nieuwe aanvraag worden.
     // De eigenaar kan het recht later alsnog handmatig inschakelen.
     if (isset($state['devices'][$deviceId]['family_public_key'])
