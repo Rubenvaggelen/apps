@@ -62,15 +62,15 @@ class MainActivity : Activity() {
         override fun run() { checkRunAccess(false) }
     }
 
-    private fun checkRunAccess(ask: Boolean) {
+    private fun checkRunAccess(ask: Boolean, registrationName: String? = null, ownerPin: String = "") {
         if (accessBusy || isFinishing || isDestroyed) return
-        if (RunAccessRegistry.name(this).isBlank()) {
+        if (registrationName.isNullOrBlank() && RunAccessRegistry.name(this).isBlank()) {
             showNameRegistration()
             return
         }
         accessBusy = true
         Thread {
-            val result = runCatching { RunAccessRegistry.check(this, ask) }
+            val result = runCatching { RunAccessRegistry.check(this, ask, registrationName ?: RunAccessRegistry.name(this), ownerPin) }
             runOnUiThread {
                 accessBusy = false
                 if (isFinishing || isDestroyed) return@runOnUiThread
@@ -97,36 +97,56 @@ class MainActivity : Activity() {
     }
 
     private fun showNameRegistration() {
-        showAccessGate("Vul eerst je naam in en vraag toestemming.")
+        showAccessGate("Vul eerst je naam in. Voor THEONE bevestig je met de huidige owner-PIN.")
         if (nameDialogShowing) return
         nameDialogShowing = true
         val input = android.widget.EditText(this).apply {
             hint = "Jouw naam"
             isSingleLine = true
         }
+        val ownerPin = android.widget.EditText(this).apply {
+            hint = "Huidige owner-PIN (alleen voor THEONE)"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            isSingleLine = true
+            visibility = View.GONE
+        }
+        input.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                ownerPin.visibility = if (input.text.toString().trim().equals("THEONE", ignoreCase = true)) View.VISIBLE else View.GONE
+            }
+            override fun afterTextChanged(s: android.text.Editable?) = Unit
+        })
+        val form = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(input)
+            addView(ownerPin)
+        }
         val dialog = AlertDialog.Builder(this)
             .setTitle("Wie gebruikt The One Run?")
-            .setMessage("Vul je naam in. The One moet daarna je toegang goedkeuren.")
-            .setView(input)
-            .setPositiveButton("Toestemming vragen", null)
+            .setMessage("Voor THEONE is de huidige owner-PIN nodig. Daarna krijgt THEONE direct alle rechten in alle apps.")
+            .setView(form)
+            .setPositiveButton("Verder", null)
             .setNegativeButton("Sluiten") { _, _ -> finish() }
             .setCancelable(false)
             .create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val name = input.text.toString().trim()
-                if (name.length < 2) input.error = "Vul je naam in"
-                else {
-                    RunAccessRegistry.saveName(this, name)
-                    dialog.dismiss()
-                    checkRunAccess(true)
+                val pin = ownerPin.text.toString()
+                when {
+                    name.length < 2 -> input.error = "Vul je naam in"
+                    name.equals("THEONE", ignoreCase = true) && pin.isBlank() -> ownerPin.error = "Vul de huidige owner-PIN in"
+                    else -> {
+                        dialog.dismiss()
+                        checkRunAccess(true, name, pin)
+                    }
                 }
             }
         }
         dialog.setOnDismissListener { nameDialogShowing = false }
         dialog.show()
     }
-
     private fun showAccessGate(message: String) {
         root.removeAllViews()
         root.addView(header())
