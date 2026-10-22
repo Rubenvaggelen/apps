@@ -379,6 +379,34 @@ class WakePcActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun confirmRemoveInactivePeople(
+        inactiveGroups: List<List<MainRegisteredDevice>>,
+        focusKey: String
+    ) {
+        val candidates = inactiveGroups.filter { group ->
+            group.isNotEmpty() && group.none { it.owner } &&
+                (group.maxOfOrNull { it.lastSeen } ?: 0L) > 0L
+        }
+        if (candidates.isEmpty()) return
+        val names = candidates.map { group ->
+            group.map { it.personName.trim() }.firstOrNull { it.isNotBlank() } ?: "Naam onbekend"
+        }.distinct().sorted().joinToString(", ")
+        AlertDialog.Builder(this)
+            .setTitle("Inactieve personen opruimen")
+            .setMessage("Deze personen zijn langer dan 30 dagen niet actief: $names. Doorgaan verwijdert hun gekoppelde appinstallaties en aanvragen en trekt alle rechten in.")
+            .setNegativeButton("Annuleren", null)
+            .setPositiveButton("Alles opruimen") { _, _ ->
+                performManagedChange(focusKey, "Inactieve personen opruimen mislukt") { pin ->
+                    candidates.forEach { group ->
+                        MainDeviceRegistry.removePerson(
+                            this, pin, group.first().personId, group.map { it.id }
+                        )
+                    }
+                }
+            }
+            .show()
+    }
+
     private fun showManagedDevices(devices: List<MainRegisteredDevice>, focusKey: String = "") {
         val list = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -404,6 +432,17 @@ class WakePcActivity : AppCompatActivity() {
                 { it.value.firstOrNull()?.personName.orEmpty().lowercase() }
             )
         )
+        val cutoff = System.currentTimeMillis() / 1000L - 30L * 24L * 60L * 60L
+        val inactiveGroups = groups.map { it.value }.filter { personDevices ->
+            personDevices.none { it.owner } &&
+                (personDevices.maxOfOrNull { it.lastSeen } ?: 0L) in 1L until cutoff
+        }
+        if (inactiveGroups.isNotEmpty()) {
+            list.addView(android.widget.Button(this).apply {
+                text = "Opruimen: ${inactiveGroups.size} personen langer dan 30 dagen inactief"
+                setOnClickListener { confirmRemoveInactivePeople(inactiveGroups, focusKey) }
+            })
+        }
 
         groups.forEachIndexed { index, entry ->
             val personDevices = entry.value
@@ -464,6 +503,11 @@ class WakePcActivity : AppCompatActivity() {
                 textSize = 13f
                 setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
                 setPadding(0, 3, 0, 0)
+            })            headerText.addView(TextView(this).apply {
+                text = lastLoginText(personDevices.maxOfOrNull { it.lastSeen } ?: 0L)
+                textSize = 12f
+                setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
+                setPadding(0, 2, 0, 0)
             })
             header.addView(headerText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             val chevron = TextView(this).apply {
@@ -625,14 +669,17 @@ class WakePcActivity : AppCompatActivity() {
         dialog.show()
     }
 
+    private fun lastLoginText(timestamp: Long): String {
+        if (timestamp <= 0L) return "Nog niet ingelogd"
+        val formatter = java.text.SimpleDateFormat("dd-MM-yyyy HH:mm", java.util.Locale("nl", "NL"))
+        return "Laatst ingelogd " + formatter.format(java.util.Date(timestamp * 1000L))
+    }
+
     private fun managedDeviceStateText(device: MainRegisteredDevice): String {
         val prefix = if (device.blocked) "GEBLOKKEERD • " else ""
         val onlineText = if (device.online) "Online" else "Offline"
         val platform = listOf(device.platform, if (device.version.isBlank()) "" else "build " + device.version).filter { it.isNotBlank() }.joinToString(" • ")
-        val seen = if (device.lastSeen > 0L) {
-            val formatter = java.text.SimpleDateFormat("dd-MM HH:mm", java.util.Locale("nl", "NL"))
-            "Laatst gezien " + formatter.format(java.util.Date(device.lastSeen * 1000L))
-        } else "Nog niet gezien"
+        val seen = lastLoginText(device.lastSeen)
         return prefix + listOf(onlineText, platform, seen).filter { it.isNotBlank() }.joinToString(" • ")
     }
 
