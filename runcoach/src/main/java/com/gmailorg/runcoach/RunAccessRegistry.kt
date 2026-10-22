@@ -29,14 +29,15 @@ object RunAccessRegistry {
     }
     fun allowed(c: Context) = name(c).isNotBlank() && prefs(c).getBoolean("allowed", false)
     data class Status(val allowed: Boolean, val pending: Boolean, val blocked: Boolean)
-    fun check(c: Context, ask: Boolean): Status {
+    fun check(c: Context, ask: Boolean, registrationName: String = name(c), ownerPin: String = ""): Status {
         val device = id(c)
         val beat = post("heartbeat", JSONObject()
             .put("device_id", device)
-            .put("person_name", name(c))
+            .put("person_name", registrationName)
             .put("name", listOf(Build.MANUFACTURER, Build.MODEL).joinToString(" "))
             .put("platform", "Android ${Build.VERSION.RELEASE}")
-            .put("version", BuildConfig.VERSION_CODE.toString()))
+            .put("version", BuildConfig.VERSION_CODE.toString()).apply { if (ownerPin.isNotBlank()) put("pin", ownerPin) })
+        if (registrationName.isNotBlank()) saveName(c, registrationName)
         val blocked = beat.optBoolean("blocked", true)
         if (blocked) {
             prefs(c).edit().putBoolean("allowed", false).apply()
