@@ -369,7 +369,7 @@ class WakePcActivity : AppCompatActivity() {
     ) {
         AlertDialog.Builder(this)
             .setTitle("Persoon verwijderen")
-            .setMessage("Verwijder $personName en alle gekoppelde appregistraties, rechten en openstaande aanvragen?")
+            .setMessage("Trek alle rechten van $personName in en verwijder alle gekoppelde appinstallaties en openstaande aanvragen?")
             .setNegativeButton("Annuleren", null)
             .setPositiveButton("Persoon verwijderen") { _, _ ->
                 performManagedChange(focusKey, "Persoon verwijderen mislukt") { pin ->
@@ -385,7 +385,7 @@ class WakePcActivity : AppCompatActivity() {
             setPadding(18, 8, 18, 8)
         }
         list.addView(TextView(this).apply {
-            text = "Alle personen staan hier één keer. Alleen verleende rechten en openstaande aanvragen worden getoond."
+            text = "Tik op een naam om alle rechten in te trekken en alle apps te verwijderen. Gebruik de pijl om rechten te bekijken. Eigenaar-PIN vereist."
             textSize = 14f
             setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
             setPadding(0, 0, 0, 12)
@@ -439,12 +439,26 @@ class WakePcActivity : AppCompatActivity() {
                 setBackgroundResource(android.R.drawable.list_selector_background)
             }
             val headerText = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            headerText.addView(TextView(this).apply {
+            val personTitle = TextView(this).apply {
                 text = personName + if (personDevices.any { it.owner }) "  •  The One" else ""
                 textSize = 18f
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
                 setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_main))
-            })
+            }
+            if (!personDevices.any { it.owner }) {
+                personTitle.isClickable = true
+                personTitle.isFocusable = true
+                personTitle.contentDescription = "Tik om $personName en alle apprechten te verwijderen"
+                personTitle.setOnClickListener {
+                    confirmRemovePerson(
+                        personName,
+                        personDevices.firstOrNull()?.personId.orEmpty(),
+                        personDevices.map { it.id },
+                        focus
+                    )
+                }
+            }
+            headerText.addView(personTitle)
             headerText.addView(TextView(this).apply {
                 text = summaryParts.joinToString(" • ")
                 textSize = 13f
@@ -582,19 +596,6 @@ class WakePcActivity : AppCompatActivity() {
                             setBackgroundColor(ContextCompat.getColor(this@WakePcActivity, R.color.line))
                         }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
                     }
-                }
-                if (!personDevices.any { it.owner }) {
-                    card.addView(android.widget.Button(this).apply {
-                        text = "Persoon verwijderen"
-                        setOnClickListener {
-                            confirmRemovePerson(
-                                personName,
-                                personDevices.firstOrNull()?.personId.orEmpty(),
-                                personDevices.map { it.id },
-                                focus
-                            )
-                        }
-                    })
                 }
             }
 
