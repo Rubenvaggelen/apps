@@ -94,7 +94,13 @@ def main():
         api.mkdir(parents=True)
         data_dir = temp / "the-one-remote-data"
         data_dir.mkdir()
-        shutil.copyfile(ROOT / "the-one-remote-server" / "devices.php", api / "devices.php")
+        test_pin = "ci-owner-pin-only-for-isolated-test"
+        php_source = (ROOT / "the-one-remote-server" / "devices.php").read_text()
+        marker = "const MAIN_ADMIN_SHA256 = '"
+        start = php_source.index(marker) + len(marker)
+        end = php_source.index("';", start)
+        php_source = php_source[:start] + hashlib.sha256(test_pin.encode()).hexdigest() + php_source[end:]
+        (api / "devices.php").write_text(php_source)
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
             port = sock.getsockname()[1]
@@ -117,6 +123,7 @@ def main():
                 # Correct routing: unknown or missing registered identity MUST NOT become generic 403.
                 expect(url, "family_register", {}, 400, "Unknown app")
                 expect(url, "family_check", {}, 400, "Invalid device")
+                family_devices = {}
                 for i, (package, scope) in enumerate(PACKAGES.items()):
                     key, public_der, device = signing_pair(temp, i)
                     registration = proof(temp, key, device, scope, "register")
@@ -128,6 +135,7 @@ def main():
                         "device_name": "Ephemeral Test Device",
                     })
                     response = expect(url, "family_register", registration, 200)
+                    family_devices[scope] = device
                     assert response.get("pending") is True
                     assert response.get("allowed") is False
 
@@ -178,7 +186,89 @@ def main():
                 assert mp.get("allowed") is True and xxx.get("allowed") is False
                 for scope in EXPECTED_SCOPES:
                     expect(url, "access_status", {"device_id": fake, "scope": scope}, 200)
-                print("PASS: all 8 signed Family apps, pending/grant/revoke, signature rejection, separate XXX denial")
+                # Owner-only management actions use an ephemeral CI credential and isolated state.
+                owner_id = "ci-owner"
+                owner_person_id = "person-ci-owner"
+                (data_dir / "main-device-owner.json").write_text(json.dumps({"device_id": owner_id}))
+                state = json.loads((data_dir / "main-devices.json").read_text())
+                state["devices"][owner_id] = {
+                    "device_id": owner_id,
+                    "person_id": owner_person_id,
+                    "person_name": "CI Owner",
+                    "access_rights": {},
+                    "access_requests": {},
+                }
+                legacy_id = "ci-legacy-device"
+                legacy_person_id = "person-ci-legacy"
+                state["devices"][legacy_id] = {
+                    "device_id": legacy_id,
+                    "person_id": legacy_person_id,
+                    "person_name": "CI Legacy",
+                    "access_rights": {"media_player": True},
+                    "access_requests": {"media_player": {"status": "pending", "requested_at": "now"}},
+                    "blocked": False,
+                }
+                (data_dir / "main-devices.json").write_text(json.dumps(state))
+
+                auth = {"request_device_id": owner_id}
+                listing = expect(url, "list", auth, 200).get("devices", [])
+                kids_row = next(row for row in listing if row.get("device_id") == family_devices["kids_android"])
+                assert kids_row.get("family_scope") == "kids_android"
+
+                unauthorized = auth | {
+                    "pin": "wrong",
+                    "person_id": legacy_person_id,
+                    "device_ids": [legacy_id],
+                    "scope": "media_player",
+                }
+                before = json.loads((data_dir / "main-devices.json").read_text())
+                expect(url, "remove_person_app", unauthorized, 403, "Owner PIN required")
+                assert json.loads((data_dir / "main-devices.json").read_text()) == before
+
+                remove_legacy = auth | {
+                    "pin": test_pin,
+                    "person_id": legacy_person_id,
+                    "device_ids": [legacy_id],
+                    "scope": "media_player",
+                }
+                expect(url, "remove_person_app", remove_legacy, 200)
+                state = json.loads((data_dir / "main-devices.json").read_text())
+                assert state["devices"][legacy_id]["access_rights"]["media_player"] is False
+                assert "media_player" not in state["devices"][legacy_id]["access_requests"]
+
+                family_person_id = state["devices"][family_devices["kids_android"]]["person_id"]
+                remove_kids = auth | {
+                    "pin": test_pin,
+                    "person_id": family_person_id,
+                    "device_ids": [],
+                    "scope": "kids_android",
+                }
+                expect(url, "remove_person_app", remove_kids, 200)
+                state = json.loads((data_dir / "main-devices.json").read_text())
+                assert family_devices["kids_android"] in state["devices"]
+                kids_state = state["devices"][family_devices["kids_android"]]
+                assert kids_state["access_rights"]["kids_android"] is False
+                assert "kids_android" not in kids_state["access_requests"]
+                assert "kids_android" in kids_state["family_denied_scopes"]
+                assert family_devices["series_android"] in state["devices"]
+
+                remove_person = auth | {
+                    "pin": test_pin,
+                    "person_id": family_person_id,
+                    "device_ids": [],
+                }
+                expect(url, "remove_person", remove_person, 200)
+                state = json.loads((data_dir / "main-devices.json").read_text())
+                assert all(row.get("person_id") != family_person_id for row in state["devices"].values())
+                remove_owner = auth | {
+                    "pin": test_pin,
+                    "person_id": owner_person_id,
+                    "device_ids": [],
+                }
+                expect(url, "remove_person", remove_owner, 409, "Owner person cannot be removed")
+                assert owner_id in json.loads((data_dir / "main-devices.json").read_text())["devices"]
+
+                print("PASS: signed Family licenses, app/person removal, owner PIN guards, separate XXX denial")
             finally:
                 process.terminate()
                 try:

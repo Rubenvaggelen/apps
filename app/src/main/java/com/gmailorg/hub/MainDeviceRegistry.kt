@@ -2,6 +2,7 @@ package com.gmailorg.hub
 
 import android.content.Context
 import android.os.Build
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -10,12 +11,18 @@ import java.util.UUID
 data class MainRegisteredDevice(
     val id: String,
     val name: String,
+    val personId: String,
     val personName: String,
+    val familyScope: String,
     val platform: String,
     val version: String,
     val blocked: Boolean,
     val owner: Boolean,
     val musicRights: Boolean,
+    val theOneUserRights: Boolean,
+    val cinemaAndroidRights: Boolean,
+    val seriesAndroidRights: Boolean,
+    val tvAndroidRights: Boolean,
     val mediaPlayerRights: Boolean,
     val mediaPlayerXxxRights: Boolean,
     val mixesRights: Boolean,
@@ -77,6 +84,10 @@ object MainDeviceRegistry {
     // Separate explicit right for saving a Shared Media file onto the device.
     const val ACCESS_FILE_DOWNLOADS = "download_files"
     const val ACCESS_KIDS_ANDROID = "kids_android"
+    const val ACCESS_THE_ONE_USER = "the_one_user"
+    const val ACCESS_CINEMA_ANDROID = "cinema_android"
+    const val ACCESS_SERIES_ANDROID = "series_android"
+    const val ACCESS_TV_ANDROID = "tv_android"
     @Deprecated("Use ACCESS_ORGANIZE or ACCESS_FILE_DOWNLOADS explicitly")
     const val ACCESS_DOWNLOADS = ACCESS_ORGANIZE
 
@@ -246,12 +257,18 @@ object MainDeviceRegistry {
                     MainRegisteredDevice(
                         id = item.optString("device_id"),
                         name = item.optString("name", "Apparaat"),
+                        personId = item.optString("person_id", "").trim(),
                         personName = item.optString("person_name", "").trim(),
+                        familyScope = item.optString("family_scope", "").trim(),
                         platform = item.optString("platform", ""),
                         version = item.optString("version", ""),
                         blocked = item.optBoolean("blocked", false),
                         owner = item.optBoolean("owner", false),
                         musicRights = item.optBoolean("music_rights", item.optBoolean("owner", false)),
+                        theOneUserRights = item.optJSONObject("access_rights")?.optBoolean(ACCESS_THE_ONE_USER, false) ?: false,
+                        cinemaAndroidRights = item.optJSONObject("access_rights")?.optBoolean(ACCESS_CINEMA_ANDROID, false) ?: false,
+                        seriesAndroidRights = item.optJSONObject("access_rights")?.optBoolean(ACCESS_SERIES_ANDROID, false) ?: false,
+                        tvAndroidRights = item.optJSONObject("access_rights")?.optBoolean(ACCESS_TV_ANDROID, false) ?: false,
                         mediaPlayerRights = item.optJSONObject("access_rights")
                             ?.optBoolean(ACCESS_MEDIA_PLAYER, item.optBoolean("owner", false))
                             ?: item.optBoolean("owner", false),
@@ -398,6 +415,48 @@ object MainDeviceRegistry {
         )
         AccessRequestNotifications.resolve(context, targetDeviceId, scope)
         }
+    }
+
+    fun removePerson(
+        context: Context,
+        pin: String,
+        personId: String,
+        deviceIds: List<String>
+    ): Int {
+        val ids = JSONArray()
+        deviceIds.distinct().forEach { ids.put(it) }
+        val json = request(
+            "remove_person",
+            JSONObject()
+                .put("pin", pin)
+                .put("request_device_id", deviceId(context))
+                .put("person_id", personId)
+                .put("device_ids", ids)
+        )
+        AccessRequestNotificationWorker.checkNow(context)
+        return json.optInt("removed_count", 0)
+    }
+
+    fun removePersonApp(
+        context: Context,
+        pin: String,
+        personId: String,
+        deviceIds: List<String>,
+        scope: String
+    ): Int {
+        val ids = JSONArray()
+        deviceIds.distinct().forEach(ids::put)
+        val json = request(
+            "remove_person_app",
+            JSONObject()
+                .put("pin", pin)
+                .put("request_device_id", deviceId(context))
+                .put("person_id", personId)
+                .put("device_ids", ids)
+                .put("scope", scope)
+        )
+        AccessRequestNotificationWorker.checkNow(context)
+        return json.optInt("removed_count", 0) + json.optInt("revoked_count", 0)
     }
 
     fun refreshMusicRights(context: Context): Boolean {

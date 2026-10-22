@@ -630,6 +630,7 @@ if ($action === 'list') {
         $d['access_requests'] = device_access_requests($d);
         $d['person_name'] = $personName;
         $d['person_id'] = trim((string)($d['person_id'] ?? ''));
+        $d['family_scope'] = family_scope_for_package((string)($d['family_package'] ?? ''));
         $devices[] = $d;
     }
     usort($devices, fn($a, $b) => ((int)($b['last_seen'] ?? 0)) <=> ((int)($a['last_seen'] ?? 0)));
@@ -661,6 +662,118 @@ if ($action === 'set_person_name') {
     devices_save($devicesFile, $state);
     respond_devices(200, ['ok' => true, 'device_id' => $deviceId,
         'person_name' => $personName, 'person_id' => $personId, 'person_exists' => $existingPerson]);
+}
+
+if ($action === 'remove_person') {
+    if (!devices_admin($body)) {
+        usleep(300000);
+        respond_devices(403, ['ok' => false, 'error' => 'Owner PIN required']);
+    }
+    $personId = trim((string)($body['person_id'] ?? ''));
+    if ($personId !== '' && (strlen($personId) > 100 ||
+        !preg_match('/^[A-Za-z0-9._:-]+$/', $personId))) {
+        respond_devices(400, ['ok' => false, 'error' => 'Invalid person']);
+    }
+    $rawIds = $body['device_ids'] ?? [];
+    if (!is_array($rawIds) || count($rawIds) > 100) {
+        respond_devices(400, ['ok' => false, 'error' => 'Invalid device list']);
+    }
+    $targets = [];
+    if ($personId !== '') {
+        foreach ($state['devices'] as $deviceId => $device) {
+            if (is_array($device) && hash_equals($personId, trim((string)($device['person_id'] ?? '')))) {
+                $targets[] = (string)$deviceId;
+            }
+        }
+    } else {
+        foreach ($rawIds as $rawId) {
+            $deviceId = clean_device_id((string)$rawId);
+            if (isset($state['devices'][$deviceId]) && is_array($state['devices'][$deviceId])) {
+                $targets[] = $deviceId;
+            }
+        }
+    }
+    $targets = array_values(array_unique($targets));
+    if ($targets === []) {
+        respond_devices(404, ['ok' => false, 'error' => 'Person not found']);
+    }
+    $ownerId = devices_owner_id($ownerFile);
+    if ($ownerId !== '' && in_array($ownerId, $targets, true)) {
+        respond_devices(409, ['ok' => false, 'error' => 'Owner person cannot be removed']);
+    }
+    foreach ($targets as $deviceId) unset($state['devices'][$deviceId]);
+    devices_save($devicesFile, $state);
+    respond_devices(200, ['ok' => true, 'removed_count' => count($targets)]);
+}
+
+if ($action === 'remove_person_app') {
+    if (!devices_admin($body)) {
+        usleep(300000);
+        respond_devices(403, ['ok' => false, 'error' => 'Owner PIN required']);
+    }
+    $scope = clean_access_scope((string)($body['scope'] ?? ''));
+    $personId = trim((string)($body['person_id'] ?? ''));
+    if ($personId !== '' && (strlen($personId) > 100 ||
+        !preg_match('/^[A-Za-z0-9._:-]+$/', $personId))) {
+        respond_devices(400, ['ok' => false, 'error' => 'Invalid person']);
+    }
+    $rawIds = $body['device_ids'] ?? [];
+    if (!is_array($rawIds) || count($rawIds) > 100) {
+        respond_devices(400, ['ok' => false, 'error' => 'Invalid device list']);
+    }
+    $targets = [];
+    if ($personId !== '') {
+        foreach ($state['devices'] as $deviceId => $device) {
+            if (is_array($device) && hash_equals($personId, trim((string)($device['person_id'] ?? '')))) {
+                $targets[] = (string)$deviceId;
+            }
+        }
+    } else {
+        foreach ($rawIds as $rawId) {
+            $deviceId = clean_device_id((string)$rawId);
+            if (isset($state['devices'][$deviceId]) && is_array($state['devices'][$deviceId])) {
+                $targets[] = $deviceId;
+            }
+        }
+    }
+    $targets = array_values(array_unique($targets));
+    if ($targets === []) {
+        respond_devices(404, ['ok' => false, 'error' => 'Person not found']);
+    }
+    $ownerId = devices_owner_id($ownerFile);
+    if ($ownerId !== '' && in_array($ownerId, $targets, true)) {
+        respond_devices(409, ['ok' => false, 'error' => 'Owner rights cannot be removed']);
+    }
+
+    $removed = 0;
+    $revoked = 0;
+    foreach ($targets as $deviceId) {
+        $device = $state['devices'][$deviceId];
+        $familyScope = family_scope_for_package((string)($device['family_package'] ?? ''));
+        $rights = device_access_rights($device);
+        $requests = is_array($device['access_requests'] ?? null) ? $device['access_requests'] : [];
+        if (($rights[$scope] ?? false) || isset($requests[$scope]) ||
+            (isset($device['family_public_key']) && $familyScope === $scope)) {
+            $revoked++;
+        }
+        $rights[$scope] = false;
+        unset($requests[$scope]);
+        $state['devices'][$deviceId]['access_rights'] = $rights;
+        $state['devices'][$deviceId]['access_requests'] = $requests;
+        if (isset($device['family_public_key']) && $familyScope === $scope) {
+            $denials = is_array($device['family_denied_scopes'] ?? null)
+                ? $device['family_denied_scopes'] : [];
+            $denials[$scope] = gmdate('c');
+            $state['devices'][$deviceId]['family_denied_scopes'] = $denials;
+        }
+        $state['devices'][$deviceId]['access_rights_updated'] = gmdate('c');
+    }
+    devices_save($devicesFile, $state);
+    respond_devices(200, [
+        'ok' => true,
+        'removed_count' => $removed,
+        'revoked_count' => $revoked
+    ]);
 }
 
 if ($action === 'set_access_right') {
