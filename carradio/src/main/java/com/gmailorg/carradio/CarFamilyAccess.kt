@@ -57,22 +57,25 @@ object CarFamilyAccess {
         return allowed
     }
 
-    fun heartbeat(context: Context) {
+    fun heartbeat(context: Context, registrationName: String? = null, ownerPin: String = "") {
         val json = request(
             "heartbeat",
             JSONObject()
                 .put("device_id", deviceId(context))
                 .put("name", "The One Car")
-                .put("person_name", personName(context))
+                .put("person_name", registrationName?.trim()?.takeIf { it.isNotBlank() } ?: personName(context))
                 .put("device_role", "car")
                 .put("platform", "Car Android " + Build.VERSION.RELEASE)
                 .put("version", BuildConfig.VERSION_CODE.toString())
-        )
+        ).apply {
+            if (ownerPin.isNotBlank()) put("pin", ownerPin)
+        }
         val allowed = json.optBoolean("music_rights", false)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_MUSIC_RIGHTS, allowed)
             .apply()
+        if (!registrationName.isNullOrBlank()) savePersonName(context, registrationName)
     }
 
     private fun request(action: String, body: JSONObject): JSONObject {
