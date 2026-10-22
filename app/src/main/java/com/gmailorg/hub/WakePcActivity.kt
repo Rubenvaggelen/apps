@@ -412,16 +412,68 @@ class WakePcActivity : AppCompatActivity() {
                 ?: "Naam nog niet ingevuld"
             val groupKey = entry.key
             val focus = groupKey.ifBlank { focusKey }
-            val card = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(16, 14, 16, 14)
+            val compactRights = personDevices.flatMap { device ->
+                managedAppRights(device).filter { it.allowed || it.pending }.map { device to it }
+            }.groupBy { it.second.scope }
+            val pendingCount = compactRights.values.sumOf { scopeRows ->
+                scopeRows.filter { it.second.pending && !it.second.allowed }.map { it.first.id }.distinct().size
             }
-            card.addView(TextView(this).apply {
+            val summaryParts = mutableListOf<String>()
+            if (personDevices.any { it.owner }) {
+                summaryParts.add("Eigenaarstoestel")
+            } else {
+                if (compactRights.isNotEmpty()) summaryParts.add("${compactRights.size} apps")
+                if (pendingCount > 0) summaryParts.add("${pendingCount} aanvragen open")
+                if (summaryParts.isEmpty()) summaryParts.add("Geen actieve rechten of aanvragen")
+            }
+            if (personDevices.any { it.blocked }) summaryParts.add("Geblokkeerd")
+
+            val section = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            val initiallyExpanded = isFocused(entry)
+            val header = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(16, 14, 16, 14)
+                isClickable = true
+                isFocusable = true
+                setBackgroundResource(android.R.drawable.list_selector_background)
+            }
+            val headerText = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            headerText.addView(TextView(this).apply {
                 text = personName + if (personDevices.any { it.owner }) "  •  The One" else ""
                 textSize = 18f
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
                 setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_main))
             })
+            headerText.addView(TextView(this).apply {
+                text = summaryParts.joinToString(" • ")
+                textSize = 13f
+                setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
+                setPadding(0, 3, 0, 0)
+            })
+            header.addView(headerText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            val chevron = TextView(this).apply {
+                text = if (initiallyExpanded) "▴" else "▾"
+                textSize = 24f
+                setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
+                setPadding(12, 0, 0, 0)
+                contentDescription = if (initiallyExpanded) "Inklappen" else "Rechten uitklappen"
+            }
+            header.addView(chevron)
+            section.addView(header)
+
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(16, 4, 16, 14)
+                visibility = if (initiallyExpanded) View.VISIBLE else View.GONE
+            }
+            header.setOnClickListener {
+                val opening = card.visibility != View.VISIBLE
+                card.visibility = if (opening) View.VISIBLE else View.GONE
+                chevron.text = if (opening) "▴" else "▾"
+                chevron.contentDescription = if (opening) "Inklappen" else "Rechten uitklappen"
+            }
+            section.addView(card)
             if (personDevices.any { it.blocked }) {
                 card.addView(TextView(this).apply {
                     text = "GEBLOKKEERD"
@@ -546,7 +598,7 @@ class WakePcActivity : AppCompatActivity() {
                 }
             }
 
-            list.addView(card)
+            list.addView(section)
             if (index < groups.lastIndex) {
                 list.addView(View(this).apply {
                     setBackgroundColor(ContextCompat.getColor(this@WakePcActivity, R.color.line))
