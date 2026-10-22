@@ -198,11 +198,13 @@ if ($action === 'heartbeat') {
 
     $godModePinValid = is_owner_god_mode_name($storedPersonName) && devices_admin($body);
     $godModeExisting = (bool)($old['god_mode'] ?? false);
-    if (is_owner_god_mode_name($storedPersonName) && !$godModePinValid && !$godModeExisting) {
+    $godModePersonActive = person_god_mode_active($state, $storedPersonName);
+    if (is_owner_god_mode_name($storedPersonName) && !$godModePinValid && !$godModeExisting && !$godModePersonActive) {
         usleep(300000);
         respond_devices(403, ['ok' => false, 'error' => 'Owner PIN required for THEONE']);
     }
-    $godMode = $godModePinValid || $godModeExisting;
+    $godMode = $godModePinValid || $godModeExisting || $godModePersonActive;
+    if ($godMode) $storedPersonName = 'THEONE';
     $existingRights = device_access_rights($old);
     $carFullAccess = $deviceRole === 'car';
     $scopedRights = $godMode ? full_access_rights() : ($carFullAccess
@@ -224,7 +226,7 @@ if ($action === 'heartbeat') {
         'registered' => (string)($old['registered'] ?? gmdate('c')),
         'last_seen' => time()
     ];
-    if ($godModePinValid) {
+    if ($godMode) {
         [$godPersonId] = family_link_person($state, $storedPersonName, $deviceId);
         $state['devices'][$deviceId]['person_id'] = $godPersonId;
         grant_god_mode_by_name($state, $storedPersonName);
@@ -424,6 +426,17 @@ function full_access_rights(): array {
     ], true);
 }
 
+/** Once the current owner PIN activates THEONE, trust that person across app installs. */
+function person_god_mode_active(array $state, string $name): bool {
+    if (!is_owner_god_mode_name($name)) return false;
+    $key = family_person_key($name);
+    foreach ($state['devices'] as $record) {
+        if (is_array($record) && family_person_key((string)($record['person_name'] ?? '')) === $key
+            && (bool)($record['god_mode'] ?? false)) return true;
+    }
+    return false;
+}
+
 /** A valid owner PIN grants every current app scope to registrations named THEONE. */
 function grant_god_mode_by_name(array &$state, string $name): int {
     $key = family_person_key($name);
@@ -508,11 +521,12 @@ if ($action === 'family_register') {
     }
     $godModePinValid = is_owner_god_mode_name($personName) && devices_admin($body);
     $godModeExisting = is_array($existing) && (bool)($existing['god_mode'] ?? false);
-    if (is_owner_god_mode_name($personName) && !$godModePinValid && !$godModeExisting) {
+    $godModePersonActive = person_god_mode_active($state, $personName);
+    if (is_owner_god_mode_name($personName) && !$godModePinValid && !$godModeExisting && !$godModePersonActive) {
         usleep(300000);
         respond_devices(403, ['ok' => false, 'error' => 'Owner PIN required for THEONE']);
     }
-    $godMode = $godModePinValid || $godModeExisting;
+    $godMode = $godModePinValid || $godModeExisting || $godModePersonActive;
     if ($godMode) $personName = 'THEONE';
     $device = is_array($existing) ? $existing : [
         'device_id' => $derivedId,
@@ -561,7 +575,7 @@ if ($action === 'family_register') {
     $device['person_id'] = $personId;
     $device['last_seen'] = time();
     $state['devices'][$derivedId] = $device;
-    if ($godModePinValid) grant_god_mode_by_name($state, 'THEONE');
+    if ($godMode) grant_god_mode_by_name($state, 'THEONE');
     $device = $state['devices'][$derivedId];
     $rights = device_access_rights($device);
     $requests = device_access_requests($device);
