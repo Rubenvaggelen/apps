@@ -109,7 +109,7 @@ function clean_device_id(string $value): string {
 
 function clean_access_scope(string $value): string {
     $scope = strtolower(trim($value));
-    if (!in_array($scope, ['the_one_user', 'media_player', 'media_player_xxx', 'mixes', 'shared', 'favorites', 'dj', 'run', 'downloads', 'download_files', 'cinema_android', 'series_android', 'tv_android'], true)) {
+    if (!in_array($scope, ['the_one_user', 'media_player', 'media_player_xxx', 'mixes', 'shared', 'favorites', 'dj', 'run', 'downloads', 'download_files', 'cinema_android', 'series_android', 'tv_android', 'kids_android'], true)) {
         respond_devices(400, ['ok' => false, 'error' => 'Invalid access scope']);
     }
     return $scope;
@@ -135,14 +135,15 @@ function device_access_rights(array $device): array {
         'download_files' => (bool)($stored['download_files'] ?? false),
         'cinema_android' => (bool)($stored['cinema_android'] ?? false),
         'series_android' => (bool)($stored['series_android'] ?? false),
-        'tv_android' => (bool)($stored['tv_android'] ?? false)
+        'tv_android' => (bool)($stored['tv_android'] ?? false),
+        'kids_android' => (bool)($stored['kids_android'] ?? false)
     ];
 }
 
 function device_access_requests(array $device): array {
     $stored = is_array($device['access_requests'] ?? null) ? $device['access_requests'] : [];
     $result = [];
-    foreach (['the_one_user', 'media_player', 'media_player_xxx', 'mixes', 'shared', 'favorites', 'dj', 'run', 'downloads', 'download_files', 'cinema_android', 'series_android', 'tv_android'] as $scope) {
+    foreach (['the_one_user', 'media_player', 'media_player_xxx', 'mixes', 'shared', 'favorites', 'dj', 'run', 'downloads', 'download_files', 'cinema_android', 'series_android', 'tv_android', 'kids_android'] as $scope) {
         $row = is_array($stored[$scope] ?? null) ? $stored[$scope] : [];
         if (($row['status'] ?? '') === 'pending') {
             $result[$scope] = [
@@ -407,7 +408,8 @@ function family_scope_for_package(string $package): string {
         'com.theone.series.tv' => 'series_android',
         'com.theone.tv.phone' => 'tv_android',
         'com.theone.tv' => 'tv_android',
-        'com.gmailorg.theoneuser' => 'the_one_user'
+        'com.gmailorg.theoneuser' => 'the_one_user',
+        'com.gmailorg.kids' => 'kids_android'
     ];
     return $packages[$package] ?? '';
 }
@@ -663,7 +665,7 @@ if ($action === 'set_person_name') {
 
 if ($action === 'set_access_right') {
     // New Family permissions need the authenticated owner *and* the existing admin credential.
-    if (in_array((string)($body['scope'] ?? ''), ['the_one_user','cinema_android','series_android','tv_android'], true) && !devices_admin($body)) {
+    if (in_array((string)($body['scope'] ?? ''), ['the_one_user','cinema_android','series_android','tv_android','kids_android'], true) && !devices_admin($body)) {
         respond_devices(403, ['ok' => false, 'error' => 'Owner PIN required for Family rights']);
     }
     $deviceId = clean_device_id((string)($body['device_id'] ?? ''));
@@ -685,7 +687,7 @@ if ($action === 'set_access_right') {
     // Een expliciete afwijzing mag niet automatisch telkens een nieuwe aanvraag worden.
     // De eigenaar kan het recht later alsnog handmatig inschakelen.
     if (isset($state['devices'][$deviceId]['family_public_key'])
-        && in_array($scope, ['the_one_user', 'cinema_android', 'series_android', 'tv_android'], true)) {
+        && in_array($scope, ['the_one_user', 'cinema_android', 'series_android', 'tv_android', 'kids_android'], true)) {
         $denials = is_array($state['devices'][$deviceId]['family_denied_scopes'] ?? null)
             ? $state['devices'][$deviceId]['family_denied_scopes'] : [];
         if ($enabled) unset($denials[$scope]);
