@@ -203,9 +203,20 @@ def main():
                         "platform": "Android",
                         "device_name": "Ephemeral GOD Mode Device",
                     })
-                    expect(url, "family_register", registration, 403, "Owner PIN required for THEONE")
-                    expect(url, "family_register", registration | {"pin": "wrong"}, 403, "Owner PIN required for THEONE")
-                    god = expect(url, "family_register", registration | {"pin": test_pin}, 200)
+                    if i == 20:
+                        expect(url, "family_register", registration, 403, "Owner PIN required for THEONE")
+                        expect(url, "family_register", registration | {"pin": "wrong"}, 403, "Owner PIN required for THEONE")
+                        god = expect(url, "family_register", registration | {"pin": test_pin}, 200)
+                        generic = expect(url, "heartbeat", {
+                            "device_id": "ci-god-heartbeat",
+                            "name": "GOD test generic app",
+                            "person_name": "theone",
+                            "platform": "Android",
+                        }, 200)
+                        assert generic.get("access_rights") == {scope: True for scope in full_scopes}
+                    else:
+                        # One owner-PIN activation applies to all later app installations for THEONE.
+                        god = expect(url, "family_register", registration, 200)
                     god_devices[scope + "-" + str(i)] = device
                     assert god.get("allowed") is True and god.get("pending") is False
                     assert god.get("god_mode") is True
@@ -299,7 +310,27 @@ def main():
                 expect(url, "remove_person", remove_owner, 409, "Owner person cannot be removed")
                 assert owner_id in json.loads((data_dir / "main-devices.json").read_text())["devices"]
 
-                print("PASS: signed Family licenses, app/person removal, owner PIN guards, separate XXX denial")
+                # Removing the THEONE person removes the PIN-verified global activation.
+                remove_god_person = auth | {
+                    "pin": test_pin,
+                    "person_id": god_person_id,
+                    "device_ids": [],
+                }
+                expect(url, "remove_person", remove_god_person, 200)
+                state = json.loads((data_dir / "main-devices.json").read_text())
+                assert all(row.get("person_id") != god_person_id for row in state["devices"].values())
+                key, public_der, fresh_device = signing_pair(temp, 99)
+                fresh = proof(temp, key, fresh_device, "series_android", "register")
+                fresh.update({
+                    "package": "com.theone.series",
+                    "public_key": base64.b64encode(public_der).decode("ascii"),
+                    "person_name": "THEONE",
+                    "platform": "Android",
+                    "device_name": "Fresh GOD Mode Device",
+                })
+                expect(url, "family_register", fresh, 403, "Owner PIN required for THEONE")
+
+                print("PASS: signed Family licenses, global owner-PIN THEONE mode, app/person removal, owner PIN guards, separate XXX denial")
             finally:
                 process.terminate()
                 try:
