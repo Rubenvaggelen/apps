@@ -27,6 +27,7 @@ import javax.crypto.spec.PBEKeySpec
 class WakePcActivity : AppCompatActivity() {
 
     private var activeDeviceAdminPin = ""
+    private var activeAccessDialog: AlertDialog? = null
 
     private data class WakeTarget(
         val id: String,
@@ -139,10 +140,7 @@ class WakePcActivity : AppCompatActivity() {
                 remoteButton.isEnabled = true
                 manageDevicesButton.isEnabled = true
                 status.text = "Klaar"
-                if (intent.getBooleanExtra("open_access_management", false)) {
-                    intent.removeExtra("open_access_management")
-                    openDeviceManager(manageDevicesButton)
-                }
+                handleAccessManagementIntent(manageDevicesButton)
             }
         }.start()
 
@@ -180,6 +178,210 @@ class WakePcActivity : AppCompatActivity() {
         }
     }
 
+    override fun onNewIntent(incoming: Intent) {
+        super.onNewIntent(incoming)
+        setIntent(incoming)
+        if (incoming.getBooleanExtra("open_access_management", false)) {
+            activeAccessDialog?.dismiss()
+            handleAccessManagementIntent(findViewById(R.id.manageDevicesButton))
+        }
+    }
+
+    private fun handleAccessManagementIntent(trigger: View) {
+        if (!intent.getBooleanExtra("open_access_management", false)) return
+        intent.removeExtra("open_access_management")
+        val groupKey = intent.getStringExtra("focus_access_group").orEmpty()
+        val oldDeviceId = intent.getStringExtra("focus_device_id").orEmpty()
+        intent.removeExtra("focus_access_group")
+        intent.removeExtra("focus_device_id")
+        if (groupKey.isNotBlank()) {
+            showPendingAccessRequests(groupKey)
+        } else if (oldDeviceId.isNotBlank()) {
+            showPendingAccessRequests("device|" + oldDeviceId)
+        } else {
+            openDeviceManager(trigger)
+        }
+    }
+
+    private fun showPendingAccessRequests(groupKey: String) {
+        Thread {
+            val result = runCatching { MainDeviceRegistry.pendingAccessRequests(this) }
+            runOnUiThread {
+                result.onSuccess { requests ->
+                    val selected = when {
+                        groupKey.startsWith("person|") -> {
+                            val personId = groupKey.removePrefix("person|")
+                            requests.filter { it.personId == personId }
+                        }
+                        groupKey.startsWith("device|") -> {
+                            val deviceId = groupKey.removePrefix("device|")
+                            requests.filter { it.deviceId == deviceId }
+                        }
+                        else -> requests.filter { it.deviceId == groupKey }
+                    }
+                    if (selected.isEmpty()) {
+                        Toast.makeText(this, "Deze aanvraag is al afgehandeld.", Toast.LENGTH_SHORT).show()
+                        AccessRequestNotificationWorker.checkNow(this)
+                    } else {
+                        showPendingAccessDialog(selected)
+                    }
+                }.onFailure {
+                    Toast.makeText(this, "Aanvragen konden niet worden geladen.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun showPendingAccessDialog(requests: List<MainPendingAccessRequest>) {
+        val personName = requests.map { it.personName }.firstOrNull { it.isNotBlank() } ?: "Onbekend"
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(22, 8, 22, 8)
+        }
+        list.addView(TextView(this).apply {
+            text = "Alle app-aanvragen van " + personName + " staan hieronder. Keur iedere app apart goed of weiger die."
+            textSize = 15f
+            setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
+            setPadding(0, 0, 0, 12)
+        })
+
+        requests.sortedWith(compareBy({ AccessRequestNotifications.scopeLabel(it.scope) }, { it.deviceName })).forEach { request ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(0, 10, 0, 10)
+            }
+            row.addView(TextView(this).apply {
+                text = AccessRequestNotifications.scopeLabel(request.scope)
+                textSize = 17f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_main))
+            })
+            val deviceLabel = requestDeviceLabel(request.deviceName)
+            if (deviceLabel.isNotBlank()) {
+                row.addView(TextView(this).apply {
+                    text = deviceLabel
+                    textSize = 12f
+                    setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
+                })
+            }
+            val status = TextView(this).apply {
+                text = "Wacht op toestemming"
+                textSize = 12f
+                setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.amber))
+            }
+            row.addView(status)
+            val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            val approve = android.widget.Button(this).apply { text = "Goedkeuren" }
+            val reject = android.widget.Button(this).apply { text = "Weigeren" }
+            fun decide(enabled: Boolean) {
+                withOwnerAdminPin { pin ->
+                    approve.isEnabled = false
+                    reject.isEnabled = false
+                    Thread {
+                        val result = runCatching {
+                            MainDeviceRegistry.setAccessRight(this@WakePcActivity, pin, request.deviceId, request.scope, enabled)
+                        }
+                        runOnUiThread {
+                            result.onSuccess {
+                                status.text = if (enabled) "Goedgekeurd" else "Geweigerd"
+                                status.setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.amber))
+                                buttons.removeAllViews()
+                                Toast.makeText(
+                                    this@WakePcActivity,
+                                    AccessRequestNotifications.scopeLabel(request.scope) +
+                                        if (enabled) " goedgekeurd voor " + personName else " geweigerd voor " + personName,
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                AccessRequestNotificationWorker.checkNow(this@WakePcActivity)
+                            }.onFailure {
+                                activeDeviceAdminPin = ""
+                                approve.isEnabled = true
+                                reject.isEnabled = true
+                                Toast.makeText(
+                                    this@WakePcActivity,
+                                    "Aanvraag wijzigen mislukt: " + (it.message ?: "onbekende fout"),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
+                    }.start()
+                }
+            }
+            approve.setOnClickListener { decide(true) }
+            reject.setOnClickListener { decide(false) }
+            buttons.addView(approve, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            buttons.addView(reject, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = 8 })
+            row.addView(buttons)
+            list.addView(row)
+            list.addView(View(this).apply {
+                setBackgroundColor(ContextCompat.getColor(this@WakePcActivity, R.color.line))
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
+        }
+        val scroll = android.widget.ScrollView(this).apply {
+            isFillViewport = true
+            addView(list)
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("App-aanvragen • " + personName)
+            .setView(scroll)
+            .setNegativeButton("Sluiten", null)
+            .create()
+        activeAccessDialog = dialog
+        dialog.setOnDismissListener { if (activeAccessDialog === dialog) activeAccessDialog = null }
+        dialog.show()
+    }
+
+    private fun requestDeviceLabel(raw: String): String {
+        val inside = Regex("\\((.*)\\)$").find(raw)?.groupValues?.getOrNull(1) ?: raw
+        return inside.substringAfter("•", inside).trim()
+    }
+
+    private fun withOwnerAdminPin(onPinReady: (String) -> Unit) {
+        if (activeDeviceAdminPin.isNotBlank()) {
+            onPinReady(activeDeviceAdminPin)
+            return
+        }
+        val input = EditText(this).apply {
+            hint = "Main-beheerderspincode"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            isSingleLine = true
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Eigenaar bevestigen")
+            .setMessage("Voer de Main-beheerderspincode in om deze app-aanvraag te behandelen.")
+            .setView(input)
+            .setNegativeButton("Annuleren", null)
+            .setPositiveButton("Doorgaan", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val candidate = input.text.toString().trim()
+                if (candidate.isBlank()) {
+                    input.error = "Vul de beheerderspincode in"
+                    return@setOnClickListener
+                }
+                val positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                positive.isEnabled = false
+                Thread {
+                    val valid = runCatching { MainDeviceRegistry.ownerStatus(this@WakePcActivity, candidate) }.getOrDefault(false)
+                    runOnUiThread {
+                        if (valid) {
+                            activeDeviceAdminPin = candidate
+                            dialog.dismiss()
+                            onPinReady(candidate)
+                        } else {
+                            input.text?.clear()
+                            input.error = "De beheerderspincode klopt niet"
+                            positive.isEnabled = true
+                        }
+                    }
+                }.start()
+            }
+        }
+        dialog.show()
+        input.requestFocus()
+    }
+
     private fun openDeviceManager(trigger: View) {
         trigger.isEnabled = false
         Thread {
@@ -207,7 +409,6 @@ class WakePcActivity : AppCompatActivity() {
                     return@runOnUiThread
                 }
 
-                activeDeviceAdminPin = ""
                 showManagedDevices(devices)
             }
         }.start()
@@ -294,42 +495,45 @@ class WakePcActivity : AppCompatActivity() {
                         }
                         refreshLabel()
                         setOnClickListener {
-                            isEnabled = false
                             val enable = !allowed
-                            Thread {
-                                val result = runCatching {
-                                    MainDeviceRegistry.setAccessRight(
-                                        this@WakePcActivity,
-                                        activeDeviceAdminPin,
-                                        device.id,
-                                        scope,
-                                        enable
-                                    )
-                                }
-                                runOnUiThread {
-                                    result.onSuccess {
-                                        allowed = enable
-                                        pending = false
-                                        refreshLabel()
-                                        refreshState()
-                                        Toast.makeText(
+                            withOwnerAdminPin { pin ->
+                                grantButton.isEnabled = false
+                                Thread {
+                                    val result = runCatching {
+                                        MainDeviceRegistry.setAccessRight(
                                             this@WakePcActivity,
-                                            if (enable) "$personLabel heeft nu toegang tot $label."
-                                            else "$personLabel heeft geen toegang meer tot $label.",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                        AccessRequestNotificationWorker.checkNow(this@WakePcActivity)
-                                        isEnabled = true
-                                    }.onFailure {
-                                        Toast.makeText(
-                                            this@WakePcActivity,
-                                            "$label wijzigen mislukt: " + (it.message ?: "onbekende fout"),
-                                            Toast.LENGTH_LONG
-                                        ).show()
-                                        isEnabled = true
+                                            pin,
+                                            device.id,
+                                            scope,
+                                            enable
+                                        )
                                     }
-                                }
-                            }.start()
+                                    runOnUiThread {
+                                        result.onSuccess {
+                                            allowed = enable
+                                            pending = false
+                                            refreshLabel()
+                                            refreshState()
+                                            Toast.makeText(
+                                                this@WakePcActivity,
+                                                if (enable) "$personLabel heeft nu toegang tot $label."
+                                                else "$personLabel heeft geen toegang meer tot $label.",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                            AccessRequestNotificationWorker.checkNow(this@WakePcActivity)
+                                            grantButton.isEnabled = true
+                                        }.onFailure {
+                                            activeDeviceAdminPin = ""
+                                            Toast.makeText(
+                                                this@WakePcActivity,
+                                                "$label wijzigen mislukt: " + (it.message ?: "onbekende fout"),
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                            grantButton.isEnabled = true
+                                        }
+                                    }
+                                }.start()
+                            }
                         }
                     }
                     buttons.addView(
@@ -346,39 +550,43 @@ class WakePcActivity : AppCompatActivity() {
                             android.widget.Button(this).apply {
                                 text = "Weigeren"
                                 setOnClickListener {
-                                    isEnabled = false
-                                    Thread {
-                                        val result = runCatching {
-                                            MainDeviceRegistry.setAccessRight(
-                                                this@WakePcActivity,
-                                                activeDeviceAdminPin,
-                                                device.id,
-                                                scope,
-                                                false
-                                            )
-                                        }
-                                        runOnUiThread {
-                                            result.onSuccess {
-                                                pending = false
-                                                refreshState()
-                                                text = "Geweigerd"
-                                                isEnabled = false
-                                                Toast.makeText(
+                                    val rejectButton = this
+                                    withOwnerAdminPin { pin ->
+                                        rejectButton.isEnabled = false
+                                        Thread {
+                                            val result = runCatching {
+                                                MainDeviceRegistry.setAccessRight(
                                                     this@WakePcActivity,
-                                                    "$label-aanvraag van $personLabel geweigerd.",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                                AccessRequestNotificationWorker.checkNow(this@WakePcActivity)
-                                            }.onFailure {
-                                                Toast.makeText(
-                                                    this@WakePcActivity,
-                                                    "Weigeren mislukt: " + (it.message ?: "onbekende fout"),
-                                                    Toast.LENGTH_LONG
-                                                ).show()
-                                                isEnabled = true
+                                                    pin,
+                                                    device.id,
+                                                    scope,
+                                                    false
+                                                )
                                             }
-                                        }
-                                    }.start()
+                                            runOnUiThread {
+                                                result.onSuccess {
+                                                    pending = false
+                                                    refreshState()
+                                                    rejectButton.text = "Geweigerd"
+                                                    rejectButton.isEnabled = false
+                                                    Toast.makeText(
+                                                        this@WakePcActivity,
+                                                        "$label-aanvraag van $personLabel geweigerd.",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                    AccessRequestNotificationWorker.checkNow(this@WakePcActivity)
+                                                }.onFailure {
+                                                    activeDeviceAdminPin = ""
+                                                    Toast.makeText(
+                                                        this@WakePcActivity,
+                                                        "Weigeren mislukt: " + (it.message ?: "onbekende fout"),
+                                                        Toast.LENGTH_LONG
+                                                    ).show()
+                                                    rejectButton.isEnabled = true
+                                                }
+                                            }
+                                        }.start()
+                                    }
                                 }
                             },
                             LinearLayout.LayoutParams(

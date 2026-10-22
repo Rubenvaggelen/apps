@@ -5,27 +5,24 @@ import org.junit.Test
 import java.util.UUID
 
 class AccessRequestDismissalTest {
-    private fun request(key: String) = NotifItem(key, "the.one.access.requests", "The One Rechten",
-        "Aanvraag", "Run", 1L, false, true, "access_request", "device")
+    private fun request(key: String, text: String = "Run") = NotifItem(
+        key, "the.one.access.requests", "The One Rechten",
+        "Aanvraag", text, 1L, false, true, "access_request", "person|parent"
+    )
 
-    @Test fun oldPersistentRequestCanBeClearedAndDoesNotReappear() {
-        val key = "theone-access|" + UUID.randomUUID() + "|run|old"
+    @Test fun groupedRequestStaysUntilTheServerConfirmsItWasResolved() {
+        val key = "theone-access|person|" + UUID.randomUUID()
         NotifStore.addOrUpdate(request(key))
         NotifStore.clearAll()
-        assertFalse(NotifStore.getAll().any { it.key == key })
-        NotifStore.addOrUpdate(request(key))
-        assertFalse(NotifStore.getAll().any { it.key == key })
-        val fresh = key + "-new"
-        NotifStore.addOrUpdate(request(fresh))
-        assertTrue(NotifStore.getAll().any { it.key == fresh })
-        NotifStore.removeWhere(true) { it.key == fresh }
-    }
+        assertTrue(NotifStore.getAll().any { it.key == key })
 
-    @Test fun swipeDismissalRemembersTheExactRequest() {
-        val key = "theone-access|" + UUID.randomUUID() + "|run|old"
-        NotifStore.addOrUpdate(request(key))
         NotifStore.removeByKey(key)
-        NotifStore.addOrUpdate(request(key))
+        assertTrue(NotifStore.getAll().any { it.key == key })
+
+        NotifStore.addOrUpdate(request(key, "Run, Kids"))
+        assertEquals("Run, Kids", NotifStore.getAll().first { it.key == key }.text)
+
+        NotifStore.removeWhere(includePersistent = true) { it.key == key }
         assertFalse(NotifStore.getAll().any { it.key == key })
     }
 

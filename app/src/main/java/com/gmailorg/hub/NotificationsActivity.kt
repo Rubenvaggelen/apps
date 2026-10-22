@@ -38,8 +38,9 @@ class NotificationsActivity : AppCompatActivity() {
                 if (item.actionType == "access_request") {
                     startActivity(
                         Intent(this, WakePcActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                             putExtra("open_access_management", true)
-                            putExtra("focus_device_id", item.actionValue)
+                            putExtra("focus_access_group", item.actionValue)
                         }
                     )
                 }
@@ -55,7 +56,7 @@ class NotificationsActivity : AppCompatActivity() {
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
                 val position = viewHolder.adapterPosition
                 val item = currentFilteredItems().getOrNull(position) ?: return
-                if (item.persistent && item.actionType != "access_request") {
+                if (item.persistent) {
                     adapter.updateItems(currentFilteredItems())
                     return
                 }

@@ -74,135 +74,103 @@ object AccessRequestNotifications {
     val syncLock = Any()
 
     fun resolve(context: Context, deviceId: String, scope: String) {
-        NotifStore.init(context.applicationContext)
-        val prefix = "theone-access|$deviceId|$scope|"
-        NotifStore.removeWhere(includePersistent = true) { it.actionType == "access_request" && it.key.startsWith(prefix) }
-        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val seen = preferences.getStringSet(KEY_SEEN, emptySet()).orEmpty()
-        val resolved = seen.filter { it.startsWith("$deviceId|$scope|") }.toSet()
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        resolved.forEach { manager.cancel(("access|" + it).hashCode()) }
-        preferences.edit().putStringSet(KEY_SEEN, seen - resolved).apply()
+        // Refresh the person group after resolving one app scope; leave it visible if scopes remain.
+        checkNow(context)
     }
+
     private const val CHANNEL_ID = "the_one_access_requests"
     private const val PREFS = "access_request_notifications"
     private const val KEY_SEEN = "seen_keys"
 
-    fun notifyNew(
-        context: Context,
-        requests: List<MainPendingAccessRequest>
-    ) {
+    fun notifyNew(context: Context, requests: List<MainPendingAccessRequest>) {
         if (!MainDeviceRegistry.isLocallyOwner(context)) return
-
         NotifStore.init(context.applicationContext)
 
-        val activeKeys = requests.map { requestKey(it) }.toSet()
+        val grouped = requests.groupBy(::requestKey)
+        val activeKeys = grouped.keys
         val activeNotifKeys = activeKeys.map { "theone-access|" + it }.toSet()
 
-        // Dismissing a message never approves or rejects the actual request.
-        requests.forEach { request ->
-            val person = request.personName.ifBlank {
-                request.deviceName.ifBlank { "Iemand" }
-            }
-            val scopeLabel = scopeLabel(request.scope)
-            val key = "theone-access|" + requestKey(request)
-            val time = runCatching {
-                java.time.Instant.parse(request.requestedAt).toEpochMilli()
-            }.getOrDefault(System.currentTimeMillis())
-
-            NotifStore.addOrUpdate(
-                NotifItem(
-                    key = key,
-                    packageName = "the.one.access.requests",
-                    appLabel = "The One Rechten",
-                    title = "Toegangsverzoek van $person",
-                    text = "$person vraagt toestemming voor $scopeLabel.",
-                    postTime = time,
-                    hasReplyAction = false,
-                    persistent = false,
-                    actionType = "access_request",
-                    actionValue = request.deviceId
-                )
-            )
+        grouped.forEach { (groupKey, group) ->
+            val first = group.first()
+            val person = group.map { it.personName }.firstOrNull { it.isNotBlank() } ?: first.deviceName.ifBlank { "Iemand" }
+            val appLabels = group.map { scopeLabel(it.scope) }.distinct().sorted()
+            val appList = appLabels.joinToString(", ")
+            val text = if (appLabels.size == 1) person + " vraagt toestemming voor " + appList + "."
+                else person + " vraagt toestemming voor: " + appList + "."
+            val time = group.mapNotNull { req -> runCatching { java.time.Instant.parse(req.requestedAt).toEpochMilli() }.getOrNull() }.maxOrNull()
+                ?: System.currentTimeMillis()
+            NotifStore.addOrUpdate(NotifItem(
+                key = "theone-access|" + groupKey,
+                packageName = "the.one.access.requests",
+                appLabel = "The One Rechten",
+                title = "Toegangsverzoek van " + person,
+                text = text,
+                postTime = time,
+                hasReplyAction = false,
+                persistent = true,
+                actionType = "access_request",
+                actionValue = groupKey
+            ))
         }
 
-        // Alleen behandelde aanvragen verdwijnen uit Main Meldingen.
-        NotifStore.removeWhere(includePersistent = true) { item ->
-            item.actionType == "access_request" && item.key !in activeNotifKeys
-        }
+        // Keep one durable Main row per person/device group until every scope is resolved.
+        NotifStore.removeWhere(includePersistent = true) { it.actionType == "access_request" && it.key !in activeNotifKeys }
 
-        val manager =
-            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val seen = prefs.getStringSet(KEY_SEEN, emptySet()).orEmpty().toMutableSet()
-
-        // Verwijder systeemmeldingen zodra de aanvraag is behandeld.
         val stale = seen.filter { it !in activeKeys }
-        stale.forEach { key -> manager.cancel(("access|" + key).hashCode()) }
+        stale.forEach { manager.cancel(("access|" + it).hashCode()) }
         seen.removeAll(stale.toSet())
 
-        if (
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         ) {
             ensureChannel(context)
-
-            requests.forEach { request ->
-                val key = requestKey(request)
-                if (key in seen) return@forEach
-
-                val person = request.personName.ifBlank {
-                    request.deviceName.ifBlank { "Iemand" }
-                }
-                val scopeLabel = scopeLabel(request.scope)
-
+            grouped.forEach { (groupKey, group) ->
+                val first = group.first()
+                val person = group.map { it.personName }.firstOrNull { it.isNotBlank() } ?: first.deviceName.ifBlank { "Iemand" }
+                val appLabels = group.map { scopeLabel(it.scope) }.distinct().sorted()
+                val appList = appLabels.joinToString(", ")
+                val message = if (appLabels.size == 1) person + " vraagt toestemming voor " + appList + ". Tik om te behandelen."
+                    else person + " vraagt toestemming voor " + appList + ". Tik om alle aanvragen te behandelen."
                 val intent = Intent(context, WakePcActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                     putExtra("open_access_management", true)
-                    putExtra("focus_device_id", request.deviceId)
+                    putExtra("focus_access_group", groupKey)
                 }
-                val pendingIntent = PendingIntent.getActivity(
-                    context,
-                    key.hashCode(),
-                    intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-
+                val pendingIntent = PendingIntent.getActivity(context, groupKey.hashCode(), intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
                 val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                     .setSmallIcon(R.mipmap.ic_launcher)
-                    .setContentTitle("Toegangsverzoek van $person")
-                    .setContentText("$person vraagt toestemming voor $scopeLabel.")
-                    .setStyle(
-                        NotificationCompat.BigTextStyle().bigText(
-                            "$person vraagt toestemming voor $scopeLabel. " +
-                                "Tik om de aanvraag te behandelen."
-                        )
-                    )
+                    .setContentTitle("Toegangsverzoek van " + person)
+                    .setContentText(message)
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(message))
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
-                    .setOngoing(false)
-                    .setAutoCancel(true)
+                    .setOnlyAlertOnce(true)
+                    .setOngoing(true)
+                    .setAutoCancel(false)
                     .setContentIntent(pendingIntent)
                     .build()
-
-                manager.notify(("access|" + key).hashCode(), notification)
-                seen += key
+                manager.notify(("access|" + groupKey).hashCode(), notification)
+                seen += groupKey
             }
         }
-
         prefs.edit().putStringSet(KEY_SEEN, seen).apply()
     }
 
     private fun requestKey(request: MainPendingAccessRequest): String =
-        request.deviceId + "|" + request.scope + "|" + request.requestedAt
+        if (request.personId.isNotBlank()) "person|" + request.personId else "device|" + request.deviceId
 
-    private fun scopeLabel(scope: String): String = when (scope) {
+    fun scopeLabel(scope: String): String = when (scope) {
+        "cinema_android" -> "The One Cinema"
         "series_android" -> "The One Series"
+        "tv_android" -> "The One TV"
         MainDeviceRegistry.ACCESS_KIDS_ANDROID -> "The One Kids"
+        MainDeviceRegistry.ACCESS_MEDIA_PLAYER -> "Media Player"
+        MainDeviceRegistry.ACCESS_MEDIA_PLAYER_XXX -> "Media Player XXX"
         MainDeviceRegistry.ACCESS_MIXES -> "The One Mixes"
-        MainDeviceRegistry.ACCESS_SHARED -> "Shared Media"
+        MainDeviceRegistry.ACCESS_SHARED -> "The One Shared Media"
         MainDeviceRegistry.ACCESS_FAVORITES -> "Favorites"
         MainDeviceRegistry.ACCESS_DJ -> "The One DJ import"
         MainDeviceRegistry.ACCESS_RUN -> "The One Run"
@@ -210,7 +178,6 @@ object AccessRequestNotifications {
         MainDeviceRegistry.ACCESS_FILE_DOWNLOADS -> "bestanden downloaden"
         else -> scope
     }
-
     private fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager =

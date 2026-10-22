@@ -43,7 +43,6 @@ object NotifStore {
 
     @Synchronized
     fun addOrUpdate(item: NotifItem) {
-        if (item.actionType == "access_request" && item.key in dismissedAccess) return
         if (item.actionType.isBlank() && dismissals.shouldSuppress(item)) return
         items.removeAll { it.key == item.key }
         items.add(item)
@@ -72,9 +71,7 @@ object NotifStore {
             // Android confirms the source notification ended. A later new session is allowed.
             dismissals.sourceRemoved(key)
         }
-        val dismissed = items.filter { it.key == key && it.actionType == "access_request" }
-        dismissedAccess.addAll(dismissed.map { it.key })
-        val changed = items.removeAll { it.key == key && (force || !it.persistent || it.actionType == "access_request") }
+        val changed = items.removeAll { it.key == key && it.actionType != "access_request" && (force || !it.persistent) }
         if (changed) {
             persist()
             notifyListeners()
@@ -98,8 +95,7 @@ object NotifStore {
     @Synchronized
     fun clearAll() {
         items.filter { !it.persistent && it.actionType.isBlank() }.forEach { dismissals.remember(it) }
-        dismissedAccess.addAll(items.filter { it.actionType == "access_request" }.map { it.key })
-        val changed = items.removeAll { !it.persistent || it.actionType == "access_request" }
+        val changed = items.removeAll { !it.persistent && it.actionType != "access_request" }
         if (changed) {
             persist()
             notifyListeners()

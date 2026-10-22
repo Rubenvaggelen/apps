@@ -56,6 +56,7 @@ data class WindowsConnectionDevice(
 
 data class MainPendingAccessRequest(
     val deviceId: String,
+    val personId: String,
     val personName: String,
     val deviceName: String,
     val scope: String,
@@ -310,6 +311,7 @@ object MainDeviceRegistry {
                 add(
                     MainPendingAccessRequest(
                         deviceId = item.optString("device_id", ""),
+                        personId = item.optString("person_id", "").trim(),
                         personName = item.optString("person_name", "").trim(),
                         deviceName = item.optString("device_name", "").trim(),
                         scope = item.optString("scope", "").trim(),
