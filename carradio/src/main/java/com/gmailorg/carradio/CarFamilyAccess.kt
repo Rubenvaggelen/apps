@@ -65,7 +65,7 @@ object CarFamilyAccess {
             .put("device_role", "car")
             .put("platform", "Car Android " + Build.VERSION.RELEASE)
             .put("version", BuildConfig.VERSION_CODE.toString())
-        if (ownerPin.isNotBlank()) payload.put("pin", ownerPin)
+        if ((registrationName?.trim() ?: personName(context)).equals("THEONE", ignoreCase = true) && ownerPin.isNotBlank()) payload.put("pin", ownerPin)
         val json = request("heartbeat", payload)
         val allowed = json.optBoolean("music_rights", false)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
