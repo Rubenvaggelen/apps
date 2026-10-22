@@ -25,6 +25,8 @@ data class MainRegisteredDevice(
     val runRights: Boolean,
     val downloadsRights: Boolean,
     val fileDownloadsRights: Boolean,
+    val kidsAndroidRights: Boolean,
+    val pendingKidsAndroid: Boolean,
     val pendingMediaPlayer: Boolean,
     val pendingMediaPlayerXxx: Boolean,
     val pendingMixes: Boolean,
@@ -73,6 +75,7 @@ object MainDeviceRegistry {
     const val ACCESS_ORGANIZE = "downloads"
     // Separate explicit right for saving a Shared Media file onto the device.
     const val ACCESS_FILE_DOWNLOADS = "download_files"
+    const val ACCESS_KIDS_ANDROID = "kids_android"
     @Deprecated("Use ACCESS_ORGANIZE or ACCESS_FILE_DOWNLOADS explicitly")
     const val ACCESS_DOWNLOADS = ACCESS_ORGANIZE
 
@@ -274,6 +277,9 @@ object MainDeviceRegistry {
                         fileDownloadsRights = item.optJSONObject("access_rights")
                             ?.optBoolean(ACCESS_FILE_DOWNLOADS, item.optBoolean("owner", false))
                             ?: item.optBoolean("owner", false),
+                        kidsAndroidRights = item.optJSONObject("access_rights")
+                            ?.optBoolean(ACCESS_KIDS_ANDROID, false) ?: false,
+                        pendingKidsAndroid = item.optJSONObject("access_requests")?.has(ACCESS_KIDS_ANDROID) == true,
                         pendingMediaPlayer = item.optJSONObject("access_requests")?.has(ACCESS_MEDIA_PLAYER) == true,
                         pendingMediaPlayerXxx = item.optJSONObject("access_requests")?.has(ACCESS_MEDIA_PLAYER_XXX) == true,
                         pendingMixes = item.optJSONObject("access_requests")?.has(ACCESS_MIXES) == true,
