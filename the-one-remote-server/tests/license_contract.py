@@ -22,6 +22,7 @@ PACKAGES = {
     "com.theone.tv.phone": "tv_android",
     "com.theone.tv": "tv_android",
     "com.gmailorg.theoneuser": "the_one_user",
+    "com.gmailorg.kids": "kids_android",
 }
 EXPECTED_SCOPES = set(PACKAGES.values()) | {"media_player_xxx"}
 
@@ -177,7 +178,7 @@ def main():
                 assert mp.get("allowed") is True and xxx.get("allowed") is False
                 for scope in EXPECTED_SCOPES:
                     expect(url, "access_status", {"device_id": fake, "scope": scope}, 200)
-                print("PASS: all 7 signed Family apps, pending/grant/revoke, signature rejection, separate XXX denial")
+                print("PASS: all 8 signed Family apps, pending/grant/revoke, signature rejection, separate XXX denial")
             finally:
                 process.terminate()
                 try:
