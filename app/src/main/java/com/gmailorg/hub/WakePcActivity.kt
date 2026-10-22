@@ -435,6 +435,12 @@ class WakePcActivity : AppCompatActivity() {
                     device.fileDownloadsRights,
                     device.pendingFileDownloads
                 )
+                addAccessControl(
+                    "The One Kids",
+                    MainDeviceRegistry.ACCESS_KIDS_ANDROID,
+                    device.kidsAndroidRights,
+                    device.pendingKidsAndroid
+                )
 
                 card.addView(android.widget.Button(this).apply {
                     text = if (device.blocked) "Deblokkeren" else "Blokkeren"
