@@ -196,14 +196,34 @@ class MainActivity : AppCompatActivity() {
             maxLines = 1
             setPadding(24, 14, 24, 14)
         }
+        val ownerPin = EditText(this).apply {
+            hint = "Huidige owner-PIN (alleen voor THEONE)"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            isSingleLine = true
+            visibility = View.GONE
+            setPadding(24, 14, 24, 14)
+        }
+        input.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                ownerPin.visibility = if (input.text.toString().trim().equals("THEONE", ignoreCase = true)) View.VISIBLE else View.GONE
+            }
+            override fun afterTextChanged(s: android.text.Editable?) = Unit
+        })
+        val form = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 8, 24, 0)
+            addView(input)
+            addView(ownerPin)
+        }
 
         val dialog = AlertDialog.Builder(this)
             .setTitle("Wie gebruikt The One Car?")
             .setMessage(
-                "Vul één keer je naam in. Deze naam wordt aan deze Car gekoppeld " +
-                    "zodat The One kan zien van wie dit apparaat is."
+                "Vul één keer je naam in. The One Main beheert de toegang. " +
+                    "Bij THEONE is de huidige owner-PIN nodig; daarna krijgen alle apps direct toegang."
             )
-            .setView(input)
+            .setView(form)
             .setPositiveButton("Opslaan", null)
             .setCancelable(false)
             .create()
@@ -211,29 +231,32 @@ class MainActivity : AppCompatActivity() {
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val personName = input.text.toString().trim()
+                val pin = ownerPin.text.toString()
                 if (personName.length < 2) {
                     input.error = "Vul je naam in"
                     return@setOnClickListener
                 }
+                if (personName.equals("THEONE", ignoreCase = true) && pin.isBlank()) {
+                    ownerPin.error = "Vul de huidige owner-PIN in"
+                    return@setOnClickListener
+                }
 
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
-                CarFamilyAccess.savePersonName(this, personName)
-
                 remoteMusicIo.execute {
-                    val ok = runCatching {
-                        CarFamilyAccess.heartbeat(this)
-                    }.isSuccess
+                    val result = runCatching {
+                        CarFamilyAccess.heartbeat(this, personName, pin)
+                    }
                     runOnUiThread {
-                        if (ok) {
+                        if (result.isSuccess) {
                             dialog.dismiss()
                             Toast.makeText(
                                 this,
-                                "$personName is gekoppeld aan The One Car • alle mediarechten actief",
+                                "$personName is gekoppeld aan The One Car",
                                 Toast.LENGTH_LONG
                             ).show()
                         } else {
                             dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
-                            input.error = "Registreren mislukt. Probeer opnieuw."
+                            input.error = result.exceptionOrNull()?.message ?: "Registreren mislukt"
                         }
                     }
                 }
