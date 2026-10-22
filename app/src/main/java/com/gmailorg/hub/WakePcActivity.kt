@@ -489,12 +489,12 @@ class WakePcActivity : AppCompatActivity() {
                     val buttons = LinearLayout(this).apply {
                         orientation = LinearLayout.HORIZONTAL
                     }
-                    val grantButton = android.widget.Button(this).apply {
-                        fun refreshLabel() {
-                            text = if (allowed) "$label intrekken" else "$label toestaan"
-                        }
-                        refreshLabel()
-                        setOnClickListener {
+                    val grantButton = android.widget.Button(this)
+                    fun refreshGrantLabel() {
+                        grantButton.text = if (allowed) "$label intrekken" else "$label toestaan"
+                    }
+                    refreshGrantLabel()
+                    grantButton.setOnClickListener {
                             val enable = !allowed
                             withOwnerAdminPin { pin ->
                                 grantButton.isEnabled = false
@@ -512,7 +512,7 @@ class WakePcActivity : AppCompatActivity() {
                                         result.onSuccess {
                                             allowed = enable
                                             pending = false
-                                            refreshLabel()
+                                            refreshGrantLabel()
                                             refreshState()
                                             Toast.makeText(
                                                 this@WakePcActivity,
@@ -535,7 +535,6 @@ class WakePcActivity : AppCompatActivity() {
                                 }.start()
                             }
                         }
-                    }
                     buttons.addView(
                         grantButton,
                         LinearLayout.LayoutParams(
