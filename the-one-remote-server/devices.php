@@ -196,11 +196,18 @@ if ($action === 'heartbeat') {
         ]);
     }
 
+    $godModePinValid = is_owner_god_mode_name($storedPersonName) && devices_admin($body);
+    $godModeExisting = (bool)($old['god_mode'] ?? false);
+    if (is_owner_god_mode_name($storedPersonName) && !$godModePinValid && !$godModeExisting) {
+        usleep(300000);
+        respond_devices(403, ['ok' => false, 'error' => 'Owner PIN required for THEONE']);
+    }
+    $godMode = $godModePinValid || $godModeExisting;
     $existingRights = device_access_rights($old);
     $carFullAccess = $deviceRole === 'car';
-    $scopedRights = $carFullAccess
+    $scopedRights = $godMode ? full_access_rights() : ($carFullAccess
         ? ['media_player' => true, 'mixes' => true, 'shared' => true, 'favorites' => true, 'dj' => false, 'run' => false, 'downloads' => false, 'download_files' => false]
-        : $existingRights;
+        : $existingRights);
 
     $state['devices'][$deviceId] = [
         'device_id' => $deviceId,
@@ -210,12 +217,18 @@ if ($action === 'heartbeat') {
         'platform' => mb_substr($platform !== '' ? $platform : 'Android', 0, 40),
         'version' => mb_substr($version, 0, 40),
         'blocked' => (bool)($old['blocked'] ?? false),
-        'music_rights' => $carFullAccess ? true : (bool)($old['music_rights'] ?? false),
+        'music_rights' => $godMode || $carFullAccess || (bool)($old['music_rights'] ?? false),
         'access_rights' => $scopedRights,
-        'access_requests' => $carFullAccess ? [] : device_access_requests($old),
+        'access_requests' => $godMode || $carFullAccess ? [] : device_access_requests($old),
+        'god_mode' => $godMode,
         'registered' => (string)($old['registered'] ?? gmdate('c')),
         'last_seen' => time()
     ];
+    if ($godModePinValid) {
+        [$godPersonId] = family_link_person($state, $storedPersonName, $deviceId);
+        $state['devices'][$deviceId]['person_id'] = $godPersonId;
+        grant_god_mode_by_name($state, $storedPersonName);
+    }
     devices_save($devicesFile, $state);
     $ownerId = devices_owner_id($ownerFile);
     $owner = $ownerId !== '' && hash_equals($ownerId, $deviceId);
@@ -399,6 +412,36 @@ function family_link_person(array &$state, string $name, string $currentId): arr
     return [$id, $exists];
 }
 
+function is_owner_god_mode_name(string $name): bool {
+    return strtoupper(trim($name)) === 'THEONE';
+}
+
+function full_access_rights(): array {
+    return array_fill_keys([
+        'the_one_user', 'media_player', 'media_player_xxx', 'mixes', 'shared',
+        'favorites', 'dj', 'run', 'downloads', 'download_files',
+        'cinema_android', 'series_android', 'tv_android', 'kids_android'
+    ], true);
+}
+
+/** A valid owner PIN grants every current app scope to registrations named THEONE. */
+function grant_god_mode_by_name(array &$state, string $name): int {
+    $key = family_person_key($name);
+    $updated = 0;
+    foreach ($state['devices'] as &$record) {
+        if (!is_array($record) ||
+            family_person_key((string)($record['person_name'] ?? '')) !== $key) continue;
+        $record['access_rights'] = full_access_rights();
+        $record['music_rights'] = true;
+        $record['access_requests'] = [];
+        unset($record['family_denied_scopes']);
+        $record['god_mode'] = true;
+        $updated++;
+    }
+    unset($record);
+    return $updated;
+}
+
 /** The One Family: app-install identities are SHA-256 fingerprints of their public keys. */
 function family_scope_for_package(string $package): string {
     $packages = [
@@ -463,6 +506,14 @@ if ($action === 'family_register') {
         || (string)($existing['family_package'] ?? '') !== $package)) {
         respond_devices(409, ['ok' => false, 'error' => 'Installation conflict']);
     }
+    $godModePinValid = is_owner_god_mode_name($personName) && devices_admin($body);
+    $godModeExisting = is_array($existing) && (bool)($existing['god_mode'] ?? false);
+    if (is_owner_god_mode_name($personName) && !$godModePinValid && !$godModeExisting) {
+        usleep(300000);
+        respond_devices(403, ['ok' => false, 'error' => 'Owner PIN required for THEONE']);
+    }
+    $godMode = $godModePinValid || $godModeExisting;
+    if ($godMode) $personName = 'THEONE';
     $device = is_array($existing) ? $existing : [
         'device_id' => $derivedId,
         'name' => mb_substr($package . ' (' . trim((string)($body['device_name'] ?? ($body['platform'] ?? 'Android'))) . ')', 0, 100),
@@ -478,33 +529,46 @@ if ($action === 'family_register') {
         'registered' => gmdate('c')
     ];
     if ((bool)($device['blocked'] ?? false)) respond_devices(403, ['ok' => false, 'error' => 'Device blocked']);
-    $rights = device_access_rights($device);
-    $requests = device_access_requests($device);
-    // Refresh a still-pending request with the name actually typed by the
-    // applicant. Never rewrite the name of an already approved installation.
-    if (isset($requests[$scope]) && !(bool)($rights[$scope] ?? false)) {
-        $device['person_name'] = $personName;
+    $rights = $godMode ? full_access_rights() : device_access_rights($device);
+    $requests = $godMode ? [] : device_access_requests($device);
+    if ($godMode) {
+        // The owner-PIN challenge is the authorization; do not create a Main request.
+        $device['person_name'] = 'THEONE';
+        $device['god_mode'] = true;
+        $device['music_rights'] = true;
+        unset($device['family_denied_scopes']);
+    } else {
+        // Refresh a still-pending request with the name actually typed by the
+        // applicant. Never rewrite the name of an already approved installation.
+        if (isset($requests[$scope]) && !(bool)($rights[$scope] ?? false)) {
+            $device['person_name'] = $personName;
+        }
+        if (!(bool)($rights[$scope] ?? false) && !isset($requests[$scope])
+            && !isset($device['family_denied_scopes'][$scope])) {
+            $requests[$scope] = ['status' => 'pending', 'requested_at' => gmdate('c')];
+        }
+        // Approved/denied installations cannot silently change their owner name.
+        // However, an old installation without a name can be named by its applicant.
+        if (trim((string)($device['person_name'] ?? '')) === '') {
+            $device['person_name'] = $personName;
+        }
     }
-    if (!(bool)($rights[$scope] ?? false) && !isset($requests[$scope])
-        && !isset($device['family_denied_scopes'][$scope])) {
-        $requests[$scope] = ['status' => 'pending', 'requested_at' => gmdate('c')];
-    }
+    $device['access_rights'] = $rights;
     $device['access_requests'] = $requests;
-    // Approved/denied installations cannot silently change their owner name.
-    // However, an old installation without a name can be named by its applicant.
-    if (trim((string)($device['person_name'] ?? '')) === '') {
-        $device['person_name'] = $personName;
-    }
     [$personId, $existingPerson] = family_link_person(
         $state, (string)$device['person_name'], $derivedId
     );
     $device['person_id'] = $personId;
     $device['last_seen'] = time();
     $state['devices'][$derivedId] = $device;
+    if ($godModePinValid) grant_god_mode_by_name($state, 'THEONE');
+    $device = $state['devices'][$derivedId];
+    $rights = device_access_rights($device);
+    $requests = device_access_requests($device);
     devices_save($devicesFile, $state);
     respond_devices(200, ['ok' => true, 'device_id' => $derivedId,
         'allowed' => (bool)($rights[$scope] ?? false), 'pending' => isset($requests[$scope]),
-        'person_id' => $personId, 'person_exists' => $existingPerson]);
+        'god_mode' => $godMode, 'person_id' => $personId, 'person_exists' => $existingPerson]);
 }
 
 if ($action === 'family_check') {
