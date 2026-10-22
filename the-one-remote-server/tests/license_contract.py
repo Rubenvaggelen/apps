@@ -186,6 +186,37 @@ def main():
                 assert mp.get("allowed") is True and xxx.get("allowed") is False
                 for scope in EXPECTED_SCOPES:
                     expect(url, "access_status", {"device_id": fake, "scope": scope}, 200)
+                # THEONE requires the current owner PIN for every fresh app install.
+                god_devices = {}
+                full_scopes = {
+                    "the_one_user", "media_player", "media_player_xxx", "mixes", "shared",
+                    "favorites", "dj", "run", "downloads", "download_files",
+                    "cinema_android", "series_android", "tv_android", "kids_android",
+                }
+                for i, (package, scope) in enumerate(PACKAGES.items(), start=20):
+                    key, public_der, device = signing_pair(temp, i)
+                    registration = proof(temp, key, device, scope, "register")
+                    registration.update({
+                        "package": package,
+                        "public_key": base64.b64encode(public_der).decode("ascii"),
+                        "person_name": "THEONE",
+                        "platform": "Android",
+                        "device_name": "Ephemeral GOD Mode Device",
+                    })
+                    expect(url, "family_register", registration, 403, "Owner PIN required for THEONE")
+                    expect(url, "family_register", registration | {"pin": "wrong"}, 403, "Owner PIN required for THEONE")
+                    god = expect(url, "family_register", registration | {"pin": test_pin}, 200)
+                    god_devices[scope + "-" + str(i)] = device
+                    assert god.get("allowed") is True and god.get("pending") is False
+                    assert god.get("god_mode") is True
+
+                god_state = json.loads((data_dir / "main-devices.json").read_text())
+                for device in god_devices.values():
+                    record = god_state["devices"][device]
+                    assert record.get("god_mode") is True
+                    assert record.get("access_rights") == {scope: True for scope in full_scopes}
+                    assert record.get("access_requests") == {}
+
                 # Owner-only management actions use an ephemeral CI credential and isolated state.
                 owner_id = "ci-owner"
                 owner_person_id = "person-ci-owner"
