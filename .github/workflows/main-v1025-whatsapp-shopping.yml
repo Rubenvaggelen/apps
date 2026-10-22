@@ -1,4 +1,4 @@
-name: The One Main v1025 - WhatsApp boodschappenlijst
+name: The One Main v1026 - Kids-goedkeuring
 
 on:
   push:
@@ -30,7 +30,7 @@ jobs:
           chmod 600 ~/.android/debug.keystore
       - name: Set Main version code
         shell: bash
-        run: echo "VERSION_CODE=1025" >> "$GITHUB_ENV"
+        run: echo "VERSION_CODE=1026" >> "$GITHUB_ENV"
       - name: Verify YouTube key is configured
         shell: bash
         env:
@@ -157,6 +157,10 @@ jobs:
           grep -q 'https://rubenvanaggelen.com/the-one-remote-api/screen-control.php' app/src/main/java/com/gmailorg/hub/ScreenOwnerClient.kt
           grep -q 'ScreenOwnerClient.screenTicket' app/src/main/java/com/gmailorg/hub/ScreenControlActivity.kt
           grep -q 'ScreenOwnerClient.screenCommandStatus' app/src/main/java/com/gmailorg/hub/ScreenControlActivity.kt
+          grep -q 'ACCESS_KIDS_ANDROID' app/src/main/java/com/gmailorg/hub/MainDeviceRegistry.kt
+          grep -q 'The One Kids' app/src/main/java/com/gmailorg/hub/WakePcActivity.kt
+          grep -q 'ACCESS_KIDS_ANDROID' app/src/main/java/com/gmailorg/hub/FamilyAccessRequestGrouping.kt
+          grep -q 'ACCESS_KIDS_ANDROID' app/src/main/java/com/gmailorg/hub/AccessRequestNotificationWorker.kt
           echo 'MAIN_SCREEN_ON_OFF_OWNER_CONTROL_RESTORED=true'
 
       - name: Existing server screen relay still rejects unauthenticated commands
@@ -180,7 +184,7 @@ jobs:
           apk=app/build/outputs/apk/debug/app-debug.apk
           bt=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
           test -s "$apk"
-          "$bt/aapt" dump badging "$apk" | grep -q "package: name='com.gmailorg.hub' versionCode='1025'"
+          "$bt/aapt" dump badging "$apk" | grep -q "package: name='com.gmailorg.hub' versionCode='1026'"
           "$bt/apksigner" verify "$apk"
           expected=$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey |
             sed -n 's/^[[:space:]]*SHA256: //p' | head -1 | tr -d ':' | tr '[:upper:]' '[:lower:]')
@@ -191,11 +195,11 @@ jobs:
           "$bt/aapt" list "$apk" | grep -q 'family-branding/cinema-logo-1.base64'
           "$bt/aapt" list "$apk" | grep -q 'family-branding/series-logo-1.base64'
           "$bt/aapt" list "$apk" | grep -q 'family-branding/tv-logo-1.base64'
-          echo 'MAIN_V1025_SCREEN_UPDATE_PACKAGE_AND_SIGNATURE=verified'
-      - name: Upload Main v1025 signed APK for recovery
+          echo 'MAIN_V1026_KIDS_APPROVAL_SCREEN_AND_SIGNATURE=verified'
+      - name: Upload Main v1026 signed APK for recovery
         uses: actions/upload-artifact@v4
         with:
-          name: the-one-main-v1025-restored-screen-controls-signed
+          name: the-one-main-v1026-kids-approval-signed
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
       - name: Release Main only
@@ -204,9 +208,8 @@ jobs:
           tag_name: main-v${{ env.VERSION_CODE }}
           name: "The One Main — build ${{ env.VERSION_CODE }}"
           body: |
-            Main v1025 adds 'Versturen via WhatsApp' in Huishouden > Boodschappenlijst.
-            Shares only a text snapshot; checks remain unchanged, WhatsApp does not send until user confirms.
-            Based on working Main v1024: preserves Screen Control (Hub, Surface, Ruben), licenses, person dropdowns, Family tiles and branding.
+            Main v1026 adds The One Kids as a separate Main approval right for new installations.
+            Based on working Main v1025: preserves WhatsApp sharing, Screen Control, licenses, person dropdowns, Family tiles and branding.
             Install over existing Main to keep Android Keystore license identity and preferences.
           files: |
             app/build/outputs/apk/debug/app-debug.apk
