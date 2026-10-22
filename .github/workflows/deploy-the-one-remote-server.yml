@@ -51,6 +51,7 @@ jobs:
           grep -Fq "cinema_android" the-one-remote-server/devices.php
           grep -Fq "series_android" the-one-remote-server/devices.php
           grep -Fq "tv_android" the-one-remote-server/devices.php
+          grep -Fq "kids_android" the-one-remote-server/devices.php
 
       - name: Test full signed Family license contract in isolation
         run: python3 the-one-remote-server/tests/license_contract.py
