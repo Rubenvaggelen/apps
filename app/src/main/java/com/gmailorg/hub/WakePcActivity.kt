@@ -503,7 +503,8 @@ class WakePcActivity : AppCompatActivity() {
                 textSize = 13f
                 setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
                 setPadding(0, 3, 0, 0)
-            })            headerText.addView(TextView(this).apply {
+            })
+            headerText.addView(TextView(this).apply {
                 text = lastLoginText(personDevices.maxOfOrNull { it.lastSeen } ?: 0L)
                 textSize = 12f
                 setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
