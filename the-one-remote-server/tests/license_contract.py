@@ -227,6 +227,8 @@ def main():
                     assert record.get("god_mode") is True
                     assert record.get("access_rights") == {scope: True for scope in full_scopes}
                     assert not record.get("access_requests")
+                god_person_id = god_state["devices"][next(iter(god_devices.values()))]["person_id"]
+                assert god_state["devices"]["ci-god-heartbeat"]["person_id"] == god_person_id
 
                 # Owner-only management actions use an ephemeral CI credential and isolated state.
                 owner_id = "ci-owner"
