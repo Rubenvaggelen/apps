@@ -215,8 +215,20 @@ class WakePcActivity : AppCompatActivity() {
 
     private fun showManagedDevices(devices: List<MainRegisteredDevice>) {
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(18, 8, 18, 8) }
+        val focusedDeviceId = intent.getStringExtra("focus_device_id").orEmpty()
+        val focusedDevice = devices.firstOrNull { it.id == focusedDeviceId }
+        if (focusedDevice?.pendingKidsAndroid == true && !focusedDevice.kidsAndroidRights) {
+            list.addView(TextView(this).apply {
+                text = "The One Kids-aanvraag van ${focusedDevice.personName.ifBlank { "de ouder" }} staat klaar. Geef toestemming bij de eerste apparaatkaart hieronder."
+                textSize = 14f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.amber))
+                setPadding(0, 4, 0, 12)
+            })
+        }
         if (devices.isEmpty()) list.addView(TextView(this).apply { text = "Nog geen apparaten geregistreerd."; setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim)); textSize = 14f })
-        devices.forEach { device ->
+        val orderedDevices = if (focusedDeviceId.isBlank()) devices else devices.sortedBy { if (it.id == focusedDeviceId) 0 else 1 }
+        orderedDevices.forEach { device ->
             val personLabel = device.personName.ifBlank { "Naam nog niet ingevuld" }
             val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(16, 14, 16, 14) }
             card.addView(TextView(this).apply {
@@ -466,7 +478,11 @@ class WakePcActivity : AppCompatActivity() {
             list.addView(View(this).apply { setBackgroundColor(ContextCompat.getColor(this@WakePcActivity, R.color.line)) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
         }
         val scroll = android.widget.ScrollView(this).apply { isFillViewport = true; addView(list) }
-        AlertDialog.Builder(this).setTitle("Verbonden apparaten").setView(scroll).setNegativeButton("Sluiten", null).show()
+        AlertDialog.Builder(this)
+            .setTitle(if (focusedDeviceId.isNotBlank()) "Toegangsverzoek behandelen" else "Verbonden apparaten")
+            .setView(scroll)
+            .setNegativeButton("Sluiten", null)
+            .show()
     }
 
     private fun managedDeviceStateText(device: MainRegisteredDevice): String {

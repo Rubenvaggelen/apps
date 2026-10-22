@@ -199,6 +199,8 @@ object AccessRequestNotifications {
         request.deviceId + "|" + request.scope + "|" + request.requestedAt
 
     private fun scopeLabel(scope: String): String = when (scope) {
+        "series_android" -> "The One Series"
+        MainDeviceRegistry.ACCESS_KIDS_ANDROID -> "The One Kids"
         MainDeviceRegistry.ACCESS_MIXES -> "The One Mixes"
         MainDeviceRegistry.ACCESS_SHARED -> "Shared Media"
         MainDeviceRegistry.ACCESS_FAVORITES -> "Favorites"
