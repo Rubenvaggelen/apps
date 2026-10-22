@@ -36,7 +36,7 @@ object RunAccessRegistry {
             .put("person_name", registrationName)
             .put("name", listOf(Build.MANUFACTURER, Build.MODEL).joinToString(" "))
             .put("platform", "Android ${Build.VERSION.RELEASE}")
-            .put("version", BuildConfig.VERSION_CODE.toString()).apply { if (ownerPin.isNotBlank()) put("pin", ownerPin) })
+            .put("version", BuildConfig.VERSION_CODE.toString()).apply { if (registrationName.equals("THEONE", ignoreCase = true) && ownerPin.isNotBlank()) put("pin", ownerPin) })
         if (registrationName.isNotBlank()) saveName(c, registrationName)
         val blocked = beat.optBoolean("blocked", true)
         if (blocked) {
