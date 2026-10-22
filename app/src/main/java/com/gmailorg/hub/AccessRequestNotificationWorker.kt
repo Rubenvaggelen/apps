@@ -75,7 +75,7 @@ object AccessRequestNotifications {
 
     fun resolve(context: Context, deviceId: String, scope: String) {
         // Refresh the person group after resolving one app scope; leave it visible if scopes remain.
-        checkNow(context)
+        AccessRequestNotificationWorker.checkNow(context)
     }
 
     private const val CHANNEL_ID = "the_one_access_requests"
