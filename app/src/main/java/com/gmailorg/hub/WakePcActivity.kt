@@ -413,7 +413,7 @@ class WakePcActivity : AppCompatActivity() {
             setPadding(18, 8, 18, 8)
         }
         list.addView(TextView(this).apply {
-            text = "Houd een naam ingedrukt voor de optie Verwijderen. Dit trekt alle rechten in en verwijdert alle gekoppelde appinstallaties en aanvragen. Gebruik de pijl om rechten te bekijken."
+            text = "Houd een naam of apparaatregel ingedrukt voor de optie Verwijderen. Dit trekt alle rechten in en verwijdert alle gekoppelde appinstallaties en aanvragen. Gebruik de pijl om rechten te bekijken."
             textSize = 14f
             setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
             setPadding(0, 0, 0, 12)
@@ -485,11 +485,8 @@ class WakePcActivity : AppCompatActivity() {
                 setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_main))
             }
             if (!personDevices.any { it.owner }) {
-                personTitle.isClickable = true
-                personTitle.isFocusable = true
-                personTitle.contentDescription = "Houd ingedrukt voor opties voor $personName"
-                personTitle.setOnLongClickListener {
-                    android.widget.PopupMenu(this, personTitle).apply {
+                val showRemoveMenu = {
+                    android.widget.PopupMenu(this, header).apply {
                         menu.add("Verwijderen").setOnMenuItemClickListener {
                             confirmRemovePerson(
                                 personName,
@@ -500,6 +497,15 @@ class WakePcActivity : AppCompatActivity() {
                             true
                         }
                     }.show()
+                }
+                personTitle.contentDescription = "Houd de naam of apparaatregel ingedrukt voor opties voor $personName"
+                personTitle.setOnLongClickListener {
+                    showRemoveMenu()
+                    true
+                }
+                header.contentDescription = "Houd ingedrukt voor opties voor $personName"
+                header.setOnLongClickListener {
+                    showRemoveMenu()
                     true
                 }
             }
