@@ -92,6 +92,7 @@ jobs:
         run: |
           php -l the-one-remote-server/licenses.php
           php -l the-one-remote-server/license-core.php
+          php the-one-remote-server/tests/owner_deny_contract.php
           grep -Fq 'one_license_owner_deny' the-one-remote-server/license-core.php
           grep -Fq 'owner_deny' the-one-remote-server/licenses.php
       - name: Build Main only
