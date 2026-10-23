@@ -1,0 +1,116 @@
+name: Deploy Family pending-request cleanup (isolated)
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/patch-studio-license-dismiss.py'
+      - '.github/workflows/deploy-studio-license-dismiss.yml'
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: the-one-family-licenses-php
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: the-one-production
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout$v4
+      - name: Verify guarded patch on maintained baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin feature/dj-music-install-license-20261010
+          mkdir -p /tmp/lic-baseline
+          git show FETCH_HEAD:the-one-remote-server/licenses.php > /tmp/lic-baseline/licenses.php
+          git show FETCH_HEAD:the-one-remote-server/license-core.php > /tmp/lic-baseline/license-core.php
+          python3 .github/scripts/patch-studio-license-dismiss.py /tmp/lic-baseline --dry-run
+          python3 .github/scripts/patch-studio-license-dismiss.py /tmp/lic-baseline
+          php -l /tmp/lic-baseline/licenses.php
+          php -l /tmp/lic-baseline/license-core.php
+          php -r '
+            require "/tmp/lic-baseline/license-core.php";
+            $x=str_repeat("a",24);$y=str_repeat("b",24);$z=str_repeat("c",24);
+            $s=["requests"=>[$x=>["status"=>"pending"],$y=>["status"=>"pending"],$z=>["status"=>"approved"]],"grants"=>["grant1"=>["status"=>"active"]]];
+            try { one_license_owner_resolve_pending($s,[$x,$z],"deleted");exit(21); } catch (InvalidArgumentException $e){}
+            if (count($s["requests"])!==3 || count($s["grants"])!==1) exit(22);
+            if (one_license_owner_resolve_pending($s,[$x,$y],"rejected")!==2)exit(23);
+            if ($s["requests"][$x]["status"]!=="rejected" || $s["requests"][$z]["status"]!=="approved")exit(24);
+            $s["requests"][$x]["status"]="pending";
+            if (one_license_owner_resolve_pending($s,[$x],"deleted")!==1)exit(25);
+            if(isset($s["requests"][$x])||count($s["grants"])!==1)exit(26);
+            echo "OWNER_REJECT_DELETE_TESTS_OK\n";
+          '
+      - name: Deploy only license PHP with backup and rollback
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "${!name}" || { echo "::error::Missing deployment permission $name"; exit 1; }
+          done
+          keydir=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$keydir"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$keydir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$keydir/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$keydir/askpass"
+          chmod 600 "$keydir/key" "$keydir/known_hosts"
+          chmod 700 "$keydir/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$keydir/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$keydir/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          opts=(-i "$keydir/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$keydir/known_hosts" -o ConnectTimeout=20)
+          remote="$DEPLOY_USER$$DEPLOY_HOST"
+          stage=$(ssh -p "$DEPLOY_PORT" "${opts[$]}" "$remote" 'mktemp -d "$HOME/.the-one-family-stage.XXXXXXXX"')
+          scp -O -P "$DEPLOY_PORT" "${opts[$]}" .github/scripts/patch-studio-license-dismiss.py "$remote:$stage/patch.py"
+          ssh -p "$DEPLOY_PORT" "${opts[$]}" "$remote" "bash -s -- '$stage'" <<'REMOTE'
+          set -euo pipefail
+          stage="$1"
+          target_dir="$HOME/public_html/the-one-remote-api"
+          backup_base="$HOME/.the-one-remote-backups"
+          mkdir -p "$backup_base"
+          for name in licenses.php license-core.php; do
+            test -s "$target_dir/$name"
+            php -l "$target_dir/$name" >/dev/null
+            cp -p "$target_dir/$name" "$stage/$name"
+          done
+          python3 "$stage/patch.py" "$stage" --dry-run
+          python3 "$stage/patch.py" "$stage"
+          for name in licenses.php license-core.php; do php -l "$stage/$name" >/dev/null; done
+          backup=$(mktemp -d "$backup_base/family-license.XXXXXXXX")
+          for name in licenses.php license-core.php; do
+            cp -p "$target_dir/$name" "$backup/$name"
+            cmp -s "$backup/$name" "$target_dir/$name"
+          done
+          echo "RECOVERY_SNAPSHOT=$backup"
+          rollback() {
+            trap - ERR
+            echo "::error::Family PHP patch failure - reverting backed-up source"
+            for name in license-core.php licenses.php; do
+              cp -p "$backup/$name" "$target_dir/$name.rollback" || true
+              mv -f "$target_dir/$name.rollback" "$target_dir/$name" || true
+            done
+          }
+          trap rollback ERR
+          for name in license-core.php licenses.php; do
+            cp "$stage/$name" "$target_dir/$name.new"
+            chmod 644 "$target_dir/$name.new"
+            mv -f "$target_dir/$name.new" "$target_dir/$name"
+            php -l "$target_dir/$name" >/dev/null
+          done
+          curl --fail --silent --show-error --max-time 15 -X POST \
+            -H 'Content-Type: application/json' --data '{}' \
+            'https://rubenvanaggelen.com/the-one-remote-api/licenses.php?action=policy' |
+            php -r '$d=json_decode(stream_get_contents(STDIN),true); if(!is_array($d)||($d["ok"]??null)!==true||($d["music"]["required"]??false)!==true)exit(1);'
+          trap - ERR
+          rm -rf "$stage"
+          echo "FAMILY_LICENSE_OWNER_CLEANUP_DEPLOYED; BACKUP=$backup"
+          REMOTE
