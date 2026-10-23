@@ -5,6 +5,10 @@ on:
     branches: [ fix/main-reject-old-license-requests-20261023 ]
     paths:
       - 'app/**'
+      - 'the-one-remote-server/tests/owner_deny_contract.php'
+      - 'the-one-remote-server/license-core.php'
+      - 'the-one-remote-server/licenses.php'
+      - 'maintenance/licenses/**'
       - '.github/workflows/test-reject-legacy-license-requests.yml'
       - '.github/scripts/supermarket-snapshot.py'
       - 'build.gradle'
@@ -91,6 +95,7 @@ jobs:
       - name: Validate denial source and PHP syntax
         run: |
           php -l the-one-remote-server/licenses.php
+          php -l maintenance/licenses/patch-deny.php
           php -l the-one-remote-server/license-core.php
           php the-one-remote-server/tests/owner_deny_contract.php
           grep -Fq 'one_license_owner_deny' the-one-remote-server/license-core.php
