@@ -219,7 +219,7 @@ function one_license_request(array &$state, string $app, string $device, string 
     if (isset($state['retired_devices'][$device])) {
         return ['allowed' => false, 'status' => 'device_removed'];
     }
-    if (!in_array($app, ['main', 'dj', 'music'], true)) throw new InvalidArgumentException('Unknown application');
+    if (!in_array($app, ['main', 'studio', 'dj', 'music'], true)) throw new InvalidArgumentException('Unknown application');
     foreach ($state['requests'] as $id => $req) {
         if (($req['app'] ?? '') === $app && ($req['device'] ?? '') === $device &&
             ($req['installation_id'] ?? '') === $installationId &&
@@ -303,7 +303,7 @@ function one_license_owner_authenticated(array $state, string $device, string $i
 function one_license_owner_pending(array $state): array {
     $result = [];
     foreach ($state['requests'] as $req) {
-        if (!in_array(($req['app'] ?? ''), ['main', 'studio', 'dj', 'music'], true) || ($req['status'] ?? '') !== 'pending') continue;
+        if (!in_array(($req['app'] ?? ''), ['main', 'dj', 'music'], true) || ($req['status'] ?? '') !== 'pending') continue;
         $result[] = [
             'id' => (string)$req['id'], 'app' => (string)$req['app'], 'device' => (string)$req['device'],
             'person' => (string)$req['person'], 'installation_id' => (string)$req['installation_id'],
