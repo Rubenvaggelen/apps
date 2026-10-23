@@ -1,0 +1,52 @@
+name: Package The One Main recovery ZIP
+
+on:
+  push:
+    paths:
+      - ".github/workflows/recover-main-zip.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the pinned Main recovery source
+        uses: actions/checkout@v4
+        with:
+          ref: main-v1037
+          fetch-depth: 0
+
+      - name: Package APK and source
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="Recover-Main-build-1037"
+          mkdir -p "$root/source"
+          git archive main-v1037 | tar -x -C "$root/source"
+          curl --fail --location --silent --show-error \
+            "https://github.com/Rubenvaggelen/apps/releases/download/main-v1037/app-debug.apk" \
+            --output "$root/The-One-Main-build-1037.apk"
+          cat > "$root/README.md" <<'EOF'
+          # Recover Main — build 1037
+          
+          Pinned source tag: main-v1037
+          Source commit: 8588b7def7f863e11225dc47b54adef103ebd835
+          APK: The-One-Main-build-1037.apk
+          
+          This package includes the exact repository source snapshot and the built APK.
+          The device manager supports long-pressing a person's name or device row to open Remove.
+          Removing a person revokes all app rights and removes all linked installs and pending requests.
+          EOF
+          (cd "$root" && sha256sum The-One-Main-build-1037.apk > SHA256SUMS.txt)
+          zip -qr Recover-Main-build-1037.zip "$root"
+
+      - name: Upload recovery ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Recover-Main-build-1037
+          path: Recover-Main-build-1037.zip
+          if-no-files-found: error
+          retention-days: 90
