@@ -107,6 +107,7 @@ object AccessRequestNotifications {
             val appName = when (request.app) {
                 "dj" -> "The One DJ"
                 "music" -> "The One Music Studio"
+                    "studio" -> "The One Studio (oud)"
                 else -> "The One Main"
             }
             val created = runCatching {
@@ -159,6 +160,7 @@ object AccessRequestNotifications {
                     .setContentTitle("The One " + when (request.app) {
                         "dj" -> "DJ"
                         "music" -> "Music Studio"
+                        "studio" -> "Studio (oud)"
                         else -> "Main"
                     } + ": nieuwe aanmelding van $who")
                     .setContentText("Wacht op jouw goedkeuring in Apparaten beheren.")
