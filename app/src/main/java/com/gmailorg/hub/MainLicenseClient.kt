@@ -272,6 +272,16 @@ object MainLicenseClient {
         }
     }
 
+    /** Deny only an exact pending installation, never revoke an existing license. */
+    fun denyOwnerRequest(context: Context, requestId: String): Boolean {
+        if (!MainDeviceRegistry.isLocallyOwner(context) || !ownerIsPaired(context)) return false
+        require(requestId.matches(Regex("^[a-f0-9]{24}$")))
+        val json = request("owner_deny", payload(context)
+            .put("owner_token", ownerToken(context))
+            .put("request_id", requestId))
+        return json.optBoolean("denied", false)
+    }
+
     fun approveOwnerRequest(context: Context, requestId: String): Boolean {
         if (!MainDeviceRegistry.isLocallyOwner(context) || !ownerIsPaired(context)) return false
         val json = request("owner_approve", payload(context)
