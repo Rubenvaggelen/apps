@@ -347,8 +347,16 @@ class WakePcActivity : AppCompatActivity() {
             return
         }
         val focusId = intent.getStringExtra("focus_license_request_id").orEmpty()
-        pending.sortedWith(compareByDescending<MainPendingLicenseRequest> { it.id == focusId }
-            .thenBy { it.createdAt }).forEach { request ->
+
+        // Present repeated requests from one named person/device as a single group.
+        // Each server request remains individually addressable for denial.
+        val grouped = pending.groupBy {
+            it.app + "|" + it.person.trim().lowercase() + "|" + it.deviceId
+        }
+        grouped.values.sortedWith(compareByDescending<List<MainPendingLicenseRequest>> {
+            it.any { req -> req.id == focusId }
+        }.thenBy { it.first().createdAt }).forEach { requests ->
+            val request = requests.first()
             val section = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(12, 12, 12, 16)
@@ -365,34 +373,73 @@ class WakePcActivity : AppCompatActivity() {
                 setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_main))
             })
             section.addView(TextView(this).apply {
-                text = "Apparaat: " + request.deviceId + " • " + request.createdAt
+                text = "Apparaat: " + request.deviceId +
+                    " • " + requests.size + " openstaande aanvraag" +
+                    if (requests.size == 1) "" else "en"
                 textSize = 12f
                 setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
             })
             section.addView(android.widget.Button(this).apply {
-                text = "Goedkeuren"
+                text = "GOEDKEUREN"
                 setOnClickListener {
+                    // Approval is intentionally per installation; never bulk grant.
                     isEnabled = false
                     Thread {
                         val approved = runCatching {
                             MainLicenseClient.approveOwnerRequest(this@WakePcActivity, request.id)
-                        }
+                        }.getOrDefault(false)
                         runOnUiThread {
-                            if (approved.getOrDefault(false)) {
+                            if (approved) {
                                 AccessRequestNotifications.resolveLicense(this@WakePcActivity, request.id)
                                 AccessRequestNotificationWorker.checkNow(this@WakePcActivity)
                                 activeAccessDialog?.dismiss()
                                 openDeviceManager(findViewById(R.id.manageDevicesButton))
                                 Toast.makeText(this@WakePcActivity,
-                                    "Studio-aanvraag goedgekeurd.", Toast.LENGTH_LONG).show()
+                                    "Aanvraag goedgekeurd.", Toast.LENGTH_LONG).show()
                             } else {
                                 isEnabled = true
                                 Toast.makeText(this@WakePcActivity,
-                                    "Goedkeuring niet bevestigd; aanvraag blijft open.",
+                                    "Goedkeuring mislukt; aanvraag blijft open.",
                                     Toast.LENGTH_LONG).show()
                             }
                         }
                     }.start()
+                }
+            })
+            section.addView(android.widget.Button(this).apply {
+                text = "WEIGEREN / VERWIJDEREN (" + requests.size + ")"
+                setOnClickListener {
+                    AlertDialog.Builder(this@WakePcActivity)
+                        .setTitle("Oude aanvragen verwijderen")
+                        .setMessage("Weiger " + requests.size +
+                            " openstaande aanvraag(en) van " +
+                            request.person.ifBlank { "deze gebruiker" } +
+                            "? Actieve licenties worden niet ingetrokken.")
+                        .setNegativeButton("Annuleren", null)
+                        .setPositiveButton("Weigeren") { _, _ ->
+                            isEnabled = false
+                            Thread {
+                                val outcome = requests.map { req ->
+                                    req.id to runCatching {
+                                        MainLicenseClient.denyOwnerRequest(this@WakePcActivity, req.id)
+                                    }.getOrDefault(false)
+                                }
+                                runOnUiThread {
+                                    outcome.filter { it.second }.forEach {
+                                        AccessRequestNotifications.resolveLicense(
+                                            this@WakePcActivity, it.first)
+                                    }
+                                    AccessRequestNotificationWorker.checkNow(this@WakePcActivity)
+                                    activeAccessDialog?.dismiss()
+                                    openDeviceManager(findViewById(R.id.manageDevicesButton))
+                                    val count = outcome.count { it.second }
+                                    Toast.makeText(this@WakePcActivity,
+                                        count.toString() + " van " + requests.size +
+                                            " aanvragen verwijderd.",
+                                        Toast.LENGTH_LONG).show()
+                                }
+                            }.start()
+                        }.show()
                 }
             })
             list.addView(section)
