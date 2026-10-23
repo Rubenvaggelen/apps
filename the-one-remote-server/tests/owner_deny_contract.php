@@ -43,7 +43,10 @@ expect_license($repeatLegacy['request_id'] === $legacyId && $repeatLegacy['statu
 expect_license(count(one_license_owner_pending($state)) === 0,
     'legacy rejected request displayed as open');
 $legacyApp = one_license_request($state, 'studio', $device, 'Legacy Studio Client', '44444444-4444-4444-8444-444444444444');
-expect_license(count(one_license_owner_pending($state)) === 1, 'legacy Studio request absent from owner approvals');
-expect_license(one_license_owner_deny($state, $legacyApp['request_id']), 'legacy Studio request cannot be refused');
-expect_license(count(one_license_owner_pending($state)) === 0, 'legacy Studio request persisted in owner inbox');
+expect_license(count(one_license_owner_pending($state)) === 0,
+    'legacy Studio request reappeared in modern Main approval inbox');
+expect_license(one_license_owner_deny($state, $legacyApp['request_id']),
+    'legacy Studio request cannot be refused through authenticated backend');
+expect_license(count(one_license_owner_pending($state)) === 0,
+    'legacy Studio request persisted in modern owner inbox');
 echo "PASS: deny only pending, no reappearance, new installs, legacy rejection, app identity, grants preserved\n";
