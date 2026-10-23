@@ -68,10 +68,10 @@ jobs:
           SSH_ASKPASS="$keydir/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$keydir/key" </dev/null
           unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
           opts=(-i "$keydir/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$keydir/known_hosts" -o ConnectTimeout=20)
-          remote="$DEPLOY_USER$$DEPLOY_HOST"
-          stage=$(ssh -p "$DEPLOY_PORT" "${opts[$]}" "$remote" 'mktemp -d "$HOME/.the-one-family-stage.XXXXXXXX"')
-          scp -O -P "$DEPLOY_PORT" "${opts[$]}" .github/scripts/patch-studio-license-dismiss.py "$remote:$stage/patch.py"
-          ssh -p "$DEPLOY_PORT" "${opts[$]}" "$remote" "bash -s -- '$stage'" <<'REMOTE'
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'mktemp -d "$HOME/.the-one-family-stage.XXXXXXXX"')
+          scp -O -P "$DEPLOY_PORT" "${opts[@]}" .github/scripts/patch-studio-license-dismiss.py "$remote:$stage/patch.py"
+          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "bash -s -- '$stage'" <<'REMOTE'
           set -euo pipefail
           stage="$1"
           target_dir="$HOME/public_html/the-one-remote-api"
