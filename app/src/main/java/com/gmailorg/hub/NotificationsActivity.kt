@@ -35,12 +35,16 @@ class NotificationsActivity : AppCompatActivity() {
             emptyList(),
             onDismiss = { item -> NotifStore.removeByKey(item.key) },
             onOpen = { item ->
-                if (item.actionType == "access_request") {
+                if (item.actionType == "access_request" || item.actionType == "license_request") {
                     startActivity(
                         Intent(this, WakePcActivity::class.java).apply {
                             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                             putExtra("open_access_management", true)
-                            putExtra("focus_access_group", item.actionValue)
+                            if (item.actionType == "license_request") {
+                                putExtra("focus_license_request_id", item.actionValue)
+                            } else {
+                                putExtra("focus_access_group", item.actionValue)
+                            }
                         }
                     )
                 }
