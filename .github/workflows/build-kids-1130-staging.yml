@@ -23,8 +23,10 @@ jobs:
           gradle-version: '8.7'
       - name: Android 35 components
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+          SDKMGR=$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)
+          test -x "$SDKMGR"
+          yes | "$SDKMGR" --licenses >/dev/null || true
+          "$SDKMGR" 'platforms;android-35' 'build-tools;35.0.0'
       - name: Restore sanitized Android sources
         shell: bash
         run: |
@@ -46,7 +48,14 @@ jobs:
           test -s "$APK"
           ! unzip -Z1 "$APK" | grep -q '^assets/private_'
           sha256sum "$APK"
+      - name: Save signer tool for private offline signing
+        shell: bash
+        run: |
+          mkdir -p kids-build-1130/sign-tools
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" kids-build-1130/sign-tools/apksigner.jar
       - uses: actions/upload-artifact@v4
         with:
           name: kids-1130-sanitized-unsigned-private
-          path: kids-build-1130/buildroot/kids/build/outputs/apk/debug/kids-debug.apk
+          path: |
+            kids-build-1130/buildroot/kids/build/outputs/apk/debug/kids-debug.apk
+            kids-build-1130/sign-tools/apksigner.jar
