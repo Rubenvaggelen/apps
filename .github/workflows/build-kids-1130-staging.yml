@@ -38,6 +38,10 @@ jobs:
           echo '81fb267c7bdb5d283fb68cf15266980dc627a7a3338b368034b8bd801a1b519e  /tmp/kids-img.zip' | sha256sum -c
           unzip -q /tmp/kids-src.zip -d kids-build-1130/buildroot
           unzip -q /tmp/kids-img.zip -d kids-build-1130/buildroot/kids/src/main/res
+      - name: Create disposable CI debug signing keystore
+        run: |
+          mkdir -p "$HOME/.android"
+          keytool -genkeypair -keystore "$HOME/.android/debug.keystore" -storepass android -keypass android -alias androiddebugkey -dname 'CN=Kids CI Only, O=The One, C=NL' -keyalg RSA -keysize 2048 -validity 90 -noprompt
       - name: Build unsigned-private-data-free test APK
         run: gradle -p kids-build-1130/buildroot :kids:testDebugUnitTest :kids:assembleDebug --no-daemon --no-build-cache -PappVersionCode=1130
       - name: Assert no private assets
