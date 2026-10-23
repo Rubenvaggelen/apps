@@ -314,7 +314,7 @@ class WakePcActivity : AppCompatActivity() {
     /** Family license approvals, independent of the general device rights dropdown. */
     private fun addFamilyLicenseRequests(list: LinearLayout) {
         list.addView(TextView(this).apply {
-            text = "The One Music Studio / DJ — aanvragen"
+            text = "Family-aanvragen — Main, Studio en DJ"
             textSize = 17f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_main))
@@ -347,56 +347,133 @@ class WakePcActivity : AppCompatActivity() {
             return
         }
         val focusId = intent.getStringExtra("focus_license_request_id").orEmpty()
-        pending.sortedWith(compareByDescending<MainPendingLicenseRequest> { it.id == focusId }
-            .thenBy { it.createdAt }).forEach { request ->
+        // Group repeated requests for the same person and installation.
+        pending.groupBy {
+            listOf(it.app, it.person.trim().lowercase(), it.deviceId).joinToString("|")
+        }.values.sortedWith(
+            compareByDescending<List<MainPendingLicenseRequest>> { group ->
+                group.any { it.id == focusId }
+            }.thenBy { group -> group.minOfOrNull { it.createdAt }.orEmpty() }
+        ).forEach { requests ->
+            val first = requests.first()
             val section = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(12, 12, 12, 16)
             }
             section.addView(TextView(this).apply {
-                val name = when (request.app) {
+                val name = when (first.app) {
                     "music" -> "The One Music Studio"
                     "dj" -> "The One DJ"
                     else -> "The One Main"
                 }
-                text = name + " — " + request.person.ifBlank { "Onbekend" }
+                text = name + " — " + first.person.ifBlank { "Onbekend" }
                 textSize = 15f
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
                 setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_main))
             })
             section.addView(TextView(this).apply {
-                text = "Apparaat: " + request.deviceId + " • " + request.createdAt
+                text = "Apparaat: " + first.deviceId +
+                    if (requests.size > 1) " • ${requests.size} openstaande aanvragen" else ""
                 textSize = 12f
                 setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
             })
-            section.addView(android.widget.Button(this).apply {
-                text = "Goedkeuren"
-                setOnClickListener {
-                    isEnabled = false
-                    Thread {
-                        val approved = runCatching {
-                            MainLicenseClient.approveOwnerRequest(this@WakePcActivity, request.id)
-                        }
-                        runOnUiThread {
-                            if (approved.getOrDefault(false)) {
-                                AccessRequestNotifications.resolveLicense(this@WakePcActivity, request.id)
-                                AccessRequestNotificationWorker.checkNow(this@WakePcActivity)
-                                activeAccessDialog?.dismiss()
-                                openDeviceManager(findViewById(R.id.manageDevicesButton))
-                                Toast.makeText(this@WakePcActivity,
-                                    "Studio-aanvraag goedgekeurd.", Toast.LENGTH_LONG).show()
-                            } else {
-                                isEnabled = true
-                                Toast.makeText(this@WakePcActivity,
-                                    "Goedkeuring niet bevestigd; aanvraag blijft open.",
-                                    Toast.LENGTH_LONG).show()
+            // Approval remains strictly per request, never a batch grant.
+            requests.sortedBy { it.createdAt }.forEach { request ->
+                section.addView(TextView(this).apply {
+                    text = "Aangevraagd: " + request.createdAt
+                    textSize = 12f
+                    setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
+                })
+                section.addView(android.widget.Button(this).apply {
+                    text = "Goedkeuren"
+                    setOnClickListener {
+                        isEnabled = false
+                        Thread {
+                            val approved = runCatching {
+                                MainLicenseClient.approveOwnerRequest(this@WakePcActivity, request.id)
                             }
-                        }
-                    }.start()
-                }
-            })
+                            runOnUiThread {
+                                if (approved.getOrDefault(false)) {
+                                    AccessRequestNotifications.resolveLicense(this@WakePcActivity, request.id)
+                                    AccessRequestNotificationWorker.checkNow(this@WakePcActivity)
+                                    activeAccessDialog?.dismiss()
+                                    openDeviceManager(findViewById(R.id.manageDevicesButton))
+                                    Toast.makeText(this@WakePcActivity, "Aanvraag goedgekeurd.",
+                                        Toast.LENGTH_LONG).show()
+                                } else {
+                                    isEnabled = true
+                                    Toast.makeText(this@WakePcActivity,
+                                        "Goedkeuring niet bevestigd. Aanvraag blijft open.",
+                                        Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }.start()
+                    }
+                })
+            }
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+            }
+            row.addView(android.widget.Button(this).apply {
+                text = "Weigeren"
+                setOnClickListener { confirmResolvePendingLicenseRequests(requests, delete = false) }
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(android.widget.Button(this).apply {
+                text = "Verwijderen"
+                setOnClickListener { confirmResolvePendingLicenseRequests(requests, delete = true) }
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            section.addView(row)
             list.addView(section)
         }
+    }
+
+
+    private fun confirmResolvePendingLicenseRequests(
+        requests: List<MainPendingLicenseRequest>,
+        delete: Boolean
+    ) {
+        val first = requests.firstOrNull() ?: return
+        val action = if (delete) "Verwijderen" else "Weigeren"
+        val message = if (delete) {
+            "Verwijder ${requests.size} openstaande aanvraag/aanvragen van " +
+                first.person + "? Dit verwijdert alleen deze aanvragen. " +
+                "Bestaande actieve licenties en apparaten worden niet gewijzigd."
+        } else {
+            "Weiger ${requests.size} openstaande aanvraag/aanvragen van " +
+                first.person + "? Er worden geen nieuwe rechten verleend. " +
+                "Een latere nieuwe aanvraag blijft mogelijk."
+        }
+        AlertDialog.Builder(this)
+            .setTitle(action + " — " + first.person)
+            .setMessage(message)
+            .setNegativeButton("Annuleren", null)
+            .setPositiveButton(action) { _, _ ->
+                Thread {
+                    val result = runCatching {
+                        MainLicenseClient.resolvePendingOwnerRequests(
+                            this, requests.map { it.id }, delete
+                        )
+                    }
+                    runOnUiThread {
+                        if (result.getOrNull() == requests.size) {
+                            requests.forEach {
+                                AccessRequestNotifications.resolveLicense(this, it.id)
+                            }
+                            AccessRequestNotificationWorker.checkNow(this)
+                            activeAccessDialog?.dismiss()
+                            openDeviceManager(findViewById(R.id.manageDevicesButton))
+                            Toast.makeText(this,
+                                "${requests.size} aanvragen verwerkt.",
+                                Toast.LENGTH_LONG).show()
+                        } else {
+                            Toast.makeText(this,
+                                "Actie niet bevestigd: " +
+                                    (result.exceptionOrNull()?.message ?: "serverfout"),
+                                Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }.start()
+            }.show()
     }
 
     private fun showStudioOwnerPairingDialog() {
