@@ -6,6 +6,7 @@ on:
     paths:
       - 'app/**'
       - 'the-one-remote-server/tests/owner_deny_contract.php'
+      - 'the-one-remote-server/tests/license_issuance_contract.php'
       - 'the-one-remote-server/license-core.php'
       - 'the-one-remote-server/licenses.php'
       - 'maintenance/licenses/**'
@@ -98,6 +99,7 @@ jobs:
           php -l maintenance/licenses/patch-deny.php
           php -l the-one-remote-server/license-core.php
           php the-one-remote-server/tests/owner_deny_contract.php
+          php the-one-remote-server/tests/license_issuance_contract.php
           grep -Fq 'one_license_owner_deny' the-one-remote-server/license-core.php
           grep -Fq 'owner_deny' the-one-remote-server/licenses.php
       - name: Build Main only
