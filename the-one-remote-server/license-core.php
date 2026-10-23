@@ -219,7 +219,7 @@ function one_license_request(array &$state, string $app, string $device, string 
     if (isset($state['retired_devices'][$device])) {
         return ['allowed' => false, 'status' => 'device_removed'];
     }
-    if (!in_array($app, ['main', 'studio', 'dj', 'music'], true)) throw new InvalidArgumentException('Unknown application');
+    if (!in_array($app, ['main', 'dj', 'music'], true)) throw new InvalidArgumentException('Unknown application');
     foreach ($state['requests'] as $id => $req) {
         if (($req['app'] ?? '') === $app && ($req['device'] ?? '') === $device &&
             ($req['installation_id'] ?? '') === $installationId &&
