@@ -97,6 +97,12 @@ jobs:
         run: |
           php -l the-one-remote-server/licenses.php
           php -l maintenance/licenses/patch-deny.php
+          php -l maintenance/licenses/patch-devhub-issuance.php
+          printf '%s\n' '<?php one_license_create_code($state, "studio", "legacy"); ?>' '<section><h2>Nieuwe code toewijzen</h2>' '<option value="studio">Music Studio (Windows)</option>' > /tmp/devhub-issuance-fixture.php
+          php maintenance/licenses/patch-devhub-issuance.php /tmp/devhub-issuance-fixture.php
+          grep -Fq 'Studio Legacy (oude Windows-versie)' /tmp/devhub-issuance-fixture.php
+          grep -Fq 'Studio Portable (1.4.1)' /tmp/devhub-issuance-fixture.php
+
           php -l the-one-remote-server/license-core.php
           php the-one-remote-server/tests/owner_deny_contract.php
           php the-one-remote-server/tests/license_issuance_contract.php
