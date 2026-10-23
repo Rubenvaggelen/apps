@@ -371,6 +371,7 @@ class WakePcActivity : AppCompatActivity() {
             section.addView(TextView(this).apply {
                 val name = when (request.app) {
                     "music" -> "The One Music Studio"
+                    "studio" -> "The One Studio (oud)"
                     "dj" -> "The One DJ"
                     else -> "The One Main"
                 }
