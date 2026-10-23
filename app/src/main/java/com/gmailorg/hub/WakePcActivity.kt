@@ -28,6 +28,7 @@ class WakePcActivity : AppCompatActivity() {
 
     private var activeDeviceAdminPin = ""
     private var activeAccessDialog: AlertDialog? = null
+    private var latestStudioRequests: List<MainPendingLicenseRequest>? = emptyList()
 
     private data class WakeTarget(
         val id: String,
@@ -256,6 +257,10 @@ class WakePcActivity : AppCompatActivity() {
             val devices = if (owner) runCatching {
                 MainDeviceRegistry.listDevices(this, "")
             }.getOrNull() else null
+            // The standalone Studio uses the separate Family licensing service.
+            val licenseRequests = if (owner && MainLicenseClient.ownerIsPaired(this)) {
+                runCatching { MainLicenseClient.pendingOwnerApprovals(this) }.getOrNull()
+            } else emptyList()
 
             runOnUiThread {
                 trigger.isEnabled = true
@@ -275,6 +280,7 @@ class WakePcActivity : AppCompatActivity() {
                     ).show()
                     return@runOnUiThread
                 }
+                latestStudioRequests = licenseRequests
                 showManagedDevices(devices, focusKey)
             }
         }.start()
@@ -303,6 +309,132 @@ class WakePcActivity : AppCompatActivity() {
         ManagedAppRight("Muziek organiseren", MainDeviceRegistry.ACCESS_ORGANIZE, device.downloadsRights, device.pendingDownloads),
         ManagedAppRight("Bestanden downloaden", MainDeviceRegistry.ACCESS_FILE_DOWNLOADS, device.fileDownloadsRights, device.pendingFileDownloads)
     )
+
+
+    /** Family license approvals, independent of the general device rights dropdown. */
+    private fun addFamilyLicenseRequests(list: LinearLayout) {
+        list.addView(TextView(this).apply {
+            text = "The One Music Studio / DJ — aanvragen"
+            textSize = 17f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_main))
+            setPadding(0, 10, 0, 10)
+        })
+        if (!MainLicenseClient.ownerIsPaired(this)) {
+            list.addView(TextView(this).apply {
+                text = "Koppel Main eenmalig met Dev Hub om Studio-aanvragen te ontvangen."
+                setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
+            })
+            list.addView(android.widget.Button(this).apply {
+                text = "Koppel licentiemeldingen"
+                setOnClickListener { showStudioOwnerPairingDialog() }
+            })
+            return
+        }
+        val pending = latestStudioRequests
+        if (pending == null) {
+            list.addView(TextView(this).apply {
+                text = "Licentieserver tijdelijk onbereikbaar; open aanvragen worden bewaard."
+                setTextColor(ContextCompat.getColor(this@WakePcActivity, android.R.color.holo_red_light))
+            })
+            return
+        }
+        if (pending.isEmpty()) {
+            list.addView(TextView(this).apply {
+                text = "Geen open Studio- of DJ-aanvragen."
+                setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
+            })
+            return
+        }
+        val focusId = intent.getStringExtra("focus_license_request_id").orEmpty()
+        pending.sortedWith(compareByDescending<MainPendingLicenseRequest> { it.id == focusId }
+            .thenBy { it.createdAt }).forEach { request ->
+            val section = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(12, 12, 12, 16)
+            }
+            section.addView(TextView(this).apply {
+                val name = when (request.app) {
+                    "music" -> "The One Music Studio"
+                    "dj" -> "The One DJ"
+                    else -> "The One Main"
+                }
+                text = name + " — " + request.person.ifBlank { "Onbekend" }
+                textSize = 15f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_main))
+            })
+            section.addView(TextView(this).apply {
+                text = "Apparaat: " + request.deviceId + " • " + request.createdAt
+                textSize = 12f
+                setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
+            })
+            section.addView(android.widget.Button(this).apply {
+                text = "Goedkeuren"
+                setOnClickListener {
+                    isEnabled = false
+                    Thread {
+                        val approved = runCatching {
+                            MainLicenseClient.approveOwnerRequest(this@WakePcActivity, request.id)
+                        }
+                        runOnUiThread {
+                            if (approved.getOrDefault(false)) {
+                                AccessRequestNotifications.resolveLicense(this@WakePcActivity, request.id)
+                                AccessRequestNotificationWorker.checkNow(this@WakePcActivity)
+                                activeAccessDialog?.dismiss()
+                                openDeviceManager(findViewById(R.id.manageDevicesButton))
+                                Toast.makeText(this@WakePcActivity,
+                                    "Studio-aanvraag goedgekeurd.", Toast.LENGTH_LONG).show()
+                            } else {
+                                isEnabled = true
+                                Toast.makeText(this@WakePcActivity,
+                                    "Goedkeuring niet bevestigd; aanvraag blijft open.",
+                                    Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }.start()
+                }
+            })
+            list.addView(section)
+        }
+    }
+
+    private fun showStudioOwnerPairingDialog() {
+        val input = EditText(this).apply {
+            hint = "OWNER-... code uit beveiligde Dev Hub"
+            isSingleLine = true
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Studio-licenties koppelen")
+            .setMessage("Maak in de beveiligde Dev Hub bij Licenties beheren een eenmalige eigenaar-koppelcode. Vul die hier in.")
+            .setView(input)
+            .setNegativeButton("Annuleren", null)
+            .setPositiveButton("Koppelen", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val code = input.text.toString()
+                val button = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                button.isEnabled = false
+                Thread {
+                    val result = runCatching { MainLicenseClient.pairOwner(this, code) }.getOrDefault(false)
+                    runOnUiThread {
+                        if (result) {
+                            dialog.dismiss()
+                            AccessRequestNotificationWorker.checkNow(this)
+                            activeAccessDialog?.dismiss()
+                            openDeviceManager(findViewById(R.id.manageDevicesButton))
+                        } else {
+                            button.isEnabled = true
+                            input.error = "Code ongeldig of verlopen"
+                        }
+                    }
+                }.start()
+            }
+        }
+        dialog.show()
+    }
 
     private fun personGroupKey(device: MainRegisteredDevice): String = when {
         device.owner -> "owner|" + device.id
@@ -418,6 +550,8 @@ class WakePcActivity : AppCompatActivity() {
             setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
             setPadding(0, 0, 0, 12)
         })
+
+        addFamilyLicenseRequests(list)
 
         val grouped = devices.groupBy(::personGroupKey)
         fun isFocused(entry: Map.Entry<String, List<MainRegisteredDevice>>): Boolean {
