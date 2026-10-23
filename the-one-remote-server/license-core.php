@@ -223,7 +223,7 @@ function one_license_request(array &$state, string $app, string $device, string 
     foreach ($state['requests'] as $id => $req) {
         if (($req['app'] ?? '') === $app && ($req['device'] ?? '') === $device &&
             ($req['installation_id'] ?? '') === $installationId &&
-            in_array(($req['status'] ?? ''), ['pending', 'approved'], true)) {
+            in_array(($req['status'] ?? ''), ['pending', 'approved', 'denied'], true)) {
             return ['request_id' => $id, 'status' => $req['status']];
         }
     }
