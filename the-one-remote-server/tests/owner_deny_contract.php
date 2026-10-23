@@ -33,4 +33,17 @@ expect_license(count($state['grants']) === 1, 'approved grant lost');
 $fake = str_repeat('a', 24);
 expect_license(!one_license_owner_deny($state, $fake), 'unknown request could be denied');
 expect_license(count(one_license_owner_pending($state)) === 0, 'hidden pending request');
-echo "PASS: deny only pending, no reappearance, new installs, grants preserved\n";
+// Historically Dev Hub marked refusals "rejected" rather than "denied".
+$legacy = one_license_request($state, 'music', $device, 'Legacy Decline', '33333333-3333-4333-8333-333333333333');
+$legacyId = $legacy['request_id'];
+$state['requests'][$legacyId]['status'] = 'rejected';
+$repeatLegacy = one_license_request($state, 'music', $device, 'Legacy Decline', '33333333-3333-4333-8333-333333333333');
+expect_license($repeatLegacy['request_id'] === $legacyId && $repeatLegacy['status'] === 'denied',
+    'old rejected record resurfaced as pending request');
+expect_license(count(one_license_owner_pending($state)) === 0,
+    'legacy rejected request displayed as open');
+$legacyApp = one_license_request($state, 'studio', $device, 'Legacy Studio Client', '44444444-4444-4444-8444-444444444444');
+expect_license(count(one_license_owner_pending($state)) === 1, 'legacy Studio request absent from owner approvals');
+expect_license(one_license_owner_deny($state, $legacyApp['request_id']), 'legacy Studio request cannot be refused');
+expect_license(count(one_license_owner_pending($state)) === 0, 'legacy Studio request persisted in owner inbox');
+echo "PASS: deny only pending, no reappearance, new installs, legacy rejection, app identity, grants preserved\n";
