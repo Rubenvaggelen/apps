@@ -223,8 +223,8 @@ function one_license_request(array &$state, string $app, string $device, string 
     foreach ($state['requests'] as $id => $req) {
         if (($req['app'] ?? '') === $app && ($req['device'] ?? '') === $device &&
             ($req['installation_id'] ?? '') === $installationId &&
-            in_array(($req['status'] ?? ''), ['pending', 'approved', 'denied'], true)) {
-            return ['request_id' => $id, 'status' => $req['status']];
+            in_array(($req['status'] ?? ''), ['pending', 'approved', 'denied', 'rejected'], true)) {
+            return ['request_id' => $id, 'status' => ($req['status'] === 'rejected' ? 'denied' : $req['status'])];
         }
     }
     // Keep a bounded queue; prevent resource exhaustion via public submissions.
@@ -303,7 +303,7 @@ function one_license_owner_authenticated(array $state, string $device, string $i
 function one_license_owner_pending(array $state): array {
     $result = [];
     foreach ($state['requests'] as $req) {
-        if (!in_array(($req['app'] ?? ''), ['main', 'dj', 'music'], true) || ($req['status'] ?? '') !== 'pending') continue;
+        if (!in_array(($req['app'] ?? ''), ['main', 'studio', 'dj', 'music'], true) || ($req['status'] ?? '') !== 'pending') continue;
         $result[] = [
             'id' => (string)$req['id'], 'app' => (string)$req['app'], 'device' => (string)$req['device'],
             'person' => (string)$req['person'], 'installation_id' => (string)$req['installation_id'],
