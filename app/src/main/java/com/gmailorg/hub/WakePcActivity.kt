@@ -413,7 +413,7 @@ class WakePcActivity : AppCompatActivity() {
             setPadding(18, 8, 18, 8)
         }
         list.addView(TextView(this).apply {
-            text = "Tik op een naam om alle rechten in te trekken en alle apps te verwijderen. Gebruik de pijl om rechten te bekijken. Eigenaar-PIN vereist."
+            text = "Houd een naam ingedrukt voor de optie Verwijderen. Dit trekt alle rechten in en verwijdert alle gekoppelde appinstallaties en aanvragen. Gebruik de pijl om rechten te bekijken."
             textSize = 14f
             setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
             setPadding(0, 0, 0, 12)
@@ -487,14 +487,20 @@ class WakePcActivity : AppCompatActivity() {
             if (!personDevices.any { it.owner }) {
                 personTitle.isClickable = true
                 personTitle.isFocusable = true
-                personTitle.contentDescription = "Tik om $personName en alle apprechten te verwijderen"
-                personTitle.setOnClickListener {
-                    confirmRemovePerson(
-                        personName,
-                        personDevices.firstOrNull()?.personId.orEmpty(),
-                        personDevices.map { it.id },
-                        focus
-                    )
+                personTitle.contentDescription = "Houd ingedrukt voor opties voor $personName"
+                personTitle.setOnLongClickListener {
+                    android.widget.PopupMenu(this, personTitle).apply {
+                        menu.add("Verwijderen").setOnMenuItemClickListener {
+                            confirmRemovePerson(
+                                personName,
+                                personDevices.firstOrNull()?.personId.orEmpty(),
+                                personDevices.map { it.id },
+                                focus
+                            )
+                            true
+                        }
+                    }.show()
+                    true
                 }
             }
             headerText.addView(personTitle)
