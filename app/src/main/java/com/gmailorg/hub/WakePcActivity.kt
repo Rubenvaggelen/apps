@@ -314,7 +314,7 @@ class WakePcActivity : AppCompatActivity() {
     /** Family license approvals, independent of the general device rights dropdown. */
     private fun addFamilyLicenseRequests(list: LinearLayout) {
         list.addView(TextView(this).apply {
-            text = "The One Music Studio / DJ — aanvragen"
+            text = "Family-aanvragen — Main, Studio en DJ"
             textSize = 17f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_main))
