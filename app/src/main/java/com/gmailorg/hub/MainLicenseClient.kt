@@ -272,6 +272,30 @@ object MainLicenseClient {
         }
     }
 
+
+    /**
+     * Owner-only, exact-ID and atomic rejection/deletion of pending requests.
+     * This never revokes valid grants or deletes a registered installation.
+     */
+    fun resolvePendingOwnerRequests(context: Context, requestIds: List<String>, delete: Boolean): Int {
+        require(MainDeviceRegistry.isLocallyOwner(context) && ownerIsPaired(context)) {
+            "Eigenaarstoegang vereist"
+        }
+        val ids = requestIds.distinct()
+        require(ids.isNotEmpty() && ids.size <= 25 && ids.all { it.matches(Regex("^[a-f0-9]{24}$")) }) {
+            "Ongeldige aanmeldingen"
+        }
+        val array = org.json.JSONArray()
+        ids.forEach(array::put)
+        val action = if (delete) "owner_delete" else "owner_reject"
+        val result = request(action, payload(context)
+            .put("owner_token", ownerToken(context))
+            .put("request_ids", array))
+        val count = result.optInt("changed_count", -1)
+        check(count == ids.size) { "Server heeft niet alle aanvragen verwerkt" }
+        return count
+    }
+
     fun approveOwnerRequest(context: Context, requestId: String): Boolean {
         if (!MainDeviceRegistry.isLocallyOwner(context) || !ownerIsPaired(context)) return false
         val json = request("owner_approve", payload(context)
