@@ -108,7 +108,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          apksigner verify --print-certs app/build/outputs/apk/debug/app-debug.apk > /tmp/main-cert.txt
+          APKSIGNER="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --print-certs app/build/outputs/apk/debug/app-debug.apk > /tmp/main-cert.txt
           grep -qi 'dbf6ba5bfab9b67a7518ce43235b36a4bb4ad4f19f2bed838191e2267b25ea76' /tmp/main-cert.txt
           sha256sum app/build/outputs/apk/debug/app-debug.apk
       - name: Upload Main 1042 signed candidate only (not released)
