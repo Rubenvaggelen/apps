@@ -41,5 +41,7 @@ jobs:
               assert f'device.{prop}' in ui, label
           print('Main device model and UI include pending Cinema/Series/TV requests')
           PY
+      - name: Prepare working offline supermarket snapshot for existing tests
+        run: python3 .github/scripts/supermarket-snapshot.py
       - name: Compile Main and run unit tests (no deployment)
         run: gradle :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon --no-build-cache
