@@ -1,0 +1,47 @@
+name: Verify Main pending TV and Series requests
+
+on:
+  push:
+    branches: [fix/tv-series-pending-main-20261025]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - '.github/workflows/check-main-tv-series-pending.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  compile-main:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+      - name: Verify pending Family scopes are wired to the Main device manager
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          model = Path('app/src/main/java/com/gmailorg/hub/MainDeviceRegistry.kt').read_text()
+          ui = Path('app/src/main/java/com/gmailorg/hub/WakePcActivity.kt').read_text()
+          for label, scope, prop in (
+              ('Cinema', 'ACCESS_CINEMA_ANDROID', 'pendingCinemaAndroid'),
+              ('Series', 'ACCESS_SERIES_ANDROID', 'pendingSeriesAndroid'),
+              ('TV', 'ACCESS_TV_ANDROID', 'pendingTvAndroid'),
+          ):
+              assert f'{prop} = item.optJSONObject("access_requests")?.has({scope}) == true' in model, label
+              assert f'device.{prop}' in ui, label
+          print('Main device model and UI include pending Cinema/Series/TV requests')
+          PY
+      - name: Prepare working offline supermarket snapshot for existing tests
+        run: python3 .github/scripts/supermarket-snapshot.py
+      - name: Compile Main and run unit tests (no deployment)
+        run: gradle :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon --no-build-cache
