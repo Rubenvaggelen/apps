@@ -6,8 +6,8 @@ android {
   applicationId 'com.theone.series.tv'
   minSdk 23
   targetSdk 35
-  versionCode 125
-  versionName '1.2.5-audio-recovery'
+  versionCode 126
+  versionName '1.2.6-media-player-audio-parity'
   testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
  }
  buildFeatures { buildConfig true }
