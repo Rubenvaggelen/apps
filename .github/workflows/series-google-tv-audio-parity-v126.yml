@@ -2,7 +2,7 @@ name: Series Google TV v1.2.6 Signed APK Candidate
 on:
   push:
     branches: [fix/series-google-tv-media-player-audio-parity-20261025]
-    paths: [series-google-tv/**, .github/workflows/series-google-tv-audio-parity-v126-quick.yml]
+    paths: [series-google-tv/**, .github/workflows/series-google-tv-audio-parity-v126.yml]
 permissions:
   contents: read
 concurrency:
