@@ -30,7 +30,15 @@ try{
  $manifestFile=$root.'/manifest.json';
  $raw=(string)file_get_contents($manifestFile);
  $rows=json_decode($raw,true,512,JSON_THROW_ON_ERROR);
- if(!is_array($rows)||count($rows)!==8)exit(5);
+ // The Family catalog has grown since the original eight-app manifest.
+ // Validate every row and unique identifier instead of assuming a fixed count.
+ if(!is_array($rows)||count($rows)<1||count($rows)>64)exit(5);
+ $seenIds=[];
+ foreach($rows as $check){
+  if(!is_array($check)||!isset($check['id'])||!is_string($check['id'])||
+     $check['id']===''||isset($seenIds[$check['id']]))exit(5);
+  $seenIds[$check['id']]=true;
+ }
  $found=false;
  foreach($rows as &$row){
   if(!is_array($row)||($row['id']??null)!==$id)continue;
