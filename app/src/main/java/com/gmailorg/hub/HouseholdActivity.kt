@@ -110,6 +110,7 @@ class HouseholdActivity : AppCompatActivity() {
         list.adapter = adapter
 
         findViewById<View>(R.id.voiceInputButton).setOnClickListener { startVoiceInput() }
+        findViewById<View>(R.id.shareWhatsAppButton).setOnClickListener { shareShoppingListViaWhatsApp() }
 
         findViewById<View>(R.id.backButton).setOnClickListener { finish() }
         findViewById<View>(R.id.addItemButton).setOnClickListener { addCurrentInput() }
@@ -273,6 +274,35 @@ class HouseholdActivity : AppCompatActivity() {
             voiceRecognition.launch(intent)
         } else {
             Toast.makeText(this, "Geen spraakherkenning beschikbaar op dit toestel.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun shareShoppingListViaWhatsApp() {
+        val text = ShoppingListShareFormatter.format(ShoppingListStore.getAll())
+        if (text == null) {
+            Toast.makeText(this, "Geen openstaande boodschappen om te delen.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val share = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        // Android 11+ can hide package details from queries: launch directly,
+        // then use the normal Android share sheet if neither WhatsApp app exists.
+        for (app in listOf("com.whatsapp", "com.whatsapp.w4b")) {
+            try {
+                startActivity(Intent(share).setPackage(app))
+                return
+            } catch (_: android.content.ActivityNotFoundException) {
+                // Try WhatsApp Business or the system share chooser.
+            } catch (_: SecurityException) {
+                // The target can prohibit external sharing on managed devices.
+            }
+        }
+        try {
+            startActivity(Intent.createChooser(share, "Boodschappenlijst delen"))
+        } catch (_: android.content.ActivityNotFoundException) {
+            Toast.makeText(this, "Geen app gevonden om de lijst te delen.", Toast.LENGTH_LONG).show()
         }
     }
 
