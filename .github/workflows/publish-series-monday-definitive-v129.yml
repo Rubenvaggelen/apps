@@ -153,6 +153,18 @@ jobs:
         run: |
           curl --fail --silent --show-error --max-time 15 https://rubenvanaggelen.com/the-one-remote-api/family-updates.php?action=health |
             python3 -c 'import json,sys; x=json.load(sys.stdin); assert x.get("ok") is True and x.get("service") == "The One Family Secure Updates"'
+      - name: Preserve signed definitive APK for recovery
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: The-One-Series-Google-TV-v1.2.3-Definitive-v129-owner
+          path: series-google-tv/deliverable/The-One-Series-Google-TV-v1.2.3-definitive-v129.apk
+          if-no-files-found: error
+          retention-days: 7
+      - name: Validate dynamic Dev Hub publisher before deployment
+        run: |
+          php -l ci/devhub-family-build-update.php
+          grep -q 'count($rows)<1' ci/devhub-family-build-update.php
       - name: Publish signed app to private Dev Hub after tests
         # Owner explicitly approved the Monday recovery build as definitive.
         # The existing private family publisher verifies package, SHA-256,
@@ -168,14 +180,6 @@ jobs:
           BUILD_APK_PATH: series-google-tv/deliverable/The-One-Series-Google-TV-v1.2.3-definitive-v129.apk
           BUILD_VERSION_NAME: 1.2.3
         run: bash ci/publish-family-private.sh
-      - name: Owner-only signed audio baseline APK for side-by-side diagnosis
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: The-One-Series-Google-TV-v1.2.3-Definitive-v129-owner
-          path: series-google-tv/deliverable/The-One-Series-Google-TV-v1.2.3-definitive-v129.apk
-          if-no-files-found: error
-          retention-days: 7
       - name: Save test reports
         if: always()
         uses: actions/upload-artifact@v4
