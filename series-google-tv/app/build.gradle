@@ -6,8 +6,8 @@ android {
   applicationId 'com.theone.series.tv'
   minSdk 23
   targetSdk 35
-  versionCode 128
-  versionName '1.2.3-maandag-19okt-herstel'
+  versionCode 129
+  versionName '1.2.3'
   testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
  }
  buildFeatures { buildConfig true }
