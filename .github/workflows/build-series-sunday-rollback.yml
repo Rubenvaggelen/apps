@@ -1,0 +1,185 @@
+name: The One Series Sunday 18 October rollback APK
+on:
+  push:
+    branches: [series-sunday-rollback-v127-20261025]
+    paths: [series-google-tv/**, .github/workflows/build-series-sunday-rollback.yml]
+permissions:
+  contents: read
+concurrency:
+  group: series-sunday-rollback-20261025
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v3
+        with: {gradle-version: '8.7'}
+      - name: Restore stable owner signing identity
+        env:
+          SIGNING_KEY: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$SIGNING_KEY"
+          mkdir -p ~/.android
+          printf '%s' "$SIGNING_KEY" | base64 -d > ~/.android/debug.keystore
+      - name: Restore verified existing Media Player configuration
+        run: |
+          set -euo pipefail
+          umask 077
+          curl -fLsS --max-time 120 'https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2400/The-One-Media-Player-v2400.apk' -o /tmp/cinema-source.apk
+          echo 'a76dfa81c8670d1c044776fa1f10264eff958eca64339d6dd0d6f6ccedb3e04b  /tmp/cinema-source.apk' | sha256sum --check --status
+          python3 - <<'PY'
+          import zipfile,json,pathlib,hmac,hashlib
+          with zipfile.ZipFile('/tmp/cinema-source.apk') as z:
+              c=json.loads(z.read('assets/private_xtream.json'))
+          if not all(isinstance(c.get(k),str) and c[k].strip() for k in ['server','username','password']):
+              raise SystemExit('Media Player configuration unavailable')
+          p=pathlib.Path('series-google-tv/app/src/main/assets/private_cinema.json')
+          p.parent.mkdir(parents=True,exist_ok=True)
+          token=hmac.new(c['password'].encode(),b'the-one-cinema-relay-v1',hashlib.sha256).hexdigest()
+          (p.parent/'private_xtream_primary.json').write_text(json.dumps(c))
+          p.write_text(json.dumps({'relay_url':'https://rubenvanaggelen.com/the-one-remote-api/cinema.php','relay_token':token}))
+          PY
+          keytool -importkeystore -srckeystore ~/.android/debug.keystore -srcstorepass android -srcalias androiddebugkey -destkeystore /tmp/cinema-signing.p12 -deststoretype PKCS12 -deststorepass changeit -destkeypass changeit -noprompt >/dev/null
+          openssl pkcs12 -in /tmp/cinema-signing.p12 -passin pass:changeit -nodes -nocerts -out /tmp/cinema-private.pem >/dev/null 2>&1
+          base64 -d series-google-tv/secondary-source.enc.b64 > /tmp/cinema-secondary.enc
+          openssl pkeyutl -decrypt -inkey /tmp/cinema-private.pem -in /tmp/cinema-secondary.enc -out series-google-tv/app/src/main/assets/private_xtream_secondary.json -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
+          python3 - <<'PY_VERIFY'
+          import json,pathlib
+          c=json.loads(pathlib.Path('series-google-tv/app/src/main/assets/private_xtream_secondary.json').read_text())
+          assert c['server']=='http://cqqwnnig.bulidns.com' and all(c.get(k) for k in ['username','password'])
+          PY_VERIFY
+          rm /tmp/cinema-signing.p12 /tmp/cinema-private.pem /tmp/cinema-secondary.enc
+          rm /tmp/cinema-source.apk
+      - name: Restore small verified starter catalog
+        run: |
+          python3 - <<'PY_START'
+          import pathlib,base64
+          root=pathlib.Path('series-google-tv')
+          data=base64.b64decode((root/'bootstrap/series.base64').read_text(),validate=True)
+          (root/'app/src/main/assets/bootstrap-series.bin').write_bytes(data)
+          PY_START
+      - name: Restore approved Series logo
+        run: |
+          python3 - <<'PY_LOGO'
+          import pathlib,base64,hashlib
+          root=pathlib.Path('series-google-tv')
+          encoded=''.join(p.read_text() for p in sorted((root/'branding').glob('series-logo-*.base64')))
+          data=base64.b64decode(encoded,validate=True)
+          assert hashlib.sha256(data).hexdigest()=='1d9035b0bf27692c2a3cb8630af7f36fc600cd72c837198620a7ad57e008e69f'
+          out=root/'app/src/main/res/drawable/series_logo.webp'
+          out.parent.mkdir(parents=True,exist_ok=True)
+          out.write_bytes(data)
+          PY_LOGO
+      - name: Restore approved TV launcher banner
+        run: |
+          python3 - <<'PY_BANNER'
+          import pathlib,base64,hashlib
+          root=pathlib.Path('series-google-tv')
+          encoded=''.join(p.read_text() for p in sorted((root/'branding').glob('series-banner-*.base64')))
+          data=base64.b64decode(encoded,validate=True)
+          assert hashlib.sha256(data).hexdigest()=='8cb985b9e9dd6ba0e69bdb516f4e46d97ca16ca2cb0de0fceda9ff8a8a3703e2'
+          out=root/'app/src/main/res/drawable-xhdpi/tv_banner.png'
+          out.parent.mkdir(parents=True,exist_ok=True)
+          out.write_bytes(data)
+          PY_BANNER
+      - name: Verify native playback test fixture
+        run: |
+          python3 - <<'PY_FIXTURE'
+          import pathlib,base64,hashlib
+          root=pathlib.Path('series-google-tv')
+          data=base64.b64decode((root/'tests/test-clip.mp4.base64').read_text(),validate=False)
+          digest=hashlib.sha1(b'blob '+str(len(data)).encode()+b'\x00'+data).hexdigest()
+          assert digest=='5f9ae34ede49119e518895d59deccba6f242ade0', 'Fixture integrity mismatch'
+          p=root/'app/src/debug/assets/test-clip.mp4'
+          p.parent.mkdir(parents=True,exist_ok=True)
+          p.write_bytes(data)
+          PY_FIXTURE
+      - name: Build and unit test independent Series APK
+        working-directory: series-google-tv
+        run: gradle :app:testDebugUnitTest :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
+      - name: Verify TV launcher package and signature
+        working-directory: series-google-tv
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          BT=$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -type d | sort -V | tail -1)
+          "$BT/apksigner" verify --verbose --print-certs "$APK" > /tmp/cinema-signature.txt
+          keytool -exportcert -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -file /tmp/cinema-owner.der >/dev/null
+          OWNER_SHA=$(sha256sum /tmp/cinema-owner.der | cut -d " " -f1)
+          grep -i "certificate SHA-256 digest: $OWNER_SHA" /tmp/cinema-signature.txt
+          "$BT/aapt" dump badging "$APK" > /tmp/cinema-badging.txt
+          grep "package: name='com.theone.series.tv' versionCode='127'" /tmp/cinema-badging.txt
+          grep 'leanback-launchable-activity' /tmp/cinema-badging.txt
+          python3 - <<'PY_ASSETS'
+          import zipfile,gzip,json
+          for variant in ['release','debug']:
+              with zipfile.ZipFile('app/build/outputs/apk/'+variant+'/app-'+variant+'.apk') as z:
+                  assert len(json.loads(gzip.decompress(z.read('assets/bootstrap-series.bin'))))==256
+          PY_ASSETS
+          mkdir -p deliverable
+          cp "$APK" deliverable/The-One-Series-Google-TV-v1.2.2-18okt-herstel-v127.apk
+          sha256sum deliverable/The-One-Series-Google-TV-v1.2.2-18okt-herstel-v127.apk > deliverable/SHA256SUMS.txt
+      # Emulator passed on original Sunday run 39171414758; this build validates identical source and signing.
+      - name: Encrypt personal APK before artifact publication
+        if: success()
+        working-directory: series-google-tv
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p protected-deliverable
+          openssl rand -hex 32 > /tmp/cinema-artifact-key
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/cinema-artifact-key -in deliverable/The-One-Series-Google-TV-v1.2.2-18okt-herstel-v127.apk -out protected-deliverable/The-One-Series-Google-TV-v1.2.2-18okt-herstel-v127.apk.enc
+          openssl pkeyutl -encrypt -pubin -inkey owner-artifact-public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in /tmp/cinema-artifact-key -out protected-deliverable/key.enc
+          cp deliverable/SHA256SUMS.txt protected-deliverable/SHA256SUMS.txt
+          rm /tmp/cinema-artifact-key
+      - name: Save personal installable APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: the-one-series-google-tv-v127
+          path: series-google-tv/protected-deliverable/
+          retention-days: 7
+      - name: Hand over verified signed Series TV APK to owner
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: The-One-Series-Google-TV-Sunday-18Oct-v127-owner
+          path: series-google-tv/deliverable/The-One-Series-Google-TV-v1.2.2-18okt-herstel-v127.apk
+          retention-days: 1
+          if-no-files-found: error
+      - name: Verify private update service is deployed
+        run: |
+          curl --fail --silent --show-error --max-time 15 https://rubenvanaggelen.com/the-one-remote-api/family-updates.php?action=health |
+            python3 -c 'import json,sys; x=json.load(sys.stdin); assert x.get("ok") is True and x.get("service") == "The One Family Secure Updates"'
+      - name: Publish signed app to private Dev Hub after tests
+        if: false # Historical rollback: never automatically deploy
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          BUILD_APP_ID: series-google-tv
+          BUILD_APK_PATH: series-google-tv/deliverable/The-One-Series-Google-TV-v1.2.2-18okt-herstel-v127.apk
+          BUILD_VERSION_NAME: 1.2.2-sunday-restore
+        run: bash ci/publish-family-private.sh
+      - name: Save test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: series-google-tv-test-reports
+          path: |
+            series-google-tv/app/build/reports/tests/
+            series-google-tv/app/build/reports/androidTests/
+          retention-days: 7
