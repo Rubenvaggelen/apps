@@ -1,0 +1,82 @@
+name: Publish Main v1043 WhatsApp Groceries Update
+
+on:
+  push:
+    branches: [fix/main-grocery-whatsapp-share-20261025]
+    paths: [.github/workflows/publish-main-1043-whatsapp.yml]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-main-v1043
+  cancel-in-progress: false
+
+jobs:
+  publish-verified-main:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Ensure main-v1043 is the intended update
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view main-v1043 --repo Rubenvaggelen/apps >/dev/null 2>&1; then
+            echo "Release main-v1043 already exists; verifying rather than replacing is required."
+            exit 1
+          fi
+      - name: Download successful, owner-signed Main v1043 candidate
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 40192830000
+          name: The-One-Main-v1043-WhatsApp-Groceries-Candidate
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: staged
+      - name: Verify exact tested package, version, signing certificate and SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=staged/app-debug.apk
+          test -s "$APK"
+          echo "db46077eaa62f942f6f72c81e978b208363658594fae4e499568ca6166c112cb  $APK" | sha256sum --check
+          BT="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          test -x "$BT/apksigner"
+          test -x "$BT/aapt"
+          "$BT/apksigner" verify --print-certs "$APK" > /tmp/main-signature.txt
+          grep -qi "dbf6ba5bfab9b67a7518ce43235b36a4bb4ad4f19f2bed838191e2267b25ea76" /tmp/main-signature.txt
+          "$BT/aapt" dump badging "$APK" > /tmp/main-badging.txt
+          grep -q "package: name='com.gmailorg.hub' versionCode='1043'" /tmp/main-badging.txt
+          mkdir -p release
+          cp "$APK" release/app-debug.apk
+      - name: Publish official Main update for the existing in-app updater
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: main-v1043
+          name: The One Main — build 1043 (WhatsApp boodschappenlijst)
+          draft: false
+          prerelease: false
+          make_latest: true
+          generate_release_notes: false
+          body: |
+            The One Main v1043.
+            - Herstelt Huishouden → Boodschappenlijst → Delen via WhatsApp.
+            - Deelt uitsluitend openstaande boodschappen, zonder automatisch te versturen.
+            - Inclusief eerdere verbeteringen voor openstaande The One TV / The One Series-toestemmingen.
+            - Gemaakt als installatie over v1041/v1042, met behoud van appgegevens.
+            - Build- en unit-tests geslaagd (GitHub Actions run 40192830000).
+            - De daadwerkelijke WhatsApp-werking op een telefoon moet nog worden bevestigd.
+          files: release/app-debug.apk
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify official update asset is publicly accessible
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release view main-v1043 --repo Rubenvaggelen/apps --json assets,isDraft,isPrerelease \
+            --jq '.assets[].name' | grep -Fx app-debug.apk
