@@ -8,7 +8,11 @@ final class EpisodeCatalog {
     JSONObject info=row.optJSONObject("info");String poster=info==null?"":PosterMetadata.choose(info,base);if(poster.isEmpty())poster=parent.poster;
     String name=row.optString("title","").trim();if(name.isEmpty())name="Aflevering "+number;String title=String.format(Locale.ROOT,"S%02dE%02d · %s",season,number,name)+(parent.rank>0?" · "+parent.rank+"p":"");
     Matcher label=Pattern.compile("(?i)S(\\d{1,3})[ ._-]*E(\\d{1,4})|(?<!\\d)(\\d{1,3})x(\\d{1,4})(?!\\d)").matcher(name);int actualSeason=season;if(label.find()){actualSeason=Integer.parseInt(label.group(1)!=null?label.group(1):label.group(3));number=Integer.parseInt(label.group(2)!=null?label.group(2):label.group(4));title=String.format(Locale.ROOT,"S%02dE%02d · %s",actualSeason,number,name)+(parent.rank>0?" · "+parent.rank+"p":"");}
-    String group=parent.key()+":"+actualSeason+":"+number;out.add(new CatalogEntry((int)raw+(second?1000000000:0),title,row.optString("container_extension","mp4"),poster,actualSeason+":"+number,"episode",parent.added,"",group,CatalogEntry.language(parent.title)));
+    // Keep the same season/episode together across providers even if they use
+    // different series IDs or TMDB IDs (e.g. MobLand / Mob Land).
+    // This mirrors the cross-provider episode alternatives in Media Player.
+    String seriesTitle=CatalogEntry.normalize(parent.title).replace(" ","");
+    String group="series-episode:"+seriesTitle+":"+actualSeason+":"+number;out.add(new CatalogEntry((int)raw+(second?1000000000:0),title,row.optString("container_extension","mp4"),poster,actualSeason+":"+number,"episode",parent.added,"",group,CatalogEntry.language(parent.title)));
    }
   }return out;
  }

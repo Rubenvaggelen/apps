@@ -6,8 +6,8 @@ android {
   applicationId 'com.theone.series.tv'
   minSdk 23
   targetSdk 35
-  versionCode 130
-  versionName '1.2.4'
+  versionCode 131
+  versionName '1.2.4-mobland-audio-test'
   testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
  }
  buildFeatures { buildConfig true }
