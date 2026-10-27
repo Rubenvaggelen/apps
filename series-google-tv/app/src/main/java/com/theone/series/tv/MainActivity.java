@@ -103,17 +103,38 @@ public class MainActivity extends Activity {
    audioTrackCheck=null;
    if(player==null||generation!=audioCheckGeneration||!player.getPlayWhenReady()
       ||player.getPlaybackState()!=Player.STATE_READY)return;
-   int supported=0;
+   int supported=0,present=0;
    for(Tracks.Group group:player.getCurrentTracks().getGroups()){
     if(group.getType()!=C.TRACK_TYPE_AUDIO)continue;
-    for(int i=0;i<group.length;i++)if(group.isTrackSupported(i))supported++;
+    for(int i=0;i<group.length;i++){
+     present++;
+     if(group.isTrackSupported(i))supported++;
+    }
    }
-   if(supported==0&&sourceIndex+1<playSources.size()){
-    if(playbackStatus!=null)playbackStatus.setText("Geen audiospoor gevonden · Andere bron proberen…");
-    fallback();
+   if(supported==0&&present>0){
+    if(sourceIndex+1<playSources.size()){
+     if(playbackStatus!=null)playbackStatus.setText("Niet-ondersteund audiospoor · Andere bron proberen…");
+     fallback();
+    }else{
+     if(playbackStatus!=null)playbackStatus.setText("Geen decoder · Softwareaudio starten…");
+     playWithSoftwareAudio();
+    }
    }
   };
   handler.postDelayed(audioTrackCheck,8000);
+ }
+ private void playWithSoftwareAudio(){
+  // A missing device E-AC3 decoder cannot be fixed by passthrough toggling.
+  if(testMode||player==null||playing==null||playSources==null||
+      sourceIndex<0||sourceIndex>=playSources.size())return;
+  CatalogEntry entry=playSources.get(sourceIndex);
+  android.content.Intent software=new android.content.Intent(this,VlcFallbackActivity.class);
+  software.putExtra("stream_url",repo.stream(entry));
+  software.putExtra("episode_key",playing.key());
+  software.putExtra("episode_title",playing.title);
+  software.putExtra("resume_ms",Math.max(resumePosition,player.getCurrentPosition()));
+  showCatalog();
+  startActivity(software);
  }
  private String selectedProvider(){
   if(playSources==null||playSources.isEmpty()||sourceIndex<0||sourceIndex>=playSources.size())return "geen bron";
