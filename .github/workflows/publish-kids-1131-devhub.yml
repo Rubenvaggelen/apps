@@ -1,0 +1,101 @@
+name: Publish confirmed Kids 1131 to protected Dev Hub
+on:
+  push:
+    branches: [deploy/kids1131-devhub-final-20261027]
+    paths: [.github/workflows/publish-kids-1131-devhub.yml]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install supported Android verification tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMGR=$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)
+          test -x "$SDKMGR"
+          "$SDKMGR" 'build-tools;35.0.0'
+          python -m pip install --quiet 'cryptography==43.0.3'
+      - name: Decrypt only the RSA-wrapped OTA key using authorized owner signing secret
+        shell: bash
+        env:
+          OWNER_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$OWNER_KEYSTORE_B64"
+          mkdir -p "$RUNNER_TEMP/kids-secure" "$HOME/.android"
+          printf '%s' "$OWNER_KEYSTORE_B64" | base64 -d > "$HOME/.android/debug.keystore"
+          keytool -importkeystore -srckeystore "$HOME/.android/debug.keystore" -srcstorepass android -srcalias androiddebugkey -destkeystore "$RUNNER_TEMP/kids-secure/owner.p12" -deststoretype PKCS12 -deststorepass changeit -destkeypass changeit -noprompt >/dev/null
+          openssl pkcs12 -in "$RUNNER_TEMP/kids-secure/owner.p12" -passin pass:changeit -nodes -nocerts -out "$RUNNER_TEMP/kids-secure/owner.pem" >/dev/null 2>&1
+          base64 -d devhub/kids-v1131-ota-key.rsa-oaep-sha256.b64 > "$RUNNER_TEMP/kids-secure/wrapped.bin"
+          openssl pkeyutl -decrypt -inkey "$RUNNER_TEMP/kids-secure/owner.pem" -in "$RUNNER_TEMP/kids-secure/wrapped.bin" -out "$RUNNER_TEMP/kids-secure/kids-ota.key" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
+          test "$(wc -c < "$RUNNER_TEMP/kids-secure/kids-ota.key")" -eq 32
+          rm -f "$RUNNER_TEMP/kids-secure/owner.p12" "$RUNNER_TEMP/kids-secure/owner.pem" "$RUNNER_TEMP/kids-secure/wrapped.bin"
+      - name: Reconstruct and validate the exact user-approved Kids APK
+        shell: bash
+        env:
+          KIDS_UPDATE_KEY_FILE: ${{ runner.temp }}/kids-secure/kids-ota.key
+          KIDS_APK_PATH: ${{ runner.temp }}/kids-secure/kids-v1131.apk
+        run: |
+          set -euo pipefail
+          python3 devhub/reconstruct-kids-v1131.py
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          test -s "$KIDS_APK_PATH"
+          "$BT/apksigner" verify --print-certs "$KIDS_APK_PATH" > "$RUNNER_TEMP/kids-secure/signer.txt"
+          sha=$(sed -n 's/.*certificate SHA-256 digest: //p' "$RUNNER_TEMP/kids-secure/signer.txt" | head -1 | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          test "$sha" = '66e2c8e50ed873eb0090e488370fcb67fdce8d4696ae46a8e766cab93910c91b'
+          "$BT/aapt" dump badging "$KIDS_APK_PATH" | grep -F "package: name='com.gmailorg.kids' versionCode='1131' versionName='1.0.1131'"
+          php -l devhub/kids-download.php
+          echo "PASS approved APK, versionCode, package, SHA256, legacy Kids signer"
+      - name: Publish to private Dev Hub storage and register the latest build
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          KIDS_APK_PATH: ${{ runner.temp }}/kids-secure/kids-v1131.apk
+        run: |
+          set -euo pipefail
+          for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do test -n "${!name}" || exit 15; done
+          sshdir=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$sshdir" "$RUNNER_TEMP/kids-secure"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$sshdir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$sshdir/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$sshdir/askpass"
+          chmod 600 "$sshdir/key" "$sshdir/known_hosts";chmod 700 "$sshdir/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$sshdir/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$sshdir/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          opts=(-p "$DEPLOY_PORT" -i "$sshdir/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$sshdir/known_hosts" -o ConnectTimeout=20)
+          dest="$DEPLOY_USER@$DEPLOY_HOST"
+          stage=$(ssh "${opts[@]}" "$dest" 'umask 077; mktemp -d /home/vanawiwj/the-one-private-builds/kids-v1131.XXXXXXXX')
+          scp -O -P "$DEPLOY_PORT" -i "$sshdir/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$sshdir/known_hosts" "$KIDS_APK_PATH" "$dest:$stage/kids-v1131.apk"
+          scp -O -P "$DEPLOY_PORT" -i "$sshdir/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$sshdir/known_hosts" devhub/patch-kids-v1131.py devhub/kids-download.php "$dest:$stage/"
+          ssh "${opts[@]}" "$dest" "bash -s -- '$stage'" <<'REMOTE'
+          set -euo pipefail
+          stage="$1"
+          python3 "$stage/patch-kids-v1131.py" "$stage"
+          test -s /home/vanawiwj/the-one-private-builds/kids/apks/The-One-Kids-v1.0.1131-CoComelon-Nederlands.apk
+          test -s /home/vanawiwj/the-one-private-builds/kids/latest.json
+          grep -q 'id="kidsLatestBuildCard"' /home/vanawiwj/dev.vanaggelen.com/builds.php
+          grep -q 'id="kidsDownload"' /home/vanawiwj/dev.vanaggelen.com/index.php
+          php -l /home/vanawiwj/dev.vanaggelen.com/kids-download.php >/dev/null
+          rm -f "$stage/kids-v1131.apk" "$stage/patch-kids-v1131.py" "$stage/kids-download.php"
+          rmdir "$stage"
+          echo "CONFIRMED: Kids v1131 is final working build on protected Dev Hub"
+          REMOTE
