@@ -29,6 +29,7 @@ class WakePcActivity : AppCompatActivity() {
     private var activeDeviceAdminPin = ""
     private var activeAccessDialog: AlertDialog? = null
     private var latestStudioRequests: List<MainPendingLicenseRequest>? = emptyList()
+    private var latestDeviceAccessRequests: Set<Pair<String, String>> = emptySet()
 
     private data class WakeTarget(
         val id: String,
@@ -264,6 +265,9 @@ class WakePcActivity : AppCompatActivity() {
             val devices = if (owner) runCatching {
                 MainDeviceRegistry.listDevices(this, "")
             }.getOrNull() else null
+            val deviceAccessRequests = if (owner && devices != null) {
+                runCatching { MainDeviceRegistry.pendingAccessRequests(this) }.getOrNull()
+            } else emptyList()
             // The standalone Studio uses the separate Family licensing service.
             val licenseRequests = if (owner && MainLicenseClient.ownerIsPaired(this)) {
                 runCatching { MainLicenseClient.pendingOwnerApprovals(this) }.getOrNull()
@@ -288,6 +292,11 @@ class WakePcActivity : AppCompatActivity() {
                     return@runOnUiThread
                 }
                 latestStudioRequests = licenseRequests
+                latestDeviceAccessRequests = deviceAccessRequests.orEmpty()
+                    .map { it.deviceId to it.scope }.toSet()
+                if (deviceAccessRequests == null) {
+                    Toast.makeText(this, "Openstaande aanvragen konden niet worden geladen. Probeer opnieuw.", Toast.LENGTH_LONG).show()
+                }
                 showManagedDevices(devices, focusKey)
             }
         }.start()
@@ -300,11 +309,14 @@ class WakePcActivity : AppCompatActivity() {
         val pending: Boolean
     )
 
+    private fun isPendingFamilyRequest(device: MainRegisteredDevice, scope: String): Boolean =
+        (device.id to scope) in latestDeviceAccessRequests
+
     private fun managedAppRights(device: MainRegisteredDevice): List<ManagedAppRight> = listOf(
-        ManagedAppRight("The One", MainDeviceRegistry.ACCESS_THE_ONE_USER, device.theOneUserRights, device.pendingTheOneUser),
-        ManagedAppRight("The One Cinema", MainDeviceRegistry.ACCESS_CINEMA_ANDROID, device.cinemaAndroidRights, device.pendingCinemaAndroid),
-        ManagedAppRight("The One Series", MainDeviceRegistry.ACCESS_SERIES_ANDROID, device.seriesAndroidRights, device.pendingSeriesAndroid),
-        ManagedAppRight("The One TV", MainDeviceRegistry.ACCESS_TV_ANDROID, device.tvAndroidRights, device.pendingTvAndroid),
+        ManagedAppRight("The One", MainDeviceRegistry.ACCESS_THE_ONE_USER, device.theOneUserRights, isPendingFamilyRequest(device, MainDeviceRegistry.ACCESS_THE_ONE_USER)),
+        ManagedAppRight("The One Cinema", MainDeviceRegistry.ACCESS_CINEMA_ANDROID, device.cinemaAndroidRights, isPendingFamilyRequest(device, MainDeviceRegistry.ACCESS_CINEMA_ANDROID)),
+        ManagedAppRight("The One Series", MainDeviceRegistry.ACCESS_SERIES_ANDROID, device.seriesAndroidRights, isPendingFamilyRequest(device, MainDeviceRegistry.ACCESS_SERIES_ANDROID)),
+        ManagedAppRight("The One TV", MainDeviceRegistry.ACCESS_TV_ANDROID, device.tvAndroidRights, isPendingFamilyRequest(device, MainDeviceRegistry.ACCESS_TV_ANDROID)),
         ManagedAppRight("The One Kids", MainDeviceRegistry.ACCESS_KIDS_ANDROID, device.kidsAndroidRights, device.pendingKidsAndroid),
         ManagedAppRight("Media Player", MainDeviceRegistry.ACCESS_MEDIA_PLAYER, device.mediaPlayerRights, device.pendingMediaPlayer),
         ManagedAppRight("Media Player XXX", MainDeviceRegistry.ACCESS_MEDIA_PLAYER_XXX, device.mediaPlayerXxxRights, device.pendingMediaPlayerXxx),
