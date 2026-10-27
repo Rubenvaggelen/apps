@@ -30,6 +30,8 @@ class WakePcActivity : AppCompatActivity() {
     private var activeAccessDialog: AlertDialog? = null
     private var latestStudioRequests: List<MainPendingLicenseRequest>? = emptyList()
     private var latestDeviceAccessRequests: Set<Pair<String, String>> = emptySet()
+    private var latestAccessRequestDetails: List<MainPendingAccessRequest> = emptyList()
+    private var accessQueueLoadFailed = false
 
     private data class WakeTarget(
         val id: String,
@@ -292,6 +294,8 @@ class WakePcActivity : AppCompatActivity() {
                     return@runOnUiThread
                 }
                 latestStudioRequests = licenseRequests
+                latestAccessRequestDetails = deviceAccessRequests.orEmpty()
+                accessQueueLoadFailed = deviceAccessRequests == null
                 latestDeviceAccessRequests = deviceAccessRequests.orEmpty()
                     .map { it.deviceId to it.scope }.toSet()
                 if (deviceAccessRequests == null) {
@@ -330,12 +334,86 @@ class WakePcActivity : AppCompatActivity() {
     private fun isPendingFamilyRequest(device: MainRegisteredDevice, scope: String): Boolean =
         (device.id to scope) in latestDeviceAccessRequests
 
+    /** Owner inbox backed by the server queue, not by notification delivery. */
+    private fun addPendingAccessInbox(list: LinearLayout) {
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        header.addView(TextView(this).apply {
+            text = "Openstaande toegangsverzoeken (" + latestAccessRequestDetails.size + ")"
+            textSize = 18f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_main))
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        header.addView(android.widget.Button(this).apply {
+            text = "Vernieuwen"
+            setOnClickListener {
+                activeAccessDialog?.dismiss()
+                openDeviceManager(findViewById(R.id.manageDevicesButton))
+            }
+        })
+        list.addView(header)
+
+        if (accessQueueLoadFailed) {
+            list.addView(TextView(this).apply {
+                text = "De serveraanvragen konden niet worden opgehaald. Dit betekent niet dat er geen aanvragen zijn. Kies Vernieuwen."
+                textSize = 13f
+                setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.amber))
+            })
+            return
+        }
+        if (latestAccessRequestDetails.isEmpty()) {
+            list.addView(TextView(this).apply {
+                text = "Momenteel geen openstaande aanvragen op de licentieserver."
+                textSize = 13f
+                setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_dim))
+            })
+            return
+        }
+
+        latestAccessRequestDetails.sortedByDescending { it.requestedAt }.forEach { request ->
+            val focus = if (request.personId.isNotBlank()) "person|" + request.personId
+                        else "device|" + request.deviceId
+            val person = request.personName.ifBlank { request.deviceName.ifBlank { "Onbekende aanvrager" } }
+            val label = AccessRequestNotifications.scopeLabel(request.scope)
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(8, 8, 8, 8)
+            }
+            row.addView(TextView(this).apply {
+                text = "$person vraagt toegang tot $label"
+                textSize = 15f
+                setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.text_main))
+            })
+            val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            actions.addView(android.widget.Button(this).apply {
+                text = "Toestaan"
+                setOnClickListener {
+                    performManagedChange(focus, "Aanvraag goedkeuren mislukt") { pin ->
+                        MainDeviceRegistry.setAccessRight(this@WakePcActivity, pin, request.deviceId, request.scope, true)
+                    }
+                }
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            actions.addView(android.widget.Button(this).apply {
+                text = "Weigeren"
+                setOnClickListener {
+                    performManagedChange(focus, "Aanvraag weigeren mislukt") { pin ->
+                        MainDeviceRegistry.setAccessRight(this@WakePcActivity, pin, request.deviceId, request.scope, false)
+                    }
+                }
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = 8 })
+            row.addView(actions)
+            list.addView(row)
+        }
+    }
+
     private fun managedAppRights(device: MainRegisteredDevice): List<ManagedAppRight> = listOf(
         ManagedAppRight("The One", MainDeviceRegistry.ACCESS_THE_ONE_USER, device.theOneUserRights, isPendingFamilyRequest(device, MainDeviceRegistry.ACCESS_THE_ONE_USER)),
         ManagedAppRight("The One Cinema", MainDeviceRegistry.ACCESS_CINEMA_ANDROID, device.cinemaAndroidRights, isPendingFamilyRequest(device, MainDeviceRegistry.ACCESS_CINEMA_ANDROID)),
         ManagedAppRight("The One Series", MainDeviceRegistry.ACCESS_SERIES_ANDROID, device.seriesAndroidRights, isPendingFamilyRequest(device, MainDeviceRegistry.ACCESS_SERIES_ANDROID)),
         ManagedAppRight("The One TV", MainDeviceRegistry.ACCESS_TV_ANDROID, device.tvAndroidRights, isPendingFamilyRequest(device, MainDeviceRegistry.ACCESS_TV_ANDROID)),
-        ManagedAppRight("The One Kids", MainDeviceRegistry.ACCESS_KIDS_ANDROID, device.kidsAndroidRights, device.pendingKidsAndroid),
+        ManagedAppRight("The One Kids", MainDeviceRegistry.ACCESS_KIDS_ANDROID, device.kidsAndroidRights, device.pendingKidsAndroid || isPendingFamilyRequest(device, MainDeviceRegistry.ACCESS_KIDS_ANDROID)),
         ManagedAppRight("Media Player", MainDeviceRegistry.ACCESS_MEDIA_PLAYER, device.mediaPlayerRights, device.pendingMediaPlayer),
         ManagedAppRight("Media Player XXX", MainDeviceRegistry.ACCESS_MEDIA_PLAYER_XXX, device.mediaPlayerXxxRights, device.pendingMediaPlayerXxx),
         ManagedAppRight("The One Mixes", MainDeviceRegistry.ACCESS_MIXES, device.mixesRights, device.pendingMixes),
@@ -665,6 +743,7 @@ class WakePcActivity : AppCompatActivity() {
             setPadding(0, 0, 0, 12)
         })
 
+        addPendingAccessInbox(list)
         addFamilyLicenseRequests(list)
 
         val grouped = devices.groupBy(::personGroupKey)
