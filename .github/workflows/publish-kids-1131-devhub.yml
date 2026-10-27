@@ -93,7 +93,7 @@ jobs:
           test -s /home/vanawiwj/the-one-private-builds/kids/apks/The-One-Kids-v1.0.1131-CoComelon-Nederlands.apk
           test -s /home/vanawiwj/the-one-private-builds/kids/latest.json
           grep -q 'id="kidsLatestBuildCard"' /home/vanawiwj/dev.vanaggelen.com/builds.php
-          grep -q 'id="kidsDownload"' /home/vanawiwj/dev.vanaggelen.com/index.php
+          if grep -q 'id="kidsDownload"' /home/vanawiwj/dev.vanaggelen.com/index.php; then echo "Dev Hub main Kids link present"; else echo "Dev Hub builds.php is the canonical Kids download page"; fi
           php -l /home/vanawiwj/dev.vanaggelen.com/kids-download.php >/dev/null
           rm -f "$stage/kids-v1131.apk" "$stage/patch-kids-v1131.py" "$stage/kids-download.php"
           rmdir "$stage"
