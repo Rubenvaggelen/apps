@@ -1,0 +1,50 @@
+name: Audit Dev Hub Kids release readiness
+on:
+  push:
+    branches: [deploy/kids1131-devhub-final-20261027]
+    paths: [.github/workflows/audit-kids-devhub.yml]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect protected Dev Hub prerequisites
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do test -n "${!name}"; done
+          d=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$d"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$d/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$d/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$d/askpass"
+          chmod 600 "$d/key" "$d/known_hosts";chmod 700 "$d/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$d/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$d/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          ssh -p "$DEPLOY_PORT" -i "$d/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$d/known_hosts" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -eu
+          root=/home/vanawiwj
+          docroot=$root/dev.vanaggelen.com
+          test -d "$docroot"
+          test -f "$docroot/builds.php"
+          test -f "$docroot/index.php"
+          echo "PHP: $(php -r 'echo PHP_VERSION;')"
+          echo "Python3: $(command -v python3 || echo unavailable)"
+          echo "Docroot htaccess: $([ -f "$docroot/.htaccess" ] && echo present || echo absent)"
+          if test -f "$docroot/.htaccess"; then
+            if grep -Eqi 'AuthType[[:space:]]+Basic' "$docroot/.htaccess"; then echo "Directory Privacy AuthType Basic: yes"; else echo "Directory Privacy AuthType Basic: no"; fi
+          fi
+          echo "Index Kids button present: $(grep -qi 'id="kidsDownload"' "$docroot/index.php" && echo yes || echo no)"
+          echo "Builds Kids card present: $(grep -qi 'id="kidsLatestBuildCard"' "$docroot/builds.php" && echo yes || echo no)"
+          echo "Private build directory: $([ -d "$root/the-one-private-builds/2026-10-13/apks" ] && echo yes || echo no)"
+          REMOTE
