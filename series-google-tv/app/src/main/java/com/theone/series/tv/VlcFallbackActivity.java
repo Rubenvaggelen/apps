@@ -171,18 +171,32 @@ public final class VlcFallbackActivity extends Activity {
         if (e.getAction() == KeyEvent.ACTION_DOWN && vlc != null) {
             switch (e.getKeyCode()) {
                 case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
-                case KeyEvent.KEYCODE_DPAD_CENTER:
                     togglePause(); revealControls(); return true;
+                case KeyEvent.KEYCODE_DPAD_CENTER:
+                    // Remote OK must still activate the focused Back/Play button.
+                    if (controls != null && controls.getVisibility() != View.VISIBLE) {
+                        revealControls();
+                        if (pauseButton != null) pauseButton.requestFocus();
+                        return true;
+                    }
+                    break;
                 case KeyEvent.KEYCODE_MEDIA_PLAY:
                     vlc.play(); revealControls(); return true;
                 case KeyEvent.KEYCODE_MEDIA_PAUSE:
                     vlc.pause(); revealControls(); return true;
                 case KeyEvent.KEYCODE_MEDIA_REWIND:
-                case KeyEvent.KEYCODE_DPAD_LEFT:
                     seek(-10000); revealControls(); return true;
                 case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
-                case KeyEvent.KEYCODE_DPAD_RIGHT:
                     seek(10000); revealControls(); return true;
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    // Do not steal D-pad focus navigation from the buttons.
+                    if (controls != null && controls.getVisibility() != View.VISIBLE) {
+                        revealControls();
+                        if (pauseButton != null) pauseButton.requestFocus();
+                        return true;
+                    }
+                    break;
                 default: break;
             }
         }
