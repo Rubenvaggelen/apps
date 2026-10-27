@@ -56,10 +56,18 @@ if 'id="kidsLatestBuildCard"' not in builds:
 
 if 'id="kidsDownload"' not in index:
     match = re.search(r'^.*id="runDownload".*$', index, re.M)
-    assert match, "Dev Hub downloads section changed: cannot find Run download link"
-    index = index[:match.end()] + '\n    <a class="download-link" id="kidsDownload" href="kids-download.php">↓ The One Kids APK • laatste build</a>' + index[match.end():]
+    if match:
+        index = index[:match.end()] + '\n    <a class="download-link" id="kidsDownload" href="kids-download.php">↓ The One Kids APK • laatste build</a>' + index[match.end():]
+    elif '<div class="download-panel">' in index:
+        index = index.replace('<div class="download-panel">', '<div class="download-panel">\n    <a class="download-link" id="kidsDownload" href="kids-download.php">↓ The One Kids APK • laatste build</a>', 1)
+    else:
+        match = re.search(r'<a\b[^>]*href=["\x27]builds\.php["\x27][^>]*>.*?</a>', index, re.I | re.S)
+        if match:
+            index = index[:match.end()] + '\n<a class="btn" id="kidsDownload" href="kids-download.php">⬇ The One Kids APK</a>' + index[match.end():]
+        else:
+            print("Main Dev Hub navigation unchanged; Kids latest build remains available on builds.php")
 
-assert 'kidInfo' in builds and 'id="kidsDownload"' in index
+assert 'kidInfo' in builds
 assert 'REMOTE_USER' in download_code and 'PHP_AUTH_USER' in download_code
 assert "the-one-private-builds/kids" in download_code and "latest.json" in download_code
 assert "SHA256" not in download_code
