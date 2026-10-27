@@ -1,0 +1,90 @@
+name: Deliver private Series v133 APK to chat
+on:
+  push:
+    branches: [deliver/series-v133-chat-private-20261027]
+    paths: [.github/workflows/deliver-series-v133-to-chat.yml]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  seal-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Encrypt exact signed Series APK inside protected Dev Hub and retrieve ciphertext
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "${!name}" || { echo "Missing secured deployment credential: $name"; exit 1; }
+          done
+          tmp=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$tmp"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$tmp/ssh_key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$tmp/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$tmp/askpass"
+          chmod 600 "$tmp/ssh_key" "$tmp/known_hosts"
+          chmod 700 "$tmp/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$tmp/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$tmp/ssh_key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          sshopt=(-i "$tmp/ssh_key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=20)
+          dest="$DEPLOY_USER@$DEPLOY_HOST"
+          stage=$(ssh -p "$DEPLOY_PORT" "${sshopt[@]}" "$dest" 'umask 077; mktemp -d /home/vanawiwj/the-one-private-builds/series-chat-XXXXXXXX')
+          scp -O -P "$DEPLOY_PORT" "${sshopt[@]}" ci/delivery/series-v133-chat-20261027-public.pem "$dest:$stage/public.pem"
+          ssh -p "$DEPLOY_PORT" "${sshopt[@]}" "$dest" "bash -s -- '$stage'" <<'REMOTE'
+          set -euo pipefail
+          umask 077
+          stage="$1"
+          trap 'rm -f "$stage/passphrase" "$stage/public.pem" "$stage/apkname"' EXIT
+          python3 - "$stage" <<'PY'
+          import hashlib,json,re,sys
+          from pathlib import Path
+          stage=Path(sys.argv[1])
+          root=Path('/home/vanawiwj/the-one-private-builds/2026-10-13')
+          rows=json.loads((root/'manifest.json').read_text())
+          entries=[x for x in rows if x.get('id')=='series-google-tv']
+          assert len(entries)==1, 'No unique Series Google TV build in Dev Hub'
+          x=entries[0]
+          filename=str(x.get('apk',''))
+          assert re.fullmatch(r'[A-Za-z0-9._-]+\.apk',filename), 'Unexpected private APK filename'
+          assert x.get('version_name')=='1.2.6', 'Unexpected Series version name'
+          badging=str(x.get('package_badging',''))
+          assert "name='com.theone.series.tv'" in badging, 'Incorrect package'
+          assert "versionCode='133'" in badging, 'Not latest tested Series v133'
+          sha=str(x.get('sha256',''))
+          assert re.fullmatch('[a-f0-9]{64}',sha)
+          apk=root/'apks'/filename
+          assert apk.is_file() and apk.stat().st_size>4_000_000
+          assert hashlib.sha256(apk.read_bytes()).hexdigest()==sha, 'Dev Hub integrity failure'
+          (stage/'apkname').write_text(str(apk))
+          (stage/'manifest.json').write_text(json.dumps({'version_code':133,'version_name':'1.2.6','package':'com.theone.series.tv','apk_filename':filename,'sha256':sha,'size':apk.stat().st_size})+'\n')
+          print('Verified exact Series v133 on private Dev Hub',filename,apk.stat().st_size)
+          PY
+          openssl rand -hex 32 > "$stage/passphrase"
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass "file:$stage/passphrase" -in "$(cat "$stage/apkname")" -out "$stage/series-v133.apk.enc"
+          openssl pkeyutl -encrypt -pubin -inkey "$stage/public.pem" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in "$stage/passphrase" -out "$stage/passphrase.rsa"
+          test -s "$stage/series-v133.apk.enc" && test -s "$stage/passphrase.rsa" && test -s "$stage/manifest.json"
+          echo "PASS: encrypted personal Series v133 APK; no plaintext APK shipped to GitHub"
+          REMOTE
+          mkdir -p private-handoff
+          scp -O -P "$DEPLOY_PORT" "${sshopt[@]}" "$dest:$stage/series-v133.apk.enc" private-handoff/
+          scp -O -P "$DEPLOY_PORT" "${sshopt[@]}" "$dest:$stage/passphrase.rsa" private-handoff/
+          scp -O -P "$DEPLOY_PORT" "${sshopt[@]}" "$dest:$stage/manifest.json" private-handoff/
+          ssh -p "$DEPLOY_PORT" "${sshopt[@]}" "$dest" "rm -rf '$stage'"
+          test -s private-handoff/series-v133.apk.enc
+      - name: Encrypted one-day personal delivery artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-series-google-tv-v133-for-chat
+          retention-days: 1
+          path: private-handoff/
+          if-no-files-found: error
