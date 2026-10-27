@@ -1,13 +1,13 @@
 plugins { id 'com.android.application' }
 android {
  namespace 'com.theone.series.tv'
- compileSdk 35
+ compileSdk 36
  defaultConfig {
   applicationId 'com.theone.series.tv'
   minSdk 23
   targetSdk 35
-  versionCode 131
-  versionName '1.2.4-mobland-audio-test'
+  versionCode 132
+  versionName '1.2.4-eac3-test'
   testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
  }
  buildFeatures { buildConfig true }
@@ -26,11 +26,12 @@ android {
  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 dependencies {
+ implementation 'io.github.anilbeesetti:nextlib-media3ext:1.11.0-0.15.0'
  implementation 'androidx.core:core:1.13.1'
- implementation 'androidx.media3:media3-exoplayer:1.5.1'
- implementation 'androidx.media3:media3-exoplayer-hls:1.5.1'
- implementation 'androidx.media3:media3-exoplayer-dash:1.5.1'
- implementation 'androidx.media3:media3-ui:1.5.1'
+ implementation 'androidx.media3:media3-exoplayer:1.11.0'
+ implementation 'androidx.media3:media3-exoplayer-hls:1.11.0'
+ implementation 'androidx.media3:media3-exoplayer-dash:1.11.0'
+ implementation 'androidx.media3:media3-ui:1.11.0'
  testImplementation 'junit:junit:4.13.2'
  testImplementation 'org.json:json:20240303'
  androidTestImplementation 'androidx.test:runner:1.6.2'
