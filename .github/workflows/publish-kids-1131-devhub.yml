@@ -39,6 +39,8 @@ jobs:
           printf '%s' "$OWNER_KEYSTORE_B64" | base64 -d > "$HOME/.android/debug.keystore"
           keytool -importkeystore -srckeystore "$HOME/.android/debug.keystore" -srcstorepass android -srcalias androiddebugkey -destkeystore "$RUNNER_TEMP/kids-secure/owner.p12" -deststoretype PKCS12 -deststorepass changeit -destkeypass changeit -noprompt >/dev/null
           openssl pkcs12 -in "$RUNNER_TEMP/kids-secure/owner.p12" -passin pass:changeit -nodes -nocerts -out "$RUNNER_TEMP/kids-secure/owner.pem" >/dev/null 2>&1
+          echo "AUTHORIZED CI ENCRYPTION PUBLIC KEY (safe to share):"
+          openssl pkey -in "$RUNNER_TEMP/kids-secure/owner.pem" -pubout
           base64 -d devhub/kids-v1131-ota-key.rsa-oaep-sha256.b64 > "$RUNNER_TEMP/kids-secure/wrapped.bin"
           openssl pkeyutl -decrypt -inkey "$RUNNER_TEMP/kids-secure/owner.pem" -in "$RUNNER_TEMP/kids-secure/wrapped.bin" -out "$RUNNER_TEMP/kids-secure/kids-ota.key" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
           test "$(wc -c < "$RUNNER_TEMP/kids-secure/kids-ota.key")" -eq 32
