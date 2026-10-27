@@ -90,7 +90,11 @@ public final class VlcFallbackActivity extends Activity {
             engine = new LibVLC(getApplicationContext(),
                 Arrays.asList("--network-caching=2500", "--no-audio-time-stretch"));
             vlc = new MediaPlayer(engine);
-            vlc.setAudioOutput("audiotrack");
+            // VLC uses android_audiotrack, not the generic name audiotrack.
+            // The old value could prevent audio output initialization on Philips.
+            if (vlc.setAudioOutput("android_audiotrack")) {
+                vlc.setAudioDigitalOutputEnabled(false);
+            }
             // LibVLC decodes E-AC3 and sends PCM through Android AudioTrack.
             vlc.getVLCVout().setVideoView(screen);
             vlc.getVLCVout().attachViews();
@@ -124,7 +128,7 @@ public final class VlcFallbackActivity extends Activity {
             media.release();
             vlc.play();
         } catch (Exception | LinkageError failure) {
-            if (info != null) info.setText("Softwaredecoder kan niet starten op dit apparaat");
+            if (info != null) info.setText("VLC-start mislukt (" + failure.getClass().getSimpleName() + ") · Gebruik FFmpeg in het menu Geen geluid?");
             revealControls();
         }
     }
