@@ -2,7 +2,7 @@ name: Series v135 Philips FFmpeg EAC3 audio recovery test
 on:
   push:
     branches: [fix/series-philips-libvlc-start-audio-v135-20261027]
-    paths: [.github/workflows/series-google-tv-philips-v135-test.yml]
+    paths: [series-google-tv/**, .github/workflows/series-google-tv-philips-v135-test.yml]
 permissions:
   contents: read
 concurrency:
