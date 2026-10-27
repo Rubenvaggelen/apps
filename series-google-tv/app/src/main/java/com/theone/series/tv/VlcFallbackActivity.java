@@ -10,7 +10,7 @@ import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.SurfaceView;
+import android.view.SurfaceView;
 import android.widget.TextView;
 import android.content.SharedPreferences;
 import android.graphics.Color;
