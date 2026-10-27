@@ -309,6 +309,24 @@ class WakePcActivity : AppCompatActivity() {
         val pending: Boolean
     )
 
+    /**
+     * Family app permissions belong to their own registered installation.
+     * Shared Media, Mixes and other Main rights may be managed on a registered
+     * The One User installation (or on a legacy Main/Windows installation).
+     * Never assign a Family app grant to an unrelated app installation.
+     */
+    private fun supportsManagedScope(device: MainRegisteredDevice, scope: String): Boolean {
+        return when (scope) {
+            MainDeviceRegistry.ACCESS_THE_ONE_USER,
+            MainDeviceRegistry.ACCESS_CINEMA_ANDROID,
+            MainDeviceRegistry.ACCESS_SERIES_ANDROID,
+            MainDeviceRegistry.ACCESS_TV_ANDROID,
+            MainDeviceRegistry.ACCESS_KIDS_ANDROID -> device.familyScope == scope
+            else -> device.familyScope.isBlank() ||
+                device.familyScope == MainDeviceRegistry.ACCESS_THE_ONE_USER
+        }
+    }
+
     private fun isPendingFamilyRequest(device: MainRegisteredDevice, scope: String): Boolean =
         (device.id to scope) in latestDeviceAccessRequests
 
@@ -791,8 +809,12 @@ class WakePcActivity : AppCompatActivity() {
                     setTextColor(ContextCompat.getColor(this@WakePcActivity, R.color.amber))
                 })
             } else {
+                // Always list every eligible permission, not only already-granted
+                // permissions. Owner can proactively grant Shared Media etc.
                 val rightsByScope = personDevices.flatMap { device ->
-                    managedAppRights(device).filter { it.allowed || it.pending }.map { device to it }
+                    managedAppRights(device)
+                        .filter { supportsManagedScope(device, it.scope) || it.allowed || it.pending }
+                        .map { device to it }
                 }.groupBy { it.second.scope }
                 if (rightsByScope.isEmpty()) {
                     card.addView(TextView(this).apply {
@@ -806,6 +828,10 @@ class WakePcActivity : AppCompatActivity() {
                         val right = scopeRows.first().second
                         val allowedCount = scopeRows.count { it.second.allowed }
                         val pendingDevices = scopeRows.filter { it.second.pending && !it.second.allowed }
+                            .map { it.first }
+                            .distinctBy { it.id }
+                        val grantDevices = scopeRows.filter { !it.second.allowed && !it.first.blocked &&
+                            supportsManagedScope(it.first, it.second.scope) }
                             .map { it.first }
                             .distinctBy { it.id }
                         val row = LinearLayout(this).apply {
@@ -825,6 +851,7 @@ class WakePcActivity : AppCompatActivity() {
                         if (pendingDevices.isNotEmpty()) statusParts.add(
                             if (pendingDevices.size == 1) "1 aanvraag open" else "${pendingDevices.size} aanvragen open"
                         )
+                        if (statusParts.isEmpty()) statusParts.add("Geen toegang")
                         row.addView(TextView(this).apply {
                             text = statusParts.joinToString(" • ")
                             textSize = 13f
@@ -833,35 +860,40 @@ class WakePcActivity : AppCompatActivity() {
                                 if (pendingDevices.isNotEmpty()) R.color.amber else R.color.text_dim
                             ))
                         })
-                        if (pendingDevices.isNotEmpty()) {
-                            val pendingActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-                            pendingActions.addView(android.widget.Button(this).apply {
-                                text = "Toestaan"
-                                setOnClickListener {
-                                    isEnabled = false
-                                    performManagedChange(focus, "Aanvraag goedkeuren mislukt") { pin ->
-                                        pendingDevices.forEach { pendingDevice ->
-                                            MainDeviceRegistry.setAccessRight(
-                                                this@WakePcActivity, pin, pendingDevice.id, right.scope, true
-                                            )
+                        // Keep explicit Toestaan / Weigeren for requested rights;
+                        // also expose Toegang geven when a person has not requested
+                        // a right yet. Every mutation still requires the owner PIN.
+                        if (grantDevices.isNotEmpty() || pendingDevices.isNotEmpty()) {
+                            val accessActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                            if (grantDevices.isNotEmpty()) {
+                                accessActions.addView(android.widget.Button(this).apply {
+                                    text = if (pendingDevices.isNotEmpty()) "Toestaan" else "Toegang geven"
+                                    setOnClickListener {
+                                        performManagedChange(focus, "Toegang verlenen mislukt") { pin ->
+                                            grantDevices.forEach { target ->
+                                                MainDeviceRegistry.setAccessRight(
+                                                    this@WakePcActivity, pin, target.id, right.scope, true
+                                                )
+                                            }
                                         }
                                     }
-                                }
-                            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-                            pendingActions.addView(android.widget.Button(this).apply {
-                                text = "Weigeren"
-                                setOnClickListener {
-                                    isEnabled = false
-                                    performManagedChange(focus, "Aanvraag weigeren mislukt") { pin ->
-                                        pendingDevices.forEach { pendingDevice ->
-                                            MainDeviceRegistry.setAccessRight(
-                                                this@WakePcActivity, pin, pendingDevice.id, right.scope, false
-                                            )
+                                }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                            }
+                            if (pendingDevices.isNotEmpty()) {
+                                accessActions.addView(android.widget.Button(this).apply {
+                                    text = "Weigeren"
+                                    setOnClickListener {
+                                        performManagedChange(focus, "Aanvraag weigeren mislukt") { pin ->
+                                            pendingDevices.forEach { target ->
+                                                MainDeviceRegistry.setAccessRight(
+                                                    this@WakePcActivity, pin, target.id, right.scope, false
+                                                )
+                                            }
                                         }
                                     }
-                                }
-                            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = 8 })
-                            row.addView(pendingActions)
+                                }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = 8 })
+                            }
+                            row.addView(accessActions)
                         }
                         if (allowedCount > 0 || pendingDevices.isNotEmpty()) {
                             row.addView(android.widget.Button(this).apply {
