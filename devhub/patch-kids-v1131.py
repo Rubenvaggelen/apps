@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import sys
 
 APP = "The-One-Kids-v1.0.1131-CoComelon-Nederlands.apk"
@@ -111,6 +112,8 @@ try:
     changed.append(FILES[0])
     atomic_bytes(FILES[1], index.encode(), 0o640)
     changed.append(FILES[1])
+    for phpfile in FILES:
+        subprocess.run(['php', '-l', str(phpfile)], check=True, stdout=subprocess.DEVNULL)
 except Exception:
     for f in reversed(changed):
         saved = backup / f.name
