@@ -91,7 +91,7 @@ public final class VlcFallbackActivity extends Activity {
                 Arrays.asList("--network-caching=2500", "--no-audio-time-stretch"));
             vlc = new MediaPlayer(engine);
             vlc.setAudioOutput("audiotrack");
-            vlc.setAudioOutputDevice("stereo"); // forces decoded stereo PCM, not E-AC3 passthrough
+            // LibVLC decodes E-AC3 and sends PCM through Android AudioTrack.
             vlc.getVLCVout().setVideoView(screen);
             vlc.getVLCVout().attachViews();
             vlc.setEventListener(event -> {
