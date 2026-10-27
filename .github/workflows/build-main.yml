@@ -37,7 +37,7 @@ jobs:
           chmod 600 ~/.android/debug.keystore
       - name: Set Main version code
         shell: bash
-        run: echo "VERSION_CODE=$((961 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+        run: echo "VERSION_CODE=$((963 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
       - name: Verify YouTube key is configured
         shell: bash
         env:
