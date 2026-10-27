@@ -1,0 +1,49 @@
+name: Kids private update and Dev Hub prereq audit
+on:
+  push:
+    branches: [feature/kids-cocomelon-nederlands-series-1131-20261027]
+    paths: [.github/workflows/kids-release-prerequisites.yml]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Restore secured SSH identity and inspect existence only
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for field in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do test -n "${!field}" || { echo "Missing deployment secret: $field"; exit 1; }; done
+          keydir="$(mktemp -d)"
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$keydir"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$keydir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$keydir/hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$keydir/askpass"
+          chmod 600 "$keydir/key" "$keydir/hosts"
+          chmod 700 "$keydir/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$keydir/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$keydir/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          ssh -p "$DEPLOY_PORT" -i "$keydir/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$keydir/hosts" -o ConnectTimeout=20 "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          root=/home/vanawiwj
+          echo "Dev Hub root: $([ -d "$root/dev.vanaggelen.com" ] && echo present || echo missing)"
+          echo "Private build directory: $([ -d "$root/the-one-private-builds/2026-10-13/apks" ] && echo present || echo missing)"
+          echo "Kids channel branch clone: $([ -d "$root/repos/the-one-apps/.git" ] && echo present || echo missing)"
+          for dir in "$root/the-one-private-builds" "$root/devhub-core" "$root"; do
+            test -d "$dir" || continue
+            case "$dir" in "$root") depth=3 ;; *) depth=7 ;; esac
+            find "$dir" -maxdepth "$depth" -type f \
+              \( -name 'private_updates.key' -o -iname 'kids-*.apk' -o -iname '*kids*owner*.apk' -o -iname '*kids*private*.apk' \) \
+              -not -path '*/mail/*' -not -path '*/cache/*' -printf '%f\n' 2>/dev/null | sort -u | head -30 || true
+          done
+          php -r '$p="/home/vanawiwj/the-one-private-builds/2026-10-13/manifest.json";if(is_file($p)){$x=json_decode(file_get_contents($p),true);echo "Private build IDs: ".(is_array($x)?implode(",",array_column($x,"id")):"invalid").PHP_EOL;}'
+          REMOTE
