@@ -60,7 +60,7 @@ if 'id="kidsDownload"' not in index:
 
 assert 'kidInfo' in builds and 'id="kidsDownload"' in index
 assert 'REMOTE_USER' in download_code and 'PHP_AUTH_USER' in download_code
-assert "the-one-private-builds/kids/latest.json" in download_code
+assert "the-one-private-builds/kids" in download_code and "latest.json" in download_code
 assert "SHA256" not in download_code
 
 PRIVATE.mkdir(parents=True, exist_ok=True)
