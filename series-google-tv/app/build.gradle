@@ -1,7 +1,7 @@
 plugins { id 'com.android.application' }
 android {
  namespace 'com.theone.series.tv'
- compileSdk 35
+ compileSdk 36
  defaultConfig {
   applicationId 'com.theone.series.tv'
   minSdk 23
