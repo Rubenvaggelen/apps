@@ -86,8 +86,9 @@ jobs:
           "$aapt" dump badging "$apk" | grep -F "versionCode='943'"
           curl -fLsS --retry 2 --max-time 90 'https://rubenvanaggelen.com/rutu-updates/Rutu-BBQ-Bedrijf-Android.apk' -o /tmp/business-v942.apk
           printf '%s  %s\n' 96f7fc767d956cc02ad4459692b049c06f41f87464f7ec01d675ec0887f5a433 /tmp/business-v942.apk | sha256sum --check
-          current_package="$("$aapt" dump badging /tmp/business-v942.apk | grep '^package: name=' | sed -E "s/.*name='([^']+)'.*/\1/")"
-          "$aapt" dump badging "$apk" | grep -F "package: name='$current_package'"
+          # Compare the new package's known v942 applicationId, then compare
+          # the signing certificate of old and new APKs for in-place upgrades.
+          "$aapt" dump badging "$apk" | grep -F "package: name='com.vanaggelen.rutubusiness'"
           old="$("$signer" verify --print-certs /tmp/business-v942.apk | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
           new="$("$signer" verify --print-certs "$apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
           test -n "$old" && test "$old" = "$new"
