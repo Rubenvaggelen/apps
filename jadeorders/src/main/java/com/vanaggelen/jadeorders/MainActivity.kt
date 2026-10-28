@@ -1521,6 +1521,7 @@ class MainActivity : AppCompatActivity() {
 
         var shownTotal = productTotal
         if (deliverySelected) {
+            label("Bezorgen vanaf 18:30 uur\nDelivery from 6:30 PM", Color.rgb(59, 42, 19))
             val addressInput = EditText(this).apply {
                 hint = "Straat + huisnummer / Street + house number"
                 setText(deliveryAddress)
