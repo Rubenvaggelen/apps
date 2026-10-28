@@ -62,17 +62,21 @@ jobs:
           assert(code.includes("api('business_status','POST'"));
           // Regression: multiple active orders must each have their own controls.
           const second={...order,id:1142,status:'In bereiding'};
-          ctx.orders=[order,second];
+          const third={...order,id:1143,status:'Nieuw'};
+          ctx.orders=[order,second,third];
           ctx.renderFullHistory();
           const visible=elements.fullHistoryList.innerHTML;
-          assert(visible.includes('Bestelling #123')&&visible.includes('Bestelling #1142'));
+          assert(visible.includes('Bestelling #123')&&visible.includes('Bestelling #1142')&&visible.includes('Bestelling #1143'));
           assert(visible.includes('setStatus(1142,'));
           assert(visible.includes('Markeer klaar'));
           assert(visible.includes('applySelectedOrderStatus(this,1142)'));
-          assert(visible.includes('applySelectedOrderStatus(this,123)'));
+          assert(visible.includes('applySelectedOrderStatus(this,1143)'));
+          assert(!visible.includes('applySelectedOrderStatus(this,123)'));
           const cards=ctx.orders.map(o=>ctx.orderCard(o,false));
           assert(cards[0].includes('Accepteren')===false); // #123 is already complete
           assert(cards[1].includes('Markeer klaar'));
+          assert(cards[2].includes('Accepteren'));
+          assert(cards[2].includes('Status opslaan'));
           assert(cards[1].includes('Status opslaan'));
           assert(!html.includes('.map(orderCard)'));
           assert(html.includes('active.map(o=>orderCard(o,false))'));
