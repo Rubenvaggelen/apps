@@ -397,7 +397,7 @@ async function applySelectedOrderStatus(button,id){
  }
  await setStatus(id,status);
 }
-function orderCard(o,readOnly=false){const items=o.items.map(i=>esc(i.qty)+'× '+esc(i.name)).join('<br>');const delivery=o.delivery?'<div class="meta"><b>Bezorgen</b> • '+esc(o.address)+' • '+esc(o.postcode)+' • bezorgkosten '+money(o.deliveryFee)+'</div>':'<div class="meta"><b>Afhalen</b></div>';return '<div class="order"><div class="order-head"><b>Bestelling #'+o.id+'</b><span class="order-total">'+money(o.total)+'</span></div><div class="meta">'+(o.source==='Kassa'?'Kassa • ':'')+when(o.created)+' • '+esc(o.customer)+'</div>'+delivery+paymentLine(o)+'<div>'+items+'</div><div class="status">Status: '+esc(o.status)+'</div><div class="actions">'+(readOnly===true?'':actions(o))+'</div></div>'}
+function orderCard(o,readOnly=false){const items=o.items.map(i=>esc(i.qty)+'× '+esc(i.name)).join('<br>');const delivery=o.delivery?'<div class="meta"><b>Bezorgen</b> • '+esc(o.address)+' • '+esc(o.postcode)+' • bezorgkosten '+money(o.deliveryFee)+'</div>':'<div class="meta"><b>Afhalen</b></div>';return '<div class="order"><div class="order-head"><b>Bestelling #'+o.id+'</b><span class="order-total">'+money(o.total)+'</span></div><div class="meta">'+(o.source==='Kassa'?'Kassa • ':'')+when(o.created)+' • '+esc(o.customer)+'</div>'+delivery+paymentLine(o)+'<div>'+items+'</div><div class="status">Status: '+esc(o.status)+'</div>'+(readOnly===true?'':orderStatusEditor(o))+'<div class="actions">'+(readOnly===true?'':actions(o))+'</div></div>'}
 function render(){
  const open=orders.filter(openStatuses),active=open.filter(o=>!hiddenActiveIds.has(o.id)),history=orders.filter(o=>!o.historyCleared),archive=history,completed=history.filter(o=>o.status==='Afgerond'),newCount=active.filter(o=>o.status==='Nieuw').length;
  const badge=document.getElementById('count');badge.style.display=active.length?'':'none';badge.textContent=newCount>0?newCount+' nieuw':active.length+' openstaand';document.getElementById('restoreActive').style.display=hiddenActiveIds.size?'':'none';
@@ -413,7 +413,7 @@ async function sync(){
  try{const r=await api('business_orders'); if(typeof posRefreshStock==='function')posRefreshStock();orders=(r.orders||[]).map(normalize);document.getElementById('connection').innerHTML='<span class="ok">Online gekoppeld ✓</span> • automatisch verversen';render()}
  catch(e){document.getElementById('connection').innerHTML='<span class="error">Verbinding mislukt / Connection failed: '+esc(e.message)+'</span>'}
 }
-async function setStatus(id,status){try{await api('business_status','POST',{id:Number(id),status});await sync()}catch(e){alert(e.message)}}
+async function setStatus(id,status){try{await api('business_status','POST',{id:Number(id),status});orderStatusDrafts.delete(Number(id));await sync()}catch(e){alert(e.message)}}
 function openOpenOrders(){if(!orders.some(o=>openStatuses(o)&&!hiddenActiveIds.has(o.id)))return;const m=document.getElementById('orderModal');m.dataset.mode='open-orders';document.getElementById('orderModalTitle').textContent='Openstaande bestellingen';renderOpenOrdersModal();m.classList.add('open')}
 function renderOpenOrdersModal(){const open=orders.filter(o=>openStatuses(o)&&!hiddenActiveIds.has(o.id));document.getElementById('orderModalBody').innerHTML='<div class="open-orders-list">'+(open.map(o=>orderCard(o,false)).join('')||'<div class="empty">Geen openstaande bestellingen.</div>')+'</div>'}
 function openHistoryOrders(){
