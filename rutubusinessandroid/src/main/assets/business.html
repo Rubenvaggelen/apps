@@ -402,18 +402,20 @@ function openHistoryOrders(){
 }
 function renderFullHistory(){
  if(!historyScreenOpen)return;
- const all=historySnapshot;
- document.getElementById('historyScreenInfo').textContent='Momentopname: '+all.length+' bestelling'+(all.length===1?'':'en')+' • wijzigingen na het openen verschijnen pas wanneer je Geschiedenis opnieuw opent';
- document.getElementById('fullHistoryList').innerHTML=all.map(o=>orderCard(o,true)).join('')||'<div class="empty">De geschiedenis is leeg.</div>';
+ // Display current server-synchronised orders, not a stale, read-only snapshot.
+ // Active orders must retain their status actions even from Alle bestellingen.
+ const all=orders.filter(o=>!o.historyCleared).slice().sort((a,b)=>b.id-a.id);
+ document.getElementById('historyScreenInfo').textContent=all.length+' bestelling'+(all.length===1?'':'en')+' • actieve bestellingen kunnen hier worden bijgewerkt';
+ document.getElementById('fullHistoryList').innerHTML=all.map(o=>orderCard(o,!openStatuses(o))).join('')||'<div class="empty">De geschiedenis is leeg.</div>';
 }
 function renderHistoryOrdersModal(){
  const old=orders;
  // Het volledige archief blijft leesbaar, ook als een bestelling eerder uit het werklijstje is verborgen of gewist.
- const cards=old.map(o=>orderCard(o,true)).join('');
+ const cards=old.map(o=>orderCard(o,!openStatuses(o))).join('');
  document.getElementById('orderModalBody').innerHTML='<div class="open-orders-list">'+
    (cards||'<div class="empty">Er zijn nog geen bestellingen.</div>')+'</div>';
 }
-function openHistory(id){const o=orders.find(x=>x.id===Number(id));if(!o)return;const m=document.getElementById('orderModal');m.dataset.mode='history';document.getElementById('orderModalTitle').textContent='Bestelling #'+o.id;document.getElementById('orderModalBody').innerHTML=orderCard(o,true);m.classList.add('open')}
+function openHistory(id){const o=orders.find(x=>x.id===Number(id));if(!o)return;const m=document.getElementById('orderModal');m.dataset.mode='history';document.getElementById('orderModalTitle').textContent='Bestelling #'+o.id;document.getElementById('orderModalBody').innerHTML=orderCard(o,!openStatuses(o));m.classList.add('open')}
 function closeOrderModal(){const m=document.getElementById('orderModal');m.classList.remove('open');m.dataset.mode=''}
 async function loadSchedule(){
  try{
