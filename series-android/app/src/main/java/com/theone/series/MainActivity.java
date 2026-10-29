@@ -22,6 +22,8 @@ public class MainActivity extends Activity {
  private boolean renderedFirstFrame=false;private volatile int posterGeneration=0;private final android.util.LruCache<String,Long> failedPosters=new android.util.LruCache<>(512);
  private ExoPlayer player;private PlayerView playerView;private TextView playbackStatus;private CatalogEntry playing;
  private List<CatalogEntry> playSources;private int sourceIndex,retries;private long resumePosition;private boolean userPaused=false;
+ private boolean backgroundInterrupted=false,autoResumeAfterInterruption=false,lifecyclePausing=false;
+ private static final long SESSION_RECOVERY_WINDOW_MS=24L*60*60*1000;
  private final PlaybackRecovery recovery=new PlaybackRecovery();private Runnable retryTask;private int playbackAttempt;private boolean recoveryPending,playbackFailed;private long stableSince;
  private Runnable stallTask,progressTask;private long bufferStarted;
  @Override public void onCreate(Bundle b){super.onCreate(b);
@@ -33,7 +35,7 @@ public class MainActivity extends Activity {
  }}
  private void startLicensedApp(Bundle b){
   appUpdater = new FamilyUpdateNotice(this);
-  appUpdater.checkOnOpen();for(android.view.Display.Mode mode:getWindowManager().getDefaultDisplay().getSupportedModes())videoHeightLimit=Math.max(videoHeightLimit,Math.min(mode.getPhysicalWidth(),mode.getPhysicalHeight()));prefs=getSharedPreferences("the_one_series",MODE_PRIVATE);favorites=new HashSet<>(prefs.getStringSet("favorites",Collections.emptySet()));preferredLanguage=prefs.getString("preferred_language","en");testMode=BuildConfig.DEBUG&&getIntent().getBooleanExtra("series_test_mode",false);try{if(!testMode){repo=new MediaRepository(this,background);if(BuildConfig.DEBUG&&getIntent().getBooleanExtra("starter_test_mode",false))repo.enableOfflineForTest();}}catch(Exception e){showFatal();return;}if(testMode){List<CatalogEntry> samples=new ArrayList<>();for(int i=1;i<=12;i++){CatalogEntry en=new CatalogEntry(i,"EN - Series testserie "+i,"mp4","","","series",i);samples.add(en);variants.put(en.key(),Arrays.asList(en,new CatalogEntry(100+i,"NL - Series testserie "+i,"mp4","","","series",i)));}catalogs.put("series",samples);}showCatalog();}
+  appUpdater.checkOnOpen();for(android.view.Display.Mode mode:getWindowManager().getDefaultDisplay().getSupportedModes())videoHeightLimit=Math.max(videoHeightLimit,Math.min(mode.getPhysicalWidth(),mode.getPhysicalHeight()));prefs=getSharedPreferences("the_one_series",MODE_PRIVATE);favorites=new HashSet<>(prefs.getStringSet("favorites",Collections.emptySet()));preferredLanguage=prefs.getString("preferred_language","en");testMode=BuildConfig.DEBUG&&getIntent().getBooleanExtra("series_test_mode",false);try{if(!testMode){repo=new MediaRepository(this,background);if(BuildConfig.DEBUG&&getIntent().getBooleanExtra("starter_test_mode",false))repo.enableOfflineForTest();}}catch(Exception e){showFatal();return;}if(testMode){List<CatalogEntry> samples=new ArrayList<>();for(int i=1;i<=12;i++){CatalogEntry en=new CatalogEntry(i,"EN - Series testserie "+i,"mp4","","","series",i);samples.add(en);variants.put(en.key(),Arrays.asList(en,new CatalogEntry(100+i,"NL - Series testserie "+i,"mp4","","","series",i)));}catalogs.put("series",samples);}showCatalog();restoreInterruptedSession();}
  private boolean compact(){return getResources().getConfiguration().screenWidthDp<600;}
  private void showFatal(){LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setBackgroundColor(BG);box.setPadding(dp(40),dp(40),dp(40),dp(40));box.addView(label("THE ONE SERIES",30,BLUE));box.addView(label("De mediabron ontbreekt. Installeer de persoonlijke Series-versie opnieuw.",20,Color.WHITE));setContentView(box);}
  private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
@@ -41,9 +43,9 @@ public class MainActivity extends Activity {
  private GradientDrawable background(boolean focus){GradientDrawable d=new GradientDrawable();d.setColor(focus?Color.rgb(21,61,99):PANEL);d.setCornerRadius(dp(9));d.setStroke(dp(focus?3:1),focus?BLUE:Color.rgb(35,52,72));return d;}
  private Button button(String title,int id,Runnable action){Button b=new Button(this);b.setId(id);b.setText(title);b.setAllCaps(false);b.setTextSize(16);b.setTextColor(Color.WHITE);b.setFocusable(true);if(id<1040)b.setNextFocusDownId(id<1010?1010:1020);b.setPadding(dp(16),dp(9),dp(16),dp(9));b.setBackground(background(false));b.setOnFocusChangeListener((v,f)->v.setBackground(background(f)));b.setOnClickListener(v->action.run());return b;}
  private void addButton(LinearLayout row,Button b){LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,dp(49));lp.setMargins(0,0,dp(10),0);row.addView(b,lp);}
- private void showCatalog(){cancelPosterRequests();stopPlayback();getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
+ private void showCatalog(){cancelPosterRequests();boolean closingPlayer=player!=null;stopPlayback();if(closingPlayer)clearInterruptedSession();getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
   LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(BG);root.setPadding(dp(compact()?14:28),dp(18),dp(compact()?14:28),dp(12));
-  LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);ImageView logo=new ImageView(this);logo.setImageResource(com.theone.series.R.drawable.series_logo);header.addView(logo,new LinearLayout.LayoutParams(dp(compact()?72:88),dp(compact()?72:88)));TextView brand=label("  THE ONE SERIES",compact()?19:27,Color.WHITE);brand.setTypeface(null,Typeface.BOLD);header.addView(brand,new LinearLayout.LayoutParams(0,-2,1));TextView version=label("1.1.4",12,MUTED);header.addView(version);root.addView(header);
+  LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);ImageView logo=new ImageView(this);logo.setImageResource(com.theone.series.R.drawable.series_logo);header.addView(logo,new LinearLayout.LayoutParams(dp(compact()?72:88),dp(compact()?72:88)));TextView brand=label("  THE ONE SERIES",compact()?19:27,Color.WHITE);brand.setTypeface(null,Typeface.BOLD);header.addView(brand,new LinearLayout.LayoutParams(0,-2,1));TextView version=label("1.2.2",12,MUTED);header.addView(version);root.addView(header);
   LinearLayout nav=new LinearLayout(this);nav.setPadding(0,dp(15),0,dp(12));addButton(nav,button("Series",1001,()->switchSection("series")));addButton(nav,button("Taal",1007,this::chooseLanguage));if(section.equals("episodes")&&selectedEpisodes!=null)addButton(nav,button("Seizoenen",1006,this::showSeasons));addButton(nav,button("Mijn lijst",1003,()->switchSection("favorites")));addButton(nav,button("Verder kijken",1004,()->switchSection("continue")));addButton(nav,button("Vernieuwen",1005,this::refresh));HorizontalScrollView navScroll=new HorizontalScrollView(this);navScroll.setHorizontalScrollBarEnabled(false);navScroll.addView(nav);root.addView(navScroll);
   LinearLayout searchRow=new LinearLayout(this);searchRow.setGravity(Gravity.CENTER_VERTICAL);search=new EditText(this);search.setId(1010);search.setSingleLine(true);search.setTextSize(18);search.setTextColor(Color.WHITE);search.setHintTextColor(MUTED);search.setHint(section.equals("episodes")?"Zoek een aflevering…":"Zoek een serie…");search.setText(query);search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);search.setBackground(background(false));search.setPadding(dp(14),dp(9),dp(14),dp(9));LinearLayout.LayoutParams slp=new LinearLayout.LayoutParams(0,dp(48),1);slp.rightMargin=dp(12);searchRow.addView(search,slp);addButton(searchRow,button("Zoek",1011,()->{query=search.getText().toString();limit=96;filter();hideKeyboard();grid.requestFocus();}));root.addView(searchRow);
   summary=label("Catalogus laden…",14,MUTED);summary.setId(1012);root.addView(summary);
@@ -65,11 +67,18 @@ public class MainActivity extends Activity {
  private void openDetails(CatalogEntry e){if(!e.isEpisode()){new AlertDialog.Builder(this).setTitle(e.title).setItems(new String[]{"Seizoenen en afleveringen",favorites.contains(e.key())?"Verwijder uit Mijn lijst":"Voeg toe aan Mijn lijst"},(d,n)->{if(n==0)openSeries(e);else toggleFavorite(e);}).setNegativeButton("Terug",null).show();return;}long saved=prefs.getLong("position:"+e.key(),0);List<String> actions=new ArrayList<>();actions.add(saved>10000?"Kijk verder · "+formatTime(saved):"▶ Kijk");if(saved>10000)actions.add("Vanaf het begin");new AlertDialog.Builder(this).setTitle(e.title).setItems(actions.toArray(new String[0]),(d,n)->startPlayback(e,n==0?saved:0)).setNegativeButton("Terug",null).show();}
  private void openSeries(CatalogEntry entry){episodeLoading=true;loading=true;selectedSeries=entry;final int generation=++loadGeneration;summary.setText("Seizoenen en afleveringen laden…");List<CatalogEntry> sources=new ArrayList<>(variants.getOrDefault(entry.key(),Collections.singletonList(entry)));episodeWorker.execute(()->{try{EpisodeCatalog.Result result;if(testMode){List<CatalogEntry> episodes=new ArrayList<>();for(CatalogEntry parent:sources){JSONObject data=new JSONObject().put("episodes",new JSONObject().put("1",new JSONArray().put(new JSONObject().put("id",1001).put("title","Testaflevering 1").put("episode_num",1)).put(new JSONObject().put("id",1002).put("title","Testaflevering 2").put("episode_num",2))).put("2",new JSONArray().put(new JSONObject().put("id",2001).put("title","Testaflevering 3").put("episode_num",1))));episodes.addAll(EpisodeCatalog.parse(data,parent,"",false));}result=EpisodeCatalog.merge(episodes);}else result=repo.episodes(sources);handler.post(()->{if(destroyed||generation!=loadGeneration)return;episodeLoading=false;loading=false;selectedEpisodes=result;variants.putAll(result.variants);selectLanguageRepresentatives();if(result.seasons.isEmpty()){summary.setText("Deze serie heeft nu geen beschikbare afleveringen.");return;}showSeasons();});}catch(Exception error){handler.post(()->{if(destroyed||generation!=loadGeneration)return;episodeLoading=false;loading=false;summary.setText("Afleveringen niet bereikbaar. Open de serie opnieuw om te proberen.");});}});}
  private void showSeasons(){if(selectedEpisodes==null)return;List<Integer> seasons=new ArrayList<>(selectedEpisodes.seasons.keySet());String[] labels=new String[seasons.size()];for(int i=0;i<labels.length;i++)labels[i]=seasons.get(i)==0?"Specials":"Seizoen "+seasons.get(i);new AlertDialog.Builder(this).setTitle(selectedSeries==null?"Seizoenen":selectedSeries.title).setItems(labels,(d,n)->{selectedSeason=seasons.get(n);episodeList=selectedEpisodes.seasons.get(selectedSeason);section="episodes";query="";limit=96;showCatalog();}).setNegativeButton("Terug",null).show();}
- private void startPlayback(CatalogEntry e,long saved){suspendBackground();cancelPosterRequests();playing=e;List<CatalogEntry> found=variants.get(e.key());playSources=new ArrayList<>(found==null?Collections.singletonList(e):found);playSources.sort(Comparator.comparingInt((CatalogEntry option)->option.id>=1000000000?0:1).thenComparing(CatalogEntry.playbackOrder(preferredLanguage,videoHeightLimit)));sourceIndex=0;resumePosition=saved;retries=0;recovery.reset();playbackFailed=false;userPaused=false;showPlayer();}
+ private void startPlayback(CatalogEntry e,long saved){suspendBackground();cancelPosterRequests();playing=e;rememberEntry(e);
+  prefs.edit().putString("active_playback_key",e.key()).putLong("active_playback_position",Math.max(0,saved)).putBoolean("active_playback_interrupted",false).apply();
+  backgroundInterrupted=false;autoResumeAfterInterruption=false;List<CatalogEntry> found=variants.get(e.key());playSources=new ArrayList<>(found==null?Collections.singletonList(e):found);playSources.sort(Comparator.comparingInt((CatalogEntry option)->option.id>=1000000000?0:1).thenComparing(CatalogEntry.playbackOrder(preferredLanguage,videoHeightLimit)));sourceIndex=0;resumePosition=saved;retries=0;recovery.reset();playbackFailed=false;userPaused=false;showPlayer();}
  private void showPlayer(){FrameLayout root=new FrameLayout(this);root.setBackgroundColor(Color.BLACK);playerView=new PlayerView(this);playerView.setId(1040);playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING);playerView.setControllerShowTimeoutMs(5000);playerView.setControllerAutoShow(true);playerView.setUseController(true);playerView.setShowSubtitleButton(true);playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);root.addView(playerView,new FrameLayout.LayoutParams(-1,-1));
   LinearLayout top=new LinearLayout(this);top.setOrientation(LinearLayout.VERTICAL);top.setPadding(dp(22),dp(12),dp(22),dp(12));top.setBackgroundColor(0x99070d18);playbackStatus=label(playing.title+" · Aflevering starten…",16,Color.WHITE);top.addView(playbackStatus);LinearLayout controls=new LinearLayout(this);addButton(controls,button("Terug",1041,this::showCatalog));if(!playing.isEpisode())addButton(controls,button("Mijn lijst",1042,()->toggleFavorite(playing)));addButton(controls,button("Taal",1044,this::chooseLanguage));addButton(controls,button("Ondertiteling",1045,this::chooseSubtitles));addButton(controls,button("Versie",1043,this::chooseVersion));HorizontalScrollView controlScroll=new HorizontalScrollView(this);controlScroll.setHorizontalScrollBarEnabled(false);controlScroll.addView(controls);top.addView(controlScroll);FrameLayout.LayoutParams tlp=new FrameLayout.LayoutParams(-1,-2,Gravity.TOP);root.addView(top,tlp);setContentView(root);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);handler.postDelayed(()->{if(playerView!=null)top.setVisibility(View.GONE);},6000);playerView.setControllerVisibilityListener((PlayerView.ControllerVisibilityListener)visibility->top.setVisibility(visibility));createPlayer();playerView.requestFocus();}
  private void createPlayer(){DefaultLoadControl load=new DefaultLoadControl.Builder().setBufferDurationsMs(30000,90000,2500,7000).setTargetBufferBytes(64*1024*1024).setPrioritizeTimeOverSizeThresholds(false).build();DefaultHttpDataSource.Factory http=new DefaultHttpDataSource.Factory().setUserAgent("VLC/3.0.21 LibVLC/3.0.21").setConnectTimeoutMs(8000).setReadTimeoutMs(30000).setAllowCrossProtocolRedirects(false);DefaultDataSource.Factory source=new DefaultDataSource.Factory(this,http);
-  player=new ExoPlayer.Builder(this).setLoadControl(load).setMediaSourceFactory(new DefaultMediaSourceFactory(new ResolvingDataSource.Factory(source,spec->spec.withRequestHeaders(testMode?Collections.emptyMap():repo.headersForUri(spec.uri.toString()))))).setSeekBackIncrementMs(10000).setSeekForwardIncrementMs(10000).build();player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon().setPreferredAudioLanguage(preferredLanguage.equals("multi")?"en":preferredLanguage).setPreferredTextLanguages("nl","en").setSelectUndeterminedTextLanguage(true).setTrackTypeDisabled(C.TRACK_TYPE_TEXT,prefs.getBoolean("subtitles_off",false)).build());player.setAudioAttributes(new AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),true);playerView.setPlayer(player);player.addListener(new Player.Listener(){@Override public void onPlaybackStateChanged(int state){if(player==null)return;if(state==Player.STATE_BUFFERING){bufferStarted=System.currentTimeMillis();playbackStatus.setText("Even laden…");scheduleStall();}else{cancelStall();if(state==Player.STATE_READY){recoveryPending=false;stableSince=System.currentTimeMillis();int height=player.getVideoSize().height;playbackStatus.setText(playing.title+(height>0?" · "+height+"p":""));}else if(state==Player.STATE_ENDED){prefs.edit().remove("position:"+playing.key()).apply();Toast.makeText(MainActivity.this,"Aflevering afgelopen",Toast.LENGTH_SHORT).show();}}}@Override public void onRenderedFirstFrame(){renderedFirstFrame=true;}@Override public void onVideoSizeChanged(VideoSize size){if(playbackStatus!=null&&playing!=null&&size.height>0)playbackStatus.setText(playing.title+" · "+size.height+"p");}@Override public void onPlayerError(PlaybackException error){if(player!=null)fallback();}});playCurrent();progressTask=new Runnable(){public void run(){if(player!=null){if(player.isPlaying()&&stableSince>0&&System.currentTimeMillis()-stableSince>=30000)recovery.stable();storeProgress();handler.postDelayed(this,10000);}}};handler.postDelayed(progressTask,10000);}
+  player=new ExoPlayer.Builder(this).setLoadControl(load).setMediaSourceFactory(new DefaultMediaSourceFactory(new ResolvingDataSource.Factory(source,spec->spec.withRequestHeaders(testMode?Collections.emptyMap():repo.headersForUri(spec.uri.toString()))))).setSeekBackIncrementMs(10000).setSeekForwardIncrementMs(10000).build();player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon().setPreferredAudioLanguage(preferredLanguage.equals("multi")?"en":preferredLanguage).setPreferredTextLanguages("nl","en").setSelectUndeterminedTextLanguage(true).setTrackTypeDisabled(C.TRACK_TYPE_TEXT,prefs.getBoolean("subtitles_off",false)).build());player.setAudioAttributes(new AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),true);playerView.setPlayer(player);player.addListener(new Player.Listener(){@Override public void onPlaybackStateChanged(int state){if(player==null)return;if(state==Player.STATE_BUFFERING){bufferStarted=System.currentTimeMillis();playbackStatus.setText("Even laden…");scheduleStall();}else{cancelStall();if(state==Player.STATE_READY){recoveryPending=false;stableSince=System.currentTimeMillis();int height=player.getVideoSize().height;playbackStatus.setText(playing.title+(height>0?" · "+height+"p":""));}else if(state==Player.STATE_ENDED){prefs.edit().remove("position:"+playing.key()).remove("active_playback_key").remove("active_playback_interrupted").apply();Toast.makeText(MainActivity.this,"Aflevering afgelopen",Toast.LENGTH_SHORT).show();}}}@Override public void onPlayWhenReadyChanged(boolean wantsToPlay,int reason){
+     if(!lifecyclePausing&&!backgroundInterrupted&&reason==Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST){
+       userPaused=!wantsToPlay;
+     }
+    }
+    @Override public void onRenderedFirstFrame(){renderedFirstFrame=true;}@Override public void onVideoSizeChanged(VideoSize size){if(playbackStatus!=null&&playing!=null&&size.height>0)playbackStatus.setText(playing.title+" · "+size.height+"p");}@Override public void onPlayerError(PlaybackException error){if(player!=null)fallback();}});playCurrent();progressTask=new Runnable(){public void run(){if(player!=null){if(player.isPlaying()&&stableSince>0&&System.currentTimeMillis()-stableSince>=30000)recovery.stable();storeProgress();handler.postDelayed(this,10000);}}};handler.postDelayed(progressTask,10000);}
  private void playCurrent(){if(player==null)return;cancelRetry();playbackAttempt++;recoveryPending=false;playbackFailed=false;stableSince=0;renderedFirstFrame=false;CatalogEntry x=playSources.get(sourceIndex);MediaItem media=new MediaItem.Builder().setUri(testMode?"asset:///test-clip.mp4":repo.stream(x)).setSubtitleConfigurations(testMode&&getIntent().getBooleanExtra("subtitle_test_mode",false)?Collections.singletonList(new MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse("asset:///subtitle-test.srt")).setMimeType(MimeTypes.APPLICATION_SUBRIP).setLanguage("nl").build()):Collections.emptyList()).setMediaId(x.key()).setMediaMetadata(new MediaMetadata.Builder().setTitle(playing.title).build()).build();player.setMediaItem(media,resumePosition);player.prepare();player.play();}
  private void cancelRetry(){if(retryTask!=null){handler.removeCallbacks(retryTask);retryTask=null;}}
  private void fallback(){if(player==null||recoveryPending||playbackFailed)return;resumePosition=Math.max(0,player.getCurrentPosition());cancelStall();
@@ -110,7 +119,61 @@ public class MainActivity extends Activity {
  private CatalogEntry jsonEntry(JSONObject e)throws Exception{return new CatalogEntry(e.getInt("id"),e.getString("title"),e.getString("extension"),e.optString("poster"),e.optString("category"),e.getString("type"),0,e.optString("movieId"),e.optString("groupId"),e.optString("language"));}
  private void rememberEntry(CatalogEntry e){try{JSONObject saved=new JSONObject(prefs.getString("saved_entries","{}"));JSONObject row=entryJson(e);JSONArray sources=new JSONArray();for(CatalogEntry x:variants.getOrDefault(e.key(),Collections.singletonList(e)))sources.put(entryJson(x));row.put("sources",sources);saved.put(e.key(),row);prefs.edit().putString("saved_entries",saved.toString()).apply();}catch(Exception ignored){}}
  private List<CatalogEntry> savedEntries(){List<CatalogEntry> out=new ArrayList<>();try{JSONObject saved=new JSONObject(prefs.getString("saved_entries","{}"));Iterator<String> keys=saved.keys();while(keys.hasNext()){JSONObject row=saved.getJSONObject(keys.next());CatalogEntry e=jsonEntry(row);out.add(e);JSONArray sources=row.optJSONArray("sources");if(sources!=null&&!variants.containsKey(e.key())){List<CatalogEntry> xs=new ArrayList<>();for(int i=0;i<sources.length();i++)xs.add(jsonEntry(sources.getJSONObject(i)));if(!xs.isEmpty())variants.put(e.key(),xs);}}}catch(Exception ignored){}return out;}
- private void storeProgress(){if(player==null||playing==null)return;rememberEntry(playing);long p=player.getCurrentPosition(),duration=player.getDuration();SharedPreferences.Editor edit=prefs.edit();if(player.getPlaybackState()==Player.STATE_ENDED||duration>0&&p>duration-15000)edit.remove("position:"+playing.key());else if(p>10000)edit.putLong("position:"+playing.key(),p).putLong("watched:"+playing.key(),System.currentTimeMillis()).putString("last_title",playing.title).putString("last_key",playing.key());edit.apply();}
+ private void storeProgress(){
+   if(player==null||playing==null||prefs==null)return;
+   rememberEntry(playing);
+   long reported=Math.max(0,player.getCurrentPosition());
+   long previous=prefs.getLong("active_playback_position",prefs.getLong("position:"+playing.key(),0));
+   long position=PlaybackResumePolicy.rememberedPosition(reported,previous,player.getPlaybackState()==Player.STATE_READY);
+   long duration=player.getDuration();
+   SharedPreferences.Editor edit=prefs.edit()
+     .putString("active_playback_key",playing.key())
+     .putLong("active_playback_position",position);
+   if(player.getPlaybackState()==Player.STATE_ENDED||duration>15000&&position>=duration-10000){
+     edit.remove("position:"+playing.key()).remove("active_playback_key").remove("active_playback_interrupted");
+   }else{
+     edit.putLong("position:"+playing.key(),position)
+       .putLong("watched:"+playing.key(),System.currentTimeMillis())
+       .putString("last_title",playing.title).putString("last_key",playing.key());
+   }
+   edit.apply();
+  }
+  private void clearInterruptedSession(){
+   backgroundInterrupted=false;autoResumeAfterInterruption=false;
+   if(prefs!=null)prefs.edit().remove("active_playback_key").remove("active_playback_position")
+     .remove("active_playback_interrupted").remove("active_playback_auto_resume")
+     .remove("active_playback_time").apply();
+  }
+  private void interruptForBackground(){
+   if(player==null||playing==null||backgroundInterrupted)return;
+   backgroundInterrupted=true;
+   autoResumeAfterInterruption=PlaybackResumePolicy.shouldResume(player.getPlayWhenReady(),userPaused,playbackFailed);
+   storeProgress();
+   if(prefs!=null)resumePosition=prefs.getLong("active_playback_position",resumePosition);
+   if(prefs!=null)prefs.edit().putBoolean("active_playback_interrupted",true)
+     .putBoolean("active_playback_auto_resume",autoResumeAfterInterruption)
+     .putLong("active_playback_time",System.currentTimeMillis()).commit();
+   lifecyclePausing=true;
+   try{player.pause();}finally{lifecyclePausing=false;}
+   cancelRetry();recoveryPending=false;cancelStall();
+  }
+  private void restoreInterruptedSession(){
+   if(prefs==null||!prefs.getBoolean("active_playback_interrupted",false))return;
+   final long interruptedAt=prefs.getLong("active_playback_time",0);
+   final String key=prefs.getString("active_playback_key","");
+   if(key==null||key.isEmpty()||interruptedAt<=0||
+       System.currentTimeMillis()-interruptedAt>SESSION_RECOVERY_WINDOW_MS){clearInterruptedSession();return;}
+   CatalogEntry entry=null;
+   for(CatalogEntry e:savedEntries())if(key.equals(e.key())){entry=e;break;}
+   if(entry==null){clearInterruptedSession();return;}
+   long at=prefs.getLong("active_playback_position",prefs.getLong("position:"+key,0));
+   boolean shouldResume=prefs.getBoolean("active_playback_auto_resume",false);
+   startPlayback(entry,Math.max(0,at));
+   if(player!=null&&!shouldResume){
+     lifecyclePausing=true;try{player.pause();}finally{lifecyclePausing=false;}
+     userPaused=true;
+   }
+  }
  private void suspendBackground(){if(catalogRefreshActive||catalogTask!=null&&!catalogTask.isDone())restartCatalogType="series";++catalogGeneration;++languageGeneration;++loadGeneration;catalogRefreshActive=false;loading=false;if(catalogTask!=null)catalogTask.cancel(true);for(Runnable cancel:background.pause())networkCancelWorker.execute(cancel);}
  PlaybackPriority.Ticket registerBackgroundForTest(Runnable cancel)throws IOException{if(!testMode)throw new IllegalStateException();return background.register(cancel);}
  boolean isBackgroundPausedForTest(){return testMode&&background.isPaused();}
@@ -127,9 +190,38 @@ public class MainActivity extends Activity {
  @Override public boolean dispatchKeyEvent(KeyEvent e){if(player!=null&&e.getAction()==KeyEvent.ACTION_DOWN){int k=e.getKeyCode();if(k==KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE){if(player.isPlaying())player.pause();else player.play();return true;}if(k==KeyEvent.KEYCODE_MEDIA_PLAY){player.play();return true;}if(k==KeyEvent.KEYCODE_MEDIA_PAUSE){player.pause();return true;}if(k==KeyEvent.KEYCODE_MEDIA_FAST_FORWARD){player.seekForward();return true;}if(k==KeyEvent.KEYCODE_MEDIA_REWIND){player.seekBack();return true;}}return playerView!=null&&playerView.hasFocus()&&playerView.dispatchKeyEvent(e)||super.dispatchKeyEvent(e);}
  @Override public void onConfigurationChanged(android.content.res.Configuration configuration){super.onConfigurationChanged(configuration);if(playerView!=null)playerView.requestLayout();else showCatalog();}
  @Override public void onBackPressed(){if(player!=null){showCatalog();return;}if(section.equals("episodes")){switchSection("series");return;}if(!query.isEmpty()){query="";search.setText("");filter();return;}super.onBackPressed();}
- @Override protected void onStop(){cancelRetry();recoveryPending=false;if(player!=null){storeProgress();player.pause();cancelStall();}super.onStop();}
- @Override protected void onResume(){super.onResume();if(appUpdater!=null)appUpdater.checkOnOpen();}
- @Override protected void onDestroy(){if(familyLicense!=null)familyLicense.close();
+ @Override protected void onPause(){interruptForBackground();super.onPause();}
+ @Override protected void onStop(){interruptForBackground();if(player!=null)storeProgress();super.onStop();}
+ @Override protected void onResume(){
+   super.onResume();
+   if(appUpdater!=null)appUpdater.checkOnOpen();
+   if(player!=null&&backgroundInterrupted){
+     boolean resume=autoResumeAfterInterruption&&!playbackFailed;
+     backgroundInterrupted=false;
+     autoResumeAfterInterruption=false;
+     if(playerView!=null){playerView.setPlayer(null);playerView.setPlayer(player);}
+     long reported=player.getCurrentPosition();
+     long restored=PlaybackResumePolicy.rememberedPosition(reported,resumePosition,player.getPlaybackState()==Player.STATE_READY);
+     if(player.getPlaybackState()==Player.STATE_IDLE){
+       resumePosition=restored;
+       if(resume){
+         playCurrent();
+       }else{
+         player.seekTo(restored);
+         player.prepare();
+         lifecyclePausing=true;try{player.pause();}finally{lifecyclePausing=false;}
+       }
+     }else if(player.getPlaybackState()!=Player.STATE_ENDED){
+       if(restored>1000&&reported<1000)player.seekTo(restored);
+       if(resume)player.play();
+       else{lifecyclePausing=true;try{player.pause();}finally{lifecyclePausing=false;}}
+       if(player.getPlaybackState()==Player.STATE_BUFFERING&&resume)scheduleStall();
+     }
+     if(!resume&&playerView!=null)playerView.showController();
+     if(prefs!=null)prefs.edit().putBoolean("active_playback_interrupted",false).apply();
+   }
+ }
+ @Override protected void onDestroy(){if(isFinishing()&&player!=null)clearInterruptedSession();if(familyLicense!=null)familyLicense.close();
   if (appUpdater != null) appUpdater.close();destroyed=true;++catalogGeneration;++loadGeneration;stopPlayback();handler.removeCallbacksAndMessages(null);languageWorker.shutdownNow();catalogWorker.shutdownNow();episodeWorker.shutdownNow();imageWorker.shutdownNow();for(Runnable cancel:background.pause())networkCancelWorker.execute(cancel);networkCancelWorker.shutdown();super.onDestroy();}
  private void cancelPosterRequests(){posterGeneration++;if(imageWorker instanceof ThreadPoolExecutor)((ThreadPoolExecutor)imageWorker).getQueue().clear();}
  private void loadPoster(ImageView image,CatalogEntry entry){
