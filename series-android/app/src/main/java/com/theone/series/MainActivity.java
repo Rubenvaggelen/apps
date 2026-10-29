@@ -149,6 +149,7 @@ public class MainActivity extends Activity {
    backgroundInterrupted=true;
    autoResumeAfterInterruption=PlaybackResumePolicy.shouldResume(player.getPlayWhenReady(),userPaused,playbackFailed);
    storeProgress();
+   if(prefs!=null)resumePosition=prefs.getLong("active_playback_position",resumePosition);
    if(prefs!=null)prefs.edit().putBoolean("active_playback_interrupted",true)
      .putBoolean("active_playback_auto_resume",autoResumeAfterInterruption)
      .putLong("active_playback_time",System.currentTimeMillis()).commit();
@@ -203,7 +204,13 @@ public class MainActivity extends Activity {
      long restored=PlaybackResumePolicy.rememberedPosition(reported,resumePosition,player.getPlaybackState()==Player.STATE_READY);
      if(player.getPlaybackState()==Player.STATE_IDLE){
        resumePosition=restored;
-       playCurrent();
+       if(resume){
+         playCurrent();
+       }else{
+         player.seekTo(restored);
+         player.prepare();
+         lifecyclePausing=true;try{player.pause();}finally{lifecyclePausing=false;}
+       }
      }else if(player.getPlaybackState()!=Player.STATE_ENDED){
        if(restored>1000&&reported<1000)player.seekTo(restored);
        if(resume)player.play();
@@ -214,7 +221,7 @@ public class MainActivity extends Activity {
      if(prefs!=null)prefs.edit().putBoolean("active_playback_interrupted",false).apply();
    }
  }
- @Override protected void onDestroy(){if(familyLicense!=null)familyLicense.close();
+ @Override protected void onDestroy(){if(isFinishing()&&player!=null)clearInterruptedSession();if(familyLicense!=null)familyLicense.close();
   if (appUpdater != null) appUpdater.close();destroyed=true;++catalogGeneration;++loadGeneration;stopPlayback();handler.removeCallbacksAndMessages(null);languageWorker.shutdownNow();catalogWorker.shutdownNow();episodeWorker.shutdownNow();imageWorker.shutdownNow();for(Runnable cancel:background.pause())networkCancelWorker.execute(cancel);networkCancelWorker.shutdown();super.onDestroy();}
  private void cancelPosterRequests(){posterGeneration++;if(imageWorker instanceof ThreadPoolExecutor)((ThreadPoolExecutor)imageWorker).getQueue().clear();}
  private void loadPoster(ImageView image,CatalogEntry entry){
