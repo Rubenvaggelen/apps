@@ -2,7 +2,7 @@ name: The One Series Android v122 - resume playback after interruption
 on:
   push:
     branches: [fix/series-android-foreground-resume-v122-20261029]
-    paths: [series-android/**, .github/workflows/series-android-foreground-resume-v122.yml]
+    paths: [series-android/**, ci/devhub-series-recovery.php, .github/workflows/series-android-foreground-resume-v122.yml]
   workflow_dispatch: {}
 permissions:
   contents: read
