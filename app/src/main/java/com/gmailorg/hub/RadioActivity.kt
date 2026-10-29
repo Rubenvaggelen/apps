@@ -33,6 +33,12 @@ class RadioActivity : AppCompatActivity() {
         findViewById<View>(R.id.radioLimFmButton).setOnClickListener {
             openUrl("https://www.limfmsu.com/")
         }
+        findViewById<View>(R.id.radioSrsButton).setOnClickListener {
+            openUrl("https://surinaamseradio.com/srs-suriname/")
+        }
+        findViewById<View>(R.id.radioApintieButton).setOnClickListener {
+            openUrl("https://surinaamseradio.com/apintie/")
+        }
         findViewById<View>(R.id.radioSoulButton).setOnClickListener {
             openUrl("https://soulradio.nl/")
         }
