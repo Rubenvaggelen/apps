@@ -13,7 +13,7 @@ foreach($rows as &$row)if($row['id']===$input['id']){
  foreach(['apk','version_name','size_bytes','sha256','commit','package_badging','created_date'] as $key)$row[$key]=$input[$key];
  $row['dev_hub_status']='published';$found=true;break;
 }
-unset($row);if(!$found||count($rows)!==8)exit(5);
+unset($row);if(!$found)exit(5); // The number of Family apps may grow; preserve every other manifest entry unchanged.
 $backup=$root.'/manifest-before-'.$input['id'].'-'.gmdate('Ymd-His').'.json';file_put_contents($backup,$original);chmod($backup,0600);
 $temp=$root.'/manifest.json.new-'.$input['id'];file_put_contents($temp,json_encode($rows,JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES).PHP_EOL);chmod($temp,0600);rename($temp,$manifest);
 flock($lock,LOCK_UN);fclose($lock);echo "Verified Series Android build published: ".$input['id'].PHP_EOL;
