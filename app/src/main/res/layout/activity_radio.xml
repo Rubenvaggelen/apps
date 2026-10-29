@@ -31,6 +31,11 @@
             android:textStyle="bold" />
     </LinearLayout>
 
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -92,6 +97,24 @@
             android:textColor="@color/text_main" />
 
         <Button
+            android:id="@+id/radioSrsButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            android:text="Radio SRS Suriname (96.3 FM)"
+            android:backgroundTint="@color/surface"
+            android:textColor="@color/text_main" />
+
+        <Button
+            android:id="@+id/radioApintieButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            android:text="Radio Apintie (97.1 FM)"
+            android:backgroundTint="@color/surface"
+            android:textColor="@color/text_main" />
+
+        <Button
             android:id="@+id/radioSoulButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -119,5 +142,6 @@
             android:textColor="@color/text_main" />
 
     </LinearLayout>
+    </ScrollView>
 
 </LinearLayout>
