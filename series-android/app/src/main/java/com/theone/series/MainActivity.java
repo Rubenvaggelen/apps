@@ -155,7 +155,7 @@ public class MainActivity extends Activity {
      .putLong("active_playback_time",System.currentTimeMillis()).commit();
    lifecyclePausing=true;
    try{player.pause();}finally{lifecyclePausing=false;}
-   cancelRetry();cancelStall();
+   cancelRetry();recoveryPending=false;cancelStall();
   }
   private void restoreInterruptedSession(){
    if(prefs==null||!prefs.getBoolean("active_playback_interrupted",false))return;
