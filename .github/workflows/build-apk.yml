@@ -131,7 +131,7 @@ jobs:
           path: rutubusinessandroid/build/outputs/apk/debug/rutubusinessandroid-debug.apk
 
       - name: Publish Rutu Android in-app update
-        if: github.ref == 'refs/heads/feature/jade-orders' && steps.rutu_changes.outputs.changed == 'true'
+        if: false # deployment paused to preserve current production until versions validated
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
