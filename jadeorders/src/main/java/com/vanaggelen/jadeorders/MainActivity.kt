@@ -692,6 +692,12 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    private fun openCateringWhatsApp() {
+        val uri = Uri.parse("https://wa.me/31623379279?text=Hallo%20Rutu%20BBQ%2C%20ik%20wil%20informatie%20over%20catering.")
+        try { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+        catch (_: Exception) { toast(bi("WhatsApp kon niet worden geopend.", "Could not open WhatsApp.")) }
+    }
+
     private fun openTikkie(url: String) {
         val uri = try { Uri.parse(url) } catch (_: Exception) { null }
         if (uri?.scheme != "https" || uri.host !in setOf("tikkie.me", "www.tikkie.me")) {
@@ -1354,6 +1360,8 @@ class MainActivity : AppCompatActivity() {
         hero("Fire. Roots. Flavour.", bi("Kies je favorieten en geniet.", "Choose your favourites and enjoy."))
         announcementCard()
         button("Bekijk het menu / View the menu") { enterCustomer() }
+        label(bi("Voor catering: WhatsApp 06 2337 9279", "For catering: WhatsApp +31 6 2337 9279"))
+        button("💬 Catering via WhatsApp", secondary = true) { openCateringWhatsApp() }
         if (isRutuDeviceAdminName()) {
             button("Apparatenbeheer / Device management", secondary = true) {
                 promptForRutuDeviceManagerCode()
@@ -1429,6 +1437,8 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+        label(bi("Voor catering: WhatsApp 06 2337 9279", "For catering: WhatsApp +31 6 2337 9279"))
+        button("💬 Catering via WhatsApp", secondary = true) { openCateringWhatsApp() }
         button("🧾 Mijn bestellingen / My orders", secondary = true) { myOrders() }
         watchEatWellBanner()
     }
