@@ -18,7 +18,7 @@ import java.net.URL
 import java.security.MessageDigest
 
 object RutuBusinessUpdateChecker {
-    private const val UPDATE_URL = "https://rubenvanaggelen.com/rutu-updates/business-android.json"
+    private const val UPDATE_URL = "https://downloads.theoneforlive.com/rutu-updates/business-android.json"
     private const val APK_MIME = "application/vnd.android.package-archive"
 
     fun checkForUpdate(activity: Activity, manual: Boolean = false) {
@@ -47,8 +47,10 @@ object RutuBusinessUpdateChecker {
                 }
                 val trusted = try {
                     val u = Uri.parse(apkUrl)
-                    u.scheme == "https" && u.host == "rubenvanaggelen.com" &&
-                        u.path == "/rutu-updates/Rutu-BBQ-Bedrijf-Android.apk"
+                    u.scheme == "https" && u.host == "downloads.theoneforlive.com" &&
+                        u.path in setOf("/rutu-updates/Rutu-BBQ-Bedrijf-Android.apk",
+                            "/rutu-updates/Rutu-BBQ-Bedrijf-Android-v946.apk",
+                            "/rutu-updates/Rutu-BBQ-Bedrijf-Android-v945.apk")
                 } catch (_: Exception) { false }
                 if (!trusted || !Regex("^[a-f0-9]{64}$").matches(sha256)) {
                     if (manual) activity.runOnUiThread { Toast.makeText(activity, "Updategegevens zijn ongeldig. / Update information is invalid.", Toast.LENGTH_LONG).show() }
