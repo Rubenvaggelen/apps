@@ -1,0 +1,62 @@
+name: Build The One iPhone (IPA)
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/build-ios.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build-ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: XcodeGen installeren
+        run: brew install xcodegen
+
+      - name: Xcode-project maken
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: App bouwen (zonder ondertekening)
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project TheOne.xcodeproj \
+            -scheme TheOne \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: IPA-bestand maken
+        working-directory: ios
+        run: |
+          rm -rf Payload TheOne.ipa
+          mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/TheOne.app Payload/
+          zip -qry TheOne.ipa Payload
+          ls -lh TheOne.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TheOne-ipa
+          path: ios/TheOne.ipa
+
+      # Tag "ios-v###" wordt door de Android-updatecheck (main-v###) genegeerd.
+      - name: Release publiceren
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios-v${{ github.run_number }}
+          name: The One iPhone ${{ github.run_number }}
+          files: ios/TheOne.ipa
+          make_latest: false

@@ -1,0 +1,10 @@
+{
+  "id": "the-one-iphone",
+  "name": "The One iPhone",
+  "projectPath": "ios",
+  "buildArtifact": "TheOne.ipa",
+  "updateTagPrefix": "ios-v",
+  "updateMode": "sideload",
+  "independentFromAndroid": true,
+  "description": "The One voor iPhone (IPA). Installeren met Sideloadly en een Apple-ID; met een gratis Apple-ID elke 7 dagen opnieuw ondertekenen."
+}

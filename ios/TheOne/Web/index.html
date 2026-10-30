@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The One</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="The One">
+<meta name="theme-color" content="#05070d">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<link rel="manifest" href="manifest.json">
+<style>
+  :root {
+    --bg: #05070d; --card: #111725; --card2: #182035; --line: #263150;
+    --text: #eef2ff; --muted: #9aa6c4; --accent: #2f8cff; --accent2: #7b5cff; --danger: #ff5a6a; --ok: #33d17a;
+    --safe-top: env(safe-area-inset-top); --safe-bottom: env(safe-area-inset-bottom);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; }
+  body { min-height: 100vh; padding: calc(var(--safe-top) + 12px) 16px calc(var(--safe-bottom) + 24px); }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+  header img { width: 46px; height: 46px; border-radius: 50%; box-shadow: 0 0 18px #2f8cff66; }
+  header h1 { font-size: 24px; margin: 0; letter-spacing: .5px; }
+  header .sub { color: var(--muted); font-size: 13px; }
+
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .tile { background: linear-gradient(160deg, var(--card2), var(--card)); border: 1px solid var(--line);
+    border-radius: 20px; padding: 14px 6px 12px; text-align: center; cursor: pointer;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; transition: transform .12s; }
+  .tile:active { transform: scale(.95); }
+  .tile .ic { width: 54px; height: 54px; margin: 0 auto 8px; border-radius: 16px; display: grid; place-items: center;
+    font-size: 28px; background: linear-gradient(135deg, var(--accent), var(--accent2)); box-shadow: 0 6px 16px #2f8cff40; }
+  .tile .lb { font-size: 12.5px; line-height: 1.2; color: var(--text); }
+
+  .install { background: #14213d; border: 1px solid #2f8cff; border-radius: 16px; padding: 12px 14px;
+    margin-bottom: 16px; font-size: 14px; line-height: 1.45; display: none; }
+  .install b { color: #8fc1ff; }
+  .hint { color: var(--muted); font-size: 12px; text-align: center; margin-top: 22px; }
+
+  /* Paneel (scherm per tegel) */
+  .panel { position: fixed; inset: 0; background: var(--bg); z-index: 10; display: none; flex-direction: column;
+    padding: calc(var(--safe-top) + 8px) 16px calc(var(--safe-bottom) + 16px); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .panel.open { display: flex; }
+  .bar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; position: sticky; top: 0; background: var(--bg); padding: 6px 0; z-index: 2; }
+  .back { background: var(--card2); border: 1px solid var(--line); color: var(--text); border-radius: 12px;
+    padding: 8px 14px; font-size: 16px; }
+  .bar h2 { margin: 0; font-size: 20px; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px; margin-bottom: 12px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  input, textarea, select { width: 100%; background: #0b1020; color: var(--text); border: 1px solid var(--line);
+    border-radius: 12px; padding: 12px; font-size: 16px; font-family: inherit; }
+  textarea { min-height: 90px; resize: vertical; }
+  button.btn { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; border: 0; border-radius: 12px;
+    padding: 12px 16px; font-size: 16px; font-weight: 600; white-space: nowrap; }
+  button.btn.sec { background: var(--card2); border: 1px solid var(--line); font-weight: 500; }
+  button.btn.danger { background: var(--danger); }
+  button.icon { background: var(--card2); border: 1px solid var(--line); color: var(--text); border-radius: 12px; padding: 10px 12px; font-size: 18px; }
+  .list { list-style: none; margin: 0; padding: 0; }
+  .list li { display: flex; align-items: center; gap: 10px; padding: 12px 4px; border-bottom: 1px solid var(--line); font-size: 16px; }
+  .list li:last-child { border-bottom: 0; }
+  .list li .t { flex: 1; }
+  .list li.done .t { text-decoration: line-through; color: var(--muted); }
+  .chk { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--accent); display: grid; place-items: center; flex: none; }
+  li.done .chk { background: var(--accent); }
+  .x { color: var(--muted); background: none; border: 0; font-size: 20px; padding: 0 6px; }
+  .links a { display: flex; justify-content: space-between; align-items: center; padding: 14px 4px; border-bottom: 1px solid var(--line);
+    color: var(--text); text-decoration: none; font-size: 17px; }
+  .links a:last-child { border-bottom: 0; }
+  .links a::after { content: "›"; color: var(--muted); font-size: 22px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .answer { white-space: pre-wrap; line-height: 1.5; font-size: 15.5px; }
+  .big { font-size: 34px; font-weight: 700; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .chip { background: var(--card2); border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; font-size: 13px; }
+  .poster { width: 70px; border-radius: 8px; flex: none; }
+  .spin { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--muted); border-top-color: transparent;
+    border-radius: 50%; animation: s 0.8s linear infinite; vertical-align: -3px; margin-right: 6px; }
+  @keyframes s { to { transform: rotate(360deg); } }
+  h3 { font-size: 15px; margin: 4px 0 10px; color: #b9c6ea; }
+  .toast { position: fixed; left: 50%; bottom: calc(var(--safe-bottom) + 24px); transform: translateX(-50%); background: #1e2a48;
+    border: 1px solid var(--accent); padding: 10px 16px; border-radius: 12px; z-index: 50; font-size: 14px; display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <img src="icon-180.png" alt="">
+  <div><h1>The One</h1><div class="sub" id="greet"></div></div>
+</header>
+
+<div class="install" id="install">
+  <b>Installeren op je iPhone:</b> tik in Safari onderaan op <b>Deel</b> (vierkantje met pijl omhoog)
+  en kies <b>Zet op beginscherm</b>. Daarna staat The One als app tussen je andere apps.
+</div>
+
+<div class="grid" id="grid"></div>
+<div class="hint">Houd een tegel lang ingedrukt om hem te verbergen.<br>Terugzetten via Instellingen.</div>
+
+<div class="panel" id="panel">
+  <div class="bar"><button class="back" onclick="closePanel()">‹ Terug</button><h2 id="ptitle"></h2></div>
+  <div id="pbody"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===================== Instellingen ===================== */
+const GMAIL_ORG = 'https://rubenvaggelen.github.io/Gmailorg/';
+const TMDB_KEY = '4840721d243600b636e40a0703a1e07b';
+const KIE_KEY = 'a41b286b531a75205bf7611de35742d8';
+const KIE_URL = 'https://api.kie.ai/gpt-5-2/v1/chat/completions';
+const PIN = '290114';
+const NATIVE = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.native);
+
+/* Internetverzoek: in de iPhone-app via iOS zelf (geen browserbeperkingen), anders gewone fetch. */
+async function http(url, opts = {}) {
+  if (NATIVE) {
+    const r = await window.webkit.messageHandlers.native.postMessage({ action: 'http', url, method: opts.method || 'GET',
+      headers: opts.headers || {}, body: opts.body, timeout: opts.timeout || 60000 });
+    let json = {}; try { json = JSON.parse(r.body); } catch {}
+    return { ok: r.status >= 200 && r.status < 300, status: r.status, json };
+  }
+  const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), opts.timeout || 60000);
+  try {
+    const r = await fetch(url, { method: opts.method || 'GET', headers: opts.headers, body: opts.body, signal: ctrl.signal });
+    return { ok: r.ok, status: r.status, json: await r.json().catch(() => ({})) };
+  } finally { clearTimeout(to); }
+}
+function nativeNotify(id, at, title, body) {
+  if (!NATIVE) return Promise.resolve(false);
+  return window.webkit.messageHandlers.native.postMessage({ action: 'notify', id, at, title, body });
+}
+function nativeCancel(id) { if (NATIVE) window.webkit.messageHandlers.native.postMessage({ action: 'cancelNotify', id }); }
+
+/* ===================== Opslag ===================== */
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('theone.' + k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('theone.' + k, JSON.stringify(v)); } catch {} }
+};
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 2200); }
+function openUrl(url) { window.open(url, '_blank'); }
+
+/* ===================== Tegels ===================== */
+const TILES = [
+  { id: 'mail',      label: 'Mail & Kalender', ic: '✉️', go: () => openUrl(GMAIL_ORG) },
+  { id: 'route',     label: 'Route',           ic: '🧭', go: () => openUrl(GMAIL_ORG + '#route-standalone') },
+  { id: 'household', label: 'Huishouden',      ic: '🏠', go: () => openPanel('Boodschappenlijst', renderShopping) },
+  { id: 'movies',    label: 'Muziek en films', ic: '🎬', go: () => openPanel('Muziek en films', renderMovies) },
+  { id: 'parking',   label: 'Parkeren',        ic: '🅿️', go: () => openPanel('Parkeren', renderParking) },
+  { id: 'ask',       label: 'Vraag het',       ic: '💬', go: () => openPanel('Vraag het', renderAsk) },
+  { id: 'recipes',   label: 'Recepten',        ic: '🍲', go: () => openPanel('Recepten', renderRecipes) },
+  { id: 'news',      label: 'Nieuws',          ic: '📰', go: () => openPanel('Nieuws', renderNews) },
+  { id: 'radio',     label: 'Radio',           ic: '📻', go: () => openPanel('Radio', renderRadio) },
+  { id: 'currency',  label: 'Koers (EUR / SRD / USD)', ic: '💱', go: () => openPanel('Koers', renderCurrency) },
+  { id: 'whatsapp',  label: 'WhatsApp',        ic: '🟢', go: () => { location.href = 'whatsapp://'; } },
+  { id: 'googlehome',label: 'Google Home',     ic: '🏡', go: () => openUrl('https://apps.apple.com/nl/app/google-home/id680819774') },
+  { id: 'settings',  label: 'Instellingen',    ic: '⚙️', go: () => openPanel('Instellingen', renderSettings), fixed: true }
+];
+
+function renderGrid() {
+  const hidden = store.get('hidden', []);
+  const grid = $('#grid');
+  grid.innerHTML = '';
+  TILES.filter(t => t.fixed || !hidden.includes(t.id)).forEach(t => {
+    const el = document.createElement('div');
+    el.className = 'tile';
+    el.innerHTML = `<div class="ic">${t.ic}</div><div class="lb">${esc(t.label)}</div>`;
+    let timer = null, long = false;
+    const start = () => { long = false; timer = setTimeout(() => { long = true; hideTile(t); }, 650); };
+    const cancel = () => clearTimeout(timer);
+    el.addEventListener('touchstart', start, { passive: true });
+    el.addEventListener('touchend', cancel);
+    el.addEventListener('touchmove', cancel, { passive: true });
+    el.addEventListener('mousedown', start);
+    el.addEventListener('mouseup', cancel);
+    el.addEventListener('click', () => { if (!long) t.go(); });
+    el.addEventListener('contextmenu', e => e.preventDefault());
+    grid.appendChild(el);
+  });
+}
+function hideTile(t) {
+  if (t.fixed) return;
+  if (!confirm(`Tegel "${t.label}" verbergen?`)) return;
+  const hidden = store.get('hidden', []);
+  if (!hidden.includes(t.id)) hidden.push(t.id);
+  store.set('hidden', hidden);
+  renderGrid();
+}
+
+/* ===================== Paneel ===================== */
+let panelCleanup = null;
+function openPanel(title, render) {
+  $('#ptitle').textContent = title;
+  $('#pbody').innerHTML = '';
+  $('#panel').classList.add('open');
+  $('#panel').scrollTop = 0;
+  panelCleanup = render($('#pbody')) || null;
+  history.pushState({ panel: true }, '');
+}
+function closePanel(fromPop) {
+  if (typeof panelCleanup === 'function') panelCleanup();
+  panelCleanup = null;
+  $('#panel').classList.remove('open');
+  if (!fromPop && history.state && history.state.panel) history.back();
+}
+window.addEventListener('popstate', () => { if ($('#panel').classList.contains('open')) closePanel(true); });
+
+/* ===================== Spraakinvoer ===================== */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+function micButton(onText) {
+  if (!SR) return null;
+  const b = document.createElement('button');
+  b.className = 'icon'; b.textContent = '🎤'; b.title = 'Inspreken';
+  b.onclick = () => {
+    try {
+      const r = new SR(); r.lang = 'nl-NL'; r.interimResults = false; r.maxAlternatives = 1;
+      b.textContent = '⏺️';
+      r.onresult = e => onText(e.results[0][0].transcript);
+      r.onerror = () => toast('Spraak niet gelukt — gebruik anders de microfoon op je toetsenbord');
+      r.onend = () => b.textContent = '🎤';
+      r.start();
+    } catch { toast('Spraak niet beschikbaar'); }
+  };
+  return b;
+}
+
+/* ===================== Huishouden: boodschappenlijst ===================== */
+function renderShopping(root) {
+  root.innerHTML = `
+    <div class="card"><div class="row" id="addrow">
+      <input id="item" placeholder="Bijv. brood" enterkeyhint="done" autocomplete="off">
+      <button class="btn" id="add">+</button>
+    </div></div>
+    <div class="card"><ul class="list" id="shop"></ul><div class="muted" id="empty">De lijst is leeg.</div></div>
+    <button class="btn sec" id="clear" style="width:100%">Afgevinkte items wissen</button>
+    <p class="muted" style="margin-top:14px">Tip: een melding bij de supermarkt kan een web-app op de iPhone niet geven.
+    Wil je dat wel, zet dan in de iPhone-app <b>Herinneringen</b> een herinnering met locatie “Bij aankomst” bij je supermarkt.</p>`;
+  const input = $('#item');
+  const mic = micButton(t => { addItems(t); });
+  if (mic) $('#addrow').insertBefore(mic, $('#add'));
+  function addItems(text) {
+    const parts = String(text).split(/,| en /i).map(s => s.trim()).filter(Boolean);
+    if (!parts.length) return;
+    const list = store.get('shopping', []);
+    parts.forEach(p => {
+      const name = p.charAt(0).toUpperCase() + p.slice(1);
+      if (!list.some(i => i.name.toLowerCase() === name.toLowerCase() && !i.done)) list.push({ id: Date.now() + Math.random(), name, done: false });
+    });
+    store.set('shopping', list); draw();
+  }
+  function draw() {
+    const list = store.get('shopping', []);
+    $('#empty').style.display = list.length ? 'none' : 'block';
+    $('#shop').innerHTML = list.map(i => `
+      <li class="${i.done ? 'done' : ''}" data-id="${i.id}">
+        <span class="chk">${i.done ? '✓' : ''}</span><span class="t">${esc(i.name)}</span><button class="x">✕</button>
+      </li>`).join('');
+  }
+  $('#add').onclick = () => { addItems(input.value); input.value = ''; input.focus(); };
+  input.onkeydown = e => { if (e.key === 'Enter') $('#add').click(); };
+  $('#shop').onclick = e => {
+    const li = e.target.closest('li'); if (!li) return;
+    let list = store.get('shopping', []);
+    const id = Number(li.dataset.id);
+    if (e.target.classList.contains('x')) list = list.filter(i => i.id !== id);
+    else list = list.map(i => i.id === id ? { ...i, done: !i.done } : i);
+    store.set('shopping', list); draw();
+  };
+  $('#clear').onclick = () => { store.set('shopping', store.get('shopping', []).filter(i => !i.done)); draw(); };
+  draw();
+}
+function addToShopping(names) {
+  const list = store.get('shopping', []);
+  let n = 0;
+  names.forEach(name => {
+    if (!list.some(i => i.name.toLowerCase() === name.toLowerCase() && !i.done)) { list.push({ id: Date.now() + Math.random(), name, done: false }); n++; }
+  });
+  store.set('shopping', list);
+  return n;
+}
+
+/* ===================== Muziek en films (TMDB) ===================== */
+async function tmdb(path, params = {}) {
+  const q = new URLSearchParams({ api_key: TMDB_KEY, language: 'nl-NL', ...params });
+  const r = await http(`https://api.themoviedb.org/3/${path}?${q}`);
+  if (!r.ok) throw new Error('TMDB gaf fout ' + r.status);
+  return r.json;
+}
+function renderMovies(root) {
+  root.innerHTML = `
+    <div class="card"><h3>Film of serie zoeken</h3>
+      <div class="row"><input id="mq" placeholder="Titel" enterkeyhint="search"><button class="btn" id="mgo">Zoek</button></div>
+      <div id="mres" style="margin-top:12px"></div></div>
+    <div class="card"><h3>Muziek zoeken</h3>
+      <div class="row"><input id="yq" placeholder="Artiest of nummer" enterkeyhint="search"><button class="btn" id="ygo">YouTube</button></div></div>
+    <div class="card"><h3>Nu in de bioscoop</h3><div id="cinema" class="muted"><span class="spin"></span>Laden…</div></div>
+    <div class="card"><h3>Aankomend: Marvel &amp; DC</h3><div id="upcoming" class="muted"><span class="spin"></span>Laden…</div></div>`;
+  $('#mgo').onclick = searchMovie;
+  $('#mq').onkeydown = e => { if (e.key === 'Enter') searchMovie(); };
+  const yt = () => { const q = $('#yq').value.trim(); if (q) openUrl('https://www.youtube.com/results?search_query=' + encodeURIComponent(q)); };
+  $('#ygo').onclick = yt; $('#yq').onkeydown = e => { if (e.key === 'Enter') yt(); };
+  loadCinema(); loadUpcoming();
+}
+async function searchMovie() {
+  const q = $('#mq').value.trim(); if (!q) return;
+  const out = $('#mres');
+  out.innerHTML = '<span class="spin"></span>Zoeken…';
+  try {
+    const res = await tmdb('search/multi', { query: q });
+    const hit = (res.results || []).find(r => r.media_type === 'movie' || r.media_type === 'tv');
+    if (!hit) { out.innerHTML = '<span class="muted">Niets gevonden.</span>'; return; }
+    const type = hit.media_type;
+    const prov = await tmdb(`${type}/${hit.id}/watch/providers`);
+    const nl = (prov.results || {}).NL || {};
+    const names = k => (nl[k] || []).map(p => p.provider_name);
+    const stream = [...new Set([...names('flatrate'), ...names('free'), ...names('ads')])];
+    const rent = [...new Set([...names('rent'), ...names('buy')])];
+    const title = hit.title || hit.name;
+    const year = (hit.release_date || hit.first_air_date || '').slice(0, 4);
+    const poster = hit.poster_path ? `<img class="poster" src="https://image.tmdb.org/t/p/w154${hit.poster_path}" alt="">` : '';
+    out.innerHTML = `<div class="row" style="align-items:flex-start">${poster}<div>
+      <b>${esc(title)}</b> ${year ? `<span class="muted">(${year})</span>` : ''}<br>
+      <span class="muted">${type === 'tv' ? 'Serie' : 'Film'}</span>
+      <div style="margin-top:8px">${stream.length ? 'Te zien op:' : '<span class="muted">Niet op een streamingdienst in Nederland.</span>'}</div>
+      <div class="chips">${stream.map(s => `<span class="chip">${esc(s)}</span>`).join('')}</div>
+      ${rent.length ? `<div class="muted" style="margin-top:8px">Huren/kopen:</div><div class="chips">${rent.map(s => `<span class="chip">${esc(s)}</span>`).join('')}</div>` : ''}
+      <div style="margin-top:10px"><a href="https://www.themoviedb.org/${type}/${hit.id}" target="_blank" style="color:#8fc1ff">Meer info</a></div>
+    </div></div>`;
+  } catch (e) { out.innerHTML = `<span class="muted">Zoeken mislukt: ${esc(e.message)}</span>`; }
+}
+async function loadCinema() {
+  const el = $('#cinema');
+  try {
+    const today = new Date(), from = new Date(today - 56 * 864e5);
+    const d = x => x.toISOString().slice(0, 10);
+    const res = await tmdb('discover/movie', { region: 'NL', with_release_type: '2|3', 'release_date.gte': d(from), 'release_date.lte': d(today), sort_by: 'popularity.desc' });
+    const items = (res.results || []).slice(0, 15);
+    el.classList.remove('muted');
+    el.innerHTML = items.length ? `<ul class="list">${items.map(m => `<li><span class="t">${esc(m.title)}</span><span class="muted">${esc((m.release_date || '').split('-').reverse().join('-'))}</span></li>`).join('')}</ul>` : 'Geen films gevonden.';
+  } catch (e) { el.textContent = 'Laden mislukt: ' + e.message; }
+}
+async function loadUpcoming() {
+  const el = $('#upcoming');
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const get = async (company, studio) => ((await tmdb('discover/movie', { with_companies: company, sort_by: 'primary_release_date.asc', 'primary_release_date.gte': today })).results || []).slice(0, 8).map(m => ({ ...m, studio }));
+    const all = [...await get(420, 'Marvel'), ...await get(9993, 'DC')].sort((a, b) => (a.release_date || '9').localeCompare(b.release_date || '9'));
+    el.classList.remove('muted');
+    el.innerHTML = all.length ? `<ul class="list">${all.map(m => `<li><span class="t">${esc(m.title)} <span class="muted">· ${m.studio}</span></span><span class="muted">${esc(m.release_date ? m.release_date.split('-').reverse().join('-') : 'datum onbekend')}</span></li>`).join('')}</ul>` : 'Geen aankomende releases gevonden.';
+  } catch (e) { el.textContent = 'Laden mislukt: ' + e.message; }
+}
+
+/* ===================== Parkeren ===================== */
+function renderParking(root) {
+  if (!store.get('parkingAddresses')) store.set('parkingAddresses', ['Vianenstraat 31, Amsterdam']);
+  root.innerHTML = `
+    <div class="card" id="active"></div>
+    <div class="card"><h3>Parkeren starten</h3>
+      <select id="paddr"></select>
+      <div class="row" style="margin-top:10px"><span class="muted" style="flex:none">Eindtijd</span><input id="pend" type="time"></div>
+      <button class="btn" id="pstart" style="width:100%;margin-top:12px">Start</button></div>
+    <div class="card"><h3>Adressen</h3><ul class="list" id="plist"></ul>
+      <div class="row" style="margin-top:8px"><input id="pnew" placeholder="Nieuw adres"><button class="btn sec" id="padd">+</button></div></div>
+    ${NATIVE ? '' : '<p class="muted">Tip: tik op <b>Herinnering in Agenda</b>, dan krijg je ook een melding als de app dicht is.</p>'}`;
+  const def = new Date(Date.now() + 2 * 3600e3);
+  $('#pend').value = `${String(def.getHours()).padStart(2, '0')}:${String(def.getMinutes()).padStart(2, '0')}`;
+  function drawAddresses() {
+    const a = store.get('parkingAddresses', []);
+    $('#paddr').innerHTML = a.map(x => `<option>${esc(x)}</option>`).join('') + '<option value="">Huidige locatie / anders</option>';
+    $('#plist').innerHTML = a.map((x, i) => `<li><span class="t">${esc(x)}</span><button class="x" data-i="${i}">✕</button></li>`).join('') || '<li class="muted">Nog geen adressen.</li>';
+  }
+  $('#plist').onclick = e => {
+    if (!e.target.classList.contains('x')) return;
+    const a = store.get('parkingAddresses', []); a.splice(Number(e.target.dataset.i), 1);
+    store.set('parkingAddresses', a); drawAddresses();
+  };
+  $('#padd').onclick = () => {
+    const v = $('#pnew').value.trim(); if (!v) return;
+    const a = store.get('parkingAddresses', []); a.push(v); store.set('parkingAddresses', a);
+    $('#pnew').value = ''; drawAddresses();
+  };
+  $('#pstart').onclick = () => {
+    const [h, m] = $('#pend').value.split(':').map(Number);
+    if (isNaN(h)) return toast('Kies een eindtijd');
+    const end = new Date(); end.setHours(h, m, 0, 0);
+    if (end < new Date()) end.setDate(end.getDate() + 1);
+    const p = { address: $('#paddr').value || 'Parkeerplek', end: end.getTime() };
+    store.set('parking', p);
+    scheduleParking(p);
+    drawActive();
+  };
+  let tick = null;
+  function drawActive() {
+    const p = store.get('parking');
+    const el = $('#active');
+    if (!p) { el.style.display = 'none'; return; }
+    el.style.display = 'block';
+    const left = p.end - Date.now();
+    const fmt = new Date(p.end).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+    let txt;
+    if (left <= 0) txt = '<span style="color:var(--danger)">Parkeertijd is voorbij!</span>';
+    else { const mm = Math.floor(left / 60000), hh = Math.floor(mm / 60); txt = `${hh ? hh + ' u ' : ''}${mm % 60} min`; }
+    el.innerHTML = `<h3>Je staat geparkeerd</h3><div class="muted">${esc(p.address)} · tot ${fmt}</div>
+      <div class="big" style="margin:8px 0">${txt}</div>
+      <div class="row">${NATIVE ? '<span class="muted" style="flex:1">🔔 Je krijgt 10 min van tevoren en bij het einde een melding.</span>' : '<button class="btn" id="pics">Herinnering in Agenda</button>'}<button class="btn sec" id="pstop">Stop</button></div>`;
+    $('#pstop').onclick = () => { nativeCancel('park-10'); nativeCancel('park-end'); store.set('parking', null); drawActive(); };
+    if ($('#pics')) $('#pics').onclick = () => parkingIcs(p);
+    if (left <= 0 && !p.alerted) { p.alerted = true; store.set('parking', p); if (navigator.vibrate) navigator.vibrate(400); alert('Je parkeertijd is voorbij!'); }
+  }
+  drawAddresses(); drawActive();
+  tick = setInterval(drawActive, 20000);
+  return () => clearInterval(tick);
+}
+function scheduleParking(p) {
+  if (!NATIVE) return;
+  if (p.end - 10 * 60000 > Date.now()) nativeNotify('park-10', p.end - 10 * 60000, 'Parkeren', `Nog 10 minuten parkeertijd (${p.address})`);
+  nativeNotify('park-end', p.end, 'Parkeertijd voorbij', `Je parkeertijd bij ${p.address} is afgelopen`)
+    .then(ok => { if (ok === false) toast('Zet meldingen voor The One aan in Instellingen van je iPhone'); });
+}
+function parkingIcs(p) {
+  const z = d => new Date(d).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const ics = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//The One//Parkeren//NL', 'BEGIN:VEVENT',
+    'UID:theone-park-' + p.end + '@theone', 'DTSTAMP:' + z(Date.now()),
+    'DTSTART:' + z(p.end - 10 * 60000), 'DTEND:' + z(p.end),
+    'SUMMARY:Parkeertijd loopt af', 'LOCATION:' + String(p.address).replace(/[,;]/g, '\\$&'),
+    'BEGIN:VALARM', 'TRIGGER:PT0M', 'ACTION:DISPLAY', 'DESCRIPTION:Nog 10 minuten parkeertijd', 'END:VALARM',
+    'END:VEVENT', 'END:VCALENDAR'
+  ].join('\r\n');
+  const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
+  const a = document.createElement('a'); a.href = url; a.download = 'parkeren.ics'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+/* ===================== AI (Vraag het / Recepten) ===================== */
+async function kie(prompt, timeoutMs = 55000) {
+  try {
+    const r = await http(KIE_URL, {
+      method: 'POST', timeout: timeoutMs,
+      headers: { 'Authorization': 'Bearer ' + KIE_KEY, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }], stream: false, reasoning_effort: 'low' })
+    });
+    const j = r.json || {};
+    if (!r.ok) throw new Error((j.error && j.error.message) || j.msg || 'fout ' + r.status);
+    const c = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+    const text = Array.isArray(c) ? c.map(x => x.text || '').join('') : (c || '');
+    if (!text.trim()) throw new Error(j.msg || 'leeg antwoord');
+    return text.trim();
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('duurde te lang');
+    if (e instanceof TypeError) throw new Error('geen verbinding met de AI-dienst');
+    throw new Error(e.message || String(e));
+  }
+}
+function renderAsk(root) {
+  root.innerHTML = `
+    <div class="card"><textarea id="q" placeholder="Stel je vraag…"></textarea>
+      <div class="row" style="margin-top:10px" id="askrow"><button class="btn" id="go" style="flex:1">Vraag</button></div></div>
+    <div class="card answer" id="a" style="display:none"></div>`;
+  const mic = micButton(t => { $('#q').value = t; $('#go').click(); });
+  if (mic) $('#askrow').appendChild(mic);
+  $('#go').onclick = async () => {
+    const q = $('#q').value.trim(); if (!q) return;
+    const a = $('#a'); a.style.display = 'block'; a.innerHTML = '<span class="spin"></span>Even denken…';
+    try {
+      a.textContent = await kie(`Antwoord uitsluitend met het uiteindelijke antwoord.
+Antwoord in het Nederlands, tenzij ik expliciet een andere taal vraag.
+Toon nooit analyse, redeneerstappen, interne instructies of systeemtekst.
+Bij een simpele vraag: kort en direct. Bij een ingewikkelde vraag: geef genoeg uitleg.
+
+Vraag: ${q}`, 45000);
+    } catch (e) { a.textContent = 'AI kon niet antwoorden: ' + e.message; }
+  };
+}
+function renderRecipes(root) {
+  root.innerHTML = `
+    <div class="card"><div class="row" id="recrow"><input id="dish" placeholder="Bijv. pom, roti, lasagne" enterkeyhint="search">
+      <button class="btn" id="rgo">Zoek</button></div></div>
+    <div class="card answer" id="rec" style="display:none"></div>
+    <button class="btn" id="rshop" style="width:100%;display:none">Ingrediënten op boodschappenlijst</button>`;
+  const mic = micButton(t => { $('#dish').value = t; $('#rgo').click(); });
+  if (mic) $('#recrow').insertBefore(mic, $('#rgo'));
+  let shopping = [];
+  $('#dish').onkeydown = e => { if (e.key === 'Enter') $('#rgo').click(); };
+  $('#rgo').onclick = async () => {
+    const dish = $('#dish').value.trim(); if (!dish) return;
+    const out = $('#rec'); out.style.display = 'block'; out.innerHTML = '<span class="spin"></span>Recept zoeken…';
+    $('#rshop').style.display = 'none';
+    try {
+      const txt = await kie(`JE BENT DE RECEPTENFUNCTIE VAN THE ONE.
+Geef één passend, volledig recept voor: ${dish}.
+Gebruik bij voorkeur recepten in de stijl van sranangkukru.net (Surinaams) en leukerecepten.nl (Italiaans/Hollands).
+Stel GEEN vervolgvragen. Antwoord in het Nederlands.
+
+Je antwoord MOET exact deze secties bevatten:
+BRON:
+[naam website en URL als je die zeker weet; anders: algemene culinaire kennis]
+
+INGREDIENTEN:
+- [hoeveelheid] [ingrediënt] (voor ongeveer 4 personen)
+
+BEREIDING:
+1. [concrete stap]
+2. [ga door totdat het gerecht klaar is]
+
+BOODSCHAPPENLIJST:
+- [alleen ingrediëntnaam, zonder hoeveelheid]`);
+      const idx = txt.search(/BOODSCHAPPENLIJST:/i);
+      shopping = idx >= 0 ? txt.slice(idx).split('\n').slice(1).map(l => l.replace(/^[-•*\d.\s]+/, '').trim()).filter(Boolean)
+        .map(s => s.charAt(0).toUpperCase() + s.slice(1)) : [];
+      out.textContent = idx >= 0 ? txt.slice(0, idx).trim() : txt;
+      if (shopping.length) $('#rshop').style.display = 'block';
+    } catch (e) { out.textContent = 'Recept kon niet worden opgezocht: ' + e.message; }
+  };
+  $('#rshop').onclick = () => { const n = addToShopping(shopping); toast(n ? `${n} ingrediënten toegevoegd` : 'Staat al op de lijst'); };
+}
+
+/* ===================== Nieuws & Radio ===================== */
+function linkList(root, items) {
+  root.innerHTML = `<div class="card links">${items.map(([n, u]) => `<a href="${u}" target="_blank" rel="noopener">${esc(n)}</a>`).join('')}</div>`;
+}
+function renderNews(root) {
+  linkList(root, [['Starnieuws', 'https://www.starnieuws.com/'], ['Waterkant', 'https://www.waterkant.net/'],
+    ['De Ware Tijd', 'https://dwtonline.com/'], ['NU.nl', 'https://www.nu.nl/'], ['NOS', 'https://nos.nl/']]);
+}
+function renderRadio(root) {
+  linkList(root, [['Radio 538', 'https://www.538.nl/radio/luisteren'], ['NPO 3FM', 'https://www.npo3fm.nl/'],
+    ['FunX', 'https://www.funx.nl/'], ['FunX Slowjamz', 'https://www.funx.nl/slowjamz/online-radio-luisteren'],
+    ['Sky Radio', 'https://www.skyradio.nl/'], ['Lim FM Suriname', 'https://www.limfmsu.com/'],
+    ['SRS Suriname', 'https://surinaamseradio.com/srs-suriname/'], ['Radio Apintie', 'https://surinaamseradio.com/apintie/'],
+    ['Soul Radio', 'https://soulradio.nl/'], ['Radio Veronica', 'https://www.radioveronica.nl/'], ['Qmusic', 'https://www.qmusic.nl/']]);
+}
+
+/* ===================== Koers ===================== */
+function renderCurrency(root) {
+  root.innerHTML = `<div class="card" id="cur"><span class="spin"></span>Koers ophalen…</div>
+    <div class="card"><h3>Omrekenen</h3><div class="row"><input id="amt" type="number" inputmode="decimal" value="100">
+      <select id="from" style="width:110px"><option>EUR</option><option>SRD</option><option>USD</option></select></div>
+      <div id="conv" style="margin-top:12px"></div></div>`;
+  http('https://open.er-api.com/v6/latest/EUR').then(r => r.json).then(j => {
+    const r = j.rates || {}; const rates = { EUR: 1, SRD: r.SRD, USD: r.USD };
+    const upd = j.time_last_update_unix ? new Date(j.time_last_update_unix * 1000).toLocaleString('nl-NL', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+    $('#cur').innerHTML = `<div class="big">1 EUR = ${rates.SRD?.toFixed(2)} SRD</div>
+      <div style="margin-top:6px">1 EUR = ${rates.USD?.toFixed(4)} USD · 1 USD = ${(rates.SRD / rates.USD).toFixed(2)} SRD</div>
+      <div class="muted" style="margin-top:6px">Bijgewerkt: ${upd}</div>`;
+    const conv = () => {
+      const a = parseFloat($('#amt').value) || 0, f = $('#from').value, eur = a / rates[f];
+      $('#conv').innerHTML = ['EUR', 'SRD', 'USD'].filter(c => c !== f)
+        .map(c => `<div style="font-size:20px;margin:4px 0">${(eur * rates[c]).toLocaleString('nl-NL', { maximumFractionDigits: 2 })} ${c}</div>`).join('');
+    };
+    $('#amt').oninput = conv; $('#from').onchange = conv; conv();
+  }).catch(() => { $('#cur').textContent = 'Koers ophalen mislukt. Controleer je internet.'; });
+}
+
+/* ===================== Instellingen ===================== */
+function renderSettings(root) {
+  root.innerHTML = `<div class="card"><h3>Pincode</h3><div class="row">
+    <input id="pin" type="password" inputmode="numeric" placeholder="Pincode"><button class="btn" id="pok">OK</button></div>
+    <div class="muted" id="perr" style="display:none;color:var(--danger);margin-top:8px">Onjuiste pincode</div></div>
+    <div id="sbody"></div>`;
+  $('#pok').onclick = () => {
+    if ($('#pin').value !== PIN) { $('#perr').style.display = 'block'; return; }
+    root.querySelector('.card').style.display = 'none';
+    drawSettings();
+  };
+  $('#pin').onkeydown = e => { if (e.key === 'Enter') $('#pok').click(); };
+  function drawSettings() {
+    const hidden = store.get('hidden', []);
+    $('#sbody').innerHTML = `
+      <div class="card"><h3>Verborgen tegels</h3><ul class="list">${hidden.length ? hidden.map(id => {
+        const t = TILES.find(x => x.id === id); return t ? `<li><span class="t">${t.ic} ${esc(t.label)}</span><button class="btn sec" data-show="${id}">Terugzetten</button></li>` : '';
+      }).join('') : '<li class="muted">Geen verborgen tegels.</li>'}</ul></div>
+      <div class="card"><h3>Gegevens op deze iPhone</h3>
+        <p class="muted">Boodschappenlijst, parkeeradressen en verborgen tegels worden alleen op dit toestel bewaard.</p>
+        <button class="btn danger" id="reset" style="width:100%">Alles wissen</button></div>
+      <div class="card muted">The One voor iPhone · ${NATIVE ? 'iPhone-app' : 'web-app'} versie 1.0</div>`;
+    $('#sbody').onclick = e => {
+      const id = e.target.dataset.show;
+      if (id) { store.set('hidden', store.get('hidden', []).filter(x => x !== id)); renderGrid(); drawSettings(); }
+      if (e.target.id === 'reset' && confirm('Alle gegevens van The One op deze iPhone wissen?')) {
+        Object.keys(localStorage).filter(k => k.startsWith('theone.')).forEach(k => localStorage.removeItem(k));
+        renderGrid(); drawSettings(); toast('Gewist');
+      }
+    };
+  }
+}
+
+/* ===================== Start ===================== */
+(function init() {
+  const h = new Date().getHours();
+  $('#greet').textContent = h < 6 ? 'Goedenacht' : h < 12 ? 'Goedemorgen' : h < 18 ? 'Goedemiddag' : 'Goedenavond';
+  const standalone = window.navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (ios && !standalone && !NATIVE) $('#install').style.display = 'block';
+  renderGrid();
+  if (!NATIVE && location.protocol.startsWith('http') && 'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+})();
+</script>
+</body>
+</html>

@@ -67,6 +67,9 @@ $carTag = $carTags[0] ?? '';
 $djTagsRaw = trim(gitRun('tag --list ' . escapeshellarg('dj-v*') . ' --sort=-version:refname'));
 $djTags = $djTagsRaw === '' ? [] : array_values(array_filter(preg_split('/\\R/', $djTagsRaw)));
 $djTag = $djTags[0] ?? '';
+$iosTagsRaw = trim(gitRun('tag --list ' . escapeshellarg('ios-v*') . ' --sort=-version:refname'));
+$iosTags = $iosTagsRaw === '' ? [] : array_values(array_filter(preg_split('/\\R/', $iosTagsRaw)));
+$iosTag = $iosTags[0] ?? '';
 $tagCommit = $latestTag !== '' ? trim(gitRun('rev-list -n 1 ' . escapeshellarg($latestTag))) : '';
 $buildReady = $latestTag !== '' && $tagCommit === $head;
 $recentTags = array_slice($tags, 0, 8);
@@ -74,6 +77,7 @@ $appDownload = $latestTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releas
 $carDownload = $carTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releases/download/' . rawurlencode($carTag) . '/carradio-debug.apk' : '';
 $mediaDownload = 'https://github.com/Rubenvaggelen/apps/releases/download/media-player-v2316/The-One-Media-Player-v2316.apk';
 $tvDownload = 'https://github.com/Rubenvaggelen/apps/releases/download/media-player-tv-latest/The-One-Media-Player-TV.apk';
+$iosDownload = $iosTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releases/download/' . rawurlencode($iosTag) . '/TheOne.ipa' : 'https://github.com/Rubenvaggelen/apps/releases';
 $djDownload = $djTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releases/download/' . rawurlencode($djTag) . '/thedj-debug.apk' : '';
 ?>
 <!doctype html>
@@ -124,7 +128,7 @@ $djDownload = $djTag !== '' ? 'https://github.com/Rubenvaggelen/apps/releases/do
       <?php else: ?>
         <div class="big" id="releaseVersion"><?=htmlspecialchars($latestTag)?></div>
         <p class="<?= $buildReady?'ok':'warn' ?>" id="releaseState"><?= $buildReady?'✓ Deze release hoort bij de nieuwste commit':'● Nieuwere commit/build aanwezig; dit is de laatste afgeronde release' ?></p>
-        <div class="download-row"><a class="btn ok" id="appDownload" href="<?=htmlspecialchars($appDownload)?>">⬇ The One APK</a><a class="btn ok" id="carDownload" href="<?=htmlspecialchars($carDownload)?>">⬇ The One Car APK</a><a class="btn ok" href="<?=htmlspecialchars($mediaDownload)?>">⬇ The One Media Player APK</a><a class="btn ok" href="<?=htmlspecialchars($tvDownload)?>">⬇ Media Player Android TV APK</a><a class="btn ok" id="djDownload" href="<?=htmlspecialchars($djDownload)?>">⬇ The One DJ APK</a><a class="btn ok" href="https://github.com/Rubenvaggelen/apps/releases/download/dj-windows-v234/The-One-DJ-Windows.zip">⬇ The One DJ Windows</a></div>
+        <div class="download-row"><a class="btn ok" id="appDownload" href="<?=htmlspecialchars($appDownload)?>">⬇ The One APK</a><a class="btn ok" id="carDownload" href="<?=htmlspecialchars($carDownload)?>">⬇ The One Car APK</a><a class="btn ok" href="<?=htmlspecialchars($mediaDownload)?>">⬇ The One Media Player APK</a><a class="btn ok" href="<?=htmlspecialchars($tvDownload)?>">⬇ Media Player Android TV APK</a><a class="btn ok" id="iosDownload" href="<?=htmlspecialchars($iosDownload)?>">⬇ The One iPhone IPA</a><a class="btn ok" id="djDownload" href="<?=htmlspecialchars($djDownload)?>">⬇ The One DJ APK</a><a class="btn ok" href="https://github.com/Rubenvaggelen/apps/releases/download/dj-windows-v234/The-One-DJ-Windows.zip">⬇ The One DJ Windows</a></div>
       <?php endif; ?>
     </div>
 
@@ -162,16 +166,13 @@ async function loadDownloads(){
     const response=await fetch('https://api.github.com/repos/Rubenvaggelen/apps/releases?per_page=100&t='+Date.now(),{cache:'no-store',headers:{Accept:'application/vnd.github+json'}});
     if(!response.ok)return;
     const releases=await response.json();
-    for(const [prefix,assetName,id] of [['main-v','app-debug.apk','appDownload'],['car-v','carradio-debug.apk','carDownload'],['dj-v','thedj-debug.apk','djDownload']]){
-      const candidates=releases.filter(r=>!r.draft&&!r.prerelease&&new RegExp('^'+prefix+'[0-9]+
-</body>
-</html>
-).test(r.tag_name||''))
+    for(const [prefix,assetName,id] of [['main-v','app-debug.apk','appDownload'],['car-v','carradio-debug.apk','carDownload'],['dj-v','thedj-debug.apk','djDownload'],['ios-v','TheOne.ipa','iosDownload']]){
+      const candidates=releases.filter(r=>!r.draft&&!r.prerelease&&new RegExp('^'+prefix+'[0-9]+$').test(r.tag_name||''))
         .sort((a,b)=>Number(b.tag_name.slice(prefix.length))-Number(a.tag_name.slice(prefix.length)));
       for(const release of candidates){
         const asset=(release.assets||[]).find(a=>a.name===assetName);
         if(!asset)continue;
-        const link=document.getElementById(id);if(link){link.href=asset.browser_download_url;link.textContent='⬇ '+(prefix==='main-v'?'The One Main':prefix==='car-v'?'The One Car':'The One DJ')+' • '+release.tag_name;}
+        const link=document.getElementById(id);if(link){link.href=asset.browser_download_url;link.textContent='⬇ '+(prefix==='main-v'?'The One Main':prefix==='car-v'?'The One Car':prefix==='ios-v'?'The One iPhone IPA':'The One DJ')+' • '+release.tag_name;}
         if(prefix==='main-v'){document.getElementById('releaseVersion').textContent=release.tag_name;document.getElementById('releaseState').textContent='Main, Car en DJ hebben ieder hun eigen update.';}
         break;
       }
