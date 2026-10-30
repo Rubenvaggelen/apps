@@ -39,7 +39,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
       - name: Publish Rutu Windows in-app update
-        if: github.ref == 'refs/heads/feature/jade-orders'
+        if: false # deployment paused while verifying new QR and release integrity
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
