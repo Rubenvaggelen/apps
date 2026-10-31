@@ -10,7 +10,7 @@ final class MediaRepository {
  // Series-info responses can be unusually large or malformed. Bound one episode
  // response before JSONObject materialization to avoid Android's low-memory process kill.
  static String readEpisodeResponse(InputStream in)throws Exception{
-  final int maxBytes=8*1024*1024;
+  final int maxBytes=12*1000*1000;
   ByteArrayOutputStream out=new ByteArrayOutputStream();
   byte[] chunk=new byte[8192];int n;
   while((n=in.read(chunk))!=-1){
@@ -36,8 +36,28 @@ final class MediaRepository {
  }
  private List<CatalogEntry> loadSource(String url,boolean second,ProgressiveCatalog.Preview preview)throws Exception{HttpURLConnection c=connection(url,second,45000);List<CatalogEntry> list=new ArrayList<>();try{if(c.getResponseCode()!=200)throw new IOException("Catalog unavailable");try(JsonReader reader=new JsonReader(new InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8))){reader.beginArray();while(reader.hasNext()){
   int id=0;String title="",poster="",category="",movieId="";long added=0;reader.beginObject();while(reader.hasNext()){String key=reader.nextName();if(reader.peek()==JsonToken.NULL){reader.nextNull();continue;}switch(key){case "series_id":id=(int)number(reader);break;case "name":title=reader.nextString();break;case "cover":case "stream_icon":String candidate=reader.nextString();if(poster.isEmpty()&&!candidate.equalsIgnoreCase("null"))poster=candidate;break;case "category_id":category=reader.nextString();break;case "tmdb":case "tmdb_id":String identifier=reader.nextString();if(movieId.isEmpty()&&validIdentifier(identifier))movieId=identifier;break;case "last_modified":case "added":added=Math.max(added,number(reader));break;default:reader.skipValue();}}reader.endObject();if(id<=0||id>=1000000000||title.isEmpty())continue;if(second)id+=1000000000;poster=PosterMetadata.resolve(poster,(second?secondary:primary).getString("server"));list.add(new CatalogEntry(id,title,"mp4",poster,category,"series",added,movieId));if(list.size()==256)preview.accept(new ArrayList<>(list));}reader.endArray();}}finally{c.disconnect();}return list;}
- EpisodeCatalog.Result episodes(List<CatalogEntry> parents)throws Exception{List<CatalogEntry> all=new ArrayList<>();ExecutorService workers=Executors.newFixedThreadPool(3);List<Future<List<CatalogEntry>>> tasks=new ArrayList<>();try{for(CatalogEntry parent:parents)tasks.add(workers.submit(()->episodeSource(parent)));int success=0;for(Future<List<CatalogEntry>> task:tasks)try{all.addAll(task.get(50,TimeUnit.SECONDS));success++;}catch(Exception ignored){task.cancel(true);}if(success==0)throw new IOException("Episodes unavailable");return EpisodeCatalog.merge(all);}finally{workers.shutdownNow();}}
- private List<CatalogEntry> episodeSource(CatalogEntry parent)throws Exception{boolean second=parent.id>=1000000000;String url=second?secondaryApi("get_series_info")+"&series_id="+(parent.id-1000000000):api(primary,"get_series_info")+"&series_id="+parent.id;HttpURLConnection c=connection(url,second,30000);try{if(c.getResponseCode()!=200)throw new IOException("Episodes unavailable");if(c.getContentLengthLong()>8L*1024*1024)throw new IOException("Episode response exceeds safe memory budget");JSONObject data=new JSONObject(readEpisodeResponse(c.getInputStream()));return EpisodeCatalog.parse(data,parent,second?secondary.getString("server"):primary.getString("server"),second);}finally{c.disconnect();}}
+ // Match Media Player: fetch get_series_info one provider variant at a time.
+ // A failing or oversized source must not hide valid episodes from another source.
+ EpisodeCatalog.Result episodes(List<CatalogEntry> parents)throws Exception{
+  List<CatalogEntry> all=new ArrayList<>();
+  int successful=0;
+  if(parents==null||parents.isEmpty())throw new IOException("No series sources");
+  for(CatalogEntry parent:parents){
+   if(Thread.currentThread().isInterrupted())throw new InterruptedIOException("Series lookup cancelled");
+   if(parent==null||!"series".equals(parent.type))continue;
+   try{
+    List<CatalogEntry> part=episodeSource(parent);
+    successful++;
+    all.addAll(part);
+   }catch(IOException|JSONException error){
+    // Keep other provider variants available, as in Media Player.
+    if(Thread.currentThread().isInterrupted())throw new InterruptedIOException("Series lookup cancelled");
+   }
+  }
+  if(successful==0)throw new IOException("Episodes unavailable from both providers");
+  return EpisodeCatalog.merge(all);
+ }
+ private List<CatalogEntry> episodeSource(CatalogEntry parent)throws Exception{boolean second=parent.id>=1000000000;String url=second?secondaryApi("get_series_info")+"&series_id="+(parent.id-1000000000):api(primary,"get_series_info")+"&series_id="+parent.id;HttpURLConnection c=connection(url,second,30000);try{if(c.getResponseCode()!=200)throw new IOException("Episodes unavailable");if(c.getContentLengthLong()>12L*1000*1000)throw new IOException("Episode response exceeds safe memory budget");JSONObject data=new JSONObject(readEpisodeResponse(c.getInputStream()));return EpisodeCatalog.parse(data,parent,second?secondary.getString("server"):primary.getString("server"),second);}finally{c.disconnect();}}
  List<String> posters(CatalogEntry entry)throws Exception{if(entry.isEpisode())return Collections.emptyList();boolean second=entry.id>=1000000000;if(second&&secondary!=null){HttpURLConnection c=connection(secondaryApi("get_series_info")+"&series_id="+(entry.id-1000000000),true,15000);try{if(c.getResponseCode()==200)return PosterMetadata.candidates(new JSONObject(read(c.getInputStream())),secondary.getString("server"));}finally{c.disconnect();}}return Collections.emptyList();}
  void clearPosterCache(){}
  private static boolean validIdentifier(String s){if(s.length()==0||s.length()>10||s.charAt(0)<'1'||s.charAt(0)>'9')return false;for(int i=1;i<s.length();i++)if(s.charAt(i)<'0'||s.charAt(i)>'9')return false;return true;}
