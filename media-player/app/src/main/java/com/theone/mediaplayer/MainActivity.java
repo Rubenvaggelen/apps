@@ -1285,6 +1285,33 @@ try {
                     playbackRetryHandler.removeCallbacksAndMessages(null);
                     if(state==Player.STATE_READY){
                         playbackRetryCount=0;
+                    }else if("series".equals(playKind)&&state==Player.STATE_BUFFERING){
+                        // Series can stall silently after a long playback session.
+                        // Unlike Live TV there was previously no timeout here, so
+                        // a frozen episode could remain buffered indefinitely.
+                        final int currentIndex=player.getCurrentMediaItemIndex();
+                        final long lastPosition=player.getCurrentPosition();
+                        playbackRetryHandler.postDelayed(()->{
+                            if(player==null||player.getPlaybackState()!=Player.STATE_BUFFERING
+                                ||player.getCurrentMediaItemIndex()!=currentIndex)return;
+                            if(playbackRetryCount>=MAX_PLAYBACK_RETRIES){
+                                Toast.makeText(MainActivity.this,
+                                    "Afspelen onderbroken. Probeer dezelfde aflevering opnieuw.",
+                                    Toast.LENGTH_LONG).show();
+                                return;
+                            }
+                            playbackRetryCount++;
+                            long resumeAt=Math.max(lastPosition,player.getCurrentPosition());
+                            Log.w("TheOneMediaPlayer",
+                                "Series stream stalled; reopening at same position (retry "+playbackRetryCount+")");
+                            try{
+                                player.seekTo(currentIndex,resumeAt);
+                                player.prepare();
+                                player.play();
+                            }catch(RuntimeException e){
+                                Log.w("TheOneMediaPlayer","Series retry failed",e);
+                            }
+                        },40000);
                     }else if(isLive&&state==Player.STATE_BUFFERING){
                         final int startingIndex=player.getCurrentMediaItemIndex();
                         playbackRetryHandler.postDelayed(()->{
