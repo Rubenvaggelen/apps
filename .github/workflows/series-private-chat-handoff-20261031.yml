@@ -43,7 +43,7 @@ jobs:
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$source_host:$path/The-One-Series-Android-v123-VisionQuest-Stability.apk" /tmp/series-validated/android.apk
           scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$source_host:$path/The-One-Series-Google-TV-v136-VisionQuest-Stability.apk" /tmp/series-validated/tv.apk
           echo 'e5697af6b09d639568376329ace33ea6a2dcc7d93c861fdd5cdaed64efc37c16  /tmp/series-validated/android.apk' | sha256sum -c -
-          echo '0c1add916f100a39c3c8a0aad9e21dac384f1ee2366a1fa8652588b5a6aabe  /tmp/series-validated/tv.apk' | sha256sum -c -
+          echo '0c1add916f100a39c3c3c8a0aad9e21dac384f1ee2366a1fa8652588b5a6aabe  /tmp/series-validated/tv.apk' | sha256sum -c -
       - name: Wrap verified releases with ephemeral recipient-only encryption
         shell: bash
         run: |
@@ -65,7 +65,7 @@ jobs:
           done
           printf '%s\n' \
             'e5697af6b09d639568376329ace33ea6a2dcc7d93c861fdd5cdaed64efc37c16  android.apk' \
-            '0c1add916f100a39c3c8a0aad9e21dac384f1ee2366a1fa8652588b5a6aabe  tv.apk' \
+            '0c1add916f100a39c3c3c8a0aad9e21dac384f1ee2366a1fa8652588b5a6aabe  tv.apk' \
             > /tmp/series-chat-encrypted/SHA256SUMS.txt
           rm -f /tmp/series-validated/*.apk
       - name: Upload encrypted delivery package only
