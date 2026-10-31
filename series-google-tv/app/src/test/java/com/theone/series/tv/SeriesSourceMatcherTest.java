@@ -37,4 +37,20 @@ public class SeriesSourceMatcherTest {
   catalog.put(selected.key(),Arrays.asList(selected,selected));
   assertEquals(1,SeriesSourceMatcher.sources(selected,catalog).size());
  }
+ @Test public void largeCatalogOnlyLoadsOneBackupProviderForPeakStick(){
+  CatalogEntry primary=show(41,"EN - VisionQuest FHD","321");
+  CatalogEntry secondary=show(1000000044,"EN - Vision Quest HD","654");
+  Map<String,List<CatalogEntry>> entries=new LinkedHashMap<>();
+  entries.put(primary.key(),Collections.singletonList(primary));
+  for(int i=0;i<8000;i++){
+   CatalogEntry duplicate=show(1000+i,"EN - VisionQuest UHD",""+(i+2));
+   entries.put("duplicate-"+i,Collections.singletonList(duplicate));
+  }
+  entries.put(secondary.key(),Collections.singletonList(secondary));
+  List<CatalogEntry> sources=SeriesSourceMatcher.sources(primary,entries);
+  assertEquals(2,sources.size());
+  assertEquals(41,sources.get(0).id);
+  assertEquals(1000000044,sources.get(1).id);
+ }
+
 }
