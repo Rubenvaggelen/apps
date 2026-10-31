@@ -1,0 +1,78 @@
+name: Secure owner-only handoff of validated Series APKs
+on:
+  push:
+    branches: [transfer/private-series-apks-20261031]
+    paths: ['.github/workflows/series-private-chat-handoff-20261031.yml']
+permissions:
+  contents: read
+jobs:
+  secure-handoff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get verified private build outputs without exposing source credentials
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for key in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "${!key}" || { echo "Missing deployment variable $key"; exit 1; }
+          done
+          umask 077
+          secret_dir="$(mktemp -d)"
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$secret_dir"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$secret_dir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$secret_dir/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$secret_dir/askpass"
+          chmod 600 "$secret_dir/key" "$secret_dir/known_hosts"
+          chmod 700 "$secret_dir/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$secret_dir/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$secret_dir/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          opts=(-i "$secret_dir/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$secret_dir/known_hosts" -o ConnectTimeout=20)
+          source_host="$DEPLOY_USER@$DEPLOY_HOST"
+          path="/home/vanawiwj/the-one-private-builds/2026-10-13/apks"
+          mkdir -p /tmp/series-validated
+          scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$source_host:$path/The-One-Series-Android-v123-VisionQuest-Stability.apk" /tmp/series-validated/android.apk
+          scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$source_host:$path/The-One-Series-Google-TV-v136-VisionQuest-Stability.apk" /tmp/series-validated/tv.apk
+          echo 'e5697af6b09d639568376329ace33ea6a2dcc7d93c861fdd5cdaed64efc37c16  /tmp/series-validated/android.apk' | sha256sum -c -
+          echo '0c1add916f100a39c3c8a0aad9e21dac384f1ee2366a1fa8652588b5a6aabe  /tmp/series-validated/tv.apk' | sha256sum -c -
+      - name: Wrap verified releases with ephemeral recipient-only encryption
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          pub='ci/series-chat-artifact-transfer-20261031.pub.pem'
+          test -s "$pub"
+          mkdir -p /tmp/series-chat-encrypted
+          for name in android tv; do
+            key_file="$(mktemp)"
+            openssl rand -hex 32 > "$key_file"
+            openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 \
+              -pass file:"$key_file" -in "/tmp/series-validated/$name.apk" \
+              -out "/tmp/series-chat-encrypted/$name.apk.enc"
+            openssl pkeyutl -encrypt -pubin -inkey "$pub" \
+              -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 \
+              -in "$key_file" -out "/tmp/series-chat-encrypted/$name.key.enc"
+            shred -u "$key_file" || rm -f "$key_file"
+          done
+          printf '%s\n' \
+            'e5697af6b09d639568376329ace33ea6a2dcc7d93c861fdd5cdaed64efc37c16  android.apk' \
+            '0c1add916f100a39c3c8a0aad9e21dac384f1ee2366a1fa8652588b5a6aabe  tv.apk' \
+            > /tmp/series-chat-encrypted/SHA256SUMS.txt
+          rm -f /tmp/series-validated/*.apk
+      - name: Upload encrypted delivery package only
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-series-v123-v136-delivery-encrypted
+          path: /tmp/series-chat-encrypted
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
