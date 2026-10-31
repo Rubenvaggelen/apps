@@ -2,7 +2,7 @@ name: Series Google TV v136 - VisionQuest episode stability candidate
 on:
   push:
     branches: [fix/series-google-tv-visionquest-episode-stability-20261031]
-    paths: [series-google-tv/**, .github/workflows/series-google-tv-philips-v136-test.yml]
+    paths: [series-google-tv/**, .github/workflows/series-visionquest-stability-google-tv-v136.yml]
 permissions:
   contents: read
 concurrency:
@@ -158,7 +158,7 @@ jobs:
           mkdir -p protected-deliverable
           openssl rand -hex 32 > /tmp/cinema-artifact-key
           openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/cinema-artifact-key -in deliverable/The-One-Series-Google-TV-v136-VisionQuest-Stability.apk -out protected-deliverable/The-One-Series-Google-TV-v136-VisionQuest-Stability.apk.enc
-          openssl pkeyutl -encrypt -pubin -inkey private-test-v136-delivery-public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in /tmp/cinema-artifact-key -out protected-deliverable/key.enc
+          openssl pkeyutl -encrypt -pubin -inkey private-test-v135-delivery-public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in /tmp/cinema-artifact-key -out protected-deliverable/key.enc
           cp deliverable/SHA256SUMS.txt protected-deliverable/SHA256SUMS.txt
           rm /tmp/cinema-artifact-key
       - name: Save personal installable APK
