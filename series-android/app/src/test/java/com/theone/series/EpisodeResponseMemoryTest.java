@@ -9,7 +9,7 @@ public final class EpisodeResponseMemoryTest {
   assertEquals(metadata,MediaRepository.readEpisodeResponse(new ByteArrayInputStream(metadata.getBytes(StandardCharsets.UTF_8))));
  }
  @Test public void oversizeDataFailsWithoutParsing() throws Exception {
-  byte[] oversized=new byte[8*1024*1024+1];
+  byte[] oversized=new byte[12*1000*1000+1];
   try{MediaRepository.readEpisodeResponse(new ByteArrayInputStream(oversized));fail("Must reject oversize series info");}
   catch(IOException expected){assertTrue(expected.getMessage().contains("memory budget"));}
  }
