@@ -50,7 +50,7 @@ final class MediaRepository {
     List<CatalogEntry> part=episodeSource(parent);
     successful++;
     all.addAll(part);
-   }catch(IOException|JSONException error){
+   }catch(Exception error){
     // Keep other provider variants available, as in Media Player.
     if(Thread.currentThread().isInterrupted())throw new InterruptedIOException("Series lookup cancelled");
    }
