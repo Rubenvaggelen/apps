@@ -1,0 +1,34 @@
+name: Check private Dev Hub Cinema version metadata
+on:
+  push:
+    branches: [feature/cinema-google-tv-current-20261013]
+    paths: [.github/workflows/check-devhub-version.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read version labels only (no credentials or APK content)
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          dir=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true;rm -rf "$dir"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$dir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$dir/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$dir/askpass"
+          chmod 600 "$dir/key" "$dir/known_hosts"
+          chmod 700 "$dir/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$dir/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$dir/key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          ssh -p "$DEPLOY_PORT" -i "$dir/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$dir/known_hosts" -o ConnectTimeout=20 "$DEPLOY_USER@$DEPLOY_HOST" "php -r '\$rows=json_decode(file_get_contents(\"/home/vanawiwj/the-one-private-builds/2026-10-13/manifest.json\"),true);foreach(\$rows as \$row){if(in_array(\$row[\"id\"],[\"cinema-google-tv\",\"cinema-phone\",\"series-google-tv\",\"series-phone\"],true)){echo \$row[\"id\"].\" version=\".(\$row[\"version_name\"]??\"unknown\").\"\\n\";}}'"
