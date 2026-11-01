@@ -1,0 +1,68 @@
+name: One-time private Series Google TV v139 delivery
+on:
+  push:
+    branches: [fix/series-peak-google-tv-visionquest-anr-v137-20261031]
+    paths: [.github/workflows/deliver-series-v139-to-chat-20261101.yml]
+permissions:
+  contents: read
+jobs:
+  deliver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Fetch only the already verified signed v139 APK from private Dev Hub
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          work=$(mktemp -d)
+          echo "WORK=$work" >> "$GITHUB_ENV"
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$work/ssh-key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$work/hosts"
+          printf '#!/bin/sh\nprintf "%%s\\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$work/askpass"
+          chmod 600 "$work/ssh-key" "$work/hosts"
+          chmod 700 "$work/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$work/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$work/ssh-key" </dev/null
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          scp -O -P "$DEPLOY_PORT" -i "$work/ssh-key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$work/hosts" -o ConnectTimeout=20 \
+            "$DEPLOY_USER@$DEPLOY_HOST:/home/vanawiwj/the-one-private-builds/2026-10-13/apks/The-One-Series-Google-TV-v139-Peak-VisionQuest-Fix.apk" "$work/signed-v139.apk"
+          printf '%s  %s\n' 'bc88475b2a9cb59f15f8a7cd9b6da02a6a5aa0de0edcc0440904dd28168a5bc2' "$work/signed-v139.apk" | sha256sum -c -
+          test "$(stat -c%s "$work/signed-v139.apk")" -lt $((200*1024*1024))
+          echo 'Verified signed v139 APK and 200 MiB download threshold'
+      - name: Package with one-time delivery public key (never upload plaintext to repository)
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p encrypted-delivery
+          cat > "$WORK/public.pem" <<'DELIVERY_PUBKEY'
+-----BEGIN PUBLIC KEY-----
+MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAtKRAErDo5UWc8ZtVvhux
+ce2btfiTornbx9QiGkr+XLD/T6AKzTbhuoEr7br0Mn1hS82yEV4B+j00ZI7dA8hn
+eGX5U2Vfc0tNzxG/0R3iE+5FRkRAveGMLm/K4narW44yQ3RhvLOBP4JuMrvfV7Pq
+E5zNCesRH1Cyl0iAI5Hde+ASMCbYRDrlyFiDYt2A2i1Ay1B9wiE3IeD0Mv45rH3N
+yJ9V0+s1UgNQNyHr4PCyGmew6xbAzb3iSZ9uRBaqwzCs/pKGY/Ho0gzTZNU9flRl
+ElYO5NyNlKbvh3Z2/pNx8CQdZI1bM/vSQ2vXDHR4M26hdoA3pTsV317pJZoQFcxo
+t2ccgS9MNcJOApyf6LqJaFZm97RfNyZcvLTPD1uqRmMcZqMpGQCcLtdDUEM/P5Vq
+K7i3Aq1GfeLjUBnpSE+fP85KELb4lwizQcFibv0mNMOfGtaMbT8t+8zC42hj5twM
+9o4+XsF0gW5XiXFM+/4NCIRo0G2dMOAO7VqLOUP2DFlZAgMBAAE=
+-----END PUBLIC KEY-----
+          DELIVERY_PUBKEY
+          openssl rand -hex 32 > "$WORK/aes-pass.txt"
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:"$WORK/aes-pass.txt" -in "$WORK/signed-v139.apk" -out encrypted-delivery/Series-Google-TV-v139.apk.enc
+          openssl pkeyutl -encrypt -pubin -inkey "$WORK/public.pem" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in "$WORK/aes-pass.txt" -out encrypted-delivery/key.enc
+          echo 'bc88475b2a9cb59f15f8a7cd9b6da02a6a5aa0de0edcc0440904dd28168a5bc2  The-One-Series-Google-TV-v139.apk' > encrypted-delivery/SHA256SUMS.txt
+          rm -rf "$WORK"
+      - name: Upload encrypted owner-only handover package
+        uses: actions/upload-artifact@v4
+        with:
+          name: series-google-tv-v139-chat-verified-encrypted
+          path: encrypted-delivery/
+          retention-days: 1
+          if-no-files-found: error
