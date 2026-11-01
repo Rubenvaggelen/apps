@@ -159,6 +159,19 @@ jobs:
           name: the-one-cinema-android-v144
           path: cinema-tv/protected-deliverable/
           retention-days: 7
+      - name: Publish signed Cinema Android v144 to private Dev Hub (OTA unchanged)
+        if: success()
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          BUILD_APP_ID: cinema-phone
+          BUILD_APK_PATH: cinema-tv/deliverable/The-One-Cinema-Android-v1.4.4.apk
+          BUILD_VERSION_NAME: 1.4.4
+        run: bash ci/publish-cinema-phone.sh
       - name: Save test reports
         if: always()
         uses: actions/upload-artifact@v4
