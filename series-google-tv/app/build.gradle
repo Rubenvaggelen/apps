@@ -9,9 +9,6 @@ android {
   versionCode 139
   versionName '1.3.2'
   testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
-  // TV/Google TV production devices use ARM. Exclude emulator/x86 native FFmpeg and VLC libraries
-  // from the signed APK to stay within the old 200 MiB OTA client limit.
-  ndk { abiFilters 'armeabi-v7a', 'arm64-v8a' }
  }
  buildFeatures { buildConfig true }
  signingConfigs {
@@ -23,8 +20,8 @@ android {
   }
  }
  buildTypes {
-  debug { signingConfig signingConfigs.owner }
-  release { minifyEnabled false; signingConfig signingConfigs.owner }
+  debug { signingConfig signingConfigs.owner; ndk { abiFilters 'x86', 'x86_64', 'armeabi-v7a', 'arm64-v8a' } }
+  release { minifyEnabled false; signingConfig signingConfigs.owner; ndk { abiFilters 'armeabi-v7a', 'arm64-v8a' } }
  }
  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
