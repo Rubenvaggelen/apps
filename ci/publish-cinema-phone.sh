@@ -27,10 +27,10 @@ scp -O -P "$DEPLOY_PORT" "${icon_opts[@]}" tv-build-publish.json ci/devhub-cinem
 ssh -p "$DEPLOY_PORT" "${icon_opts[@]}" "$icon_remote" "bash -s -- '$icon_remote_stage'" <<'REMOTE'
 set -euo pipefail
 icon_stage="$1"
-php -l "$icon_stage/devhub-series-recovery.php" >/dev/null
+php -l "$icon_stage/devhub-cinema-phone-update.php" >/dev/null
 php -r '$m=json_decode(file_get_contents($argv[1]),true);$source=$argv[2];if(hash_file("sha256",$source)!==$m["sha256"])exit(1);if(!preg_match("/^[A-Za-z0-9._-]+\\.apk$/",$m["apk"]))exit(2);$dest="/home/vanawiwj/the-one-private-builds/2026-10-13/apks/".$m["apk"];copy($source,$dest.".new");chmod($dest.".new",0600);rename($dest.".new",$dest);' "$icon_stage/tv-build-publish.json" "$icon_stage/build.apk"
-php "$icon_stage/devhub-series-recovery.php" "$icon_stage/tv-build-publish.json"
-rm -f "$icon_stage/build.apk" "$icon_stage/tv-build-publish.json" "$icon_stage/devhub-series-recovery.php"
+php "$icon_stage/devhub-cinema-phone-update.php" "$icon_stage/tv-build-publish.json"
+rm -f "$icon_stage/build.apk" "$icon_stage/tv-build-publish.json" "$icon_stage/devhub-cinema-phone-update.php"
 rmdir "$icon_stage"
 REMOTE
 
