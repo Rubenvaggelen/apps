@@ -1,8 +1,8 @@
 name: Series Google TV v138 - Peak stick ANR and VisionQuest fix
 on:
   push:
-    branches: [fix/series-peak-google-tv-visionquest-anr-v138-20261031]
-    paths: [series-google-tv/**, .github/workflows/series-peak-stick-visionquest-v138.yml]
+    branches: [fix/series-peak-google-tv-visionquest-anr-v137-20261031]
+    paths: [series-google-tv/**, .github/workflows/series-peak-stick-visionquest-v137.yml]
 permissions:
   contents: read
 concurrency:
