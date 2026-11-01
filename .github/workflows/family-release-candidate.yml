@@ -2,7 +2,7 @@ name: Signed Family release candidate cinema-tv
 on:
   push:
     branches: [feature/cinema-android-autoupdate-20261014]
-    paths: [cinema-tv/**, .github/workflows/family-release-candidate.yml]
+    paths: [cinema-tv/**, ci/publish-cinema-phone.sh, ci/devhub-cinema-phone-update.php, .github/workflows/family-release-candidate.yml]
 permissions:
   contents: read
 concurrency:
