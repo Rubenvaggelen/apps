@@ -28,7 +28,7 @@ final class FamilyUpdateNotice {
     private static final String SCOPE = "series_android";
     private static final String URL_BASE = "https://rubenvanaggelen.com/the-one-remote-api/family-updates.php?action=";
     private static final String KEY = "the-one-family-install-v1";
-    private static final long LIMIT = 200L * 1024L * 1024L;
+    private static final long LIMIT = 512L * 1024L * 1024L; // Streamed download; verified by SHA-256 and APK signature.
     private final Activity activity;
     private final File apk;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
