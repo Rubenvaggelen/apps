@@ -1,4 +1,4 @@
-name: Series Google TV v139 - Peak stick ANR and VisionQuest fix
+name: Series Google TV v140 - Peak stick ANR and VisionQuest fix
 on:
   push:
     branches: [fix/series-peak-google-tv-visionquest-anr-v137-20261031]
@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: series-google-tv-peak-v139
+  group: series-google-tv-peak-v140
   cancel-in-progress: true
 jobs:
   build:
@@ -134,7 +134,7 @@ jobs:
           OWNER_SHA=$(sha256sum /tmp/cinema-owner.der | cut -d " " -f1)
           grep -i "certificate SHA-256 digest: $OWNER_SHA" /tmp/cinema-signature.txt
           "$BT/aapt" dump badging "$APK" > /tmp/cinema-badging.txt
-          grep "package: name='com.theone.series.tv' versionCode='139'" /tmp/cinema-badging.txt
+          grep "package: name='com.theone.series.tv' versionCode='140'" /tmp/cinema-badging.txt
           grep 'leanback-launchable-activity' /tmp/cinema-badging.txt
           python3 - <<'PY_ASSETS'
           import zipfile,gzip,json
@@ -143,12 +143,12 @@ jobs:
                   assert len(json.loads(gzip.decompress(z.read('assets/bootstrap-series.bin'))))==256
           PY_ASSETS
           mkdir -p deliverable
-          cp "$APK" deliverable/The-One-Series-Google-TV-v139-Peak-VisionQuest-Fix.apk
+          cp "$APK" deliverable/The-One-Series-Google-TV-v140-Peak-VisionQuest-Fix.apk
           # The currently installed updater rejects larger APKs. Protect the upgrade path.
           APK_BYTES=$(stat -c%s "$APK")
           echo "Series Google TV APK size: $APK_BYTES bytes"
           test "$APK_BYTES" -lt $((200 * 1024 * 1024))
-          sha256sum deliverable/The-One-Series-Google-TV-v139-Peak-VisionQuest-Fix.apk > deliverable/SHA256SUMS.txt
+          sha256sum deliverable/The-One-Series-Google-TV-v140-Peak-VisionQuest-Fix.apk > deliverable/SHA256SUMS.txt
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -172,7 +172,7 @@ jobs:
           umask 077
           mkdir -p protected-deliverable
           openssl rand -hex 32 > /tmp/cinema-artifact-key
-          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/cinema-artifact-key -in deliverable/The-One-Series-Google-TV-v139-Peak-VisionQuest-Fix.apk -out protected-deliverable/The-One-Series-Google-TV-v139-Peak-VisionQuest-Fix.apk.enc
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass file:/tmp/cinema-artifact-key -in deliverable/The-One-Series-Google-TV-v140-Peak-VisionQuest-Fix.apk -out protected-deliverable/The-One-Series-Google-TV-v140-Peak-VisionQuest-Fix.apk.enc
           openssl pkeyutl -encrypt -pubin -inkey private-test-v135-delivery-public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in /tmp/cinema-artifact-key -out protected-deliverable/key.enc
           cp deliverable/SHA256SUMS.txt protected-deliverable/SHA256SUMS.txt
           rm /tmp/cinema-artifact-key
@@ -180,7 +180,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: private-series-google-tv-v139-peak-visionquest-test
+          name: private-series-google-tv-v140-peak-visionquest-test
           path: series-google-tv/protected-deliverable/
           retention-days: 7
       - name: Publish VisionQuest TV test candidate to private Dev Hub (no OTA change)
@@ -193,8 +193,8 @@ jobs:
           DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           BUILD_APP_ID: series-google-tv
-          BUILD_APK_PATH: series-google-tv/deliverable/The-One-Series-Google-TV-v139-Peak-VisionQuest-Fix.apk
-          BUILD_VERSION_NAME: 1.3.2
+          BUILD_APK_PATH: series-google-tv/deliverable/The-One-Series-Google-TV-v140-Peak-VisionQuest-Fix.apk
+          BUILD_VERSION_NAME: 1.3.3
         run: bash ci/publish-tv-icon-build.sh
       - name: Save test reports
         if: always()
