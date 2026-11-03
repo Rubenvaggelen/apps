@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import org.json.JSONArray
+import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -20,9 +21,47 @@ object UpdateChecker {
         "https://api.github.com/repos/Rubenvaggelen/apps/releases?per_page=40"
     private const val ASSET_NAME = "carradio-debug.apk"
 
+    // Prefer the centrally hosted, read-only release feed. A failed response keeps GitHub fallback.
+    private fun centralRelease(): Pair<Int, String>? {
+        val conn = URL("https://downloads.theoneforlive.com/updates/feed.php?app=car").openConnection() as HttpURLConnection
+        try {
+            conn.connectTimeout = 5000
+            conn.readTimeout = 7000
+            conn.setRequestProperty("Accept", "application/json")
+            conn.setRequestProperty("User-Agent", "TheOneFamily-Android-Updater")
+            if (conn.responseCode != 200) return null
+            val data = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+            if (data.optString("app") != "car" || data.optString("channel") != "stable") return null
+            val version = data.optInt("versionCode", 0)
+            val tag = "car-v" + version
+            val expected = "https://github.com/Rubenvaggelen/apps/releases/download/" + tag + "/carradio-debug.apk"
+            if (version <= 0 || data.optString("tag") != tag || data.optString("downloadUrl") != expected) return null
+            return version to expected
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     fun checkForUpdate(context: Context, manual: Boolean = false) {
         Thread {
             try {
+                val central = try { centralRelease() } catch (e: Exception) {
+                    Log.w(TAG, "Central feed unavailable, using GitHub fallback", e)
+                    null
+                }
+                if (central != null) {
+                    (context as? android.app.Activity)?.runOnUiThread {
+                        if (central.first > BuildConfig.VERSION_CODE) {
+                            showUpdateDialog(context, central.second, central.first)
+                        } else if (manual) {
+                            AlertDialog.Builder(context)
+                                .setTitle("Geen nieuwe update")
+                                .setMessage("The One Car is al bijgewerkt. Je gebruikt build " + BuildConfig.VERSION_CODE + ".")
+                                .setPositiveButton("OK", null).show()
+                        }
+                    }
+                    return@Thread
+                }
                 val connection = URL(RELEASES_URL).openConnection() as HttpURLConnection
                 connection.setRequestProperty("Accept", "application/vnd.github+json")
                 connection.setRequestProperty("User-Agent", "TheOneFamily-Android-Updater")
