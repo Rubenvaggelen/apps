@@ -25,6 +25,21 @@ public class NextEpisodeAutoplayTest {
   EpisodeCatalog.Result c=catalog();
   assertEquals(c.seasons.get(2).get(0).key(),NextEpisodeAutoplay.next(c,c.seasons.get(1).get(1)).key());
  }
+ @Test public void manuallyNavigatesToPreviousEpisode() throws Exception {
+  EpisodeCatalog.Result c=catalog();
+  assertEquals(c.seasons.get(1).get(0).key(),NextEpisodeAutoplay.previous(c,c.seasons.get(1).get(1)).key());
+ }
+ @Test public void manuallyNavigatesBackAcrossSeasons() throws Exception {
+  EpisodeCatalog.Result c=catalog();
+  assertEquals(c.seasons.get(1).get(1).key(),NextEpisodeAutoplay.previous(c,c.seasons.get(2).get(0)).key());
+ }
+ @Test public void cannotGoBeforeFirstEpisodeOrOtherShow() throws Exception {
+  EpisodeCatalog.Result c=catalog();
+  assertNull(NextEpisodeAutoplay.previous(c,c.seasons.get(1).get(0)));
+  CatalogEntry unrelated=new CatalogEntry(999,"Other show episode","mp4","","1:1","episode",0,
+      "","series-episode:unrelated:1:1","en");
+  assertNull(NextEpisodeAutoplay.previous(c,unrelated));
+ }
  @Test public void doesNotAutoPlayAfterLastEpisode() throws Exception {
   EpisodeCatalog.Result c=catalog();
   assertNull(NextEpisodeAutoplay.next(c,c.seasons.get(2).get(0)));
