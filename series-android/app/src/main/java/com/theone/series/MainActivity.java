@@ -74,7 +74,7 @@ public class MainActivity extends Activity {
   prefs.edit().putString("active_playback_key",e.key()).putLong("active_playback_position",Math.max(0,saved)).putBoolean("active_playback_interrupted",false).apply();
   backgroundInterrupted=false;autoResumeAfterInterruption=false;List<CatalogEntry> found=variants.get(e.key());playSources=new ArrayList<>(found==null?Collections.singletonList(e):found);playSources.sort(Comparator.comparingInt((CatalogEntry option)->option.id>=1000000000?0:1).thenComparing(CatalogEntry.playbackOrder(preferredLanguage,videoHeightLimit)));sourceIndex=0;resumePosition=saved;retries=0;recovery.reset();playbackFailed=false;userPaused=false;showPlayer();}
  private void showPlayer(){FrameLayout root=new FrameLayout(this);root.setBackgroundColor(Color.BLACK);playerView=new PlayerView(this);playerView.setId(1040);playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING);playerView.setControllerShowTimeoutMs(5000);playerView.setControllerAutoShow(true);playerView.setUseController(true);playerView.setShowSubtitleButton(true);playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);root.addView(playerView,new FrameLayout.LayoutParams(-1,-1));
-  LinearLayout top=new LinearLayout(this);top.setOrientation(LinearLayout.VERTICAL);top.setPadding(dp(22),dp(12),dp(22),dp(12));top.setBackgroundColor(0x99070d18);playbackStatus=label(playing.title+" · Aflevering starten…",16,Color.WHITE);top.addView(playbackStatus);LinearLayout controls=new LinearLayout(this);addButton(controls,button("Terug",1041,this::showCatalog));if(!playing.isEpisode())addButton(controls,button("Mijn lijst",1042,()->toggleFavorite(playing)));addButton(controls,button("Taal",1044,this::chooseLanguage));addButton(controls,button("Ondertiteling",1045,this::chooseSubtitles));addButton(controls,button("Versie",1043,this::chooseVersion));HorizontalScrollView controlScroll=new HorizontalScrollView(this);controlScroll.setHorizontalScrollBarEnabled(false);controlScroll.addView(controls);top.addView(controlScroll);FrameLayout.LayoutParams tlp=new FrameLayout.LayoutParams(-1,-2,Gravity.TOP);root.addView(top,tlp);setContentView(root);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);handler.postDelayed(()->{if(playerView!=null)top.setVisibility(View.GONE);},6000);playerView.setControllerVisibilityListener((PlayerView.ControllerVisibilityListener)visibility->top.setVisibility(visibility));createPlayer();playerView.requestFocus();}
+  LinearLayout top=new LinearLayout(this);top.setOrientation(LinearLayout.VERTICAL);top.setPadding(dp(22),dp(12),dp(22),dp(12));top.setBackgroundColor(0x99070d18);playbackStatus=label(playing.title+" · Aflevering starten…",16,Color.WHITE);top.addView(playbackStatus);LinearLayout controls=new LinearLayout(this);addButton(controls,button("Terug",1041,this::showCatalog));if(playing.isEpisode()){addButton(controls,button("Vorige aflevering",1050,()->navigateEpisode(false)));addButton(controls,button("Volgende aflevering",1051,()->navigateEpisode(true)));}if(!playing.isEpisode())addButton(controls,button("Mijn lijst",1042,()->toggleFavorite(playing)));addButton(controls,button("Taal",1044,this::chooseLanguage));addButton(controls,button("Ondertiteling",1045,this::chooseSubtitles));addButton(controls,button("Versie",1043,this::chooseVersion));HorizontalScrollView controlScroll=new HorizontalScrollView(this);controlScroll.setHorizontalScrollBarEnabled(false);controlScroll.addView(controls);top.addView(controlScroll);FrameLayout.LayoutParams tlp=new FrameLayout.LayoutParams(-1,-2,Gravity.TOP);root.addView(top,tlp);setContentView(root);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);handler.postDelayed(()->{if(playerView!=null)top.setVisibility(View.GONE);},6000);playerView.setControllerVisibilityListener((PlayerView.ControllerVisibilityListener)visibility->top.setVisibility(visibility));createPlayer();playerView.requestFocus();}
  private void createPlayer(){DefaultLoadControl load=new DefaultLoadControl.Builder().setBufferDurationsMs(30000,90000,2500,7000).setTargetBufferBytes(64*1024*1024).setPrioritizeTimeOverSizeThresholds(false).build();DefaultHttpDataSource.Factory http=new DefaultHttpDataSource.Factory().setUserAgent("VLC/3.0.21 LibVLC/3.0.21").setConnectTimeoutMs(8000).setReadTimeoutMs(30000).setAllowCrossProtocolRedirects(false);DefaultDataSource.Factory source=new DefaultDataSource.Factory(this,http);
   player=new ExoPlayer.Builder(this).setLoadControl(load).setMediaSourceFactory(new DefaultMediaSourceFactory(new ResolvingDataSource.Factory(source,spec->spec.withRequestHeaders(testMode?Collections.emptyMap():repo.headersForUri(spec.uri.toString()))))).setSeekBackIncrementMs(10000).setSeekForwardIncrementMs(10000).build();player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon().setPreferredAudioLanguage(preferredLanguage.equals("multi")?"en":preferredLanguage).setPreferredTextLanguages("nl","en").setSelectUndeterminedTextLanguage(true).setTrackTypeDisabled(C.TRACK_TYPE_TEXT,prefs.getBoolean("subtitles_off",false)).build());player.setAudioAttributes(new AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),true);playerView.setPlayer(player);player.addListener(new Player.Listener(){@Override public void onPlaybackStateChanged(int state){if(player==null)return;if(state==Player.STATE_BUFFERING){bufferStarted=System.currentTimeMillis();playbackStatus.setText("Even laden…");scheduleStall();}else{cancelStall();if(state==Player.STATE_READY){recoveryPending=false;stableSince=System.currentTimeMillis();int height=player.getVideoSize().height;playbackStatus.setText(playing.title+(height>0?" · "+height+"p":""));}else if(state==Player.STATE_ENDED){storeProgress();if(!recoverUnexpectedEnd()&&!startNextEpisode())Toast.makeText(MainActivity.this,"Laatste aflevering afgelopen",Toast.LENGTH_SHORT).show();}}}@Override public void onPlayWhenReadyChanged(boolean wantsToPlay,int reason){
      if(!lifecyclePausing&&!backgroundInterrupted&&reason==Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST){
@@ -83,29 +83,44 @@ public class MainActivity extends Activity {
     }
     @Override public void onRenderedFirstFrame(){renderedFirstFrame=true;}@Override public void onVideoSizeChanged(VideoSize size){if(playbackStatus!=null&&playing!=null&&size.height>0)playbackStatus.setText(playing.title+" · "+size.height+"p");}@Override public void onPlayerError(PlaybackException error){if(player!=null){android.util.Log.w("TheOnePlayback","Stream error="+error.getErrorCodeName()+" atMs="+player.getCurrentPosition());storeProgress();fallback();}}});playCurrent();progressTask=new Runnable(){public void run(){if(player!=null){if(player.isPlaying()&&stableSince>0&&System.currentTimeMillis()-stableSince>=30000)recovery.stable();storeProgress();handler.postDelayed(this,10000);}}};handler.postDelayed(progressTask,10000);}
  private void playCurrent(){if(player==null)return;streamOpenedAtMs=android.os.SystemClock.elapsedRealtime();cancelRetry();playbackAttempt++;recoveryPending=false;playbackFailed=false;stableSince=0;renderedFirstFrame=false;CatalogEntry x=playSources.get(sourceIndex);MediaItem media=new MediaItem.Builder().setUri(testMode?"asset:///test-clip.mp4":repo.stream(x)).setSubtitleConfigurations(testMode&&getIntent().getBooleanExtra("subtitle_test_mode",false)?Collections.singletonList(new MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse("asset:///subtitle-test.srt")).setMimeType(MimeTypes.APPLICATION_SUBRIP).setLanguage("nl").build()):Collections.emptyList()).setMediaId(x.key()).setMediaMetadata(new MediaMetadata.Builder().setTitle(playing.title).build()).build();player.setMediaItem(media,resumePosition);player.prepare();player.play();}
- private boolean startNextEpisode(){
-  CatalogEntry completed=playing;
-  CatalogEntry next=NextEpisodeAutoplay.next(selectedEpisodes,completed);
+ private void navigateEpisode(boolean forward){
+  if(player==null||playing==null||!playing.isEpisode())return;
+  CatalogEntry next=forward
+      ?NextEpisodeAutoplay.next(selectedEpisodes,playing)
+      :NextEpisodeAutoplay.previous(selectedEpisodes,playing);
+  if(next==null){
+    Toast.makeText(this,forward?"Geen volgende aflevering":"Geen vorige aflevering",Toast.LENGTH_SHORT).show();
+    return;
+  }
+  // Manual navigation is not the same as completing an episode:
+  // keep the original watch position so the viewer can return later.
+  storeProgress();
+  changeEpisode(next,false);
+ }
+ private boolean changeEpisode(CatalogEntry next,boolean completed){
   if(next==null||player==null||prefs==null)return false;
-  // Do not keep end-of-stream position for a completed episode.
-  prefs.edit().remove("position:"+completed.key()).apply();
-  playing=next;
-  rememberEntry(next);
-  prefs.edit().putString("active_playback_key",next.key())
-      .putLong("active_playback_position",0L)
-      .putBoolean("active_playback_interrupted",false).apply();
+  CatalogEntry prior=playing;
   List<CatalogEntry> sources=variants.get(next.key());
-  playSources=new ArrayList<>(sources==null?Collections.singletonList(next):sources);
-  playSources.sort(Comparator.comparingInt((CatalogEntry e)->e.id>=1000000000?0:1)
+  List<CatalogEntry> ordered=new ArrayList<>(sources==null?Collections.singletonList(next):sources);
+  ordered.sort(Comparator.comparingInt((CatalogEntry e)->e.id>=1000000000?0:1)
       .thenComparing(CatalogEntry.playbackOrder(preferredLanguage,videoHeightLimit)));
-  if(playSources.isEmpty())return false;
-  cancelRetry();
-  sourceIndex=0;resumePosition=0;retries=0;boundaryRecoveryTries=0;
+  if(ordered.isEmpty())return false;
+  if(completed) prefs.edit().remove("position:"+prior.key()).apply();
+  playing=next;rememberEntry(next);
+  long saved=completed?0L:prefs.getLong("position:"+next.key(),0L);
+  prefs.edit().putString("active_playback_key",next.key())
+      .putLong("active_playback_position",saved)
+      .putBoolean("active_playback_interrupted",false).apply();
+  playSources=ordered;cancelRetry();
+  sourceIndex=0;resumePosition=saved;retries=0;boundaryRecoveryTries=0;
   boundaryResumeBase=0;recovery.reset();recoveryPending=false;playbackFailed=false;
   userPaused=false;backgroundInterrupted=false;autoResumeAfterInterruption=false;
-  if(playbackStatus!=null)playbackStatus.setText("Volgende aflevering: "+next.title);
-  Toast.makeText(this,"Volgende aflevering: "+next.title,Toast.LENGTH_SHORT).show();
+  if(playbackStatus!=null)playbackStatus.setText("Aflevering: "+next.title);
+  Toast.makeText(this,next.title,Toast.LENGTH_SHORT).show();
   playCurrent();return true;
+ }
+ private boolean startNextEpisode(){
+  return changeEpisode(NextEpisodeAutoplay.next(selectedEpisodes,playing),true);
  }
  private void cancelRetry(){if(retryTask!=null){handler.removeCallbacks(retryTask);retryTask=null;}}
 
