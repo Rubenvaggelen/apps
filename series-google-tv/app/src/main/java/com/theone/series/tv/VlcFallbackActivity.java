@@ -110,7 +110,11 @@ public final class VlcFallbackActivity extends Activity {
                         break;
                     case MediaPlayer.Event.EndReached:
                         completed = true;
-                        ui.post(this::finish);
+                        ui.post(() -> {
+                            storeProgress();
+                            setResult(RESULT_OK);
+                            finish();
+                        });
                         break;
                     case MediaPlayer.Event.EncounteredError:
                         ui.post(() -> {

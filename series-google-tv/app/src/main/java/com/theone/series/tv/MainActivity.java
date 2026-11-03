@@ -179,18 +179,44 @@ cancelPosterRequests();playing=e;List<CatalogEntry> found=variants.get(e.key());
   };
   handler.postDelayed(audioTrackCheck,8000);
  }
+ private static final int VLC_EPISODE_REQUEST=6124;
+ private CatalogEntry vlcEpisodePending;
+ private void launchVlcEpisode(CatalogEntry episode,CatalogEntry source,long resume){
+  if(episode==null||source==null||repo==null)return;
+  android.content.Intent software=new android.content.Intent(this,VlcFallbackActivity.class);
+  software.putExtra("stream_url",repo.stream(source));
+  software.putExtra("episode_key",episode.key());
+  software.putExtra("episode_title",episode.title);
+  software.putExtra("resume_ms",Math.max(0,resume));
+  vlcEpisodePending=episode;
+  startActivityForResult(software,VLC_EPISODE_REQUEST);
+ }
  private void playWithSoftwareAudio(){
-  // A missing device E-AC3 decoder cannot be fixed by passthrough toggling.
+  // Preserve the known-working VLC audio decoder, and signal genuine episode completion.
   if(testMode||player==null||playing==null||playSources==null||
       sourceIndex<0||sourceIndex>=playSources.size())return;
-  CatalogEntry entry=playSources.get(sourceIndex);
-  android.content.Intent software=new android.content.Intent(this,VlcFallbackActivity.class);
-  software.putExtra("stream_url",repo.stream(entry));
-  software.putExtra("episode_key",playing.key());
-  software.putExtra("episode_title",playing.title);
-  software.putExtra("resume_ms",Math.max(resumePosition,player.getCurrentPosition()));
+  CatalogEntry current=playing;
+  CatalogEntry source=playSources.get(sourceIndex);
+  long resume=Math.max(resumePosition,player.getCurrentPosition());
   showCatalog();
-  startActivity(software);
+  launchVlcEpisode(current,source,resume);
+ }
+ @Override protected void onActivityResult(int requestCode,int resultCode,android.content.Intent data){
+  super.onActivityResult(requestCode,resultCode,data);
+  if(requestCode!=VLC_EPISODE_REQUEST)return;
+  CatalogEntry completed=vlcEpisodePending;
+  vlcEpisodePending=null;
+  if(resultCode!=RESULT_OK||destroyed||completed==null)return;
+  CatalogEntry next=NextEpisodeAutoplay.next(selectedEpisodes,completed);
+  if(next==null){Toast.makeText(this,"Laatste aflevering afgelopen",Toast.LENGTH_SHORT).show();return;}
+  List<CatalogEntry> sources=variants.get(next.key());
+  List<CatalogEntry> ordered=new ArrayList<>(sources==null?Collections.singletonList(next):sources);
+  ordered.sort(Comparator.comparingInt((CatalogEntry e)->e.id>=1000000000?0:1)
+      .thenComparing(CatalogEntry.playbackOrder(preferredLanguage)));
+  if(ordered.isEmpty())return;
+  Toast.makeText(this,"Volgende aflevering: "+next.title,Toast.LENGTH_SHORT).show();
+  prefs.edit().remove("position:"+completed.key()).apply();
+  launchVlcEpisode(next,ordered.get(0),0);
  }
  private String selectedProvider(){
   if(playSources==null||playSources.isEmpty()||sourceIndex<0||sourceIndex>=playSources.size())return "geen bron";
