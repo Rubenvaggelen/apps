@@ -5,6 +5,20 @@ import java.util.Map;
 /** Select a next episode from the same loaded series, never from another show. */
 final class NextEpisodeAutoplay {
  private NextEpisodeAutoplay(){}
+ static CatalogEntry previous(EpisodeCatalog.Result episodeCatalog,CatalogEntry current){
+  if(episodeCatalog==null||current==null||!current.isEpisode())return null;
+  CatalogEntry previous=null;
+  for(Map.Entry<Integer,List<CatalogEntry>> season:episodeCatalog.seasons.entrySet()){
+   if(season.getValue()==null)continue;
+   for(CatalogEntry episode:season.getValue()){
+    if(episode==null)continue;
+    if(episode.key().equals(current.key()))return previous;
+    previous=episode;
+   }
+  }
+  return null;
+ }
+
  static CatalogEntry next(EpisodeCatalog.Result episodeCatalog,CatalogEntry current){
   if(episodeCatalog==null||current==null||!current.isEpisode())return null;
   boolean found=false;
