@@ -162,12 +162,13 @@ public class MainActivity extends Activity {
   if(expected==null||episodeContextRefreshing||testMode)return;
   episodeContextRefreshing=true;
   if(playbackStatus!=null)playbackStatus.setText("Afleveringenlijst ophalen…");
+  final String key=episodeParentKey(expected);
+  final List<CatalogEntry> existingParents=episodeParentSources(expected);
   episodeWorker.execute(()->{
    EpisodeCatalog.Result loaded=null;
    CatalogEntry parent=null;
    try{
-    String key=episodeParentKey(expected);
-    List<CatalogEntry> parents=episodeParentSources(expected);
+    List<CatalogEntry> parents=new ArrayList<>(existingParents);
     MediaRepository metadata=new MediaRepository(getApplicationContext());
     if(parents.isEmpty()){
      // Last resort for Continue Watching after an older install with no saved catalog.
