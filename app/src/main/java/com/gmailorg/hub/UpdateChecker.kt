@@ -23,7 +23,7 @@ object UpdateChecker {
 
     // Prefer the centrally hosted, read-only release feed. A failed response keeps GitHub fallback.
     private fun centralRelease(): Pair<Int, String>? {
-        val conn = URL("https://theoneforlive.com/updates/feed.php?app=main").openConnection() as HttpURLConnection
+        val conn = URL("https://downloads.theoneforlive.com/updates/feed.php?app=main").openConnection() as HttpURLConnection
         try {
             conn.connectTimeout = 5000
             conn.readTimeout = 7000
