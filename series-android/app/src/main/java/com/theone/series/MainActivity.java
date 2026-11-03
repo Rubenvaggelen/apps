@@ -65,12 +65,75 @@ public class MainActivity extends Activity {
   String needle=query.trim().toLowerCase(Locale.ROOT);filtered=new ArrayList<>();for(CatalogEntry e:candidates)if(e.title.toLowerCase(Locale.ROOT).contains(needle))filtered.add(e);visible=new ArrayList<>(filtered.subList(0,Math.min(limit,filtered.size())));grid.setAdapter(new Posters());more.setVisibility(filtered.size()>visible.size()?View.VISIBLE:View.GONE);summary.setText(filtered.size()==0?"Geen titels gevonden.":String.format(Locale.getDefault(),"%,d %s",filtered.size(),section.equals("episodes")?(filtered.size()==1?"aflevering":"afleveringen")+" beschikbaar · Seizoen "+selectedSeason:"series · Kies een serie")+(loading?" · Wordt bijgewerkt…":!testMode&&repo.partialSources()?" · Eén seriebron is tijdelijk niet bereikbaar.":""));}
  private void toggleFavorite(CatalogEntry e){rememberEntry(e);if(favorites.contains(e.key()))favorites.remove(e.key());else favorites.add(e.key());prefs.edit().putStringSet("favorites",new HashSet<>(favorites)).apply();Toast.makeText(this,favorites.contains(e.key())?"Toegevoegd aan Mijn lijst":"Verwijderd uit Mijn lijst",Toast.LENGTH_SHORT).show();filter();}
  private void openDetails(CatalogEntry e){if(!e.isEpisode()){new AlertDialog.Builder(this).setTitle(e.title).setItems(new String[]{"Seizoenen en afleveringen",favorites.contains(e.key())?"Verwijder uit Mijn lijst":"Voeg toe aan Mijn lijst"},(d,n)->{if(n==0)openSeries(e);else toggleFavorite(e);}).setNegativeButton("Terug",null).show();return;}long saved=prefs.getLong("position:"+e.key(),0);List<String> actions=new ArrayList<>();actions.add(saved>10000?"Kijk verder · "+formatTime(saved):"▶ Kijk");if(saved>10000)actions.add("Vanaf het begin");new AlertDialog.Builder(this).setTitle(e.title).setItems(actions.toArray(new String[0]),(d,n)->startPlayback(e,n==0?saved:0)).setNegativeButton("Terug",null).show();}
- private void openSeries(CatalogEntry entry){episodeLoading=true;loading=true;selectedSeries=entry;final int generation=++loadGeneration;summary.setText("Seizoenen en afleveringen laden…");List<CatalogEntry> sources=new ArrayList<>(variants.getOrDefault(entry.key(),Collections.singletonList(entry)));episodeWorker.execute(()->{try{EpisodeCatalog.Result result;if(testMode){List<CatalogEntry> episodes=new ArrayList<>();for(CatalogEntry parent:sources){JSONObject data=new JSONObject().put("episodes",new JSONObject().put("1",new JSONArray().put(new JSONObject().put("id",1001).put("title","Testaflevering 1").put("episode_num",1)).put(new JSONObject().put("id",1002).put("title","Testaflevering 2").put("episode_num",2))).put("2",new JSONArray().put(new JSONObject().put("id",2001).put("title","Testaflevering 3").put("episode_num",1))));episodes.addAll(EpisodeCatalog.parse(data,parent,"",false));}result=EpisodeCatalog.merge(episodes);}else result=repo.episodes(sources);handler.post(()->{if(destroyed||generation!=loadGeneration)return;episodeLoading=false;loading=false;selectedEpisodes=result;variants.putAll(result.variants);selectLanguageRepresentatives();if(result.seasons.isEmpty()){summary.setText("Deze serie heeft nu geen beschikbare afleveringen.");return;}showSeasons();});}catch(Exception error){handler.post(()->{if(destroyed||generation!=loadGeneration)return;episodeLoading=false;loading=false;summary.setText("Afleveringen niet bereikbaar. Open de serie opnieuw om te proberen.");});}});}
+ private void openSeries(CatalogEntry entry){episodeLoading=true;loading=true;selectedSeries=entry;final int generation=++loadGeneration;summary.setText("Seizoenen en afleveringen laden…");List<CatalogEntry> sources=new ArrayList<>(variants.getOrDefault(entry.key(),Collections.singletonList(entry)));episodeWorker.execute(()->{try{EpisodeCatalog.Result result;if(testMode){List<CatalogEntry> episodes=new ArrayList<>();for(CatalogEntry parent:sources){JSONObject data=new JSONObject().put("episodes",new JSONObject().put("1",new JSONArray().put(new JSONObject().put("id",1001).put("title","Testaflevering 1").put("episode_num",1)).put(new JSONObject().put("id",1002).put("title","Testaflevering 2").put("episode_num",2))).put("2",new JSONArray().put(new JSONObject().put("id",2001).put("title","Testaflevering 3").put("episode_num",1))));episodes.addAll(EpisodeCatalog.parse(data,parent,"",false));}result=EpisodeCatalog.merge(episodes);}else result=repo.episodes(sources);handler.post(()->{if(destroyed||generation!=loadGeneration)return;episodeLoading=false;loading=false;selectedEpisodes=result;variants.putAll(result.variants);storeEpisodeContext(entry,result);selectLanguageRepresentatives();if(result.seasons.isEmpty()){summary.setText("Deze serie heeft nu geen beschikbare afleveringen.");return;}showSeasons();});}catch(Exception error){handler.post(()->{if(destroyed||generation!=loadGeneration)return;episodeLoading=false;loading=false;summary.setText("Afleveringen niet bereikbaar. Open de serie opnieuw om te proberen.");});}});}
+ // Keep the episode list with its show, so previous/next also works after
+ // switching to Continue Watching or recreating the Activity.
+ private String episodeParentKey(CatalogEntry episode){
+  if(episode==null||!episode.isEpisode()||episode.groupId==null)return "";
+  String group=episode.groupId;
+  int last=group.lastIndexOf(':');
+  if(last<=0)return "";
+  int season=group.lastIndexOf(':',last-1);
+  return season>0?group.substring(0,season):"";
+ }
+ private boolean hasEpisode(EpisodeCatalog.Result catalog,CatalogEntry episode){
+  if(catalog==null||episode==null)return false;
+  for(List<CatalogEntry> season:catalog.seasons.values()){
+   if(season==null)continue;
+   for(CatalogEntry item:season)
+    if(item!=null&&item.key().equals(episode.key()))return true;
+  }
+  return false;
+ }
+ private void storeEpisodeContext(CatalogEntry series,EpisodeCatalog.Result result){
+  if(series==null||result==null||prefs==null)return;
+  try{
+   JSONArray rows=new JSONArray();
+   for(List<CatalogEntry> items:result.variants.values()){
+    for(CatalogEntry episode:items){
+     if(rows.length()>1200)return; // avoid excessive SharedPreferences writes
+     rows.put(entryJson(episode));
+    }
+   }
+   String encoded=new JSONObject().put("seriesKey",series.key())
+       .put("episodes",rows).toString();
+   prefs.edit().putString("episode_context:"+series.key(),encoded).apply();
+  }catch(Exception error){
+   android.util.Log.w("TheOneEpisodes","Cannot save episode context",error);
+  }
+ }
+ private EpisodeCatalog.Result episodeContextFor(CatalogEntry episode){
+  if(episode==null||!episode.isEpisode())return selectedEpisodes;
+  if(hasEpisode(selectedEpisodes,episode))return selectedEpisodes;
+  String parent=episodeParentKey(episode);
+  if(parent.isEmpty()||prefs==null)return null;
+  try{
+   String encoded=prefs.getString("episode_context:"+parent,"");
+   if(encoded.isEmpty())return null;
+   JSONObject saved=new JSONObject(encoded);
+   if(!parent.equals(saved.optString("seriesKey")))return null;
+   JSONArray rows=saved.optJSONArray("episodes");
+   if(rows==null)return null;
+   List<CatalogEntry> entries=new ArrayList<>();
+   for(int i=0;i<rows.length();i++){
+    JSONObject row=rows.optJSONObject(i);
+    if(row!=null)entries.add(jsonEntry(row));
+   }
+   EpisodeCatalog.Result restored=EpisodeCatalog.merge(entries);
+   if(!hasEpisode(restored,episode))return null;
+   selectedEpisodes=restored;
+   variants.putAll(restored.variants);
+   return restored;
+  }catch(Exception error){
+   android.util.Log.w("TheOneEpisodes","Cannot restore episode context",error);
+   return null;
+  }
+ }
  private void showSeasons(){if(selectedEpisodes==null)return;List<Integer> seasons=new ArrayList<>(selectedEpisodes.seasons.keySet());String[] labels=new String[seasons.size()];for(int i=0;i<labels.length;i++)labels[i]=seasons.get(i)==0?"Specials":"Seizoen "+seasons.get(i);new AlertDialog.Builder(this).setTitle(selectedSeries==null?"Seizoenen":selectedSeries.title).setItems(labels,(d,n)->{selectedSeason=seasons.get(n);episodeList=selectedEpisodes.seasons.get(selectedSeason);section="episodes";query="";limit=96;showCatalog();}).setNegativeButton("Terug",null).show();}
  private long streamOpenedAtMs;
  private int boundaryRecoveryTries;
  private long boundaryResumeBase;
- private void startPlayback(CatalogEntry e,long saved){boundaryRecoveryTries=0;boundaryResumeBase=0;if(saved==0&&prefs!=null)prefs.edit().remove("position:"+e.key()).apply();suspendBackground();cancelPosterRequests();playing=e;rememberEntry(e);
+ private void startPlayback(CatalogEntry e,long saved){boundaryRecoveryTries=0;boundaryResumeBase=0;if(saved==0&&prefs!=null)prefs.edit().remove("position:"+e.key()).apply();episodeContextFor(e);suspendBackground();cancelPosterRequests();playing=e;rememberEntry(e);
   prefs.edit().putString("active_playback_key",e.key()).putLong("active_playback_position",Math.max(0,saved)).putBoolean("active_playback_interrupted",false).apply();
   backgroundInterrupted=false;autoResumeAfterInterruption=false;List<CatalogEntry> found=variants.get(e.key());playSources=new ArrayList<>(found==null?Collections.singletonList(e):found);playSources.sort(Comparator.comparingInt((CatalogEntry option)->option.id>=1000000000?0:1).thenComparing(CatalogEntry.playbackOrder(preferredLanguage,videoHeightLimit)));sourceIndex=0;resumePosition=saved;retries=0;recovery.reset();playbackFailed=false;userPaused=false;showPlayer();}
  private void showPlayer(){FrameLayout root=new FrameLayout(this);root.setBackgroundColor(Color.BLACK);playerView=new PlayerView(this);playerView.setId(1040);playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING);playerView.setControllerShowTimeoutMs(5000);playerView.setControllerAutoShow(true);playerView.setUseController(true);playerView.setShowSubtitleButton(true);playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);root.addView(playerView,new FrameLayout.LayoutParams(-1,-1));
@@ -99,9 +162,10 @@ public class MainActivity extends Activity {
  private void playCurrent(){if(player==null)return;streamOpenedAtMs=android.os.SystemClock.elapsedRealtime();cancelRetry();playbackAttempt++;recoveryPending=false;playbackFailed=false;stableSince=0;renderedFirstFrame=false;CatalogEntry x=playSources.get(sourceIndex);MediaItem media=new MediaItem.Builder().setUri(testMode?"asset:///test-clip.mp4":repo.stream(x)).setSubtitleConfigurations(testMode&&getIntent().getBooleanExtra("subtitle_test_mode",false)?Collections.singletonList(new MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse("asset:///subtitle-test.srt")).setMimeType(MimeTypes.APPLICATION_SUBRIP).setLanguage("nl").build()):Collections.emptyList()).setMediaId(x.key()).setMediaMetadata(new MediaMetadata.Builder().setTitle(playing.title).build()).build();player.setMediaItem(media,resumePosition);player.prepare();player.play();}
  private void navigateEpisode(boolean forward){
   if(player==null||playing==null||!playing.isEpisode())return;
+  EpisodeCatalog.Result context=episodeContextFor(playing);
   CatalogEntry next=forward
-      ?NextEpisodeAutoplay.next(selectedEpisodes,playing)
-      :NextEpisodeAutoplay.previous(selectedEpisodes,playing);
+      ?NextEpisodeAutoplay.next(context,playing)
+      :NextEpisodeAutoplay.previous(context,playing);
   if(next==null){
     Toast.makeText(this,forward?"Geen volgende aflevering":"Geen vorige aflevering",Toast.LENGTH_SHORT).show();
     return;
@@ -134,7 +198,7 @@ public class MainActivity extends Activity {
   playCurrent();return true;
  }
  private boolean startNextEpisode(){
-  return changeEpisode(NextEpisodeAutoplay.next(selectedEpisodes,playing),true);
+  return changeEpisode(NextEpisodeAutoplay.next(episodeContextFor(playing),playing),true);
  }
  private void cancelRetry(){if(retryTask!=null){handler.removeCallbacks(retryTask);retryTask=null;}}
 
