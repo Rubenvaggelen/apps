@@ -97,7 +97,13 @@ public class MainActivity extends Activity {
    }
    String encoded=new JSONObject().put("seriesKey",series.key())
        .put("episodes",rows).toString();
-   prefs.edit().putString("episode_context:"+series.key(),encoded).apply();
+   JSONObject parent=new JSONObject().put("entry",entryJson(series));
+   JSONArray sources=new JSONArray();
+   for(CatalogEntry source:variants.getOrDefault(series.key(),Collections.singletonList(series)))
+    sources.put(entryJson(source));
+   parent.put("sources",sources);
+   prefs.edit().putString("episode_context:"+series.key(),encoded)
+       .putString("episode_parent:"+series.key(),parent.toString()).apply();
   }catch(Exception error){
    android.util.Log.w("TheOneEpisodes","Cannot save episode context",error);
   }
@@ -128,6 +134,76 @@ public class MainActivity extends Activity {
    android.util.Log.w("TheOneEpisodes","Cannot restore episode context",error);
    return null;
   }
+ }
+ private boolean episodeContextRefreshing=false;
+ private List<CatalogEntry> episodeParentSources(CatalogEntry episode){
+  String parentKey=episodeParentKey(episode);
+  if(parentKey.isEmpty())return Collections.emptyList();
+  if(selectedSeries!=null&&parentKey.equals(selectedSeries.key()))
+   return new ArrayList<>(variants.getOrDefault(parentKey,Collections.singletonList(selectedSeries)));
+  for(CatalogEntry parent:catalogs.getOrDefault("series",Collections.emptyList()))
+   if(parentKey.equals(parent.key()))
+    return new ArrayList<>(variants.getOrDefault(parentKey,Collections.singletonList(parent)));
+  for(CatalogEntry saved:savedEntries())
+   if(saved.type.equals("series")&&parentKey.equals(saved.key()))
+    return new ArrayList<>(variants.getOrDefault(parentKey,Collections.singletonList(saved)));
+  try{
+   JSONObject raw=new JSONObject(prefs.getString("episode_parent:"+parentKey,""));
+   JSONArray rows=raw.optJSONArray("sources");
+   List<CatalogEntry> out=new ArrayList<>();
+   if(rows!=null)for(int i=0;i<rows.length();i++){
+    JSONObject row=rows.optJSONObject(i);
+    if(row!=null)out.add(jsonEntry(row));
+   }
+   return out;
+  }catch(Exception ignored){return Collections.emptyList();}
+ }
+ private void recoverEpisodeNavigation(CatalogEntry expected,boolean forward,boolean completed){
+  if(expected==null||episodeContextRefreshing||testMode)return;
+  episodeContextRefreshing=true;
+  if(playbackStatus!=null)playbackStatus.setText("Afleveringenlijst ophalen…");
+  episodeWorker.execute(()->{
+   EpisodeCatalog.Result loaded=null;
+   CatalogEntry parent=null;
+   try{
+    String key=episodeParentKey(expected);
+    List<CatalogEntry> parents=episodeParentSources(expected);
+    MediaRepository metadata=new MediaRepository(getApplicationContext());
+    if(parents.isEmpty()){
+     // Last resort for Continue Watching after an older install with no saved catalog.
+     List<CatalogEntry> list=metadata.load("series");
+     for(CatalogEntry e:list)if(key.equals(e.key()))parents.add(e);
+    }
+    if(!parents.isEmpty()){
+     parent=parents.get(0);
+     loaded=metadata.episodes(parents);
+    }
+   }catch(Exception error){
+    android.util.Log.w("TheOneEpisodes","Episode catalog refresh failed",error);
+   }
+   final EpisodeCatalog.Result ready=loaded;
+   final CatalogEntry selectedParent=parent;
+   handler.post(()->{
+    episodeContextRefreshing=false;
+    if(destroyed||player==null||playing==null||!expected.key().equals(playing.key()))return;
+    if(ready==null||!hasEpisode(ready,expected)){
+     if(playbackStatus!=null)playbackStatus.setText("Afleveringenlijst niet beschikbaar");
+     Toast.makeText(this,"Afleveringen niet geladen. Open deze serie via Seizoenen.",Toast.LENGTH_LONG).show();
+     return;
+    }
+    selectedEpisodes=ready;
+    variants.putAll(ready.variants);
+    if(selectedParent!=null)storeEpisodeContext(selectedParent,ready);
+    CatalogEntry target=forward?NextEpisodeAutoplay.next(ready,expected)
+        :NextEpisodeAutoplay.previous(ready,expected);
+    if(target==null){
+     Toast.makeText(this,forward?"Geen volgende aflevering":"Geen vorige aflevering",Toast.LENGTH_SHORT).show();
+     return;
+    }
+    if(!completed)storeProgress();
+    changeEpisode(target,completed);
+   });
+  });
  }
  private void showSeasons(){if(selectedEpisodes==null)return;List<Integer> seasons=new ArrayList<>(selectedEpisodes.seasons.keySet());String[] labels=new String[seasons.size()];for(int i=0;i<labels.length;i++)labels[i]=seasons.get(i)==0?"Specials":"Seizoen "+seasons.get(i);new AlertDialog.Builder(this).setTitle(selectedSeries==null?"Seizoenen":selectedSeries.title).setItems(labels,(d,n)->{selectedSeason=seasons.get(n);episodeList=selectedEpisodes.seasons.get(selectedSeason);section="episodes";query="";limit=96;showCatalog();}).setNegativeButton("Terug",null).show();}
  private long streamOpenedAtMs;
@@ -163,6 +239,10 @@ public class MainActivity extends Activity {
  private void navigateEpisode(boolean forward){
   if(player==null||playing==null||!playing.isEpisode())return;
   EpisodeCatalog.Result context=episodeContextFor(playing);
+  if(context==null){
+    recoverEpisodeNavigation(playing,forward,false);
+    return;
+  }
   CatalogEntry next=forward
       ?NextEpisodeAutoplay.next(context,playing)
       :NextEpisodeAutoplay.previous(context,playing);
@@ -198,7 +278,13 @@ public class MainActivity extends Activity {
   playCurrent();return true;
  }
  private boolean startNextEpisode(){
-  return changeEpisode(NextEpisodeAutoplay.next(episodeContextFor(playing),playing),true);
+  EpisodeCatalog.Result context=episodeContextFor(playing);
+  if(context==null){
+   if(testMode)return false;
+   recoverEpisodeNavigation(playing,true,true);
+   return true;
+  }
+  return changeEpisode(NextEpisodeAutoplay.next(context,playing),true);
  }
  private void cancelRetry(){if(retryTask!=null){handler.removeCallbacks(retryTask);retryTask=null;}}
 
