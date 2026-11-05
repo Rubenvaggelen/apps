@@ -465,7 +465,8 @@ function family_scope_for_package(string $package): string {
         'com.theone.tv.phone' => 'tv_android',
         'com.theone.tv' => 'tv_android',
         'com.gmailorg.theoneuser' => 'the_one_user',
-        'com.gmailorg.kids' => 'kids_android'
+        'com.gmailorg.kids' => 'kids_android',
+        'com.gmailorg.kids.tv' => 'kids_android'
     ];
     return $packages[$package] ?? '';
 }
