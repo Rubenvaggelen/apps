@@ -101,7 +101,7 @@ tv='''private fun trace(letterIndex:Int=0){
                 .shuffled().forEach{choice->add(btn(choice,card){
                     if(choice==answer)celebrate("trace"){trace(i+1)}
                     else feedback.text="Probeer het nog eens."
-                }}
+                })}
             add(feedback)
             add(btn("Volgende letter",card){trace(i+1)})
             return
