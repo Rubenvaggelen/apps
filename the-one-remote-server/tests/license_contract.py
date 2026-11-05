@@ -23,6 +23,7 @@ PACKAGES = {
     "com.theone.tv": "tv_android",
     "com.gmailorg.theoneuser": "the_one_user",
     "com.gmailorg.kids": "kids_android",
+    "com.gmailorg.kids.tv": "kids_android",
 }
 EXPECTED_SCOPES = set(PACKAGES.values()) | {"media_player_xxx"}
 
