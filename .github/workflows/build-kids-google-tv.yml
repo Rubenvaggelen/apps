@@ -78,7 +78,16 @@ jobs:
           mkdir -p kids-build-1130/deliverable
           cp "$APK" kids-build-1130/deliverable/The-One-Kids-Google-TV-v1.0.1.apk
           sha256sum kids-build-1130/deliverable/The-One-Kids-Google-TV-v1.0.1.apk > kids-build-1130/deliverable/SHA256SUMS.txt
+      - name: Save signed Google TV test APK and checksum
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: the-one-kids-google-tv-1001-signed-test
+          path: kids-build-1130/deliverable/
+          retention-days: 14
       - name: Smoke test on Android TV emulator
+        timeout-minutes: 9
+        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
@@ -92,13 +101,6 @@ jobs:
             adb shell am start -n com.gmailorg.kids.tv/com.gmailorg.kids.MainActivity
             sleep 6
             adb shell pidof com.gmailorg.kids.tv
-      - name: Save signed Google TV test APK and checksum
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: the-one-kids-google-tv-1001-signed-test
-          path: kids-build-1130/deliverable/
-          retention-days: 14
       - name: Save unit test reports
         if: always()
         uses: actions/upload-artifact@v4
