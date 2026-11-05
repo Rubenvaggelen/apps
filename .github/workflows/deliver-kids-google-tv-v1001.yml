@@ -1,0 +1,58 @@
+name: Direct APK download for The One Kids Google TV v1.0.1
+on:
+  push:
+    branches: [deliver/kids-tv-apk-direct-download-20261106]
+    paths: [.github/workflows/deliver-kids-google-tv-v1001.yml]
+  workflow_dispatch: {}
+permissions:
+  actions: read
+  contents: write
+jobs:
+  deliver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download existing successful Google TV build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p verified
+          gh run download 42024927183 --repo Rubenvaggelen/apps --name the-one-kids-google-tv-1001-signed-test --dir verified
+          test -s verified/The-One-Kids-Google-TV-v1.0.1.apk
+          test -s verified/SHA256SUMS.txt
+      - name: Verify original checksum and APK integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          want=$(awk '{print $1}' verified/SHA256SUMS.txt)
+          got=$(sha256sum verified/The-One-Kids-Google-TV-v1.0.1.apk | awk '{print $1}')
+          test "$want" = "$got" || { echo "::error::APK checksum mismatch"; exit 1; }
+          python3 - <<'PY'
+          from zipfile import ZipFile
+          import os
+          path='verified/The-One-Kids-Google-TV-v1.0.1.apk'
+          with ZipFile(path) as apk:
+              assert apk.testzip() is None
+              names=apk.namelist()
+              assert 'AndroidManifest.xml' in names
+              assert not any(x.startswith('assets/private_') for x in names)
+          assert os.path.getsize(path)>1000000
+          print('Verified Google TV installable APK; original SHA-256: OK')
+          PY
+      - name: Publish direct GitHub APK link (test prerelease)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: kids-tv-v1001-test
+          name: The One Kids Google TV 1.0.1 (test)
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          make_latest: false
+          files: verified/The-One-Kids-Google-TV-v1.0.1.apk
+          fail_on_unmatched_files: true
+          body: |
+            Directly installable signed Google TV test APK. Kinderliedjes are removed.
+            Leren and Spelen remain, with TV remote adaptations.
+            Separate package com.gmailorg.kids.tv. Existing Android Kids stays intact.
+            Note: device enrollment requires the separate parent-approval server package allowlist,
+            which has not yet been deployed to production. Do not bypass parent approval.
