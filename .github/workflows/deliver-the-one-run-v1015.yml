@@ -1,0 +1,37 @@
+name: Export verified The One Run v1015 APK
+on:
+  push:
+    branches: [deliver/run-v1015-apk-to-chat-20261105]
+    paths: [.github/workflows/deliver-the-one-run-v1015.yml]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download published Run Android APK and verify SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 3 --connect-timeout 15 --max-time 180 \
+            'https://github.com/Rubenvaggelen/apps/releases/download/run-v1015/runcoach-debug.apk' \
+            -o The-One-Run-v1015.apk
+          echo '966d242c806f77d178723b814bdb008eb2a77e0f4452046dc0abe59b9cb262cf  The-One-Run-v1015.apk' | sha256sum -c
+          python3 - <<'PY'
+          import zipfile,os
+          p="The-One-Run-v1015.apk"
+          with zipfile.ZipFile(p) as apk:
+            assert apk.testzip() is None
+            assert "AndroidManifest.xml" in apk.namelist()
+          assert os.stat(p).st_size==4387393
+          print("Verified installable The One Run Android APK")
+          PY
+      - name: Publish downloadable original Run APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: The-One-Run-v1015-APK
+          path: The-One-Run-v1015.apk
+          if-no-files-found: error
+          retention-days: 3
