@@ -1,0 +1,19 @@
+name: Verify Kids TV Family approval scope (no deployment)
+on:
+  push:
+    branches: [feature/kids-google-tv-install-approval-20261105]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate PHP syntax and package allowance
+        run: |
+          php -l the-one-remote-server/devices.php
+          grep -Fq "'com.gmailorg.kids.tv' => 'kids_android'" the-one-remote-server/devices.php
+      - name: Exercise signed registration and approval contract offline
+        run: python3 the-one-remote-server/tests/license_contract.py
