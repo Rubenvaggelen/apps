@@ -19,58 +19,72 @@ jobs:
         with:
           packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
           log-accepted-android-sdk-licenses: false
-      - name: Retrieve original encrypted release artifacts
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          umask 077
-          mkdir -p /tmp/owner-delivery/series /tmp/owner-delivery/cinema
-          gh run download 41660845922 --repo Rubenvaggelen/apps --name the-one-series-google-tv-v142 --dir /tmp/owner-delivery/series
-          gh run download 41350885003 --repo Rubenvaggelen/apps --name the-one-cinema-google-tv-sony-v145 --dir /tmp/owner-delivery/cinema
-          test -s /tmp/owner-delivery/series/The-One-Series-Google-TV-v1.3.5.apk.enc
-          test -s /tmp/owner-delivery/series/key.enc
-          test -s /tmp/owner-delivery/series/SHA256SUMS.txt
-          test -s /tmp/owner-delivery/cinema/The-One-Cinema-Google-TV-v1.4.5.apk.enc
-          test -s /tmp/owner-delivery/cinema/key.enc
-          test -s /tmp/owner-delivery/cinema/SHA256SUMS.txt
-      - name: Decrypt original artifacts only on restricted GitHub runner
+      - name: Retrieve published APKs from protected Dev Hub over authenticated SSH
         shell: bash
         env:
           OWNER_SIGNING_KEY: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
           umask 077
           test -n "$OWNER_SIGNING_KEY"
-          base64 -d <<< "$OWNER_SIGNING_KEY" > /tmp/owner-delivery/owner.keystore
-          keytool -importkeystore \
-            -srckeystore /tmp/owner-delivery/owner.keystore \
-            -srcstorepass android -srcalias androiddebugkey \
-            -destkeystore /tmp/owner-delivery/owner.p12 \
-            -deststoretype PKCS12 -deststorepass changeit \
-            -destkeypass changeit -noprompt >/dev/null
-          openssl pkcs12 -in /tmp/owner-delivery/owner.p12 \
-            -passin pass:changeit -nodes -nocerts \
-            -out /tmp/owner-delivery/owner-private.pem >/dev/null 2>&1
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_PORT"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_SSH_KEY"
+          test -n "$DEPLOY_SSH_PASSPHRASE"
+          test -n "$DEPLOY_KNOWN_HOSTS"
+          mkdir -p /tmp/owner-delivery/series /tmp/owner-delivery/cinema
+          printf '%s' "$OWNER_SIGNING_KEY" | base64 -d > /tmp/owner-delivery/owner.keystore
+          auth=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$auth"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$auth/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$auth/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$auth/askpass"
+          chmod 600 "$auth/key" "$auth/known_hosts"
+          chmod 700 "$auth/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$auth/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$auth/key" </dev/null >/dev/null 2>&1
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
           for app in series cinema; do
             case "$app" in
               series) name='The-One-Series-Google-TV-v1.3.5.apk' ;;
               cinema) name='The-One-Cinema-Google-TV-v1.4.5.apk' ;;
             esac
-            base="/tmp/owner-delivery/$app"
-            openssl pkeyutl -decrypt \
-              -inkey /tmp/owner-delivery/owner-private.pem \
-              -in "$base/key.enc" -out "$base/unsealed-key" \
-              -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
-            openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter 200000 \
-              -pass file:"$base/unsealed-key" -in "$base/$name.enc" \
-              -out "$base/$name"
-            expected=$(awk '{print $1}' "$base/SHA256SUMS.txt" | head -1)
-            actual=$(sha256sum "$base/$name" | awk '{print $1}')
-            test "$actual" = "$expected" || { echo "SOURCE_CHECKSUM_FAILED:$app"; exit 1; }
-            echo "SOURCE_INTEGRITY_VERIFIED:$app"
-            rm -f "$base/unsealed-key"
+            meta=$(ssh -p "$DEPLOY_PORT" -i "$auth/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$auth/known_hosts" -o ConnectTimeout=20 "$remote" "python3 - '$app'" <<'PY_REMOTE'
+          import sys, json, pathlib, re
+          app=sys.argv[1]
+          name={'series':'series-google-tv','cinema':'cinema-google-tv'}[app]
+          ver={'series':'1.3.5','cinema':'1.4.5'}[app]
+          root=pathlib.Path('/home/vanawiwj/the-one-private-builds/2026-10-13')
+          data=json.loads((root/'manifest.json').read_text())
+          rows=[r for r in data if r.get('id')==name]
+          assert len(rows)==1,'APP_NOT_PUBLISHED'
+          row=rows[0]
+          assert row.get('version_name')==ver,'APP_VERSION_CHANGED_STOP_TRANSFER'
+          filename=str(row.get('apk') or '')
+          sha=str(row.get('sha256') or '')
+          assert re.fullmatch(r'[A-Za-z0-9._-]+\.apk',filename),'INVALID_APK_NAME'
+          assert re.fullmatch('[0-9a-f]{64}',sha),'INVALID_MANIFEST_CHECKSUM'
+          src=root/'apks'/filename
+          assert src.is_file() and src.stat().st_size>1000000,'APK_NOT_AVAILABLE'
+          print(filename+'|'+sha)
+          PY_REMOTE
+            )
+            IFS='|' read -r filename sha <<< "$meta"
+            [[ "$filename" =~ ^[A-Za-z0-9._-]+\.apk$ ]]
+            [[ "$sha" =~ ^[0-9a-f]{64}$ ]]
+            scp -O -P "$DEPLOY_PORT" -i "$auth/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$auth/known_hosts" -o ConnectTimeout=20 \
+              "$remote:/home/vanawiwj/the-one-private-builds/2026-10-13/apks/$filename" \
+              "/tmp/owner-delivery/$app/$name"
+            actual=$(sha256sum "/tmp/owner-delivery/$app/$name" | awk '{print $1}')
+            test "$actual" = "$sha" || { echo "PRIVATE_DEVHUB_HASH_MISMATCH:$app";exit 1; }
+            echo "PRIVATE_DEVHUB_SIGNED_APK_RECEIVED_AND_HASH_VERIFIED:$app"
           done
       - name: Verify stable signature, versions, and correct TV package IDs
         shell: bash
