@@ -20,6 +20,20 @@ public class CatalogTitleSearchTest {
         assertTrue(CatalogTitleSearch.matches("Élite","elite"));
     }
 
+    @Test public void marshallsTypoFindsOfficialMarshals2026() {
+        assertTrue(CatalogTitleSearch.matches("Marshals (2026)", "Marshalls"));
+        assertTrue(CatalogTitleSearch.matches("Y: Marshals", "Marshalls"));
+        assertTrue(CatalogTitleSearch.matches("Marshals", "Marshal"));
+        assertTrue(CatalogTitleSearch.matches("Marshals", "Marshals"));
+    }
+
+    @Test public void spellingToleranceRejectsUnrelatedAndShortQueries() {
+        assertFalse(CatalogTitleSearch.matches("Marine Patrol", "Marshals"));
+        assertFalse(CatalogTitleSearch.matches("Dora", "Data"));
+        assertFalse(CatalogTitleSearch.matches("Marshals", "Sheriffs"));
+        assertFalse(CatalogTitleSearch.matches("Marshals", "Marmalade"));
+    }
+
     @Test public void unrelatedSeriesStayExcluded() {
         assertFalse(CatalogTitleSearch.matches("All the King's Men","all the queens men"));
         assertFalse(CatalogTitleSearch.matches("All the Queen’s Men","all the queen of hearts"));
