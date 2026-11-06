@@ -322,17 +322,88 @@ public final class XtreamConfig {
                 if(!pending.renameTo(providerFile))pending.delete();
             return true;
         }catch(Exception unavailable){
+            // A number of Xtream providers reject the huge unfiltered get_series
+            // response. The One Series streams full catalogs; Media Player also
+            // needs a bounded per-category recovery when the full feed fails.
             String stale=readCachedCatalog(providerFile,true);
             if(stale!=null)try{
                 streamSeriesRows(new java.io.StringReader(stale),null,null,second,batchSize,listener);
                 return true;
             }catch(Exception ignored){}
-            return false;
+            return streamSeriesCategories(source,second,batchSize,listener);
         }finally{
             if(writer!=null)try{writer.close();}catch(Exception ignored){}
             if(pending!=null&&pending.exists())pending.delete();
             if(connection!=null)connection.disconnect();
         }
+    }
+
+    /** No credentials are logged or written to public filenames.
+     * Unlike the one-shot full-catalog endpoint, category-scoped series
+     * requests remain usable on providers with huge libraries. Each
+     * successful category is cached separately for future searches.
+     * Interrupted or incomplete scans never claim a complete library. */
+    private boolean streamSeriesCategories(XtreamConfig source,boolean second,
+            int batchSize,SeriesBatchListener listener){
+        java.io.File categoriesFile=catalogCacheDir==null?null:new java.io.File(catalogCacheDir,
+            "catalog-"+hashCacheKey("provider-v2|get_series_categories|"+
+            source.server+"|"+source.username)+".json");
+        String raw;
+        try {
+            raw=source.download(source.account()+"&action=get_series_categories");
+            if(raw==null||raw.trim().isEmpty())throw new java.io.IOException("Empty series categories");
+            if(categoriesFile!=null)writeCachedCatalog(categoriesFile,raw);
+        }catch(Exception unavailable){
+            raw=readCachedCatalog(categoriesFile,true);
+            if(raw==null)return false;
+        }
+        java.util.List<String> ids;
+        try{ids=seriesCategoryIds(new org.json.JSONArray(raw));}
+        catch(Exception invalid){return false;}
+        if(ids.isEmpty())return false;
+        boolean allComplete=true;
+        int received=0;
+        for(String id:ids){
+            if(Thread.currentThread().isInterrupted()){allComplete=false;break;}
+            java.io.File file=catalogCacheDir==null?null:new java.io.File(catalogCacheDir,
+                "catalog-"+hashCacheKey("series-category-v1|"+source.server+"|"+
+                source.username+"|"+id)+".json");
+            String catalog=readCachedCatalog(file,false);
+            if(catalog==null)try {
+                catalog=source.download(source.account()+
+                    "&action=get_series&category_id="+query(id));
+                new org.json.JSONArray(catalog);
+                if(file!=null && catalog.length()>2)writeCachedCatalog(file,catalog);
+            }catch(Exception unavailable){
+                catalog=readCachedCatalog(file,true);
+                if(catalog==null){allComplete=false;continue;}
+            }
+            try {
+                final int[] count={0};
+                streamSeriesRows(new java.io.StringReader(catalog),null,null,second,batchSize,
+                    (rows,secondSource)->{
+                        count[0]+=rows.length();
+                        listener.onBatch(rows,secondSource);
+                    });
+                received+=count[0];
+            }catch(Exception invalid){allComplete=false;}
+        }
+        // A partial response can still display immediately, but do not mark
+        // it as a complete cache: a retry may fill the missing categories.
+        return received>0 && allComplete;
+    }
+
+    /** Accept only numeric category IDs, with stable order and bounded work. */
+    static java.util.List<String> seriesCategoryIds(org.json.JSONArray categories){
+        java.util.LinkedHashSet<String> result=new java.util.LinkedHashSet<>();
+        if(categories==null)return new java.util.ArrayList<>();
+        for(int i=0;i<categories.length()&&result.size()<500;i++){
+            org.json.JSONObject row=categories.optJSONObject(i);
+            if(row==null)continue;
+            String id=row.optString("category_id","").trim();
+            if(id.matches("[0-9]{1,12}"))result.add(id);
+        }
+        return new java.util.ArrayList<>(result);
     }
 
     private static void streamSeriesRows(java.io.Reader input, java.io.Writer snapshot,
