@@ -1,0 +1,162 @@
+name: Promote verified Media Player Google TV v1041 category recovery to private Dev Hub
+on:
+  push:
+    branches: [fix/media-player-tv-series-1041-20261106]
+    paths: [.github/workflows/publish-media-player-tv-v1041-category-recovery.yml]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: protected-media-player-tv-progressive-v1041
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools build-tools;36.0.0'
+          log-accepted-android-sdk-licenses: false
+      - name: Download exact previously verified and signed v1041 private artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p /tmp/media-tv-v1041
+          gh run download 42272158257 --repo Rubenvaggelen/apps --name The-One-Media-Player-Google-TV-v1.0.41-CategoryRecovery-owner --dir /tmp/media-tv-v1041
+          find /tmp/media-tv-v1041 -maxdepth 2 -type f -printf '%f %s bytes\n'
+          test -s /tmp/media-tv-v1041/tvapp-debug.apk
+          mv /tmp/media-tv-v1041/tvapp-debug.apk /tmp/media-tv-v1041/v1041.apk
+      - name: Verify original signed APK before private publication
+        shell: bash
+        env:
+          OWNER_KEYSTORE: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$OWNER_KEYSTORE"
+          printf '%s' "$OWNER_KEYSTORE" | base64 -d > /tmp/media-tv-v1041/owner.keystore
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          APK=/tmp/media-tv-v1041/v1041.apk
+          "$BT/apksigner" verify --verbose --print-certs "$APK" > /tmp/media-tv-v1041/signature.txt
+          "$BT/aapt" dump badging "$APK" > /tmp/media-tv-v1041/badging.txt
+          grep -q "name='com.theone.mediaplayer.tv'.*versionCode='1041'" /tmp/media-tv-v1041/badging.txt
+          keytool -exportcert -keystore /tmp/media-tv-v1041/owner.keystore -storepass android -alias androiddebugkey -file /tmp/media-tv-v1041/owner.der >/dev/null
+          expected=$(sha256sum /tmp/media-tv-v1041/owner.der | awk '{print $1}')
+          grep -qi "certificate SHA-256 digest: $expected" /tmp/media-tv-v1041/signature.txt
+          python3 - <<'PY'
+          import zipfile, pathlib
+          apk=pathlib.Path('/tmp/media-tv-v1041/v1041.apk')
+          with zipfile.ZipFile(apk) as f:
+              assert f.testzip() is None
+              assert 'assets/private_xtream.json' in f.namelist()
+              assert 'assets/private_xtream_secondary.json' in f.namelist()
+          assert apk.stat().st_size>1000000
+          print('TV_VERSION_1041_SIGNER_AND_PRIVATE_ASSETS_VERIFIED=1')
+          PY
+          rm -f /tmp/media-tv-v1041/owner.keystore /tmp/media-tv-v1041/owner.der
+      - name: Publish to existing authenticated private download endpoint, no downgrades
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test "$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' 'https://dev.rubenvanaggelen.com/family-download-20261013.php?app=media-player-tv')" = 401
+          for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "${!name}" || { echo "Missing deploy setting: $name"; exit 1; }
+          done
+          umask 077
+          work=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$work"; rm -rf /tmp/media-tv-v1041' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$work/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$work/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$work/askpass"
+          chmod 600 "$work/key" "$work/known_hosts"
+          chmod 700 "$work/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$work/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$work/key" </dev/null >/dev/null 2>&1
+          unset DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE
+          opts=(-i "$work/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$work/known_hosts" -o ConnectTimeout=20)
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          APK=/tmp/media-tv-v1041/v1041.apk
+          sha=$(sha256sum "$APK" | awk '{print $1}')
+          size=$(stat -c '%s' "$APK")
+          stage=$(ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" 'umask 077; mktemp -d "$HOME/.media-player-tv-v1041.XXXXXXXX"')
+          scp -O -P "$DEPLOY_PORT" "${opts[@]}" "$APK" "$remote:$stage/update.apk"
+          ssh -p "$DEPLOY_PORT" "${opts[@]}" "$remote" "bash -s -- '$stage' '$sha' '$size'" <<'REMOTE'
+          set -euo pipefail
+          stage="$1"; want_sha="$2"; want_size="$3"
+          root="$HOME/the-one-private-builds/2026-10-13"
+          webroot="$HOME/dev.vanaggelen.com"
+          test -s "$root/manifest.json"
+          test -s "$webroot/.htaccess"
+          grep -Eqi 'AuthType[[:space:]]+Basic' "$webroot/.htaccess"
+          php -l "$webroot/family-download-20261013.php" >/dev/null
+          python3 - "$stage/update.apk" "$root/manifest.json" "$root/apks" "$want_sha" "$want_size" <<'PY'
+          import hashlib, json, os, pathlib, shutil, sys, tempfile, datetime
+          src, manifest, apks = map(pathlib.Path,sys.argv[1:4])
+          sha,size = sys.argv[4],int(sys.argv[5])
+          assert src.is_file() and src.stat().st_size==size, 'Payload size mismatch'
+          digest=hashlib.sha256(src.read_bytes()).hexdigest()
+          assert digest==sha, 'Source hash mismatch'
+          rows=json.loads(manifest.read_text())
+          assert isinstance(rows,list), 'Invalid manifest'
+          candidates=[row for row in rows if isinstance(row,dict) and row.get('id')=='media-player-tv']
+          assert len(candidates)==1,'Unexpected media-player-tv manifest rows'
+          entry=candidates[0]
+          prior=int(entry.get('version_code') or 0)
+          if prior>1041:
+              raise SystemExit('Newer private Google TV release exists: refusing rollback')
+          if prior==1041:
+              if entry.get('sha256') != digest:
+                  raise SystemExit('Conflicting v1041 release: refusing replacement')
+              print('MEDIA_PLAYER_TV_ALREADY_LATEST_1041=1')
+              sys.exit(0)
+          assert prior>=1000, 'Unexpected current TV version'
+          name=f'The-One-Media-Player-TV-v1041-{digest[:12]}.apk'
+          target=apks/name
+          assert apks.is_dir() and not target.exists(), 'Conflicting destination APK'
+          temp=apks/(name+'.staging')
+          with temp.open('wb') as out:
+              with src.open('rb') as inp: shutil.copyfileobj(inp,out)
+              out.flush();os.fsync(out.fileno())
+          temp.chmod(0o640)
+          assert hashlib.sha256(temp.read_bytes()).hexdigest()==digest
+          os.replace(temp,target)
+          backup=manifest.with_name('manifest.before-media-player-tv-v1041-'+datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S')+'.json')
+          shutil.copy2(manifest,backup)
+          entry.update(apk=name,version_name='1.0.41-auto-next-series-recovery',version_code=1041,size_bytes=size,sha256=digest)
+          fd,patch=tempfile.mkstemp(prefix='.media-player-tv-v1041-',dir=str(manifest.parent))
+          try:
+              with os.fdopen(fd,'w') as out:
+                  json.dump(rows,out,ensure_ascii=False,indent=2)
+                  out.write('\n')
+                  out.flush();os.fsync(out.fileno())
+              os.chmod(patch,0o640)
+              os.replace(patch,manifest)
+          finally:
+              if os.path.exists(patch): os.unlink(patch)
+          verify=json.loads(manifest.read_text())
+          assert len(verify)==len(rows)
+          match=[r for r in verify if r.get('id')=='media-player-tv']
+          assert len(match)==1 and match[0]['version_code']==1041 and match[0]['sha256']==digest
+          print('PRIVATE_DEVHUB_MEDIA_PLAYER_TV_PUBLISHED_VERSION_CODE=1041')
+          print('PRIVATE_DEVHUB_HASH_VERIFIED=1')
+          PY
+          rm -f "$stage/update.apk"
+          rmdir "$stage"
+          REMOTE
+          test "$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' 'https://dev.rubenvanaggelen.com/family-download-20261013.php?app=media-player-tv')" = 401
+          echo "DEVHUB_AUTH_GATE_STILL_ENFORCED=1"
