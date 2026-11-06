@@ -1,0 +1,77 @@
+name: Diagnose Media Player TV v1031 to v1036 installation on emulator
+on:
+  push:
+    branches: [diagnose/media-player-tv-1036-install-failure-20261106]
+    paths: [.github/workflows/diagnose-media-player-tv-v1036-install.yml]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  actions: read
+jobs:
+  tv-install-upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-30 build-tools;36.0.0'
+          log-accepted-android-sdk-licenses: false
+      - name: Restore previous/current signed APKs into private temporary runner
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p /tmp/mediaplayer-upgrade/old /tmp/mediaplayer-upgrade/new
+          gh run download 39171351597 --repo Rubenvaggelen/apps --name Media-Player-Google-TV-v1031-signed-private --dir /tmp/mediaplayer-upgrade/old
+          gh run download 39254814996 --repo Rubenvaggelen/apps --name The-One-Media-Player-Google-TV-v1.0.36-STABLE-owner --dir /tmp/mediaplayer-upgrade/new
+          test -s /tmp/mediaplayer-upgrade/old/tvapp-debug.apk
+          test -s /tmp/mediaplayer-upgrade/new/tvapp-debug.apk
+      - name: Compare official APK package names, certs, versionCodes and integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          old=/tmp/mediaplayer-upgrade/old/tvapp-debug.apk
+          new=/tmp/mediaplayer-upgrade/new/tvapp-debug.apk
+          "$BT/apksigner" verify --verbose --print-certs "$old" > /tmp/old-signer.txt
+          "$BT/apksigner" verify --verbose --print-certs "$new" > /tmp/new-signer.txt
+          old_cert=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' /tmp/old-signer.txt | head -1)
+          new_cert=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' /tmp/new-signer.txt | head -1)
+          test -n "$old_cert" && test "$old_cert" = "$new_cert"
+          "$BT/aapt" dump badging "$old" > /tmp/old-badging.txt
+          "$BT/aapt" dump badging "$new" > /tmp/new-badging.txt
+          grep -q "package: name='com.theone.mediaplayer.tv'.*versionCode='1031'" /tmp/old-badging.txt
+          grep -q "package: name='com.theone.mediaplayer.tv'.*versionCode='1036'" /tmp/new-badging.txt
+          echo "OLD_AND_NEW_APK_CERT_AND_PACKAGE_MATCH=1"
+          sha256sum "$old" "$new" | sed 's|/tmp/mediaplayer-upgrade/[^/]*/tvapp-debug.apk|[verified temporary APK]|'
+      - name: Test clean installation then in-place upgrade on Android TV emulator
+        timeout-minutes: 16
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: android-tv
+          arch: x86
+          profile: tv_1080p
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            set -eu
+            echo "INSTALL_V1031"
+            adb install /tmp/mediaplayer-upgrade/old/tvapp-debug.apk
+            adb shell dumpsys package com.theone.mediaplayer.tv | grep -E 'versionCode=1031'
+            echo "INSTALL_V1036_IN_PLACE"
+            adb install -r /tmp/mediaplayer-upgrade/new/tvapp-debug.apk
+            adb shell dumpsys package com.theone.mediaplayer.tv | grep -E 'versionCode=1036'
+            adb shell am start -W -n com.theone.mediaplayer.tv/com.theone.mediaplayer.TvMainActivity
+            sleep 5
+            echo "TV_IN_PLACE_UPGRADE_V1031_TO_V1036_SUCCESS=1"
+      - name: Leave no APK as public CI artifact
+        if: always()
+        run: rm -rf /tmp/mediaplayer-upgrade /tmp/old-signer.txt /tmp/new-signer.txt /tmp/old-badging.txt /tmp/new-badging.txt
