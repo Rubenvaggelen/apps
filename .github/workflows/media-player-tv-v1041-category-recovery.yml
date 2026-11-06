@@ -141,7 +141,8 @@ jobs:
           test -s media-player/app/src/main/assets/private_xtream_secondary.json
           grep -q 'suspiciousCatalogShrink' media-player/app/src/main/java/com/theone/mediaplayer/XtreamConfig.java
           grep -q 'streamSeriesCategories(source,second,batchSize,listener)' media-player/app/src/main/java/com/theone/mediaplayer/XtreamConfig.java
-          grep -q 'EpisodeAutoplayQueue' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
+          test -s media-player/app/src/main/java/com/theone/mediaplayer/EpisodeAutoplayQueue.java
+          grep -q 'play_queue' media-player/app/src/main/java/com/theone/mediaplayer/MainActivity.java
           grep -q 'auto-next-series-recovery' media-player/tvapp/build.gradle.kts
           grep -q 'isLastLiveCatalogPartial' media-player/app/src/main/java/com/theone/mediaplayer/XtreamCatalogActivity.java
           test -s media-player/tvapp/src/main/res/xml/media_player_tv_update_paths.xml
