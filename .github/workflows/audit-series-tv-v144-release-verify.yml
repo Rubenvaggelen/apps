@@ -1,0 +1,87 @@
+name: Audit Series Google TV v144 in-app update metadata
+on:
+  push:
+    branches: [ops/series-tv-v144-release-verify-20261107]
+    paths: [.github/workflows/audit-series-tv-v144-release-verify.yml]
+  workflow_dispatch: {}
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check family updates API and private deployment manifest (read only)
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_PORT"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_SSH_KEY"
+          test -n "$DEPLOY_SSH_PASSPHRASE"
+          test -n "$DEPLOY_KNOWN_HOSTS"
+          umask 077
+          work=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$work/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$work/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$work/askpass"
+          chmod 600 "$work/key" "$work/known_hosts"; chmod 700 "$work/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$work/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$work/key" </dev/null >/dev/null 2>&1
+          ssh -p "$DEPLOY_PORT" -i "$work/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$work/known_hosts" -o ConnectTimeout=20 "$DEPLOY_USER@$DEPLOY_HOST" 'python3 -' <<'PY'
+          from pathlib import Path
+          import json,re,hashlib
+          home=Path.home()
+          roots=[
+            home/'public_html/the-one-remote-api',
+            home/'rubenvanaggelen.com/the-one-remote-api',
+            home/'dev.vanaggelen.com/the-one-remote-api'
+          ]
+          for base in roots:
+            p=base/'family-updates.php'
+            if not p.is_file(): continue
+            code=p.read_text(errors='replace')
+            print('FAMILY_UPDATES_API_LOCATION='+('public_html' if base==roots[0] else 'other'))
+            print('FAMILY_UPDATES_CODE_SHA256='+hashlib.sha256(p.read_bytes()).hexdigest())
+            for term in ('series_android','com.theone.series.tv','com.theone.series','series-google-tv','manifest.json','family_update','family-updates','version_code','version_name','sha256','family_signed_request'):
+              print('API_HAS_'+re.sub(r'[^A-Z0-9]','_',term.upper())+'='+str(term in code).lower())
+            for match in re.finditer(r'\bseries_android\b|\bseries-google-tv\b|com\.theone\.series(?:\.tv)?',code):
+              excerpt=code[max(0,match.start()-100):match.end()+130]
+              tokens=re.findall(r"[A-Za-z_][A-Za-z0-9_./-]{2,50}",excerpt)
+              print('API_SERIES_CONTEXT_KEYWORDS='+','.join(tokens[:12])[:150])
+            break
+          else: print('FAMILY_UPDATES_API_NOT_FOUND_IN_EXPECTED_PATHS=1')
+          manifest=home/'the-one-private-builds/2026-10-13/manifest.json'
+          if not manifest.is_file():
+            print('PRIVATE_MANIFEST_MISSING=1')
+          else:
+            data=json.loads(manifest.read_text())
+            for appid in ('series-google-tv','series-android'):
+              rows=[r for r in data if isinstance(r,dict) and r.get('id')==appid]
+              label=appid.upper().replace('-','_')
+              print('DEVHUB_'+label+'_ROWS='+str(len(rows)))
+              if len(rows)==1:
+                row=rows[0]
+                print('DEVHUB_'+label+'_VERSION='+str(row.get('version_name') or row.get('version_code') or '?')[:35])
+                apk=manifest.parent/'apks'/str(row.get('apk') or '')
+                print('DEVHUB_'+label+'_APK_EXISTS='+str(apk.is_file() and apk.stat().st_size>100000).lower())
+                if appid=='series-google-tv':
+                  badge=str(row.get('package_badging') or '')
+                  print('TV_PACKAGE_ID_MATCH='+str("name='com.theone.series.tv'" in badge).lower())
+                  print('TV_VERSION_CODE_144='+str("versionCode='144'" in badge).lower())
+                  print('TV_PUBLISHED_STATUS='+str(row.get('dev_hub_status')=='published').lower())
+                  sha=str(row.get('sha256') or '')
+                  print('TV_MANIFEST_SHA_FORMAT='+str(bool(re.fullmatch('[a-f0-9]{64}',sha))).lower())
+                  if apk.is_file() and re.fullmatch('[a-f0-9]{64}',sha):
+                    actual=hashlib.sha256(apk.read_bytes()).hexdigest()
+                    print('TV_APK_HASH_VERIFIED='+str(actual==sha).lower())
+          PY
+          echo "READ_ONLY_AUDIT_COMPLETED=1"
