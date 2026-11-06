@@ -313,11 +313,16 @@ public final class XtreamConfig {
                         new java.io.FileOutputStream(pending),java.nio.charset.StandardCharsets.UTF_8));
                 }
             }
+            final int[] delivered={0};
             try(java.io.Reader input=new java.io.InputStreamReader(
                 connection.getInputStream(),java.nio.charset.StandardCharsets.UTF_8)){
-                streamSeriesRows(input,writer,pending,second,batchSize,listener);
+                streamSeriesRows(input,writer,pending,second,batchSize,(rows,secondarySource)->{
+                    delivered[0]+=rows.length();
+                    listener.onBatch(rows,secondarySource);
+                });
                 writer=null;
             }
+            if(delivered[0]==0)throw new java.io.IOException("Empty full series catalog");
             if(pending!=null&&pending.exists()&&pending.length()<64L*1024L*1024L)
                 if(!pending.renameTo(providerFile))pending.delete();
             return true;
