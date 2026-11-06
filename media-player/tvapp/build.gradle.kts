@@ -10,8 +10,8 @@ android {
         applicationId = "com.theone.mediaplayer.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1038
-        versionName = "1.0.38-auto-next-search"
+        versionCode = 1041
+        versionName = "1.0.41-auto-next-series-recovery"
     }
 
     buildTypes {
