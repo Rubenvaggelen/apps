@@ -1,0 +1,56 @@
+name: Audit Media Player TV v1032 private update channel
+on:
+  push:
+    branches: [ops/media-player-google-tv-ota-diagnostic-20261106]
+    paths: [.github/workflows/audit-media-player-tv-ota-v1032.yml]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  read-only-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Confirm private Dev Hub access controls
+        run: |
+          set -euo pipefail
+          test "$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' 'https://dev.rubenvanaggelen.com/family-download-20261013.php?app=media-player-tv')" = 401
+          echo "PRIVATE_DOWNLOAD_REQUIRES_AUTH=1"
+      - name: Inspect only current TV update manifest version (no APK download)
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for name in DEPLOY_HOST DEPLOY_PORT DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_SSH_PASSPHRASE DEPLOY_KNOWN_HOSTS; do
+            test -n "${!name}" || { echo "MISSING_DEPLOY_SETUP=$name"; exit 1; }
+          done
+          umask 077
+          dir=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$dir"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$dir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$dir/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$dir/askpass"
+          chmod 600 "$dir/key" "$dir/known_hosts"; chmod 700 "$dir/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$dir/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$dir/key" </dev/null >/dev/null 2>&1
+          ssh -p "$DEPLOY_PORT" -i "$dir/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$dir/known_hosts" -o ConnectTimeout=20 "$DEPLOY_USER@$DEPLOY_HOST" 'python3 -' <<'PY'
+          import json, pathlib
+          manifest=pathlib.Path("/home/vanawiwj/the-one-private-builds/2026-10-13/manifest.json")
+          assert manifest.is_file(), "PRIVATE_MANIFEST_MISSING"
+          data=json.loads(manifest.read_text())
+          matches=[r for r in data if isinstance(r,dict) and r.get("id")=="media-player-tv"]
+          assert len(matches)==1, "MEDIA_PLAYER_TV_MANIFEST_MISSING_OR_DUPLICATED"
+          row=matches[0]
+          code=int(row.get("version_code") or 0)
+          name=str(row.get("version_name") or "")
+          print("TV_PRIVATE_MANIFEST_VERSION_CODE="+str(code))
+          print("TV_PRIVATE_MANIFEST_VERSION_NAME="+name[:45])
+          target=manifest.parent/"apks"/str(row.get("apk") or "")
+          print("TV_PRIVATE_APK_PRESENT="+str(target.is_file() and target.stat().st_size>100000).lower())
+          PY
