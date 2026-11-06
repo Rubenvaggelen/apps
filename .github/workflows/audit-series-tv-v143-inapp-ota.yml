@@ -73,5 +73,15 @@ jobs:
                 print('DEVHUB_'+label+'_VERSION='+str(row.get('version_name') or row.get('version_code') or '?')[:35])
                 apk=manifest.parent/'apks'/str(row.get('apk') or '')
                 print('DEVHUB_'+label+'_APK_EXISTS='+str(apk.is_file() and apk.stat().st_size>100000).lower())
+                if appid=='series-google-tv':
+                  badge=str(row.get('package_badging') or '')
+                  print('TV_PACKAGE_ID_MATCH='+str("name='com.theone.series.tv'" in badge).lower())
+                  print('TV_VERSION_CODE_143='+str("versionCode='143'" in badge).lower())
+                  print('TV_PUBLISHED_STATUS='+str(row.get('dev_hub_status')=='published').lower())
+                  sha=str(row.get('sha256') or '')
+                  print('TV_MANIFEST_SHA_FORMAT='+str(bool(re.fullmatch('[a-f0-9]{64}',sha))).lower())
+                  if apk.is_file() and re.fullmatch('[a-f0-9]{64}',sha):
+                    actual=hashlib.sha256(apk.read_bytes()).hexdigest()
+                    print('TV_APK_HASH_VERIFIED='+str(actual==sha).lower())
           PY
           echo "READ_ONLY_AUDIT_COMPLETED=1"
