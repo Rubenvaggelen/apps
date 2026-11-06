@@ -11,7 +11,7 @@ import java.util.*;
 
 public class XtreamSeriesFallbackNetworkTest {
   @Test public void emptyFullCatalogFallsBackToTwoCategories() throws Exception {
-    try(ServerSocket socket=new ServerSocket(0,10,InetAddress.getLoopbackAddress())){
+    try(ServerSocket socket=new ServerSocket(0,10,InetAddress.getByName("127.0.0.1"))){
       Thread worker=new Thread(()->{
         while(!socket.isClosed()){
           try(Socket conn=socket.accept()){
