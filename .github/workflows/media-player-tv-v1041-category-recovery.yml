@@ -5,6 +5,7 @@ on:
     paths:
       - 'media-player/app/src/main/java/com/theone/mediaplayer/XtreamConfig.java'
       - 'media-player/app/src/test/java/com/theone/mediaplayer/XtreamSeriesCategoryRecoveryTest.java'
+      - 'media-player/app/src/test/java/com/theone/mediaplayer/XtreamSeriesFallbackNetworkTest.java'
       - 'media-player/tvapp/build.gradle.kts'
       - '.github/workflows/media-player-tv-v1041-category-recovery.yml'
   workflow_dispatch: {}
