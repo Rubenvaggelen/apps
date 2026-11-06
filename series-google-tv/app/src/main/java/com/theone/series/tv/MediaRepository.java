@@ -3,8 +3,9 @@ import android.content.Context;import android.util.JsonReader;import android.uti
 import org.json.*;import java.io.*;import java.net.*;import java.nio.charset.StandardCharsets;import java.util.*;import java.util.concurrent.*;
 final class MediaRepository {
  private boolean offlineTest;void enableOfflineForTest(){if(!BuildConfig.DEBUG)throw new IllegalStateException();offlineTest=true;}
- private final Context context;private final File cacheDir;private final String server,token;private JSONObject primary,secondary;private volatile int lastSuccessful=2;
- MediaRepository(Context c)throws Exception{context=c;cacheDir=new File(c.getFilesDir(),"catalogs");cacheDir.mkdirs();try(InputStream in=c.getAssets().open("private_cinema.json")){JSONObject x=new JSONObject(read(in));server=x.getString("relay_url");token=x.getString("relay_token");}if(!server.startsWith("https://rubenvanaggelen.com/")||token.isEmpty())throw new IOException("Source unavailable");try(InputStream in=c.getAssets().open("private_xtream_primary.json")){primary=new JSONObject(read(in));}try(InputStream in=c.getAssets().open("private_xtream_secondary.json")){secondary=new JSONObject(read(in));}catch(Exception ignored){}}
+ private final Context context;private final PlaybackPriority background;private final File cacheDir;private final String server,token;private JSONObject primary,secondary;private volatile int lastSuccessful=2;
+ MediaRepository(Context c)throws Exception{this(c,new PlaybackPriority());}
+ MediaRepository(Context c,PlaybackPriority priority)throws Exception{context=c;background=priority;cacheDir=new File(c.getFilesDir(),"catalogs");cacheDir.mkdirs();try(InputStream in=c.getAssets().open("private_cinema.json")){JSONObject x=new JSONObject(read(in));server=x.getString("relay_url");token=x.getString("relay_token");}if(!server.startsWith("https://rubenvanaggelen.com/")||token.isEmpty())throw new IOException("Source unavailable");try(InputStream in=c.getAssets().open("private_xtream_primary.json")){primary=new JSONObject(read(in));}try(InputStream in=c.getAssets().open("private_xtream_secondary.json")){secondary=new JSONObject(read(in));}catch(Exception ignored){}}
  private static String enc(String s){try{return URLEncoder.encode(s,"UTF-8").replace("+","%20");}catch(Exception e){throw new IllegalArgumentException();}}
  private static String read(InputStream in)throws Exception{ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[16384];int n;while((n=in.read(b))!=-1){out.write(b,0,n);if(out.size()>100*1024*1024)throw new IOException("Catalog exceeds limit");}return out.toString("UTF-8");}
  // Series-info responses can be unusually large or malformed. Bound one episode
@@ -30,18 +31,18 @@ final class MediaRepository {
  private void save(String type,List<CatalogEntry> entries){android.util.AtomicFile file=cacheFile(type);FileOutputStream out=null;try{out=file.startWrite();CatalogCodec.write(out,entries);file.finishWrite(out);}catch(Exception ignored){if(out!=null)file.failWrite(out);}}
  List<CatalogEntry> load(String type)throws Exception{List<CatalogEntry> result=new ArrayList<>();load(type,(entries,complete,successful)->{if(complete)result.addAll(entries);});return result;}
  void load(String type,ProgressiveCatalog.Listener listener)throws Exception{
-  if(!type.equals("series"))throw new IOException("Series only");if(offlineTest){listener.update(starter(type),true,0);return;}List<ProgressiveCatalog.Source> sources=new ArrayList<>();
+  if(!type.equals("series"))throw new IOException("Series only");background.ensureAllowed();if(offlineTest){listener.update(starter(type),true,0);return;}List<ProgressiveCatalog.Source> sources=new ArrayList<>();
   sources.add(preview->loadSource(api(primary,"get_series"),false,preview));if(secondary!=null)sources.add(preview->loadSource(secondaryApi("get_series"),true,preview));
-  ProgressiveCatalog.loadStreaming(sources,initial(type,listener),(entries,complete,successful)->{lastSuccessful=successful;listener.update(entries,complete,successful);if(successful>0)save(type,entries);});
+  ProgressiveCatalog.loadStreaming(sources,initial(type,listener),(entries,complete,successful)->{background.ensureAllowed();lastSuccessful=successful;listener.update(entries,complete,successful);if(successful>0)save(type,entries);});
  }
- private List<CatalogEntry> loadSource(String url,boolean second,ProgressiveCatalog.Preview preview)throws Exception{HttpURLConnection c=connection(url,second,45000);List<CatalogEntry> list=new ArrayList<>();long lastPreviewAt=0L;try{if(c.getResponseCode()!=200)throw new IOException("Catalog unavailable");try(JsonReader reader=new JsonReader(new InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8))){reader.beginArray();while(reader.hasNext()){
+ private List<CatalogEntry> loadSource(String url,boolean second,ProgressiveCatalog.Preview preview)throws Exception{background.ensureAllowed();HttpURLConnection c=connection(url,second,45000);List<CatalogEntry> list=new ArrayList<>();long lastPreviewAt=0L;PlaybackPriority.Ticket ticket=null;try{ticket=background.register(c::disconnect);background.ensureAllowed();if(c.getResponseCode()!=200)throw new IOException("Catalog unavailable");try(JsonReader reader=new JsonReader(new InputStreamReader(background.checked(c.getInputStream()),StandardCharsets.UTF_8))){reader.beginArray();while(true){background.ensureAllowed();if(!reader.hasNext())break;
   int id=0;String title="",poster="",category="",movieId="";long added=0;reader.beginObject();while(reader.hasNext()){String key=reader.nextName();if(reader.peek()==JsonToken.NULL){reader.nextNull();continue;}switch(key){case "series_id":id=(int)number(reader);break;case "name":title=reader.nextString();break;case "cover":case "stream_icon":String candidate=reader.nextString();if(poster.isEmpty()&&!candidate.equalsIgnoreCase("null"))poster=candidate;break;case "category_id":category=reader.nextString();break;case "tmdb":case "tmdb_id":String identifier=reader.nextString();if(movieId.isEmpty()&&validIdentifier(identifier))movieId=identifier;break;case "last_modified":case "added":added=Math.max(added,number(reader));break;default:reader.skipValue();}}reader.endObject();if(id<=0||id>=1000000000||title.isEmpty())continue;if(second)id+=1000000000;poster=PosterMetadata.resolve(poster,(second?secondary:primary).getString("server"));list.add(new CatalogEntry(id,title,"mp4",poster,category,"series",added,movieId));if(list.size()>=256&&list.size()%128==0){
   long now=android.os.SystemClock.elapsedRealtime();
   if(lastPreviewAt==0L||now-lastPreviewAt>=1500L){
-   preview.accept(new ArrayList<>(list));
+   background.ensureAllowed();preview.accept(new ArrayList<>(list));
    lastPreviewAt=now;
   }
- }}reader.endArray();}}finally{c.disconnect();}return list;}
+ }}reader.endArray();}}finally{if(ticket!=null)ticket.close();c.disconnect();}return list;}
  // Match Media Player: fetch get_series_info one provider variant at a time.
  // A failing or oversized source must not hide valid episodes from another source.
  EpisodeCatalog.Result episodes(List<CatalogEntry> parents)throws Exception{
