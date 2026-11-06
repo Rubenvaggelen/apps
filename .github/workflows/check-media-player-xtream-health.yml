@@ -1,0 +1,193 @@
+name: Read-only health check of configured Media Player Xtream providers
+on:
+  push:
+    branches: [diagnose/media-player-xtream-connectivity-20261106]
+    paths: [.github/workflows/check-media-player-xtream-health.yml]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Restore permanent Google TV signing certificate
+        shell: bash
+        env:
+          TV_SIGNING_KEY: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$TV_SIGNING_KEY"
+          mkdir -p ~/.android
+          printf '%s' "$TV_SIGNING_KEY" | base64 -d > ~/.android/debug.keystore
+          chmod 600 ~/.android/debug.keystore
+          keytool -list -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey >/dev/null
+      - name: Restore verified primary IPTV account for Google TV
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test -s .github/media-player-private-source.enc.b64
+          test -s "$HOME/.android/debug.keystore"
+          keytool -importkeystore \
+            -srckeystore "$HOME/.android/debug.keystore" \
+            -srcstorepass android \
+            -srcalias androiddebugkey \
+            -destkeystore /tmp/media-player-primary-signing.p12 \
+            -deststoretype PKCS12 \
+            -deststorepass changeit \
+            -destkeypass changeit \
+            -noprompt >/dev/null
+          openssl pkcs12 \
+            -in /tmp/media-player-primary-signing.p12 \
+            -passin pass:changeit \
+            -nodes -nocerts \
+            -out /tmp/media-player-primary-private.pem >/dev/null 2>&1
+          base64 -d .github/media-player-private-source.enc.b64 > /tmp/media-player-primary.enc
+          openssl pkeyutl -decrypt \
+            -inkey /tmp/media-player-primary-private.pem \
+            -in /tmp/media-player-primary.enc \
+            -out /tmp/media-player-primary.json \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256
+          python3 - <<'PY_PRIMARY'
+          from pathlib import Path
+          from urllib.parse import urlsplit, parse_qs
+          import json
+          src=json.loads(Path("/tmp/media-player-primary.json").read_text())
+          parsed=urlsplit(str(src.get("m3u_url","")).strip())
+          query=parse_qs(parsed.query)
+          user=(query.get("username") or [""])[0]
+          password=(query.get("password") or [""])[0]
+          host=parsed.hostname or ""
+          server=parsed.scheme+"://"+parsed.netloc
+          if parsed.scheme not in ("http","https") or not host or not user or not password:
+              raise SystemExit("Encrypted primary IPTV source is invalid")
+          if user.startswith("PRIVATE_") or password.startswith("PRIVATE_"):
+              raise SystemExit("Placeholder credentials are forbidden in signed TV releases")
+          out=Path("media-player/app/src/main/assets/private_xtream.json")
+          out.write_text(json.dumps({"server":server,"username":user,"password":password})+"\n")
+          print("GOOGLE_TV_PRIMARY_IPTV_SOURCE_RESTORED=1")
+          PY_PRIMARY
+          rm -f /tmp/media-player-primary-signing.p12 /tmp/media-player-primary-private.pem /tmp/media-player-primary.enc /tmp/media-player-primary.json
+      - name: Restore encrypted secondary IPTV source for Google TV
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test -s .github/media-player-secondary-source.enc.b64
+          test -s "$HOME/.android/debug.keystore"
+          keytool -importkeystore \
+            -srckeystore "$HOME/.android/debug.keystore" \
+            -srcstorepass android \
+            -srcalias androiddebugkey \
+            -destkeystore /tmp/media-player-tv-signing.p12 \
+            -deststoretype PKCS12 \
+            -deststorepass changeit \
+            -destkeypass changeit \
+            -noprompt >/dev/null
+          openssl pkcs12 \
+            -in /tmp/media-player-tv-signing.p12 \
+            -passin pass:changeit \
+            -nodes -nocerts \
+            -out /tmp/media-player-tv-private.pem >/dev/null 2>&1
+          base64 -d .github/media-player-secondary-source.enc.b64 > /tmp/media-player-tv-source.enc
+          openssl pkeyutl -decrypt \
+            -inkey /tmp/media-player-tv-private.pem \
+            -in /tmp/media-player-tv-source.enc \
+            -out media-player/app/src/main/assets/private_xtream_secondary.json \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256
+          python3 - <<'PY_SOURCE'
+          import json,pathlib
+          primary=json.loads(pathlib.Path("media-player/app/src/main/assets/private_xtream.json").read_text())
+          secondary=json.loads(pathlib.Path("media-player/app/src/main/assets/private_xtream_secondary.json").read_text())
+          assert set(secondary)=={"server","username","password"} and all(secondary.values())
+          assert secondary["server"].startswith("http")
+          assert (secondary["server"],secondary["username"])!=(primary.get("server"),primary.get("username"))
+          print("GOOGLE_TV_SECONDARY_IPTV_SOURCE_RESTORED=1")
+          PY_SOURCE
+          rm -f /tmp/media-player-tv-signing.p12 /tmp/media-player-tv-private.pem /tmp/media-player-tv-source.enc
+      - name: Probe both configured Xtream services without logging secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_PROBE'
+          import json, pathlib, urllib.request, urllib.parse, urllib.error, socket, time
+          from urllib.parse import urlsplit
+          
+          paths=[
+           ("PRIMARY", "media-player/app/src/main/assets/private_xtream.json"),
+           ("SECONDARY", "media-player/app/src/main/assets/private_xtream_secondary.json")
+          ]
+          def probe(server, user, pwd, action=None, category_id=None, max_bytes=1000000):
+              url=server.rstrip("/")+"/player_api.php"
+              args={"username":user,"password":pwd}
+              if action: args["action"]=action
+              if category_id: args["category_id"]=category_id
+              request=urllib.request.Request(url+"?"+urllib.parse.urlencode(args),
+                 headers={"User-Agent":"TheOneMediaPlayer/2.4.1", "Accept":"application/json"})
+              started=time.monotonic()
+              try:
+                  with urllib.request.urlopen(request,timeout=13) as resp:
+                      status=resp.status
+                      body=resp.read(max_bytes+1)
+                  if len(body)>max_bytes:
+                      return {"state":"HTTP_"+str(status)+"_LARGE","elapsed":round(time.monotonic()-started,1)}
+                  try: parsed=json.loads(body)
+                  except (ValueError,UnicodeDecodeError):
+                      return {"state":"HTTP_"+str(status)+"_NOT_JSON","elapsed":round(time.monotonic()-started,1)}
+                  if isinstance(parsed,list):
+                      return {"state":"OK","count":len(parsed),"rows":parsed[:3],"elapsed":round(time.monotonic()-started,1)}
+                  if isinstance(parsed,dict):
+                      if "user_info" in parsed:
+                          u=parsed["user_info"]
+                          return {"state":"OK","auth":str(u.get("auth","?")),"account_status":str(u.get("status","?"))[:35],"elapsed":round(time.monotonic()-started,1)}
+                      return {"state":"HTTP_"+str(status)+"_OBJECT","elapsed":round(time.monotonic()-started,1)}
+                  return {"state":"HTTP_"+str(status)+"_OTHER","elapsed":round(time.monotonic()-started,1)}
+              except urllib.error.HTTPError as e:
+                  return {"state":"HTTP_"+str(e.code),"elapsed":round(time.monotonic()-started,1)}
+              except (urllib.error.URLError,TimeoutError,socket.timeout,OSError) as e:
+                  reason=str(type(getattr(e,"reason",e)).__name__)
+                  return {"state":"NETWORK_"+reason,"elapsed":round(time.monotonic()-started,1)}
+          for label,p in paths:
+              try:
+                  obj=json.loads(pathlib.Path(p).read_text())
+                  server=str(obj["server"]).strip()
+                  user=str(obj["username"]).strip()
+                  pwd=str(obj["password"]).strip()
+                  host=urlsplit(server).hostname
+                  if not host or not user or not pwd:
+                      print(label+"_CONFIG=INCOMPLETE");continue
+              except (OSError,ValueError,KeyError) as e:
+                  print(label+"_CONFIG=UNREADABLE");continue
+              # Never print URLs, usernames, passwords, request objects or IP addresses.
+              print(label+"_CONFIG=VALID")
+              status=probe(server,user,pwd)
+              print(label+"_API="+status["state"]+" account="+str(status.get("account_status","?"))+" auth="+str(status.get("auth","?"))+" seconds="+str(status["elapsed"]))
+              categories={}
+              for kind,action in (("LIVE","get_live_categories"),("VOD","get_vod_categories"),("SERIES","get_series_categories")):
+                  result=probe(server,user,pwd,action)
+                  categories[kind]=result
+                  print(label+"_"+kind+"_CATEGORIES="+result["state"]+" count="+str(result.get("count","?"))+" seconds="+str(result["elapsed"]))
+              if categories["SERIES"].get("state")=="OK" and categories["SERIES"].get("count",0)>0:
+                  ids=[str(x.get("category_id","")) for x in categories["SERIES"].get("rows",[]) if isinstance(x,dict)]
+                  ids=[x for x in ids if x.isdigit()]
+                  if ids:
+                      result=probe(server,user,pwd,"get_series",ids[0])
+                      print(label+"_SERIES_CATEGORY_SAMPLE="+result["state"]+" count="+str(result.get("count","?"))+" seconds="+str(result["elapsed"]))
+              result=probe(server,user,pwd,"get_series",max_bytes=200000)
+              print(label+"_FULL_SERIES_SAMPLE="+result["state"]+" count="+str(result.get("count","?"))+" seconds="+str(result["elapsed"]))
+          PY_PROBE
+      - name: Wipe transient provider credentials
+        if: always()
+        shell: bash
+        run: |
+          rm -f media-player/app/src/main/assets/private_xtream.json
+          rm -f media-player/app/src/main/assets/private_xtream_secondary.json
+          rm -f "$HOME/.android/debug.keystore"
