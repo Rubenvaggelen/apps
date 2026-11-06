@@ -9,7 +9,7 @@ on:
       - 'media-player/app/src/test/java/com/theone/mediaplayer/XtreamSeriesCategoryRecoveryTest.java'
       - 'media-player/app/src/test/java/com/theone/mediaplayer/XtreamSeriesFallbackNetworkTest.java'
       - 'media-player/tvapp/build.gradle.kts'
-      - '.github/workflows/media-player-tv-v1042-category-recovery.yml'
+      - '.github/workflows/media-player-tv-v1042-marshals-search.yml'
   workflow_dispatch: {}
 permissions:
   contents: read
