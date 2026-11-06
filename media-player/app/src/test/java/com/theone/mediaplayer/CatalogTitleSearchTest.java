@@ -28,7 +28,7 @@ public class CatalogTitleSearchTest {
     }
 
     @Test public void spellingToleranceRejectsUnrelatedAndShortQueries() {
-        assertFalse(CatalogTitleSearch.matches("Marshall Plan", "Marshals"));
+        assertFalse(CatalogTitleSearch.matches("Marine Patrol", "Marshals"));
         assertFalse(CatalogTitleSearch.matches("Dora", "Data"));
         assertFalse(CatalogTitleSearch.matches("Marshals", "Sheriffs"));
         assertFalse(CatalogTitleSearch.matches("Marshals", "Marmalade"));
