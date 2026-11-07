@@ -16,8 +16,8 @@ public class SeriesSourceMatcherTest {
   catalog.put(secondary.key(),Collections.singletonList(secondary));
   List<CatalogEntry> options=SeriesSourceMatcher.sources(primary,catalog);
   assertEquals(2,options.size());
-  assertEquals(14,options.get(0).id);
-  assertEquals(1000000021,options.get(1).id);
+  assertEquals(1000000021,options.get(0).id);
+  assertEquals(14,options.get(1).id);
  }
  @Test public void unrelatedShowsAndEpisodesAreNeverSelected(){
   CatalogEntry selected=show(14,"EN - Mob Land","123");
