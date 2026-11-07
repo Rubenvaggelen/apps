@@ -1,0 +1,221 @@
+name: Recheck live Series and Cinema source streams (failover decision)
+on:
+  push:
+    branches: [diagnose/series-cinema-failover-now-20261107]
+    paths: [.github/workflows/recheck-stream-health-20261107.yml]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Restore permanent Google TV signing certificate
+        shell: bash
+        env:
+          TV_SIGNING_KEY: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$TV_SIGNING_KEY"
+          mkdir -p ~/.android
+          printf '%s' "$TV_SIGNING_KEY" | base64 -d > ~/.android/debug.keystore
+          chmod 600 ~/.android/debug.keystore
+          keytool -list -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey >/dev/null
+      - name: Restore verified primary IPTV account for Google TV
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test -s .github/media-player-private-source.enc.b64
+          test -s "$HOME/.android/debug.keystore"
+          keytool -importkeystore \
+            -srckeystore "$HOME/.android/debug.keystore" \
+            -srcstorepass android \
+            -srcalias androiddebugkey \
+            -destkeystore /tmp/media-player-primary-signing.p12 \
+            -deststoretype PKCS12 \
+            -deststorepass changeit \
+            -destkeypass changeit \
+            -noprompt >/dev/null
+          openssl pkcs12 \
+            -in /tmp/media-player-primary-signing.p12 \
+            -passin pass:changeit \
+            -nodes -nocerts \
+            -out /tmp/media-player-primary-private.pem >/dev/null 2>&1
+          base64 -d .github/media-player-private-source.enc.b64 > /tmp/media-player-primary.enc
+          openssl pkeyutl -decrypt \
+            -inkey /tmp/media-player-primary-private.pem \
+            -in /tmp/media-player-primary.enc \
+            -out /tmp/media-player-primary.json \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256
+          python3 - <<'PY_PRIMARY'
+          from pathlib import Path
+          from urllib.parse import urlsplit, parse_qs
+          import json
+          src=json.loads(Path("/tmp/media-player-primary.json").read_text())
+          parsed=urlsplit(str(src.get("m3u_url","")).strip())
+          query=parse_qs(parsed.query)
+          user=(query.get("username") or [""])[0]
+          password=(query.get("password") or [""])[0]
+          host=parsed.hostname or ""
+          server=parsed.scheme+"://"+parsed.netloc
+          if parsed.scheme not in ("http","https") or not host or not user or not password:
+              raise SystemExit("Encrypted primary IPTV source is invalid")
+          if user.startswith("PRIVATE_") or password.startswith("PRIVATE_"):
+              raise SystemExit("Placeholder credentials are forbidden in signed TV releases")
+          out=Path("media-player/app/src/main/assets/private_xtream.json")
+          out.write_text(json.dumps({"server":server,"username":user,"password":password})+"\n")
+          print("GOOGLE_TV_PRIMARY_IPTV_SOURCE_RESTORED=1")
+          PY_PRIMARY
+          rm -f /tmp/media-player-primary-signing.p12 /tmp/media-player-primary-private.pem /tmp/media-player-primary.enc /tmp/media-player-primary.json
+      - name: Restore encrypted secondary IPTV source for Google TV
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test -s .github/media-player-secondary-source.enc.b64
+          test -s "$HOME/.android/debug.keystore"
+          keytool -importkeystore \
+            -srckeystore "$HOME/.android/debug.keystore" \
+            -srcstorepass android \
+            -srcalias androiddebugkey \
+            -destkeystore /tmp/media-player-tv-signing.p12 \
+            -deststoretype PKCS12 \
+            -deststorepass changeit \
+            -destkeypass changeit \
+            -noprompt >/dev/null
+          openssl pkcs12 \
+            -in /tmp/media-player-tv-signing.p12 \
+            -passin pass:changeit \
+            -nodes -nocerts \
+            -out /tmp/media-player-tv-private.pem >/dev/null 2>&1
+          base64 -d .github/media-player-secondary-source.enc.b64 > /tmp/media-player-tv-source.enc
+          openssl pkeyutl -decrypt \
+            -inkey /tmp/media-player-tv-private.pem \
+            -in /tmp/media-player-tv-source.enc \
+            -out media-player/app/src/main/assets/private_xtream_secondary.json \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256
+          python3 - <<'PY_SOURCE'
+          import json,pathlib
+          primary=json.loads(pathlib.Path("media-player/app/src/main/assets/private_xtream.json").read_text())
+          secondary=json.loads(pathlib.Path("media-player/app/src/main/assets/private_xtream_secondary.json").read_text())
+          assert set(secondary)=={"server","username","password"} and all(secondary.values())
+          assert secondary["server"].startswith("http")
+          assert (secondary["server"],secondary["username"])!=(primary.get("server"),primary.get("username"))
+          print("GOOGLE_TV_SECONDARY_IPTV_SOURCE_RESTORED=1")
+          PY_SOURCE
+          rm -f /tmp/media-player-tv-signing.p12 /tmp/media-player-tv-private.pem /tmp/media-player-tv-source.enc
+      - name: Verify account status, catalog and short media stream probes (redacted)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,pathlib,urllib.request,urllib.parse,urllib.error,socket,time,ssl
+          from urllib.parse import urlsplit
+          paths=[("PRIMARY","media-player/app/src/main/assets/private_xtream.json"),("SECONDARY","media-player/app/src/main/assets/private_xtream_secondary.json")]
+          def small_json(url,limit=2500000,secs=12):
+            request=urllib.request.Request(url,headers={"User-Agent":"VLC/3.0.21 LibVLC/3.0.21","Accept":"application/json"})
+            start=time.monotonic()
+            try:
+              with urllib.request.urlopen(request,timeout=secs) as reply:
+                status=reply.status
+                blob=reply.read(limit+1)
+              if len(blob)>limit:return ("LARGE",None,round(time.monotonic()-start,2))
+              try:res=json.loads(blob)
+              except Exception:return ("INVALID_JSON",None,round(time.monotonic()-start,2))
+              return (str(status),res,round(time.monotonic()-start,2))
+            except urllib.error.HTTPError as e:return ("HTTP_"+str(e.code),None,round(time.monotonic()-start,2))
+            except Exception as e:return ("ERR_"+type(getattr(e,"reason",e)).__name__,None,round(time.monotonic()-start,2))
+          def first_valid_id(rows,field):
+            if not isinstance(rows,list):return None
+            for row in rows[:16]:
+              if isinstance(row,dict):
+                value=str(row.get(field,""))
+                if value.isdigit() and len(value)<12:return value
+            return None
+          def fetch_stream(url):
+            req=urllib.request.Request(url,headers={"User-Agent":"VLC/3.0.21 LibVLC/3.0.21","Range":"bytes=0-1023","Accept":"*/*"})
+            start=time.monotonic()
+            try:
+              with urllib.request.urlopen(req,timeout=12) as r:
+                code=r.status
+                content_type=r.headers.get("Content-Type","")
+                data=r.read(1024)
+              if "json" in content_type or "text/" in content_type:
+                return "HTTP_"+str(code)+"_NON_VIDEO"
+              return "HTTP_"+str(code)+"_"+("BYTES" if data else "EMPTY")
+            except urllib.error.HTTPError as e:return "HTTP_"+str(e.code)
+            except Exception as e:return "ERR_"+type(getattr(e,"reason",e)).__name__
+          for name,filename in paths:
+            try:
+              cfg=json.loads(pathlib.Path(filename).read_text())
+              server=cfg["server"].rstrip("/")
+              username=str(cfg["username"]);password=str(cfg["password"])
+              host=urlsplit(server).hostname
+              if not host or not username or not password:raise ValueError("config")
+            except Exception:
+              print(name+"_CONFIG=INVALID");continue
+            base=server+"/player_api.php?"+urllib.parse.urlencode({"username":username,"password":password})
+            state,details,secs=small_json(base,secs=10)
+            info=details.get("user_info",{}) if isinstance(details,dict) else {}
+            print(name+"_API="+state+" AUTH="+str(info.get("auth","?"))+" STATUS="+str(info.get("status","?"))+" ACTIVE_CONNECTIONS="+str(info.get("active_cons","?"))+" MAX_CONNECTIONS="+str(info.get("max_connections","?"))+" SEC="+str(secs))
+            if state!="200":continue
+            cats={}
+            for kind,action in [("SERIES","get_series_categories"),("VOD","get_vod_categories"),("LIVE","get_live_categories")]:
+              st,body,elapsed=small_json(base+"&action="+action,limit=2000000)
+              cats[kind]=body if st=="200" else []
+              print(name+"_"+kind+"_CATEGORIES="+st+" COUNT="+str(len(body) if isinstance(body,list) else "?")+" SEC="+str(elapsed))
+            vcat=first_valid_id(cats.get("VOD"),"category_id")
+            if vcat:
+              st,vods,secs=small_json(base+"&action=get_vod_streams&category_id="+vcat,limit=3000000)
+              sid=first_valid_id(vods,"stream_id")
+              print(name+"_VOD_ITEMS="+st+" FOUND="+str(sid is not None)+" SEC="+str(secs))
+              if sid:
+                ext="mp4"
+                for e in vods:
+                  if str(e.get("stream_id"))==sid:
+                    cand=str(e.get("container_extension","mp4")).lower()
+                    if cand in ("mp4","mkv","ts","avi"):ext=cand
+                    break
+                path="/movie/"+urllib.parse.quote(username,safe="")+"/"+urllib.parse.quote(password,safe="")+"/"+sid+"."+ext
+                print(name+"_MOVIE_STREAM="+fetch_stream(server+path))
+            scat=first_valid_id(cats.get("SERIES"),"category_id")
+            if scat:
+              st,shows,secs=small_json(base+"&action=get_series&category_id="+scat,limit=3000000)
+              show=first_valid_id(shows,"series_id")
+              print(name+"_SERIES_ITEMS="+st+" FOUND="+str(show is not None)+" SEC="+str(secs))
+              if show:
+                st,detail,secs=small_json(base+"&action=get_series_info&series_id="+show,limit=2500000)
+                episodes=detail.get("episodes",{}) if isinstance(detail,dict) else {}
+                eps=[]
+                if isinstance(episodes,dict):
+                  for season in list(episodes)[:4]:
+                    if isinstance(episodes[season],list):eps.extend(episodes[season][:3])
+                elif isinstance(episodes,list):eps=episodes[:3]
+                episode_id=first_valid_id(eps,"id")
+                print(name+"_SERIES_INFO="+st+" EPISODE_FOUND="+str(episode_id is not None)+" SEC="+str(secs))
+                if episode_id:
+                  ext="mp4"
+                  for ep in eps:
+                    if str(ep.get("id"))==episode_id:
+                      cand=str(ep.get("container_extension","mp4")).lower()
+                      if cand in ("mp4","mkv","ts","avi"):ext=cand
+                      break
+                  path="/series/"+urllib.parse.quote(username,safe="")+"/"+urllib.parse.quote(password,safe="")+"/"+episode_id+"."+ext
+                  print(name+"_EPISODE_STREAM="+fetch_stream(server+path))
+          PY
+      - name: Wipe transient provider credentials
+        if: always()
+        shell: bash
+        run: |
+          rm -f media-player/app/src/main/assets/private_xtream.json
+          rm -f media-player/app/src/main/assets/private_xtream_secondary.json
+          rm -f "$HOME/.android/debug.keystore"
