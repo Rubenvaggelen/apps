@@ -49,8 +49,8 @@ public class SeriesSourceMatcherTest {
   entries.put(secondary.key(),Collections.singletonList(secondary));
   List<CatalogEntry> sources=SeriesSourceMatcher.sources(primary,entries);
   assertEquals(2,sources.size());
-  assertEquals(41,sources.get(0).id);
-  assertEquals(1000000044,sources.get(1).id);
+  assertEquals(1000000044,sources.get(0).id);
+  assertEquals(41,sources.get(1).id);
  }
 
 }
