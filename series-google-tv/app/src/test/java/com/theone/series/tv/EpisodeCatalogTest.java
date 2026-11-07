@@ -40,4 +40,14 @@ public class EpisodeCatalogTest {
    assertEquals(2,result.variants.size());
  }
  @Test public void sourceWithOneEpisodeDoesNotInventOtherEpisodes()throws Exception{assertEquals(1,EpisodeCatalog.merge(EpisodeCatalog.parse(data(1,"Episode S01E01",1),parent(1,"EN"),"",false)).seasons.get(1).size());}
+ @Test public void backupEpisodeWithOptionalYearMergesIntoSameEpisode()throws Exception{
+   CatalogEntry primary=new CatalogEntry(51,"EN - Duttons (2026) 1080p","mp4","","","series",0,"");
+   CatalogEntry secondary=new CatalogEntry(1000000052,"NL - Duttons HD","mp4","","","series",0,"");
+   List<CatalogEntry> all=new ArrayList<>();
+   all.addAll(EpisodeCatalog.parse(data(301,"Duttons S01E01",1),primary,"",false));
+   all.addAll(EpisodeCatalog.parse(data(302,"Duttons S01E01",1),secondary,"",true));
+   EpisodeCatalog.Result result=EpisodeCatalog.merge(all);
+   assertEquals(1,result.seasons.get(1).size());
+   assertEquals(2,result.variants.get(result.seasons.get(1).get(0).key()).size());
+ }
 }
