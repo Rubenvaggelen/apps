@@ -1,38 +1,47 @@
 package com.theone.series.tv;
 
 import java.util.*;
+import java.util.regex.*;
 
-/**
- * Find alternate provider variants of the same series before fetching episodes.
- * Xtream providers may identify the same show with different series/TMDB IDs
- * and minor spelling changes (MobLand vs Mob Land). Only match normalized titles,
- * preserve every distinct provider ID and never match unrelated shows.
- */
+/** Select a bounded set of matching provider variants; prioritize the last
+ * known playable secondary provider without merging unrelated seasons/remakes. */
 final class SeriesSourceMatcher {
  private SeriesSourceMatcher(){}
+ private static final Pattern YEAR=Pattern.compile("(?:^|\\s)((?:19|20)\\d{2})$");
+ private static String normalized(String title){return CatalogEntry.normalize(title);}
+ private static String year(String title){
+  Matcher match=YEAR.matcher(normalized(title));
+  return match.find()?match.group(1):"";
+ }
  static String titleKey(String title){
-  return CatalogEntry.normalize(title).replace(" ","");
+  return YEAR.matcher(normalized(title)).replaceFirst("").replace(" ","").trim();
+ }
+ private static boolean sameSeries(CatalogEntry a,CatalogEntry b){
+  if(a==null||b==null||!"series".equals(a.type)||!"series".equals(b.type))return false;
+  // Both remakes have explicit, contradictory years: do not cross-match.
+  String y1=year(a.title),y2=year(b.title);
+  if(!y1.isEmpty()&&!y2.isEmpty()&&!y1.equals(y2))return false;
+  if(!a.movieId.isEmpty()&&a.movieId.equals(b.movieId))return true;
+  String name=titleKey(a.title);
+  return name.length()>=4&&name.equals(titleKey(b.title));
  }
  static List<CatalogEntry> sources(CatalogEntry selected,Map<String,List<CatalogEntry>> groups){
   LinkedHashMap<Integer,CatalogEntry> unique=new LinkedHashMap<>();
   if(selected==null||!"series".equals(selected.type))return new ArrayList<>();
   unique.put(selected.id,selected);
-  String name=titleKey(selected.title);
   boolean selectedSecondary=selected.id>=1000000000;
-  // Media Player retrieves an entry and an alternate provider. Do not fetch
-  // every quality/resolution duplicate: on small Google TV sticks that can
-  // allocate large episode JSON structures and stall the remote-control UI.
-  if(groups!=null)for(List<CatalogEntry> group:groups.values()){
+  if(groups!=null)outer:for(List<CatalogEntry> group:groups.values()){
    if(group==null)continue;
-   for(CatalogEntry e:group){
-    if(e==null||!"series".equals(e.type)||e.id==selected.id)continue;
-    boolean secondary=e.id>=1000000000;
-    if(secondary==selectedSecondary)continue;
-    if(!titleKey(e.title).equals(name))continue;
-    unique.putIfAbsent(e.id,e);
-    return new ArrayList<>(unique.values());
+   for(CatalogEntry candidate:group){
+    if(candidate==null||candidate.id==selected.id)continue;
+    if((candidate.id>=1000000000)==selectedSecondary)continue;
+    if(!sameSeries(selected,candidate))continue;
+    unique.putIfAbsent(candidate.id,candidate);
+    break outer; // One working alternative provider per episode: bounded TV memory.
    }
   }
-  return new ArrayList<>(unique.values());
+  List<CatalogEntry> result=new ArrayList<>(unique.values());
+  result.sort(Comparator.comparingInt(e->e.id>=1000000000?0:1));
+  return result;
  }
 }

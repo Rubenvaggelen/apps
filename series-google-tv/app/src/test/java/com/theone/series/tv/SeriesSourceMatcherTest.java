@@ -16,8 +16,8 @@ public class SeriesSourceMatcherTest {
   catalog.put(secondary.key(),Collections.singletonList(secondary));
   List<CatalogEntry> options=SeriesSourceMatcher.sources(primary,catalog);
   assertEquals(2,options.size());
-  assertEquals(14,options.get(0).id);
-  assertEquals(1000000021,options.get(1).id);
+  assertEquals(1000000021,options.get(0).id);
+  assertEquals(14,options.get(1).id);
  }
  @Test public void unrelatedShowsAndEpisodesAreNeverSelected(){
   CatalogEntry selected=show(14,"EN - Mob Land","123");
@@ -49,8 +49,33 @@ public class SeriesSourceMatcherTest {
   entries.put(secondary.key(),Collections.singletonList(secondary));
   List<CatalogEntry> sources=SeriesSourceMatcher.sources(primary,entries);
   assertEquals(2,sources.size());
-  assertEquals(41,sources.get(0).id);
-  assertEquals(1000000044,sources.get(1).id);
+  assertEquals(1000000044,sources.get(0).id);
+  assertEquals(41,sources.get(1).id);
  }
 
+ @Test public void optionalYearStillOffersProviderTwoAsPrimary() {
+  CatalogEntry primary=show(11,"EN - Duttons (2026) FHD","");
+  CatalogEntry secondary=show(1000000022,"NL - Duttons HD","");
+  Map<String,List<CatalogEntry>> catalog=new LinkedHashMap<>();
+  catalog.put(primary.key(),Collections.singletonList(primary));
+  catalog.put(secondary.key(),Collections.singletonList(secondary));
+  List<CatalogEntry> result=SeriesSourceMatcher.sources(primary,catalog);
+  assertEquals(2,result.size());
+  assertEquals(1000000022,result.get(0).id);
+  assertEquals(11,result.get(1).id);
+ }
+ @Test public void conflictingExplicitRemakeYearsNeverMerge() {
+  CatalogEntry primary=show(11,"EN - Example (2026)","");
+  CatalogEntry remake=show(1000000022,"EN - Example (1995)","");
+  Map<String,List<CatalogEntry>> catalog=new LinkedHashMap<>();
+  catalog.put(remake.key(),Collections.singletonList(remake));
+  assertEquals(1,SeriesSourceMatcher.sources(primary,catalog).size());
+ }
+ @Test public void stableTmdbCanFindLocalizedTitle() {
+  CatalogEntry original=show(11,"EN - Original Name","234");
+  CatalogEntry localized=show(1000000022,"NL - Andere Naam","234");
+  Map<String,List<CatalogEntry>> catalog=new LinkedHashMap<>();
+  catalog.put(localized.key(),Collections.singletonList(localized));
+  assertEquals(1000000022,SeriesSourceMatcher.sources(original,catalog).get(0).id);
+ }
 }
