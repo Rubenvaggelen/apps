@@ -257,6 +257,146 @@ public final class XtreamConfig {
     }
 
 
+    /**
+     * Stream VOD titles as small batches, keeping provider feeds independent.
+     * Unlike get_vod_streams -> JSONArray, this does not load 90,000+ films
+     * into Java heap before a title can be displayed.
+     */
+    public boolean streamMovieCatalog(int requestedBatchSize, SeriesBatchListener listener) throws Exception {
+        if (!isConfigured()) throw new java.io.IOException("Source unavailable");
+        final int batchSize = Math.max(25, Math.min(requestedBatchSize, 250));
+        java.util.List<java.util.concurrent.Callable<Boolean>> workers = new java.util.ArrayList<>();
+        workers.add(() -> streamMovieProvider(this, false, batchSize, listener));
+        if (secondary != null && secondary.isConfigured())
+            workers.add(() -> streamMovieProvider(secondary, true, batchSize, listener));
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(workers.size());
+        int successful = 0;
+        try {
+            for (java.util.concurrent.Future<Boolean> future :
+                    pool.invokeAll(workers, 75, java.util.concurrent.TimeUnit.SECONDS)) {
+                if (future.isCancelled()) continue;
+                try { if (future.get()) successful++; } catch (Exception ignored) {}
+            }
+        } finally { pool.shutdownNow(); }
+        return successful == workers.size() && successful > 0;
+    }
+
+    private boolean streamMovieProvider(XtreamConfig source, boolean second, int batchSize,
+            SeriesBatchListener listener) {
+        java.io.File providerFile = catalogCacheDir == null ? null : new java.io.File(catalogCacheDir,
+                "catalog-" + hashCacheKey("provider-v2|get_vod_streams|" +
+                source.server + "|" + source.username) + ".json");
+        if (streamCachedMovie(providerFile, false, second, batchSize, listener)) return true;
+        java.net.HttpURLConnection connection = null;
+        java.io.File pending = null;
+        java.io.Writer writer = null;
+        try {
+            connection = (java.net.HttpURLConnection) new java.net.URL(
+                    source.account() + "&action=get_vod_streams").openConnection();
+            connection.setConnectTimeout(9000);
+            connection.setReadTimeout(20000);
+            connection.setUseCaches(false);
+            connection.setRequestProperty("User-Agent", "TheOneMediaPlayer/2.4.1");
+            if (connection.getResponseCode() != 200)
+                throw new java.io.IOException("Movie catalog unavailable");
+            if (providerFile != null) {
+                java.io.File parent = providerFile.getParentFile();
+                if (parent != null && (parent.isDirectory() || parent.mkdirs())) {
+                    pending = new java.io.File(parent, providerFile.getName() + ".stream.tmp");
+                    writer = new java.io.BufferedWriter(new java.io.OutputStreamWriter(
+                            new java.io.FileOutputStream(pending),
+                            java.nio.charset.StandardCharsets.UTF_8));
+                }
+            }
+            final int[] delivered = {0};
+            try (java.io.Reader input = new java.io.InputStreamReader(
+                    connection.getInputStream(), java.nio.charset.StandardCharsets.UTF_8)) {
+                streamSeriesRows(input, writer, pending, second, batchSize, (rows, isSecond) -> {
+                    delivered[0] += rows.length();
+                    listener.onBatch(rows, isSecond);
+                });
+                writer = null;
+            }
+            if (delivered[0] == 0) throw new java.io.IOException("Empty film catalog");
+            if (pending != null && pending.isFile() && pending.length() < 64L * 1024L * 1024L)
+                if (!pending.renameTo(providerFile)) pending.delete();
+            return true;
+        } catch (Exception unavailable) {
+            if (streamCachedMovie(providerFile, true, second, batchSize, listener)) return true;
+            return streamMovieCategories(source, second, batchSize, listener);
+        } finally {
+            if (writer != null) try { writer.close(); } catch (Exception ignored) {}
+            if (pending != null && pending.exists()) pending.delete();
+            if (connection != null) connection.disconnect();
+        }
+    }
+
+    /** Stream cache directly from disk; never parse a 40MB JSON array in RAM. */
+    private boolean streamCachedMovie(java.io.File file, boolean allowStale,
+            boolean second, int batchSize, SeriesBatchListener listener) {
+        if (file == null || !file.isFile() || file.length() < 2 ||
+                file.length() > 64L * 1024L * 1024L) return false;
+        long age = System.currentTimeMillis() - file.lastModified();
+        if (age < 0 || age > (allowStale ? 7L * 24L * 3600000L : 12L * 60000L))
+            return false;
+        try (java.io.Reader input = new java.io.BufferedReader(new java.io.InputStreamReader(
+                new java.io.FileInputStream(file), java.nio.charset.StandardCharsets.UTF_8))) {
+            final int[] delivered = {0};
+            streamSeriesRows(input, null, null, second, batchSize, (rows, isSecond) -> {
+                delivered[0] += rows.length();
+                listener.onBatch(rows, isSecond);
+            });
+            return delivered[0] > 0;
+        } catch (Exception invalid) { return false; }
+    }
+
+    /** Recover VOD search via category-sized responses if a huge full feed fails. */
+    private boolean streamMovieCategories(XtreamConfig source, boolean second,
+            int batchSize, SeriesBatchListener listener) {
+        java.io.File categoriesFile = catalogCacheDir == null ? null : new java.io.File(catalogCacheDir,
+                "catalog-" + hashCacheKey("provider-v2|get_vod_categories|" +
+                source.server + "|" + source.username) + ".json");
+        String raw = readCachedCatalog(categoriesFile, false);
+        if (raw == null) try {
+            raw = source.download(source.account() + "&action=get_vod_categories");
+            if (categoriesFile != null) writeCachedCatalog(categoriesFile, raw);
+        } catch (Exception unavailable) {
+            raw = readCachedCatalog(categoriesFile, true);
+            if (raw == null) return false;
+        }
+        java.util.List<String> ids;
+        try { ids = seriesCategoryIds(new org.json.JSONArray(raw)); }
+        catch (Exception invalid) { return false; }
+        if (ids.isEmpty()) return false;
+        int received = 0;
+        boolean complete = true;
+        for (String id : ids) {
+            if (Thread.currentThread().isInterrupted()) { complete = false; break; }
+            java.io.File file = catalogCacheDir == null ? null : new java.io.File(catalogCacheDir,
+                    "catalog-" + hashCacheKey("movie-category-v1|" + source.server + "|" +
+                    source.username + "|" + id) + ".json");
+            String catalog = readCachedCatalog(file, false);
+            if (catalog == null) try {
+                catalog = source.download(source.account() + "&action=get_vod_streams&category_id=" + query(id));
+                new org.json.JSONArray(catalog);
+                if (file != null && catalog.length() > 2) writeCachedCatalog(file, catalog);
+            } catch (Exception unavailable) {
+                catalog = readCachedCatalog(file, true);
+                if (catalog == null) { complete = false; continue; }
+            }
+            try {
+                final int[] count = {0};
+                streamSeriesRows(new java.io.StringReader(catalog), null, null, second, batchSize,
+                        (rows, isSecond) -> {
+                            count[0] += rows.length();
+                            listener.onBatch(rows, isSecond);
+                        });
+                received += count[0];
+            } catch (Exception invalid) { complete = false; }
+        }
+        return received > 0 && complete;
+    }
+
     /** Deliver series rows as they arrive; do not wait for both large provider responses. */
     public interface SeriesBatchListener {
         void onBatch(org.json.JSONArray rows, boolean secondarySource);
@@ -419,6 +559,7 @@ public final class XtreamConfig {
         if(snapshot!=null)snapshot.write("[");
         reader.beginArray();
         while(reader.hasNext()){
+            if(Thread.currentThread().isInterrupted())throw new InterruptedException("Catalog interrupted");
             reader.beginObject();
             org.json.JSONObject row=new org.json.JSONObject();
             while(reader.hasNext()){
@@ -428,7 +569,8 @@ public final class XtreamConfig {
                     ||"name".equals(key)||"title".equals(key)||"cover".equals(key)
                     ||"cover_big".equals(key)||"stream_icon".equals(key)||"poster".equals(key)
                     ||"rating".equals(key)||"year".equals(key)||"releaseDate".equals(key)
-                    ||"release_date".equals(key)||"added".equals(key))){
+                    ||"release_date".equals(key)||"added".equals(key)
+                    ||"container_extension".equals(key))){
                     reader.skipValue();
                     continue;
                 }
