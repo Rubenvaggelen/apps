@@ -430,6 +430,12 @@ public class XtreamCatalogActivity extends Activity {
     }
 
     private void searchGlobal(String query) {
+        // Films are searched from streaming, source-specific snapshots.
+        // Never force a 90,000-item JSONArray into the TV heap.
+        if ("movie".equals(mode)) {
+            searchMoviesInBatches(query);
+            return;
+        }
         if ("series".equals(mode) && !globalLoaded) {
             searchSeriesInBatches(query);
             return;
@@ -468,6 +474,106 @@ public class XtreamCatalogActivity extends Activity {
         }).start();
     }
 
+
+    /** Search the entire VOD catalog without loading one giant array in memory. */
+    private void searchMoviesInBatches(String query) {
+        final int generation = ++globalSearchGeneration;
+        globalLoaded = false;
+        globalItems.clear();
+        content.removeAllViews();
+
+        Button back = button("← Terug naar categorieën");
+        back.setOnClickListener(v -> loadCategories());
+        content.addView(back);
+
+        TextView title = text("Filmresultaten voor “" + query + "”", 24, Color.WHITE, true);
+        title.setPadding(0, dp(14), 0, dp(6));
+        content.addView(title);
+        TextView status = text("Filmbibliotheek laden • bron 1 en bron 2 worden afzonderlijk doorzocht…",
+                15, BLUE, false);
+        status.setPadding(0, 0, 0, dp(12));
+        content.addView(status);
+        addSearchAgainBox();
+        content.addView(text("XTREAM • Films", 16, BLUE, true));
+
+        LinearLayout resultHolder = new LinearLayout(this);
+        resultHolder.setOrientation(LinearLayout.VERTICAL);
+        content.addView(resultHolder);
+        addYouTubeResults(query);
+
+        final String needle = normalize(query);
+        final java.util.LinkedHashMap<String, XtreamItem> unique = new java.util.LinkedHashMap<>();
+        final java.util.concurrent.atomic.AtomicInteger scanned = new java.util.concurrent.atomic.AtomicInteger();
+        final java.util.concurrent.atomic.AtomicInteger batches = new java.util.concurrent.atomic.AtomicInteger();
+        final int[] shown = {0};
+
+        new Thread(() -> {
+            boolean complete = false;
+            try {
+                complete = config.streamMovieCatalog(125, (rows, isSecond) -> {
+                    int total = scanned.addAndGet(rows.length());
+                    List<XtreamItem> matches = new ArrayList<>();
+                    for (int i = 0; i < rows.length(); i++) {
+                        JSONObject row = rows.optJSONObject(i);
+                        if (row == null || !allowItem(row)) continue;
+                        String name = firstNonEmpty(row.optString("name", ""), row.optString("title", ""));
+                        if (!matchesQuery(name, needle)) continue;
+                        XtreamItem item = parseItem(row);
+                        if (item != null) matches.add(item);
+                    }
+                    // Avoid posting 700+ no-op UI tasks for a 90,000-title feed.
+                    if (matches.isEmpty() && batches.incrementAndGet() % 20 != 0) return;
+                    runOnUiThread(() -> {
+                        if (isFinishing() || isDestroyed() || generation != globalSearchGeneration) return;
+                        for (XtreamItem item : matches) {
+                            String key = ChannelGuide.normalize(item.name);
+                            XtreamItem previous = unique.get(key);
+                            if (previous != null) {
+                                addAlternative(previous, item);
+                            } else if (unique.size() < 250) {
+                                unique.put(key, item);
+                                globalItems.add(item);
+                                if (shown[0] < 60) {
+                                    appendCards(resultHolder, java.util.Collections.singletonList(item), 0, 1);
+                                    shown[0]++;
+                                }
+                            }
+                        }
+                        status.setText(total + " filmtitels onderzocht • " + unique.size() +
+                                " resultaten • bibliotheek wordt aangevuld");
+                    });
+                });
+            } catch (Exception unavailable) {
+                Log.w(LOG_TAG, "Movie catalog progressive loading unavailable");
+            }
+            final boolean allSourcesComplete = complete;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed() || generation != globalSearchGeneration) return;
+                if (allSourcesComplete) {
+                    status.setText(scanned.get() + " filmtitels doorzocht • " + unique.size() +
+                            " resultaten • bibliotheek bijgewerkt");
+                } else {
+                    status.setText("Gedeeltelijke bibliotheek • " + scanned.get() +
+                            " filmtitels ontvangen. Eén of meer bronnen waren niet volledig bereikbaar.");
+                }
+                if (unique.isEmpty())
+                    resultHolder.addView(text(allSourcesComplete
+                            ? "Geen bijpassende film gevonden in Xtream."
+                            : "Nog geen filmresultaten. Probeer de bronnen opnieuw.",
+                            16, MUTED, false));
+                if (globalItems.size() > shown[0]) {
+                    Button more = button("Bekijk alle " + globalItems.size() + " filmresultaten");
+                    more.setOnClickListener(v -> renderGlobalResults(query));
+                    content.addView(more);
+                }
+                if (!allSourcesComplete) {
+                    Button retry = button("↻ Filmbibliotheek opnieuw doorzoeken");
+                    retry.setOnClickListener(v -> searchMoviesInBatches(query));
+                    content.addView(retry);
+                }
+            });
+        }, "movie-library-stream").start();
+    }
 
     /** Progressive results for slow Google TV devices: first cards appear as
      * the provider sends rows, without waiting for every country/category. */
@@ -824,7 +930,7 @@ public class XtreamCatalogActivity extends Activity {
         Button find = button("Opnieuw zoeken");
         find.setOnClickListener(v -> {
             String q = search.getText().toString().trim();
-            if (!q.isEmpty()) renderGlobalResults(q);
+            if (!q.isEmpty()) searchGlobal(q);
         });
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
