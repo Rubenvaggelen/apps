@@ -16,4 +16,10 @@ public class PlaybackSessionGuardTest {
         assertEquals(0, PlaybackSessionGuard.retryPosition(2000));
         assertEquals(3595000, PlaybackSessionGuard.retryPosition(3600000));
     }
+    @Test public void earlyEndedEpisodeRetriesInsteadOfAdvancingToNextEpisode() {
+        assertTrue(PlaybackSessionGuard.suspectedPrematureEnd(30000,31000,3600000));
+        assertTrue(PlaybackSessionGuard.suspectedPrematureEnd(30000,31000,-9223372036854775807L));
+        assertFalse(PlaybackSessionGuard.suspectedPrematureEnd(30000,31000,60000));
+        assertFalse(PlaybackSessionGuard.suspectedPrematureEnd(3500000,3600000,3600000));
+    }
 }
