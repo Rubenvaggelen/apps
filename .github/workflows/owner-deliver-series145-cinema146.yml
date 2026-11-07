@@ -1,0 +1,152 @@
+name: Secure latest owner APK delivery Series 145 Cinema 146
+on:
+  push:
+    branches: [transfer/series-v145-cinema-v146-chat-handover-20261107]
+    paths: [.github/workflows/owner-deliver-series145-cinema146.yml]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  actions: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - name: Retrieve published APKs from protected Dev Hub over authenticated SSH
+        shell: bash
+        env:
+          OWNER_SIGNING_KEY: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$OWNER_SIGNING_KEY"
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_PORT"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_SSH_KEY"
+          test -n "$DEPLOY_SSH_PASSPHRASE"
+          test -n "$DEPLOY_KNOWN_HOSTS"
+          mkdir -p /tmp/owner-delivery/series /tmp/owner-delivery/cinema
+          printf '%s' "$OWNER_SIGNING_KEY" | base64 -d > /tmp/owner-delivery/owner.keystore
+          auth=$(mktemp -d)
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; rm -rf "$auth"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$auth/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$auth/known_hosts"
+          printf '#!/bin/sh\nprintf "%%s\n" "$DEPLOY_SSH_PASSPHRASE"\n' > "$auth/askpass"
+          chmod 600 "$auth/key" "$auth/known_hosts"
+          chmod 700 "$auth/askpass"
+          eval "$(ssh-agent -s)" >/dev/null
+          SSH_ASKPASS="$auth/askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh-add "$auth/key" </dev/null >/dev/null 2>&1
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          for app in series cinema; do
+            case "$app" in
+              series) name='The-One-Series-Google-TV-v1.3.8.apk' ;;
+              cinema) name='The-One-Cinema-Google-TV-v1.4.6.apk' ;;
+            esac
+            meta=$(ssh -p "$DEPLOY_PORT" -i "$auth/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$auth/known_hosts" -o ConnectTimeout=20 "$remote" "python3 - '$app'" <<'PY_REMOTE'
+          import sys, json, pathlib, re
+          app=sys.argv[1]
+          name={'series':'series-google-tv','cinema':'cinema-google-tv'}[app]
+          ver={'series':'1.3.8','cinema':'1.4.6'}[app]
+          root=pathlib.Path('/home/vanawiwj/the-one-private-builds/2026-10-13')
+          data=json.loads((root/'manifest.json').read_text())
+          rows=[r for r in data if r.get('id')==name]
+          assert len(rows)==1,'APP_NOT_PUBLISHED'
+          row=rows[0]
+          assert row.get('version_name')==ver,'APP_VERSION_CHANGED_STOP_TRANSFER'
+          filename=str(row.get('apk') or '')
+          sha=str(row.get('sha256') or '')
+          assert re.fullmatch(r'[A-Za-z0-9._-]+\.apk',filename),'INVALID_APK_NAME'
+          assert re.fullmatch('[0-9a-f]{64}',sha),'INVALID_MANIFEST_CHECKSUM'
+          src=root/'apks'/filename
+          assert src.is_file() and src.stat().st_size>1000000,'APK_NOT_AVAILABLE'
+          print(filename+'|'+sha)
+          PY_REMOTE
+            )
+            IFS='|' read -r filename sha <<< "$meta"
+            [[ "$filename" =~ ^[A-Za-z0-9._-]+\.apk$ ]]
+            [[ "$sha" =~ ^[0-9a-f]{64}$ ]]
+            scp -O -P "$DEPLOY_PORT" -i "$auth/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$auth/known_hosts" -o ConnectTimeout=20 \
+              "$remote:/home/vanawiwj/the-one-private-builds/2026-10-13/apks/$filename" \
+              "/tmp/owner-delivery/$app/$name"
+            actual=$(sha256sum "/tmp/owner-delivery/$app/$name" | awk '{print $1}')
+            test "$actual" = "$sha" || { echo "PRIVATE_DEVHUB_HASH_MISMATCH:$app";exit 1; }
+            echo "PRIVATE_DEVHUB_SIGNED_APK_RECEIVED_AND_HASH_VERIFIED:$app"
+          done
+      - name: Verify stable signature, versions, and correct TV package IDs
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          keytool -exportcert -keystore /tmp/owner-delivery/owner.keystore \
+            -storepass android -alias androiddebugkey \
+            -file /tmp/owner-delivery/owner-cert.der >/dev/null
+          expected_cert=$(sha256sum /tmp/owner-delivery/owner-cert.der | awk '{print $1}')
+          for app in series cinema; do
+            case "$app" in
+              series)
+                apk=/tmp/owner-delivery/series/The-One-Series-Google-TV-v1.3.8.apk
+                pkg='com.theone.series.tv'; code=145
+                ;;
+              cinema)
+                apk=/tmp/owner-delivery/cinema/The-One-Cinema-Google-TV-v1.4.6.apk
+                pkg='com.theone.cinema.tv'; code=146
+                ;;
+            esac
+            "$BT/apksigner" verify --verbose --print-certs "$apk" > "/tmp/owner-delivery/$app.signature.txt"
+            grep -qi "certificate SHA-256 digest: $expected_cert" "/tmp/owner-delivery/$app.signature.txt"
+            "$BT/aapt" dump badging "$apk" > "/tmp/owner-delivery/$app.badging.txt"
+            grep -q "package: name='$pkg' versionCode='$code'" "/tmp/owner-delivery/$app.badging.txt"
+            echo "APK_VERSION_SIGNER_VERIFIED:$app"
+          done
+      - name: Encrypt checked APKs for this chat recipient only
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p protected-outputs
+          openssl rand -hex 32 > /tmp/owner-delivery/transfer-key
+          openssl pkeyutl -encrypt -pubin \
+            -inkey ci/recipient-public-tv-20261107.pem \
+            -in /tmp/owner-delivery/transfer-key \
+            -out protected-outputs/recipient-key.enc \
+            -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
+          for app in series cinema; do
+            case "$app" in
+              series) name='The-One-Series-Google-TV-v1.3.8.apk' ;;
+              cinema) name='The-One-Cinema-Google-TV-v1.4.6.apk' ;;
+            esac
+            openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 \
+              -pass file:/tmp/owner-delivery/transfer-key \
+              -in "/tmp/owner-delivery/$app/$name" \
+              -out "protected-outputs/$name.enc"
+            sha256sum "/tmp/owner-delivery/$app/$name" \
+              | sed "s|/tmp/owner-delivery/$app/||" >> protected-outputs/SHA256SUMS.txt
+          done
+          echo "PRIVATE_APKS_REENCRYPTED_FOR_RECIPIENT=1"
+          rm -rf /tmp/owner-delivery
+      - name: Transfer only encrypted bytes
+        uses: actions/upload-artifact@v4
+        with:
+          name: owner-encrypted-series-v145-cinema-v146
+          path: protected-outputs/
+          if-no-files-found: error
+          retention-days: 1
+      - name: Delete temporary encrypted artifacts from runner
+        if: always()
+        shell: bash
+        run: rm -rf /tmp/owner-delivery protected-outputs
