@@ -10,8 +10,8 @@ android {
         applicationId = "com.theone.mediaplayer.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1042
-        versionName = "1.0.42-marshals-search"
+        versionCode = 1043
+        versionName = "1.0.43-progressive-film-search"
     }
 
     buildTypes {
