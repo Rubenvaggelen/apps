@@ -11,7 +11,7 @@ final class EpisodeCatalog {
     // Keep the same season/episode together across providers even if they use
     // different series IDs or TMDB IDs (e.g. MobLand / Mob Land).
     // This mirrors the cross-provider episode alternatives in Media Player.
-    String seriesTitle=CatalogEntry.normalize(parent.title).replace(" ","");
+    String seriesTitle=SeriesSourceMatcher.titleKey(parent.title);
     String group="series-episode:"+seriesTitle+":"+actualSeason+":"+number;out.add(new CatalogEntry((int)raw+(second?1000000000:0),title,row.optString("container_extension","mp4"),poster,actualSeason+":"+number,"episode",parent.added,"",group,CatalogEntry.language(parent.title)));
    }
   }return out;
