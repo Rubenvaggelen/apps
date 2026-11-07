@@ -11,6 +11,7 @@ on:
       - 'media-player/app/src/test/java/com/theone/mediaplayer/XtreamSeriesCategoryRecoveryTest.java'
       - 'media-player/app/src/test/java/com/theone/mediaplayer/XtreamSeriesFallbackNetworkTest.java'
       - 'media-player/tvapp/build.gradle.kts'
+      - 'ci/publish-media-player-tv-devhub-v1043.sh'
       - '.github/workflows/media-player-tv-v1043-film-search.yml'
   workflow_dispatch: {}
 permissions:
@@ -214,6 +215,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: Validate Google TV startup in Android emulator before signing
+        id: tv_emulator
         timeout-minutes: 12
         continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
@@ -230,7 +232,7 @@ jobs:
             sleep 6
             adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity'
       - name: Publish signed v1043 to authenticated Dev Hub after verification
-        if: ${{ false }} # Do not promote until signed build checks and release guard pass.
+        if: ${{ success() && steps.tv_emulator.outcome == 'success' }} # Publish only verified emulator-tested owner APK.
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
@@ -238,4 +240,4 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_SSH_PASSPHRASE: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-        run: bash ci/publish-media-player-tv-devhub-v1022.sh
+        run: bash ci/publish-media-player-tv-devhub-v1043.sh
